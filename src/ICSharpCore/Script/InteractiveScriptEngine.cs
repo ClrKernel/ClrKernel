@@ -18,6 +18,7 @@ using Microsoft.CodeAnalysis.Scripting.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using ScriptLogLevel = Dotnet.Script.DependencyModel.Logging.LogLevel;
+using LogFactory = Dotnet.Script.DependencyModel.Logging.LogFactory;
 
 namespace ICSharpCore.Script
 {
@@ -54,10 +55,12 @@ namespace ICSharpCore.Script
                 _references = File.ReadAllLines(referencesFile, Encoding.UTF8);
             }
 
-            _runtimeDependencyResolver = new RuntimeDependencyResolver((t) => (level, m, e) =>
+            LogFactory logFactory = (t) => (level, m, e) =>
             {
                 logger.Log(MapLogLevel(level), m, e);
-            }, true);
+            };
+            var projectProvider = new Dotnet.Script.DependencyModel.ProjectSystem.ScriptProjectProvider(logFactory, _currentDirectory);
+            _runtimeDependencyResolver = new RuntimeDependencyResolver(projectProvider, logFactory, true);
 
             _interactiveOutput = new StringBuilder();
             _globals = new InteractiveScriptGlobals(new StringWriter(_interactiveOutput), CSharpObjectFormatter.Instance);

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>ICSharpCore</RootNamespace>
     <AssemblyName>ICSharpCore</AssemblyName>
     <PackAsTool>true</PackAsTool>
@@ -22,13 +22,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dotnet.Script.DependencyModel" Version="0.9.0" />
-    <PackageReference Include="Dotnet.Script.DependencyModel.NuGet" Version="0.8.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="2.2.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="2.2.0" />
-    <PackageReference Include="NetMQ" Version="4.0.0.1" />
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.0.0" />
+    <PackageReference Include="Dotnet.Script.DependencyModel" Version="2.0.0" />
+    <PackageReference Include="Dotnet.Script.DependencyModel.NuGet" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <PackageReference Include="NetMQ" Version="4.0.2.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ICSharpCore.Primitives/ICSharpCore.Primitives.csproj" />

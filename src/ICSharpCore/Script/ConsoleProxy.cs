@@ -47,7 +47,7 @@ namespace ICSharpCore.Script
                     if (line != null)
                         OnLineReceived(line);
 
-                    if (line == null || reader.EndOfStream)
+                    if (line == null)
                         break;
                 }
             }            

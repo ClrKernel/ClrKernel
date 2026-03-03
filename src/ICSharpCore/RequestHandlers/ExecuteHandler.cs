@@ -54,7 +54,7 @@ namespace ICSharpCore.RequestHandlers
         public async void Process(Message<T> message)
         {
             object result = null;
-
+            ExecuteReply executeReply = null;
             try
             {
                 var displayDataHandler = new Action<DisplayData>((data) =>
@@ -69,35 +69,39 @@ namespace ICSharpCore.RequestHandlers
                     consoleProxy.StartRedirect();
                     result = await _scriptEngine.ExecuteAsync(message.Content.Code);
                 }                
+                executeReply = new ExecuteReplyOk
+                {
+                    ExecutionCount = _executionCount++,
+                    Payload = new List<Dictionary<string, string>>(),
+                    UserExpressions = new Dictionary<string, string>()
+                };
             }
             catch (Exception e)
             {
+                executeReply = new ExecuteReplyError
+                {
+                    ExecutionCount = _executionCount,
+                    EName = e.GetType().Name,
+                    EValue = e.Message,
+                    Traceback = e.StackTrace.Split(Environment.NewLine).ToList()
+                };
+                
                 _logger.LogError(e, "Failed to run the code: " + message.Content.Code);
 
                 var error = e.Message + Environment.NewLine + e.StackTrace;
                 _ioPub.Send(message, new DisplayData(error, $"<p style=\"color:red;\">{error}</p>"), MessageType.DisplayData);
-                return;
             }
             finally
             {
                 DisplayDataEmitter.DisplayDataHandler = null;
             }
 
-            if (result == null)
+            if (result != null)
             {
-                return;
+                _ioPub.Send(message, result, MessageType.DisplayData);
             }
 
-            _ioPub.Send(message, result, MessageType.DisplayData);
-
             // send execute reply to shell socket
-            var executeReply = new ExecuteReplyOk
-            {
-                ExecutionCount = _executionCount++,
-                Payload = new List<Dictionary<string, string>>(),
-                UserExpressions = new Dictionary<string, string>()
-            };
-
             _shell.Send(message, executeReply, MessageType.ExecuteReply);
         }
     }
