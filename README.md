@@ -1,38 +1,57 @@
-# ICSharpCore
-The Jupyter team maintains the [IPython kernel](https://github.com/ipython/ipython) since the Jupyter notebook server depends on the IPython [kernel](https://jupyter.readthedocs.io/en/latest/glossary.html#term-kernel) functionality. Many other languages, in addition to Python, may be used in the notebook. **ICSharpCore** is one of the Jupyter kernels in .NET Standard 2.x.
+# ClrKernel
 
-[![Join the chat at https://gitter.im/publiclab/publiclab](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/sci-sharp/community) 
-[![Apache 2.0](https://img.shields.io/hexpm/l/plug.svg)](https://raw.githubusercontent.com/SciSharp/ICSharpCore/master/LICENSE) 
+A Jupyter kernel for .NET. C# cells are evaluated with Roslyn's scripting engine
+([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
+with more CLR languages (PowerShell, F#) on the roadmap. Notebooks run
+interactively in JupyterLab / VS Code (Jupyter extension) and headlessly via
+`nbconvert` or `papermill` — including from schedulers like SQL Server Agent.
 
-**The basic design is explained in the following diagram:**
+ClrKernel is a maintained fork of
+[SciSharp/ICSharpCore](https://github.com/SciSharp/ICSharpCore), created after
+Microsoft deprecated .NET Interactive / Polyglot Notebooks (April 2026).
+Relative to upstream it adds: correct headless execution under
+nbclient/papermill, full output capture for `async`/`await` cells, control
+channel + heartbeat + graceful `shutdown_request` handling, patched vulnerable
+dependencies, and the kernelspec shipped inside the NuGet package.
 
-![Basic Design Diagram](frontend-kernel.png)
+## Install
 
-### DEMO: [SciSharp Cube](https://github.com/SciSharp/SciSharpCube), an out-of-box Machine Learning start kit in .NET Core.
-### Get started
+```bash
+dotnet tool install --global ClrKernel
+jupyter kernelspec install "$(clrkernel --kernel-spec-path)" --user --name clrkernel
+jupyter kernelspec list   # should show: clrkernel
+```
 
-1. Install [Jupyter Notebook](https://jupyter.org/):
+Requires a .NET 8+ runtime (`RollForward=Major`: newer majors work) and Jupyter.
 
-   `pip install --upgrade pip`
+## Use
 
-   `pip install jupyter`
+Pick the **ClrKernel (C#)** kernel in JupyterLab or VS Code. Cells support
+`#r "nuget: Package, Version"` and `#r "path/to/local.dll"` references, with
+REPL-style state persisting across cells.
 
-   More detail refer to [Jupyter Documentation](https://jupyter.readthedocs.io/en/latest/install.html).
+Headless / scheduled execution:
 
-   
+```bash
+jupyter nbconvert --to notebook --execute --output out.ipynb etl.ipynb
+papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p run_date 2026-08-04
+```
 
-2. Check Jupyter status:
+A failing cell exits non-zero (job schedulers see the failure); papermill also
+persists the partially-executed output notebook as a diagnostic artifact.
 
-   `jupyter notebook`
+## Develop
 
-   `jupyter kernelspec list`
+```bash
+./scripts/install-dev-kernel.sh    # kernel 'clrkernel-dev' running from bin/ output
+                                   # iterate: dotnet build + restart kernel
+./scripts/install-local-tool.sh    # pack + install the global tool from a local
+                                   # feed; tests the full packaged experience
+clrkernel --kernel-spec-details    # show which kernelspec the binary resolves
+```
 
-   
+## License
 
-3. Add ICSharpCore to the Jupyter kernel list:
-
-   `jupyter kernelspec install kernel-spec --name=csharpcore`
-
-
-
-This is a member project of [SciSharp STACK](https://github.com/SciSharp).
+Apache 2.0, preserving the upstream license. Original work © SciSharp
+(Kerry Jiang, Haiping Chen, and contributors); fork maintained by
+[Bad Monkey Software LLC](https://github.com/ClrKernel).

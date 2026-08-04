@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ClrKernel</RootNamespace>
+    <AssemblyName>ClrKernel</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>clrkernel</ToolCommandName>
+    <PackageId>ClrKernel</PackageId>
+    <Description>Multi-language .NET Jupyter kernel. C# cells evaluated with Roslyn scripting; runs interactively and headlessly (nbconvert/papermill). Fork of SciSharp/ICSharpCore.</Description>
+    <Copyright>Apache 2.0</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,C#,CSharp,dotnet,CLR,Roslyn</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dotnet.Script.DependencyModel" Version="2.0.0" />
+    <PackageReference Include="Dotnet.Script.DependencyModel.NuGet" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <PackageReference Include="NetMQ" Version="4.0.2.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+    <!-- Direct references to lift vulnerable transitive dependencies:
+         System.Security.Cryptography.Xml (NU1903 high, via NuGet.Packaging) and
+         NuGet.Packaging 6.14.0 (NU1901 low, via Dotnet.Script.DependencyModel.NuGet).
+         NuGet.Packaging kept on 6.x to stay API-compatible with Dotnet.Script 2.0.0. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+    <PackageReference Include="NuGet.Packaging" Version="6.14.3" />
+    <PackageReference Include="NuGet.Protocol" Version="6.14.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
+  </ItemGroup> 
+  <!-- this will include the kernel spec in the nuget pkg, reference properly -->
+  <ItemGroup>
+    <Content Include="kernel-spec/**/*">
+      <Pack>true</Pack>
+      <PackagePath>tools/any/kernel-spec/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+ 
+</Project>

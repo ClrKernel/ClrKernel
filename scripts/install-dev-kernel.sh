@@ -5,10 +5,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJ="$REPO_ROOT/src/ICSharpCore"
+PROJ="$REPO_ROOT/src/ClrKernel"
 CONFIG="${1:-Debug}"
 
-dotnet build "$PROJ/ICSharpCore.csproj" -c "$CONFIG"
+dotnet build "$PROJ/ClrKernel.csproj" -c "$CONFIG"
 
 DLL="$(find "$PROJ/bin/$CONFIG" -maxdepth 2 -name ClrKernel.dll | head -1)"
 [ -n "$DLL" ] || { echo "ClrKernel.dll not found under $PROJ/bin/$CONFIG" >&2; exit 1; }

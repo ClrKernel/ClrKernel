@@ -330,3 +330,13 @@ ASALocalRun/
 .mfractor/
 /.ipynb_checkpoints
 /samples/.ipynb_checkpoints
+
+# macOS
+.DS_Store
+
+# session workaround folder (safe to delete)
+_to_delete/
+
+# local package feeds
+artifacts/
+publish/

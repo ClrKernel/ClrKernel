@@ -6,12 +6,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJ="$REPO_ROOT/src/ICSharpCore"
+PROJ="$REPO_ROOT/src/ClrKernel"
 FEED="$REPO_ROOT/artifacts"
 BASE_VERSION="${BASE_VERSION:-0.3.0}"
 DEV_VERSION="$BASE_VERSION-dev.$(date +%Y%m%d%H%M%S)"
 
-dotnet pack "$PROJ/ICSharpCore.csproj" -c Release -o "$FEED" -p:Version="$DEV_VERSION"
+dotnet pack "$PROJ/ClrKernel.csproj" -c Release -o "$FEED" -p:Version="$DEV_VERSION"
 
 # `update` handles both first install and upgrade; the unique ascending
 # version defeats NuGet's global-packages cache.

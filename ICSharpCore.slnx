@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="src/ICSharpCore.Primitives/ICSharpCore.Primitives.csproj" />
-  <Project Path="src/ICSharpCore/ICSharpCore.csproj" />
-  <Project Path="test/ICSharpCore.UnitTest/ICSharpCore.UnitTest.csproj" />
-</Solution>
