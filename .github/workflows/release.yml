@@ -1,0 +1,75 @@
+name: Release
+
+# Pushing a tag like v0.3.0 runs the full test suite, packs both packages,
+# publishes them to nuget.org, and creates the GitHub Release with the
+# .nupkg files attached.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify tag matches Directory.Build.props version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PROPS_VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props)
+          echo "tag=$TAG_VERSION props=$PROPS_VERSION"
+          if [ "$TAG_VERSION" != "$PROPS_VERSION" ]; then
+            echo "ERROR: tag v$TAG_VERSION does not match <Version>$PROPS_VERSION</Version> in Directory.Build.props" >&2
+            exit 1
+          fi
+
+      - name: Restore
+        run: dotnet restore ClrKernel.slnx
+
+      - name: Build
+        run: dotnet build ClrKernel.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test ClrKernel.slnx -c Release --no-build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Jupyter tooling
+        run: pip install jupyter nbclient nbconvert
+
+      - name: Register kernelspec (dev layout)
+        run: ./scripts/install-dev-kernel.sh Release
+
+      - name: Execute smoke notebook (must pass)
+        run: |
+          jupyter nbconvert --to notebook --execute \
+            --ExecutePreprocessor.kernel_name=clrkernel-dev \
+            --output /tmp/smoke_out.ipynb test/notebooks/smoke.ipynb
+
+      - name: Pack
+        run: |
+          dotnet pack src/ClrKernel/ClrKernel.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Primitives/ClrKernel.Primitives.csproj -c Release --no-build -o artifacts/pkg
+          ls -l artifacts/pkg
+
+      - name: Publish to nuget.org
+        run: |
+          dotnet nuget push "artifacts/pkg/*.nupkg" \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/pkg/*.nupkg
+          generate_release_notes: true

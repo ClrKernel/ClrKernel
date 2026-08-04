@@ -7,8 +7,10 @@
     <ToolCommandName>clrkernel</ToolCommandName>
     <PackageId>ClrKernel</PackageId>
     <Description>Multi-language .NET Jupyter kernel. C# cells evaluated with Roslyn scripting; runs interactively and headlessly (nbconvert/papermill). Fork of SciSharp/ICSharpCore.</Description>
-    <Copyright>Apache 2.0</Copyright>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -45,6 +47,11 @@
       <PackagePath>tools/any/kernel-spec/</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
   </ItemGroup>
  
 </Project>
