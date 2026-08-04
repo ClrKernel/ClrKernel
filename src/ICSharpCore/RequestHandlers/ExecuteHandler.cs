@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 
 namespace ICSharpCore.RequestHandlers
 {
-    public class ExecuteHandler<T> : IRequestHandler<T> where T : ExecuteRequest
+    public class ExecuteHandler<T> where T : ExecuteRequest
     {
         private MessageSender _ioPub;
         private MessageSender _shell;
@@ -51,7 +51,12 @@ namespace ICSharpCore.RequestHandlers
             });
         }
 
-        public async void Process(Message<T> message)
+        // Returns a Task (rather than async void) so the kernel loop can wait for
+        // the cell to finish before publishing status: idle. With async void, any
+        // cell containing an await yielded control immediately, idle was sent while
+        // the cell was still running, and Jupyter clients (nbclient/papermill)
+        // stopped collecting the cell's output — logs from awaited cells vanished.
+        public async Task ProcessAsync(Message<T> message)
         {
             object result = null;
             ExecuteReply executeReply = null;
@@ -103,6 +108,12 @@ namespace ICSharpCore.RequestHandlers
 
             // send execute reply to shell socket
             _shell.Send(message, executeReply, MessageType.ExecuteReply);
+
+            // Publish idle only now that the cell (including awaited work) has fully
+            // completed. Previously the kernel loop sent idle as soon as this method
+            // yielded at its first await, so Jupyter clients stopped collecting
+            // output for any cell containing an await and its logs were lost.
+            _ioPub.Send(message, new Status { ExecutionState = StatusType.Idle }, MessageType.Status);
         }
     }
 }

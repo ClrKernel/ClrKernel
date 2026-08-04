@@ -3,18 +3,17 @@
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>ICSharpCore</RootNamespace>
-    <AssemblyName>ICSharpCore</AssemblyName>
+    <AssemblyName>ClrKernel</AssemblyName>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>icsharp-kernel</ToolCommandName>
-    <PackageId>ICSharpCore</PackageId>
-    <Description>Jupyter Notebook Kernel in .NET Standard 2.x.</Description>
+    <ToolCommandName>clrkernel</ToolCommandName>
+    <PackageId>ClrKernel</PackageId>
+    <Description>Multi-language .NET Jupyter kernel. C# cells evaluated with Roslyn scripting; runs interactively and headlessly (nbconvert/papermill). Fork of SciSharp/ICSharpCore.</Description>
     <Copyright>Apache 2.0</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/SciSharp/ICSharpCore</PackageProjectUrl>
-    <PackageIconUrl>https://avatars3.githubusercontent.com/u/44989469?s=200&amp;v=4</PackageIconUrl>
-    <RepositoryUrl>https://github.com/SciSharp/ICSharpCore</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>Jupyter,Notebook,C#,dotnet</PackageTags>
+    <PackageTags>Jupyter,Notebook,Kernel,C#,CSharp,dotnet,CLR,Roslyn</PackageTags>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -29,6 +28,13 @@
     <PackageReference Include="NetMQ" Version="4.0.2.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+    <!-- Direct references to lift vulnerable transitive dependencies:
+         System.Security.Cryptography.Xml (NU1903 high, via NuGet.Packaging) and
+         NuGet.Packaging 6.14.0 (NU1901 low, via Dotnet.Script.DependencyModel.NuGet).
+         NuGet.Packaging kept on 6.x to stay API-compatible with Dotnet.Script 2.0.0. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+    <PackageReference Include="NuGet.Packaging" Version="6.14.3" />
+    <PackageReference Include="NuGet.Protocol" Version="6.14.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ICSharpCore.Primitives/ICSharpCore.Primitives.csproj" />

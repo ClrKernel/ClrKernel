@@ -1,7 +1,5 @@
 {
-    "argv": ["dotnet", "<PATH>/ICSharpCore.dll", "{connection_file}"],
-    "display_name": "SciSharp Cube",
+    "argv": ["dotnet", "<PATH>/ClrKernel.dll", "{connection_file}"],
+    "display_name": "ClrKernel (C#)",
     "language": "csharp"
 }
-
-

@@ -122,7 +122,7 @@ namespace ICSharpCore.Script
             }
 
             if (_scriptState.ReturnValue == null)
-                return string.Empty;
+                return null;
 
             var jdisplayData = _scriptState.ReturnValue as JObject;
 
