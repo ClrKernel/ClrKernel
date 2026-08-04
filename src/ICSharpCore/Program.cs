@@ -13,19 +13,19 @@ namespace ICSharpCore
     {
         public static void Main(string[] args)
         {
-            // We introduced DependencyInjection only for logging;
-            // It is not needed in .NET Core 3.0
-            IServiceCollection serviceCollection = new ServiceCollection();            
-            serviceCollection.AddLogging(builder => 
+            
+            // Handle requests for kernel-spec information
+            if(KernelSpec.HandleKernelSpecRequest(args))
+            {
+                return;
+            }
+
+            var loggerFactory = LoggerFactory.Create(builder => 
             {
                 builder.AddConsole();
                 builder.SetMinimumLevel(LogLevel.Information);
             });
-            var serviceProvider = serviceCollection.BuildServiceProvider();
-
-            var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
-
-            // Connection files
+            
 
             // When Jupyter starts a kernel, it passes it a connection file.
             // This specifies how to set up communications with the frontend.

@@ -4,5 +4,7 @@
         <Company>SciSharp</Company>
         <Product>SciSharp.ICSharpCore</Product>
         <Authors>Kerry Jiang, Haiping Chen</Authors>
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>Major</RollForward>
     </PropertyGroup>
 </Project>

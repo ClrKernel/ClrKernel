@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>ICSharpCore</RootNamespace>
     <AssemblyName>ClrKernel</AssemblyName>
     <PackAsTool>true</PackAsTool>
@@ -39,4 +38,12 @@
   <ItemGroup>
     <ProjectReference Include="../ICSharpCore.Primitives/ICSharpCore.Primitives.csproj" />
   </ItemGroup> 
+  <!-- this will include the kernel spec in the nuget pkg, reference properly -->
+  <ItemGroup>
+    <Content Include="kernel-spec/**/*">
+      <Pack>true</Pack>
+      <PackagePath>tools/any/kernel-spec/</PackagePath>
+    </Content>
+  </ItemGroup>
+ 
 </Project>
