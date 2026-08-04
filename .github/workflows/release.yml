@@ -9,10 +9,12 @@ on:
 
 permissions:
   contents: write # create the GitHub Release
+  id-token: write # GitHub OIDC token for NuGet trusted publishing
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: production # must match the environment on the nuget.org trusted publishing policy
     steps:
       - uses: actions/checkout@v4
 
@@ -61,10 +63,18 @@ jobs:
           dotnet pack src/ClrKernel.Primitives/ClrKernel.Primitives.csproj -c Release --no-build -o artifacts/pkg
           ls -l artifacts/pkg
 
+      # Trusted publishing: exchange the GitHub OIDC token for a short-lived
+      # (1 hour, single-use) nuget.org API key. No stored secrets.
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ClrKernel
+
       - name: Publish to nuget.org
         run: |
           dotnet nuget push "artifacts/pkg/*.nupkg" \
-            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
