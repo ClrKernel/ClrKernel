@@ -1,9 +1,9 @@
 <Project>
     <PropertyGroup>
         <Version>0.3.0</Version>
-        <Company>Bad Monkey Software LLC</Company>
+        <Company>ClrKernel</Company>
         <Product>ClrKernel</Product>
-        <Authors>Jeremy Adams</Authors>
+        <Authors>Jeremy Adams, Dan Shryock</Authors>
         <TargetFramework>net8.0</TargetFramework>
         <RollForward>Major</RollForward>
     </PropertyGroup>

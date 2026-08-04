@@ -54,4 +54,4 @@ clrkernel --kernel-spec-details    # show which kernelspec the binary resolves
 
 Apache 2.0, preserving the upstream license. Original work © SciSharp
 (Kerry Jiang, Haiping Chen, and contributors); fork maintained by
-[Bad Monkey Software LLC](https://github.com/ClrKernel).
+[ClrKernel](https://github.com/ClrKernel).
