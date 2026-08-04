@@ -1,21 +1,16 @@
 using System;
 using Newtonsoft.Json.Linq;
 
-namespace ClrKernel.Primitives
-{
-    public static class DisplayDataEmitter
-    {
+namespace ClrKernel.Primitives {
+    public static class DisplayDataEmitter {
         public static Action<DisplayData> DisplayDataHandler { get; set; }
 
-        public static void Emit(DisplayData data)
-        {
+        public static void Emit(DisplayData data) {
             DisplayDataHandler?.Invoke(data);
         }
 
-        public static void EmitHtml(string html)
-        {
-            Emit(new DisplayData
-            {
+        public static void EmitHtml(string html) {
+            Emit(new DisplayData {
                 Data = new JObject
                 {
                     { "text/html", html }
@@ -23,10 +18,8 @@ namespace ClrKernel.Primitives
             });
         }
 
-        public static void EmitText(string text)
-        {
-            Emit(new DisplayData
-            {
+        public static void EmitText(string text) {
+            Emit(new DisplayData {
                 Data = new JObject
                 {
                     { "text/plain", text }

@@ -1,89 +1,77 @@
 using System;
 using System.IO;
 using System.IO.Pipes;
-using System.Text;
 using System.Threading.Tasks;
-using ClrKernel.Primitives;
 
-namespace ClrKernel.Script
-{
-    public class ConsoleProxy : IDisposable
-    {
-        private TextWriter _originalOut = Console.Out;
+namespace ClrKernel.Script;
 
-        private AnonymousPipeServerStream _consoleOutPipe;
+public class ConsoleProxy : IDisposable {
+    private TextWriter _originalOut = Console.Out;
 
-        private Action<string> _consoleHandler;
-        
-        private StreamWriter _consoleWriter;
+    private AnonymousPipeServerStream _consoleOutPipe;
 
-        private Task _readTask;
+    private Action<string> _consoleHandler;
 
-        public ConsoleProxy(Action<string> consoleHandler)
-        {
-            _consoleOutPipe = new AnonymousPipeServerStream(PipeDirection.Out);
-            _consoleWriter = new StreamWriter(_consoleOutPipe);
-            _consoleWriter.AutoFlush = true;
+    private StreamWriter _consoleWriter;
 
-            _consoleHandler = consoleHandler;
+    private Task _readTask;
 
-            Console.SetOut(_consoleWriter);
-        }
+    public ConsoleProxy(Action<string> consoleHandler) {
+        _consoleOutPipe = new AnonymousPipeServerStream(PipeDirection.Out);
+        _consoleWriter = new StreamWriter(_consoleOutPipe);
+        _consoleWriter.AutoFlush = true;
 
-        public void StartRedirect()
-        {
-            _readTask = ReadLineAsync();
-        }
+        _consoleHandler = consoleHandler;
 
-        private async Task ReadLineAsync()
-        {
-            using (var consoleOutClientPipe = new AnonymousPipeClientStream(PipeDirection.In, _consoleOutPipe.ClientSafePipeHandle))
-            using (var reader = new StreamReader(consoleOutClientPipe))
-            {
-                while (true)
-                {
-                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
-
-                    if (line != null)
-                        OnLineReceived(line);
-
-                    if (line == null)
-                        break;
-                }
-            }            
-        }
-
-        private void OnLineReceived(string line)
-        {
-            _consoleHandler(line);
-        }
-
-        #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    _consoleWriter?.Flush();
-                    _consoleWriter?.Dispose();
-                }
-
-                Console.SetOut(_originalOut);
-
-                _readTask?.Wait();
-                _readTask = null;
-
-                disposedValue = true;
-            }            
-        }
-        void IDisposable.Dispose()
-        {
-            Dispose(true);
-        }
-
-        #endregion
+        Console.SetOut(_consoleWriter);
     }
+
+    public void StartRedirect() {
+        _readTask = ReadLineAsync();
+    }
+
+    private async Task ReadLineAsync() {
+        using (var consoleOutClientPipe = new AnonymousPipeClientStream(PipeDirection.In, _consoleOutPipe.ClientSafePipeHandle))
+        using (var reader = new StreamReader(consoleOutClientPipe)) {
+            while (true) {
+                var line = await reader.ReadLineAsync().ConfigureAwait(false);
+
+                if (line != null) {
+                    OnLineReceived(line);
+                }
+
+                if (line == null) {
+                    break;
+                }
+            }
+        }
+    }
+
+    private void OnLineReceived(string line) {
+        _consoleHandler(line);
+    }
+
+    #region IDisposable Support
+    private bool _disposedValue = false; // To detect redundant calls
+
+    protected virtual void Dispose(bool disposing) {
+        if (!_disposedValue) {
+            if (disposing) {
+                _consoleWriter?.Flush();
+                _consoleWriter?.Dispose();
+            }
+
+            Console.SetOut(_originalOut);
+
+            _readTask?.Wait();
+            _readTask = null;
+
+            _disposedValue = true;
+        }
+    }
+    void IDisposable.Dispose() {
+        Dispose(true);
+    }
+
+    #endregion
 }

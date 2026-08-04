@@ -1,18 +1,13 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace ClrKernel.Primitives
-{
+namespace ClrKernel.Primitives {
     /// <summary>
     /// This type of message is used to bring back data that 
     /// should be displayed (text, html, svg, etc.) in the frontends.
     /// https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data
     /// </summary>
-    public class DisplayData
-    {
+    public class DisplayData {
         [JsonProperty("data")]
         public JObject Data { get; set; }
 
@@ -22,22 +17,19 @@ namespace ClrKernel.Primitives
         [JsonProperty("transient")]
         public JObject Transient { get; set; }
 
-        public DisplayData()
-        {
+        public DisplayData() {
             Data = new JObject();
             MetaData = new JObject();
             Transient = new JObject();
         }
 
         public DisplayData(string text)
-            : this(text, text)
-        {
-            
+            : this(text, text) {
+
         }
 
         public DisplayData(string text, string html)
-            : this()
-        {
+            : this() {
             Data = new JObject
             {
                 { "text/plain", text },

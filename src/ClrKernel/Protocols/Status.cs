@@ -1,13 +1,8 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Text;
+using Newtonsoft.Json;
 
-namespace ClrKernel.Protocols
-{
-    public class Status
-    {
-        [JsonProperty("execution_state")]
-        public string ExecutionState { get; set; }
-    }
+namespace ClrKernel.Protocols;
+
+public class Status {
+    [JsonProperty("execution_state")]
+    public string ExecutionState { get; set; }
 }

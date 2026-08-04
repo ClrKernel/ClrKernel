@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore ClrKernel.slnx
+
+      - name: Verify formatting (dotnet format)
+        run: dotnet format ClrKernel.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build ClrKernel.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test ClrKernel.slnx -c Release --no-build
+
+  notebook-smoke:
+    name: Headless notebook smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Jupyter tooling
+        run: pip install jupyter nbclient nbconvert
+
+      - name: Build kernel
+        run: dotnet build src/ClrKernel/ClrKernel.csproj -c Release
+
+      - name: Register kernelspec (dev layout)
+        run: ./scripts/install-dev-kernel.sh Release
+
+      - name: Execute smoke notebook (must pass)
+        run: |
+          jupyter nbconvert --to notebook --execute \
+            --ExecutePreprocessor.kernel_name=clrkernel-dev \
+            --output /tmp/smoke_out.ipynb test/notebooks/smoke.ipynb
+
+      - name: Execute failing notebook (must exit non-zero)
+        run: |
+          if jupyter nbconvert --to notebook --execute \
+            --ExecutePreprocessor.kernel_name=clrkernel-dev \
+            --output /tmp/smokefail_out.ipynb test/notebooks/smoke-fail.ipynb; then
+            echo "ERROR: failing notebook did not fail the run" >&2; exit 1
+          else
+            echo "Failing notebook correctly returned non-zero"
+          fi
+
+      - name: Verify no orphaned kernel processes
+        run: |
+          sleep 2
+          if pgrep -f "ClrKerne[l].dll"; then
+            echo "ERROR: orphaned kernel process found" >&2; exit 1
+          fi
