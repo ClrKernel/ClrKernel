@@ -1,5 +1,5 @@
 {
-    "argv": ["dotnet", "<PATH>/ClrKernel.dll", "{connection_file}"],
+    "argv": ["clrkernel", "{connection_file}"],
     "display_name": "ClrKernel (C#)",
     "language": "csharp"
 }

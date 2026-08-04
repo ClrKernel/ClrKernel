@@ -43,6 +43,7 @@
     <Content Include="kernel-spec/**/*">
       <Pack>true</Pack>
       <PackagePath>tools/any/kernel-spec/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
  
