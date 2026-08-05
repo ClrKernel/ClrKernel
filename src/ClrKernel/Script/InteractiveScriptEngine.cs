@@ -78,7 +78,49 @@ public class InteractiveScriptEngine {
         }
     }
 
+    private readonly NotebookImporter _importer = new();
+
+    /// <summary>
+    /// Executes a cell. Lines holding a #!import directive are handled by the
+    /// kernel (loading the referenced .dib/.ipynb/.csx/.cs into this session's
+    /// script state); everything else is compiled as C# script. A cell may mix
+    /// directives and code — segments run in order and the last segment's value
+    /// is the cell result.
+    /// </summary>
     public async Task<object> ExecuteAsync(string statement) {
+        if (!statement.Split('\n').Any(line => NotebookImporter.TryParseDirective(line, out _, out _))) {
+            return await ExecuteCoreAsync(statement);
+        }
+
+        object result = null;
+        var buffer = new StringBuilder();
+
+        async Task FlushAsync() {
+            var code = buffer.ToString();
+            buffer.Clear();
+            if (code.Trim().Length > 0) {
+                result = await ExecuteCoreAsync(code);
+            }
+        }
+
+        foreach (var line in statement.Replace("\r\n", "\n").Split('\n')) {
+            if (NotebookImporter.TryParseDirective(line, out var path, out var force)) {
+                await FlushAsync();
+                var loaded = await _importer.ImportAsync(path, force, block => ExecuteAsync(block));
+                _logger.LogInformation(loaded
+                    ? $"#!import: loaded {_importer.ResolvePath(path)}"
+                    : $"#!import: already loaded, skipped (use --force to rerun): {_importer.ResolvePath(path)}");
+                result = null;
+            } else {
+                buffer.AppendLine(line);
+            }
+        }
+        await FlushAsync();
+
+        return result;
+    }
+
+    private async Task<object> ExecuteCoreAsync(string statement) {
         statement = PrepareStatement(statement);
 
         if (_scriptState == null) {

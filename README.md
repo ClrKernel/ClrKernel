@@ -15,17 +15,11 @@ channel + heartbeat + graceful `shutdown_request` handling, patched vulnerable
 dependencies, and the kernelspec shipped inside the NuGet package.
 
 ## Install
-### bash
+
 ```bash
 dotnet tool install --global ClrKernel
 jupyter kernelspec install "$(clrkernel --kernel-spec-path)" --user --name clrkernel
 jupyter kernelspec list   # should show: clrkernel
-```
-### powershell
-```powershell
-dotnet tool install --global ClrKernel
-jupyter kernelspec install (clrkernel --kernel-spec-path) --user --name clrkernel
-jupyter kernelspec list
 ```
 
 Requires a .NET 8+ runtime (`RollForward=Major`: newer majors work) and Jupyter.
@@ -35,6 +29,24 @@ Requires a .NET 8+ runtime (`RollForward=Major`: newer majors work) and Jupyter.
 Pick the **ClrKernel (C#)** kernel in JupyterLab or VS Code. Cells support
 `#r "nuget: Package, Version"` and `#r "path/to/local.dll"` references, with
 REPL-style state persisting across cells.
+
+### Importing shared libraries
+
+`#!import` loads C# code from another file into the session — use it to share
+helper libraries between notebooks, no .NET Interactive required:
+
+```csharp
+#!import "../lib/jobbooks.dib"
+```
+
+Supports `.dib` (C# sections run; markdown and other-language sections are
+skipped), `.ipynb` (code cells run), and `.csx`/`.cs` (whole file). Relative
+paths resolve against the notebook's directory, and nested `#!import`s inside
+a library resolve relative to that library's own file. Each resolved file runs
+once per session — re-importing is a no-op unless you pass `--force`
+(`#!import --force "lib.dib"`), which is handy while iterating on the library
+itself. Imported files can use `#r` directives, including `#r "nuget: ..."`,
+and can `#!import` further files.
 
 Headless / scheduled execution:
 
