@@ -15,11 +15,17 @@ channel + heartbeat + graceful `shutdown_request` handling, patched vulnerable
 dependencies, and the kernelspec shipped inside the NuGet package.
 
 ## Install
-
+### bash
 ```bash
 dotnet tool install --global ClrKernel
 jupyter kernelspec install "$(clrkernel --kernel-spec-path)" --user --name clrkernel
 jupyter kernelspec list   # should show: clrkernel
+```
+### powershell
+```powershell
+dotnet tool install --global ClrKernel
+jupyter kernelspec install (clrkernel --kernel-spec-path) --user --name clrkernel
+jupyter kernelspec list
 ```
 
 Requires a .NET 8+ runtime (`RollForward=Major`: newer majors work) and Jupyter.
