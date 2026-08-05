@@ -69,7 +69,10 @@ jobs:
         uses: NuGet/login@v1
         id: nuget-login
         with:
-          user: ClrKernel
+          # Must be the policy CREATOR's username (personal profile), not the
+          # org that owns the packages. Stored as a secret to keep it out of
+          # the public YAML.
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Publish to nuget.org
         run: |
