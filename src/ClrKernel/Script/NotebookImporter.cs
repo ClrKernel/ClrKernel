@@ -15,14 +15,22 @@ namespace ClrKernel.Script;
 /// and each resolved file runs at most once per session unless --force is given.
 /// </summary>
 public class NotebookImporter {
-    // Matches: #!import "path", #!import path, with optional --force before or after the path.
+    // Matches: #!import "path", #!import path, with optional --force before or after
+    // the path. #!lib is accepted as an alias (migration compatibility with the
+    // .NET Interactive-era custom directive).
     private static readonly Regex _directivePattern = new(
-        @"^\s*#!import\s+(?:(?<force1>--force)\s+)?(?:""(?<qpath>[^""]+)""|(?<path>[^\s""]+))(?:\s+(?<force2>--force))?\s*$",
+        @"^\s*#!(?:import|lib)\s+(?:(?<force1>--force)\s+)?(?:""(?<qpath>[^""]+)""|(?<path>[^\s""]+))(?:\s+(?<force2>--force))?\s*$",
+        RegexOptions.Compiled);
+
+    // Matches: #!import --register "name" "path" (and the #!lib alias). Registers a
+    // prefix so later imports can use "name://sub/file.dib".
+    private static readonly Regex _registerPattern = new(
+        @"^\s*#!(?:import|lib)\s+--register\s+(?:""(?<name>[^""]+)""|(?<uname>[^\s""]+))\s+(?:""(?<path>[^""]+)""|(?<upath>[^\s""]+))\s*$",
         RegexOptions.Compiled);
 
     // Lines that separate sections in a .dib file. Any other #! line is cell content.
     private static readonly Regex _dibSectionPattern = new(
-        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|javascript|js|markdown|md|mermaid|value|sql|kql)\s*$",
+        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|kql)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly string[] _csharpSectionNames = { "csharp", "c#" };
@@ -34,11 +42,13 @@ public class NotebookImporter {
 
     private readonly Stack<string> _activePaths = new();
 
+    private readonly Dictionary<string, string> _libPrefixes = new();
+
     /// <summary>Directory that relative import paths resolve against.</summary>
     public string ActivePath => _activePaths.TryPeek(out var current) ? current : Environment.CurrentDirectory;
 
     /// <summary>
-    /// If the line is a #!import directive, returns true and its parsed parts.
+    /// If the line is a #!import (or #!lib) directive, returns true and its parsed parts.
     /// </summary>
     public static bool TryParseDirective(string line, out string path, out bool force) {
         path = null;
@@ -52,9 +62,50 @@ public class NotebookImporter {
         return true;
     }
 
-    /// <summary>Resolves a possibly-relative path against the active import path.</summary>
+    /// <summary>
+    /// If the line is a #!import --register (or #!lib --register) directive, returns
+    /// true with the prefix name and base path.
+    /// </summary>
+    public static bool TryParseRegister(string line, out string name, out string path) {
+        name = null;
+        path = null;
+        var match = _registerPattern.Match(line);
+        if (!match.Success) {
+            return false;
+        }
+        name = match.Groups["name"].Success ? match.Groups["name"].Value : match.Groups["uname"].Value;
+        path = match.Groups["path"].Success ? match.Groups["path"].Value : match.Groups["upath"].Value;
+        return true;
+    }
+
+    /// <summary>
+    /// Registers a prefix so later imports can address files as "name://sub/file.dib".
+    /// The base path is resolved (against the active import path) at registration time.
+    /// </summary>
+    public void RegisterPrefix(string name, string path) {
+        _libPrefixes[name.Trim()] = ResolvePath(path);
+    }
+
+    /// <summary>
+    /// Resolves an import path: "prefix://sub/path" resolves against the registered
+    /// prefix's base path; otherwise relative paths resolve against the active import path.
+    /// </summary>
     public string ResolvePath(string path) {
-        var resolved = Path.IsPathRooted(path) ? path : Path.Combine(ActivePath, path);
+        string basePath, subpath;
+        var separatorIndex = path.IndexOf("://", StringComparison.Ordinal);
+        if (separatorIndex >= 0) {
+            var prefix = path.Substring(0, separatorIndex).Trim();
+            if (!_libPrefixes.TryGetValue(prefix, out basePath)) {
+                throw new ArgumentException(
+                    $"#!import: unknown prefix '{prefix}' — register it first with: #!import --register \"{prefix}\" \"<base-path>\"");
+            }
+            subpath = path.Substring(separatorIndex + 3);
+        } else {
+            basePath = ActivePath;
+            subpath = path;
+        }
+
+        var resolved = Path.IsPathRooted(subpath) ? subpath : Path.Combine(basePath, subpath);
         return Path.GetFullPath(resolved);
     }
 

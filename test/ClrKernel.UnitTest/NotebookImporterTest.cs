@@ -36,6 +36,39 @@ public class NotebookImporterTest {
         Assert.IsFalse(NotebookImporter.TryParseDirective("#!import", out _, out _));
     }
 
+    [TestMethod]
+    public void ParsesLibAliasAndRegister() {
+        Assert.IsTrue(NotebookImporter.TryParseDirective("#!lib \"shared://html.dib\"", out var path, out _));
+        Assert.AreEqual("shared://html.dib", path);
+
+        Assert.IsTrue(NotebookImporter.TryParseRegister("#!lib --register \"shared\" \"../../lib/shared\"", out var name, out var basePath));
+        Assert.AreEqual("shared", name);
+        Assert.AreEqual("../../lib/shared", basePath);
+
+        Assert.IsTrue(NotebookImporter.TryParseRegister("#!import --register shared ../lib", out name, out basePath));
+        Assert.AreEqual("shared", name);
+        Assert.AreEqual("../lib", basePath);
+
+        // a register line must not parse as a plain import
+        Assert.IsFalse(NotebookImporter.TryParseDirective("#!lib --register \"shared\" \"../../lib/shared\"", out _, out _));
+    }
+
+    [TestMethod]
+    public void PrefixResolvesAgainstRegisteredBase() {
+        var root = MakeTempDir();
+        var shared = Directory.CreateDirectory(Path.Combine(root, "lib", "shared")).FullName;
+
+        var importer = new NotebookImporter();
+        importer.RegisterPrefix("shared", shared);
+
+        Assert.AreEqual(
+            Path.GetFullPath(Path.Combine(shared, "html.dib")),
+            importer.ResolvePath("shared://html.dib"));
+
+        var ex = Assert.ThrowsException<ArgumentException>(() => importer.ResolvePath("nope://x.dib"));
+        StringAssert.Contains(ex.Message, "unknown prefix");
+    }
+
     // --- .dib parsing ---
 
     [TestMethod]
@@ -57,6 +90,16 @@ public class NotebookImporterTest {
         Assert.AreEqual(1, blocks.Count);
         StringAssert.Contains(blocks[0], "#!import \"nested.dib\"");
         StringAssert.Contains(blocks[0], "var a = 1;");
+    }
+
+    [TestMethod]
+    public void DibSkipsMetaSection() {
+        // VS Code saves .dib files with a #!meta JSON header; it must not compile as C#.
+        var content = string.Join("\n",
+            "#!meta", "", "{\"kernelInfo\":{\"defaultKernelName\":\"csharp\",\"items\":[]}}", "",
+            "#!csharp", "var a = 1;");
+        var blocks = NotebookImporter.ParseDib(content);
+        CollectionAssert.AreEqual(new[] { "var a = 1;" }, blocks.ToArray());
     }
 
     [TestMethod]

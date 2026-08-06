@@ -87,8 +87,12 @@ public class InteractiveScriptEngine {
     /// directives and code — segments run in order and the last segment's value
     /// is the cell result.
     /// </summary>
+    private static bool IsImporterDirective(string line) =>
+        NotebookImporter.TryParseRegister(line, out _, out _) ||
+        NotebookImporter.TryParseDirective(line, out _, out _);
+
     public async Task<object> ExecuteAsync(string statement) {
-        if (!statement.Split('\n').Any(line => NotebookImporter.TryParseDirective(line, out _, out _))) {
+        if (!statement.Split('\n').Any(IsImporterDirective)) {
             return await ExecuteCoreAsync(statement);
         }
 
@@ -104,7 +108,12 @@ public class InteractiveScriptEngine {
         }
 
         foreach (var line in statement.Replace("\r\n", "\n").Split('\n')) {
-            if (NotebookImporter.TryParseDirective(line, out var path, out var force)) {
+            if (NotebookImporter.TryParseRegister(line, out var prefixName, out var prefixPath)) {
+                await FlushAsync();
+                _importer.RegisterPrefix(prefixName, prefixPath);
+                _logger.LogInformation($"#!import: registered prefix '{prefixName}' -> {_importer.ResolvePath(prefixName + "://")}");
+                result = null;
+            } else if (NotebookImporter.TryParseDirective(line, out var path, out var force)) {
                 await FlushAsync();
                 var loaded = await _importer.ImportAsync(path, force, block => ExecuteAsync(block));
                 _logger.LogInformation(loaded
