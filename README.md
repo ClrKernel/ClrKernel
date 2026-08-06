@@ -1,3 +1,5 @@
+[![CI](https://github.com/ClrKernel/ClrKernel/actions/workflows/ci.yml/badge.svg)](https://github.com/ClrKernel/ClrKernel/actions/workflows/ci.yml)
+[![Release](https://github.com/ClrKernel/ClrKernel/actions/workflows/release.yml/badge.svg)](https://github.com/ClrKernel/ClrKernel/actions/workflows/release.yml)
 # ClrKernel
 
 A Jupyter kernel for .NET. C# cells are evaluated with Roslyn's scripting engine
