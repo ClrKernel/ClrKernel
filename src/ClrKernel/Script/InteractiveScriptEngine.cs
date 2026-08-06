@@ -40,7 +40,22 @@ public class InteractiveScriptEngine {
 
     public static string RefsFilePath { get; set; }
 
+    /// <summary>
+    /// The engine for the running kernel session; lets cell-callable helpers
+    /// (e.g. GetVariable in Extensions) reach the current script state.
+    /// </summary>
+    public static InteractiveScriptEngine Current { get; private set; }
+
+    /// <summary>
+    /// Returns the value of a session variable (defined by an earlier cell —
+    /// including papermill/dotnet-repl injected parameter cells), or null.
+    /// </summary>
+    public object GetVariableValue(string name) {
+        return _scriptState?.GetVariable(name)?.Value;
+    }
+
     public InteractiveScriptEngine(string currentDir, ILogger logger) {
+        Current = this;
         _currentDirectory = currentDir;
         _logger = logger;
         _scriptOptions = CreateScriptOptions();
