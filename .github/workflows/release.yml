@@ -60,6 +60,7 @@ jobs:
       - name: Pack
         run: |
           dotnet pack src/ClrKernel/ClrKernel.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core/ClrKernel.Core.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Primitives/ClrKernel.Primitives.csproj -c Release --no-build -o artifacts/pkg
           ls -l artifacts/pkg
 

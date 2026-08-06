@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using ClrKernel.Script;
+using ClrKernel.Core;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 

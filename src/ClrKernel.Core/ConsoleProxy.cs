@@ -3,7 +3,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Threading.Tasks;
 
-namespace ClrKernel.Script;
+namespace ClrKernel.Core;
 
 public class ConsoleProxy : IDisposable {
     private TextWriter _originalOut = Console.Out;

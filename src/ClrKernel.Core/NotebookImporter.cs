@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
-namespace ClrKernel.Script;
+namespace ClrKernel.Core;
 
 /// <summary>
 /// Implements the <c>#!import</c> directive: loads C# code from .dib, .ipynb,

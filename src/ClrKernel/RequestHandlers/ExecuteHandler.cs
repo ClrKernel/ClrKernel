@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using ClrKernel.Core;
 using ClrKernel.Kernels;
 using ClrKernel.Primitives;
 using ClrKernel.Protocols;
-using ClrKernel.Script;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 

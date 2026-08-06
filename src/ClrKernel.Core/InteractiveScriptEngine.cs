@@ -19,7 +19,7 @@ using Newtonsoft.Json.Linq;
 using LogFactory = Dotnet.Script.DependencyModel.Logging.LogFactory;
 using ScriptLogLevel = Dotnet.Script.DependencyModel.Logging.LogLevel;
 
-namespace ClrKernel.Script;
+namespace ClrKernel.Core;
 
 public class InteractiveScriptEngine {
     private ScriptState<object> _scriptState;
@@ -150,7 +150,7 @@ public class InteractiveScriptEngine {
         if (_scriptState == null) {
             var usingStatements = new[]
             {
-                "using static ClrKernel.Script.Extensions;",
+                "using static ClrKernel.Core.Extensions;",
                 "using static ClrKernel.Primitives.DisplayDataEmitter;"
             };
 
@@ -253,7 +253,8 @@ public class InteractiveScriptEngine {
                 Assembly.GetAssembly(typeof(System.Dynamic.DynamicObject)),// System.Code
                 Assembly.GetAssembly(typeof(Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo)),// Microsoft.CSharp
                 Assembly.GetAssembly(typeof(System.Dynamic.ExpandoObject)),// System.Dynamic
-                this.GetType().Assembly
+                this.GetType().Assembly, // ClrKernel.Core (Extensions, GetVariable)
+                typeof(DisplayData).Assembly // ClrKernel.Primitives (display API)
             };
 
         options = options.AddReferences(references);
