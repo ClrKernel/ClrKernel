@@ -24,4 +24,6 @@ public class MessageType {
     public const string Error = "error";
 
     public const string DisplayData = "display_data";
+
+    public const string UpdateDisplayData = "update_display_data";
 }

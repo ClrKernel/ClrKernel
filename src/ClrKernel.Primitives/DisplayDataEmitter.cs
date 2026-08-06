@@ -5,9 +5,12 @@ namespace ClrKernel.Primitives {
     public static class DisplayDataEmitter {
         public static Action<DisplayData> DisplayDataHandler { get; set; }
 
+        public static Action<DisplayData> UpdateDisplayDataHandler { get; set; }
+
         public static void Emit(DisplayData data) {
             DisplayDataHandler?.Invoke(data);
         }
+
 
         public static void EmitHtml(string html) {
             Emit(new DisplayData {

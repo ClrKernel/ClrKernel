@@ -52,6 +52,9 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
             });
 
             DisplayDataEmitter.DisplayDataHandler = displayDataHandler;
+            DisplayDataEmitter.UpdateDisplayDataHandler = (data) => {
+                _ioPub.Send(message, data, MessageType.UpdateDisplayData);
+            };
 
             using (var consoleProxy = CreateConsoleProxy(displayDataHandler)) {
                 consoleProxy.StartRedirect();
@@ -76,6 +79,7 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
             _ioPub.Send(message, new DisplayData(error, $"<p style=\"color:red;\">{error}</p>"), MessageType.DisplayData);
         } finally {
             DisplayDataEmitter.DisplayDataHandler = null;
+            DisplayDataEmitter.UpdateDisplayDataHandler = null;
         }
 
         if (result != null) {

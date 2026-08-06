@@ -234,8 +234,10 @@ public class InteractiveScriptEngine {
         var workingDir = AppContext.BaseDirectory;
 
         return scriptOptions.AddImports(new[] {
+            "ClrKernel.Primitives", // DisplayAs/DisplayedValue live updates
             "System",
             "System.IO",
+            "System.Collections",
             "System.Collections.Generic",
             "System.Console",
             "System.Diagnostics",
