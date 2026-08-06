@@ -12,12 +12,22 @@ public class MessageSender {
     private string _key;
     private NetMQSocket _iopub;
 
+    // Display updates can arrive from background threads (timers, progress
+    // loops); the multipart frame sequence must not interleave across sends.
+    private readonly object _sendLock = new();
+
     public MessageSender(string key, NetMQSocket iopub) {
         _key = key;
         _iopub = iopub;
     }
 
     public bool Send<T, C>(Message<T> request, C content, string msgType) {
+        lock (_sendLock) {
+            return SendCore(request, content, msgType);
+        }
+    }
+
+    private bool SendCore<T, C>(Message<T> request, C content, string msgType) {
         var ioPubMessage = new Message<C> {
             Identifiers = request.Identifiers,
             Delimiter = request.Delimiter,
