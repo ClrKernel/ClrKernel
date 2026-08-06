@@ -65,7 +65,7 @@ public class NotebookImporterTest {
             Path.GetFullPath(Path.Combine(shared, "html.dib")),
             importer.ResolvePath("shared://html.dib"));
 
-        var ex = Assert.ThrowsException<ArgumentException>(() => importer.ResolvePath("nope://x.dib"));
+        var ex = Assert.ThrowsExactly<ArgumentException>(() => importer.ResolvePath("nope://x.dib"));
         StringAssert.Contains(ex.Message, "unknown prefix");
     }
 
@@ -184,7 +184,7 @@ public class NotebookImporterTest {
     [TestMethod]
     public async Task MissingFileThrowsFileNotFound() {
         var importer = new NotebookImporter();
-        await Assert.ThrowsExceptionAsync<FileNotFoundException>(
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(
             () => importer.ImportAsync("does-not-exist.dib", false, _ => Task.CompletedTask));
     }
 
@@ -194,7 +194,7 @@ public class NotebookImporterTest {
         var file = Path.Combine(dir, "lib.txt");
         File.WriteAllText(file, "nope");
         var importer = new NotebookImporter();
-        await Assert.ThrowsExceptionAsync<NotSupportedException>(
+        await Assert.ThrowsExactlyAsync<NotSupportedException>(
             () => importer.ImportAsync(file, false, _ => Task.CompletedTask));
     }
 

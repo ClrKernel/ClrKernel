@@ -14,18 +14,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dotnet.Script.DependencyModel" Version="2.0.0" />
-    <PackageReference Include="Dotnet.Script.DependencyModel.NuGet" Version="2.0.0" />
+    <PackageReference Include="Dotnet.Script.DependencyModel" Version="2.0.1" />
+    <PackageReference Include="Dotnet.Script.DependencyModel.NuGet" Version="2.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
-    <!-- Direct references to lift vulnerable transitive dependencies:
-         System.Security.Cryptography.Xml (NU1903 high, via NuGet.Packaging) and
-         NuGet.Packaging 6.14.0 (NU1901 low, via Dotnet.Script.DependencyModel.NuGet).
-         NuGet.Packaging kept on 6.x to stay API-compatible with Dotnet.Script 2.0.0. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.6.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <!-- Direct references to lift vulnerable transitive dependencies. Still
+         required as of Dotnet.Script 2.0.1: its NuGet.ProjectModel 6.14.3 chain
+         (and even NuGet.Packaging 7.6.0 itself) resolves the vulnerable
+         System.Security.Cryptography.Xml 8.0.2 (8x NU1903 high) without these.
+         NuGet.* 7.x verified runtime-compatible: warm- and cold-cache
+         #r nuget resolution both pass. -->
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
-    <PackageReference Include="NuGet.Packaging" Version="6.14.3" />
-    <PackageReference Include="NuGet.Protocol" Version="6.14.3" />
+    <PackageReference Include="NuGet.Packaging" Version="7.6.0" />
+    <PackageReference Include="NuGet.Protocol" Version="7.6.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
