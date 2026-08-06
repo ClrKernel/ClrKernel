@@ -202,7 +202,14 @@ public class InteractiveScriptEngine {
     }
 
     private bool TryLoadReferenceFromScript(string statement) {
-        if (!statement.StartsWith("#r ") && !statement.StartsWith("#load ")) {
+        // A #r / #load / #i (nuget source) directive can appear on any line of a
+        // cell (e.g. after a comment); the resolver parses the full code, so only
+        // skip resolution when no line carries a directive at all.
+        var hasReferenceDirective = statement.Split('\n').Any(line => {
+            var trimmed = line.TrimStart();
+            return trimmed.StartsWith("#r ") || trimmed.StartsWith("#load ") || trimmed.StartsWith("#i ");
+        });
+        if (!hasReferenceDirective) {
             return false;
         }
 
