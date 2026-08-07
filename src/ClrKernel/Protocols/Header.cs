@@ -1,23 +1,23 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 
 public class Header {
-    [JsonProperty("msg_id")]
+    [JsonPropertyName("msg_id")]
     public string MessageId { get; set; }
 
-    [JsonProperty("username")]
+    [JsonPropertyName("username")]
     public string UserName { get; set; }
 
-    [JsonProperty("session")]
+    [JsonPropertyName("session")]
     public string Session { get; set; }
 
-    [JsonProperty("date")]
+    [JsonPropertyName("date")]
     public string Date { get; set; }
 
-    [JsonProperty("msg_type")]
+    [JsonPropertyName("msg_type")]
     public string MessageType { get; set; }
 
-    [JsonProperty("version")]
+    [JsonPropertyName("version")]
     public string Version { get; set; }
 }

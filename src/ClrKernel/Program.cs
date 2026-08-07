@@ -1,8 +1,8 @@
 using System;
 using System.IO;
 using ClrKernel.Core;
+using ClrKernel.Protocols;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
 namespace ClrKernel;
 
@@ -29,8 +29,8 @@ public class Program {
 
         // Create the connection model
         string json = File.ReadAllText(args[0]);
-        var connInfo = JsonConvert.DeserializeObject<ConnInfo>(json);
-        Console.WriteLine(JsonConvert.SerializeObject(connInfo));
+        var connInfo = ProtocolJson.Deserialize<ConnInfo>(json);
+        Console.WriteLine(ProtocolJson.Serialize(connInfo));
 
         if (args.Length > 1) {
             InteractiveScriptEngine.RefsFilePath = args[1];

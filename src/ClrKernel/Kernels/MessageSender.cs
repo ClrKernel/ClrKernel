@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using ClrKernel.Protocols;
 using NetMQ;
-using Newtonsoft.Json;
 
 namespace ClrKernel.Kernels;
 
@@ -70,10 +69,10 @@ public class MessageSender {
 
         // https://jupyter-client.readthedocs.io/en/stable/messaging.html#the-wire-protocol
 
-        messages.Add(JsonConvert.SerializeObject(ioPubMessage.Header));
-        messages.Add(JsonConvert.SerializeObject(ioPubMessage.ParentHeader));
-        messages.Add(JsonConvert.SerializeObject(ioPubMessage.Metadata));
-        messages.Add(JsonConvert.SerializeObject(ioPubMessage.Content));
+        messages.Add(ProtocolJson.Serialize(ioPubMessage.Header));
+        messages.Add(ProtocolJson.Serialize(ioPubMessage.ParentHeader));
+        messages.Add(ProtocolJson.Serialize(ioPubMessage.Metadata));
+        messages.Add(ProtocolJson.Serialize(ioPubMessage.Content));
 
         // signature
         foreach (string item in messages) {

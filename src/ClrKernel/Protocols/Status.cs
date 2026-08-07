@@ -1,8 +1,8 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 
 public class Status {
-    [JsonProperty("execution_state")]
+    [JsonPropertyName("execution_state")]
     public string ExecutionState { get; set; }
 }

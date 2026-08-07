@@ -1,23 +1,23 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 /// <summary>
 /// https://jupyter-client.readthedocs.io/en/stable/messaging.html#kernel-info
 /// </summary>
 public class KernelInfoReply {
-    [JsonProperty("protocol_version")]
+    [JsonPropertyName("protocol_version")]
     public string ProtocolVersion { get; set; }
 
-    [JsonProperty("implementation")]
+    [JsonPropertyName("implementation")]
     public string Implementation { get; set; }
 
-    [JsonProperty("implementation_version")]
+    [JsonPropertyName("implementation_version")]
     public string ImplementationVersion { get; set; }
 
-    [JsonProperty("language_info")]
+    [JsonPropertyName("language_info")]
     public LanguageInfo LanguageInfo { get; set; }
 
-    [JsonProperty("banner")]
+    [JsonPropertyName("banner")]
     public string Banner { get; set; }
 
     public KernelInfoReply() {

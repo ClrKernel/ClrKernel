@@ -12,9 +12,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>logo-64x64.png</PackageIcon>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-  </ItemGroup>
   <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />

@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json.Linq;
 
 namespace ClrKernel.Core;
 
@@ -235,17 +235,18 @@ public class NotebookImporter {
 
     /// <summary>Returns the code cells of an .ipynb document (markdown cells are skipped).</summary>
     public static IReadOnlyList<string> ParseIpynb(string content) {
-        var notebook = JObject.Parse(content);
+        var notebook = JsonNode.Parse(content);
         var blocks = new List<string>();
 
-        foreach (var cell in notebook["cells"] ?? new JArray()) {
-            if ((string)cell["cell_type"] != "code") {
+        var cells = notebook?["cells"]?.AsArray() ?? new JsonArray();
+        foreach (var cell in cells) {
+            if (cell?["cell_type"]?.GetValue<string>() != "code") {
                 continue;
             }
             var source = cell["source"];
-            var code = source is JArray lines
-                ? string.Concat(lines.Select(l => (string)l))
-                : (string)source ?? "";
+            var code = source is JsonArray lines
+                ? string.Concat(lines.Select(line => line?.GetValue<string>() ?? ""))
+                : source?.GetValue<string>() ?? "";
             if (code.Trim().Length > 0) {
                 blocks.Add(code);
             }

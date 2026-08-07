@@ -1,5 +1,5 @@
 using System;
-using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
 
 namespace ClrKernel.Primitives {
     public static class DisplayDataEmitter {
@@ -14,7 +14,7 @@ namespace ClrKernel.Primitives {
 
         public static void EmitHtml(string html) {
             Emit(new DisplayData {
-                Data = new JObject
+                Data = new Dictionary<string, object>
                 {
                     { "text/html", html }
                 }
@@ -23,7 +23,7 @@ namespace ClrKernel.Primitives {
 
         public static void EmitText(string text) {
             Emit(new DisplayData {
-                Data = new JObject
+                Data = new Dictionary<string, object>
                 {
                     { "text/plain", text }
                 }

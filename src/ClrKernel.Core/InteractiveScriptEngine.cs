@@ -15,7 +15,6 @@ using Microsoft.CodeAnalysis.CSharp.Scripting.Hosting;
 using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.CodeAnalysis.Scripting.Hosting;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using LogFactory = Dotnet.Script.DependencyModel.Logging.LogFactory;
 using ScriptLogLevel = Dotnet.Script.DependencyModel.Logging.LogLevel;
 
@@ -186,12 +185,6 @@ public class InteractiveScriptEngine {
 
         if (_scriptState.ReturnValue == null) {
             return null;
-        }
-
-        var jdisplayData = _scriptState.ReturnValue as JObject;
-
-        if (jdisplayData != null) {
-            return jdisplayData;
         }
 
         var displayData = _scriptState.ReturnValue as DisplayData;

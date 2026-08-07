@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 
@@ -8,15 +8,15 @@ public class ExecuteRequest {
 
     public bool Silent { get; set; }
 
-    [JsonProperty("store_history")]
+    [JsonPropertyName("store_history")]
     public bool StoreHistory { get; set; }
 
-    [JsonProperty("user_expressions")]
-    public JObject UserExpressions { get; set; }
+    [JsonPropertyName("user_expressions")]
+    public Dictionary<string, object> UserExpressions { get; set; }
 
-    [JsonProperty("allow_stdin")]
+    [JsonPropertyName("allow_stdin")]
     public bool AllowStdin { get; set; }
 
-    [JsonProperty("stop_on_error")]
+    [JsonPropertyName("stop_on_error")]
     public bool StopOnError { get; set; }
 }

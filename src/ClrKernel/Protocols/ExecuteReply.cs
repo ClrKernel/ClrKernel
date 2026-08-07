@@ -1,11 +1,11 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 /// <summary>
 /// https://jupyter-client.readthedocs.io/en/stable/messaging.html#execution-results
 /// </summary>
 public abstract class ExecuteReply {
-    [JsonProperty("status")]
+    [JsonPropertyName("status")]
     public string Status { get; set; }
 
     /// <summary>
@@ -14,6 +14,6 @@ public abstract class ExecuteReply {
     /// prompt numbers to the user.  If the request did not store history, this will
     /// be the current value of the counter in the kernel.
     /// </summary>
-    [JsonProperty("execution_count")]
+    [JsonPropertyName("execution_count")]
     public int ExecutionCount { get; set; }
 }

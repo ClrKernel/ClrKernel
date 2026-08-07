@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 /// <summary>
@@ -10,12 +10,12 @@ public class ExecuteReplyError : ExecuteReply {
         Status = Protocols.StatusType.Error;
     }
 
-    [JsonProperty("ename")]
+    [JsonPropertyName("ename")]
     public string EName { get; set; }
 
-    [JsonProperty("evalue")]
+    [JsonPropertyName("evalue")]
     public string EValue { get; set; }
 
-    [JsonProperty("traceback")]
+    [JsonPropertyName("traceback")]
     public List<string> Traceback { get; set; }
 }

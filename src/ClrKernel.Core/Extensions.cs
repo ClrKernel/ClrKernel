@@ -1,12 +1,12 @@
+using System.Collections.Generic;
 using ClrKernel.Primitives;
-using Newtonsoft.Json.Linq;
 
 namespace ClrKernel.Core;
 
 public static class Extensions {
     public static DisplayData HTML(string html) {
         return new DisplayData {
-            Data = new JObject
+            Data = new Dictionary<string, object>
             {
                 { "text/html", html }
             }

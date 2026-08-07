@@ -6,7 +6,6 @@ using ClrKernel.RequestHandlers;
 using Microsoft.Extensions.Logging;
 using NetMQ;
 using NetMQ.Sockets;
-using Newtonsoft.Json;
 
 namespace ClrKernel;
 /// <summary>
@@ -55,7 +54,7 @@ public class Kernel {
             // Handler for messages coming in to the frontend
             shell.ReceiveReady += (s, e) => {
                 var raw = e.Socket.ReceiveMultipartMessage();
-                var header = JsonConvert.DeserializeObject<Header>(raw[3].ConvertToString());
+                var header = ProtocolJson.Deserialize<Header>(raw[3].ConvertToString());
                 Console.WriteLine($"{header.MessageType}: [{raw.ToString()}]");
 
                 switch (header.MessageType) {
@@ -97,7 +96,7 @@ public class Kernel {
             // force-killed by the client after a timeout.
             control.ReceiveReady += (s, e) => {
                 var raw = e.Socket.ReceiveMultipartMessage();
-                var header = JsonConvert.DeserializeObject<Header>(raw[3].ConvertToString());
+                var header = ProtocolJson.Deserialize<Header>(raw[3].ConvertToString());
                 Console.WriteLine($"control {header.MessageType}");
 
                 switch (header.MessageType) {

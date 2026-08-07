@@ -1,10 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core;
 using ClrKernel.Primitives;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using StreamJsonRpc;
 
 namespace ClrKernel.Server;
@@ -63,9 +63,8 @@ public class NotebookServer {
                 status = "ok",
                 data = result switch {
                     DisplayData displayData => displayData.Data,
-                    JObject jObject => jObject,
                     null => null,
-                    var other => new JObject { ["text/plain"] = other.ToString() },
+                    var other => new Dictionary<string, object> { ["text/plain"] = other.ToString() },
                 },
             };
         } catch (Exception e) {

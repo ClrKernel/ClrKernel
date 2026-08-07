@@ -1,17 +1,17 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 
 public class LanguageInfo {
-    [JsonProperty("file_extension")]
+    [JsonPropertyName("file_extension")]
     public string FileExtension { get; set; }
-    [JsonProperty("mimetype")]
+    [JsonPropertyName("mimetype")]
     public string MimeType { get; set; }
-    [JsonProperty("name")]
+    [JsonPropertyName("name")]
     public string Name { get; set; }
-    [JsonProperty("pygments_lexer")]
+    [JsonPropertyName("pygments_lexer")]
     public string PygmentsLexer { get; set; }
-    [JsonProperty("version")]
+    [JsonPropertyName("version")]
     public string Version { get; set; }
 
     public LanguageInfo() {

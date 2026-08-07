@@ -1,18 +1,18 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 /// <summary>
 /// https://jupyter-client.readthedocs.io/en/stable/messaging.html#kernel-shutdown
 /// </summary>
 public class ShutdownRequest {
-    [JsonProperty("restart")]
+    [JsonPropertyName("restart")]
     public bool Restart { get; set; }
 }
 
 public class ShutdownReply {
-    [JsonProperty("status")]
+    [JsonPropertyName("status")]
     public string Status { get; set; } = "ok";
 
-    [JsonProperty("restart")]
+    [JsonPropertyName("restart")]
     public bool Restart { get; set; }
 }

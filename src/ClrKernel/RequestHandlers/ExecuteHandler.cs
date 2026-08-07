@@ -7,7 +7,6 @@ using ClrKernel.Kernels;
 using ClrKernel.Primitives;
 using ClrKernel.Protocols;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 
 namespace ClrKernel.RequestHandlers;
 
@@ -28,7 +27,7 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
     private ConsoleProxy CreateConsoleProxy(Action<DisplayData> displayDataHandler) {
         return new ConsoleProxy((line) => {
             var data = new DisplayData {
-                Data = new JObject
+                Data = new Dictionary<string, object>
                 {
                     { "text/plain", line }
                 }

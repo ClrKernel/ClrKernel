@@ -1,7 +1,6 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using NetMQ;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace ClrKernel.Protocols;
 
@@ -10,7 +9,7 @@ public class Message<T> {
     /// zmq identity(ies)
     /// http://ipython.org/ipython-doc/dev/development/messaging.html#the-wire-protocol
     /// </summary>
-    [JsonIgnoreAttribute]
+    [JsonIgnore]
     public List<byte[]> Identifiers { get; set; }
 
     /// <summary>
@@ -33,7 +32,7 @@ public class Message<T> {
     /// </summary>
     public Header ParentHeader { get; set; }
 
-    public JObject Metadata { get; set; }
+    public Dictionary<string, object> Metadata { get; set; }
 
     public T Content { get; set; }
 
@@ -55,9 +54,9 @@ public class Message<T> {
         Delimiter = msg[1].ConvertToString();
         Signature = msg[2].ConvertToString();
         Header = header;
-        ParentHeader = JsonConvert.DeserializeObject<Header>(msg[4].ConvertToString());
-        Metadata = JObject.FromObject(JsonConvert.DeserializeObject(msg[5].ConvertToString()));
-        Content = JsonConvert.DeserializeObject<T>(msg[6].ConvertToString());
+        ParentHeader = ProtocolJson.Deserialize<Header>(msg[4].ConvertToString());
+        Metadata = ProtocolJson.Deserialize<Dictionary<string, object>>(msg[5].ConvertToString());
+        Content = ProtocolJson.Deserialize<T>(msg[6].ConvertToString());
         Buffers = new List<byte[]>();
     }
 }

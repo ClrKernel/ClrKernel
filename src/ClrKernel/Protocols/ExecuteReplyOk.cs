@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel.Protocols;
 /// <summary>
@@ -10,9 +10,9 @@ public class ExecuteReplyOk : ExecuteReply {
         Status = Protocols.StatusType.Ok;
     }
 
-    [JsonProperty("payload")]
+    [JsonPropertyName("payload")]
     public List<Dictionary<string, string>> Payload { get; set; }
 
-    [JsonProperty("user_expressions")]
+    [JsonPropertyName("user_expressions")]
     public Dictionary<string, string> UserExpressions { get; set; }
 }

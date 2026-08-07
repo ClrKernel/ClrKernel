@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace ClrKernel;
 /// <summary>
@@ -8,28 +8,28 @@ public class ConnInfo {
     /// <summary>
     /// for request/reply calls to the kernel.
     /// </summary>
-    [JsonProperty("shell_port")]
+    [JsonPropertyName("shell_port")]
     public int ShellPort { get; set; }
 
     /// <summary>
     /// for the kernel to publish results to frontends.
     /// </summary>
-    [JsonProperty("iopub_port")]
+    [JsonPropertyName("iopub_port")]
     public int IOPubPort { get; set; }
 
     /// <summary>
     /// for frontends to reply to raw_input calls in the kernel.
     /// </summary>
-    [JsonProperty("stdin_port")]
+    [JsonPropertyName("stdin_port")]
     public int StdInPort { get; set; }
 
-    [JsonProperty("control_port")]
+    [JsonPropertyName("control_port")]
     public int ControlPort { get; set; }
 
     /// <summary>
     /// for monitoring the kernel’s heartbeat.
     /// </summary>
-    [JsonProperty("hb_port")]
+    [JsonPropertyName("hb_port")]
     public int HBPort { get; set; }
 
     /// <summary>
@@ -48,9 +48,9 @@ public class ConnInfo {
     /// <summary>
     /// Used to cryptographically sign messages
     /// </summary>
-    [JsonProperty("signature_scheme")]
+    [JsonPropertyName("signature_scheme")]
     public string SignatureScheme { get; set; }
 
-    [JsonProperty("kernel_name")]
+    [JsonPropertyName("kernel_name")]
     public string KernelName { get; set; }
 }
