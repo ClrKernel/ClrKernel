@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ClrKernel.Core/ClrKernel.Core.csproj" />
+    <ProjectReference Include="../ClrKernel.LanguageServices/ClrKernel.LanguageServices.csproj" />
     <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
   </ItemGroup>
 

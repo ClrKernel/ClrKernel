@@ -41,6 +41,11 @@ public static class Program {
                 // ServerHost owns stdio and its own stderr logger factory.
                 await ServerHost.RunAsync();
                 return 0;
+            case "lsp":
+                // Unified language server: LSP language features + cell execution
+                // over one connection, sharing one engine.
+                await LspHost.RunAsync();
+                return 0;
             case "run": {
                     RunnerOptions options;
                     try {
@@ -89,6 +94,8 @@ public static class Program {
               jupyter <connection_file> [refs_file]   Run as a Jupyter kernel.
               serve                                   Run the stdio JSON-RPC notebook server
                                                       (VS Code extension and other clients).
+              lsp                                     Run the unified language server (LSP
+                                                      completion/hover/signature help + execution).
               run <notebook> [parameters]             Execute a .nb.md/.dib/.ipynb/.csx notebook
                                                       headlessly, with papermill-style parameters.
 
