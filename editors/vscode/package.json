@@ -1,8 +1,8 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C# notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
-  "version": "0.2.0",
+  "description": "Run C# notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "version": "0.3.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
@@ -35,7 +35,7 @@
         "clrkernel.server.command": {
           "type": "string",
           "default": "clrkernel",
-          "description": "Command that launches the ClrKernel notebook server. The default uses the ClrKernel global dotnet tool ('clrkernel serve'). Set to 'dotnet' and point args at a locally built ClrKernel.dll to use a dev build."
+          "description": "Command that launches the ClrKernel language server. The default uses the ClrKernel global dotnet tool ('clrkernel lsp'), which serves both execution and language features (completion, hover, signature help). Set to 'dotnet' and point args at a locally built ClrKernel.dll to use a dev build."
         },
         "clrkernel.server.args": {
           "type": "array",
@@ -43,9 +43,9 @@
             "type": "string"
           },
           "default": [
-            "serve"
+            "lsp"
           ],
-          "description": "Arguments passed to the server command. Defaults to ['serve']. For a dev build set command to 'dotnet' and args to ['<path>/ClrKernel.dll', 'serve']."
+          "description": "Arguments passed to the server command. Defaults to ['lsp']. For a dev build set command to 'dotnet' and args to ['<path>/ClrKernel.dll', 'lsp']."
         }
       }
     },
@@ -79,7 +79,7 @@
     "changelog": "node scripts/changelog.js"
   },
   "dependencies": {
-    "vscode-jsonrpc": "^8.2.0"
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-08-07
+- C# IntelliSense in notebook cells — completion, hover, and signature help —
+  with no C# Dev Kit required. Powered by a built-in language server that shares
+  the execution engine, so completions reflect the live session: variables from
+  executed cells, `#r "nuget:"` types, and imports.
+- The extension now launches `clrkernel lsp` (a unified language server) and
+  carries execution + language features over one connection. Default
+  `clrkernel.server.args` is now `["lsp"]`; a dev build uses
+  `dotnet` + `["<path>/ClrKernel.dll", "lsp"]`.
+
 ## [0.2.0] - 2026-08-07
 - The notebook server now ships inside the `ClrKernel` CLI tool and is launched
   as `clrkernel serve` (the standalone `ClrKernel.Server` dotnet tool is gone).
