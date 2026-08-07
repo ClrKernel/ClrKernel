@@ -36,6 +36,15 @@ public class InteractiveScriptEngine {
 
     private string _currentDirectory;
 
+    // Where Dotnet.Script generates its NuGet restore scratch projects. This
+    // Dotnet.Script version roots the scratch at the directory we pass to
+    // GetDependenciesForCode (mirroring its absolute path underneath), so
+    // passing the notebook's directory would litter user folders with a
+    // dotnet-script/ tree. Anchor it under the system temp instead.
+    // Note: nearest-NuGet.Config discovery anchors here too, so feed config
+    // comes from user/machine level; per-workspace feeds work via #i "nuget:<url>".
+    private readonly string _dependencyScratchDirectory;
+
     private string[] _references;
 
     public static string RefsFilePath { get; set; }
@@ -57,6 +66,8 @@ public class InteractiveScriptEngine {
     public InteractiveScriptEngine(string currentDir, ILogger logger) {
         Current = this;
         _currentDirectory = currentDir;
+        _dependencyScratchDirectory = Path.Combine(Path.GetTempPath(), "clrkernel", "restore");
+        Directory.CreateDirectory(_dependencyScratchDirectory);
         _logger = logger;
         _scriptOptions = CreateScriptOptions();
 
@@ -69,7 +80,7 @@ public class InteractiveScriptEngine {
         LogFactory logFactory = (t) => (level, m, e) => {
             logger.Log(MapLogLevel(level), m, e);
         };
-        var projectProvider = new Dotnet.Script.DependencyModel.ProjectSystem.ScriptProjectProvider(logFactory, _currentDirectory);
+        var projectProvider = new Dotnet.Script.DependencyModel.ProjectSystem.ScriptProjectProvider(logFactory, _dependencyScratchDirectory);
         _runtimeDependencyResolver = new RuntimeDependencyResolver(projectProvider, logFactory, true);
 
         _interactiveOutput = new StringBuilder();
@@ -213,7 +224,7 @@ public class InteractiveScriptEngine {
             return false;
         }
 
-        var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_currentDirectory, ScriptMode.REPL, new string[0], statement);
+        var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_dependencyScratchDirectory, ScriptMode.REPL, new string[0], statement);
         var lineDependencies = lineRuntimeDependencies.SelectMany(rtd => rtd.Assemblies).Distinct();
         var scriptMap = lineRuntimeDependencies.ToDictionary(rdt => rdt.Name, rdt => rdt.Scripts);
 
