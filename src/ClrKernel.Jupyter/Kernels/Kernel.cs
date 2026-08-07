@@ -21,6 +21,7 @@ public class Kernel {
     private bool _exit = false;
     private KernelInfoHandler<KernelInfoRequest> _kernelInfoHandler;
     private ExecuteHandler<ExecuteRequest> _executeHandler;
+    private LanguageRequestHandler _languageHandler;
     private ILoggerFactory _loggerFactory;
 
     public Kernel(ConnInfo conn, ILoggerFactory loggerFactory) {
@@ -50,6 +51,7 @@ public class Kernel {
             var controlSender = new MessageSender(_conn.Key, control);
             _kernelInfoHandler = new KernelInfoHandler<KernelInfoRequest>(iopubSender, shellSender);
             _executeHandler = new ExecuteHandler<ExecuteRequest>(iopubSender, shellSender, _loggerFactory);
+            _languageHandler = new LanguageRequestHandler(shellSender, _loggerFactory);
 
             // Handler for messages coming in to the frontend
             shell.ReceiveReady += (s, e) => {
@@ -78,6 +80,18 @@ public class Kernel {
                             // cell — including any awaited work — has completed, so
                             // clients keep collecting output for async cells.
                             _ = _executeHandler.ProcessAsync(message);
+                        }
+                        break;
+                    case "complete_request": {
+                            var message = new Message<CompleteRequest>(header, raw);
+                            // Fire-and-forget: language queries run off the poller
+                            // thread and reply from their continuation, like execute.
+                            _ = _languageHandler.ProcessCompleteAsync(message);
+                        }
+                        break;
+                    case "inspect_request": {
+                            var message = new Message<InspectRequest>(header, raw);
+                            _ = _languageHandler.ProcessInspectAsync(message);
                         }
                         break;
                     case "shutdown_request": {
