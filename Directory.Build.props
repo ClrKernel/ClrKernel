@@ -1,10 +1,13 @@
 <Project>
     <PropertyGroup>
-        <Version>0.4.1</Version>
+        <Version>0.5.0</Version>
         <Company>ClrKernel</Company>
         <Product>ClrKernel</Product>
         <Authors>Jeremy Adams, Dan Shryock</Authors>
         <TargetFramework>net8.0</TargetFramework>
         <RollForward>Major</RollForward>
+        <!-- Ship only English satellite assemblies. Roslyn brings ~15 localized
+             resource DLLs (~7 MB) we don't surface; keep just neutral/en. -->
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     </PropertyGroup>
 </Project>
