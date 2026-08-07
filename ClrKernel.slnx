@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="src/ClrKernel.Core/ClrKernel.Core.csproj" />
   <Project Path="src/ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
+  <Project Path="src/ClrKernel.Server/ClrKernel.Server.csproj" />
   <Project Path="src/ClrKernel/ClrKernel.csproj" />
   <Project Path="test/ClrKernel.UnitTest/ClrKernel.UnitTest.csproj" />
 </Solution>
