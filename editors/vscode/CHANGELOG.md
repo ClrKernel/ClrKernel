@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.1.1] - 2026-08-07
+- Setting up automatic publish extension
+
 ## [0.1.0] - 2026-08-06
 
 Initial release.
