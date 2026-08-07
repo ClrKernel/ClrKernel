@@ -33,10 +33,10 @@ export class ClrKernelController {
         }
 
         const configuration = vscode.workspace.getConfiguration('clrkernel');
-        const configuredCommand = configuration.get<string>('server.command', 'clrkernel-server');
-        const args = configuration.get<string[]>('server.args', []);
+        const configuredCommand = configuration.get<string>('server.command', 'clrkernel');
+        const args = configuration.get<string[]>('server.args', ['serve']);
         const cwd = path.dirname(notebook.uri.fsPath);
-        const usingDefault = configuredCommand === 'clrkernel-server' && args.length === 0;
+        const usingDefault = configuredCommand === 'clrkernel' && args.length === 1 && args[0] === 'serve';
         const log = (message: string) => this.output.appendLine(message);
 
         // When relying on the global tool, prefer its absolute path if present

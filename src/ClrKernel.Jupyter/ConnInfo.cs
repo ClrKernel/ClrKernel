@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ClrKernel;
+namespace ClrKernel.Jupyter;
 /// <summary>
 /// The transport, ip and five _port fields specify five ports which the kernel should bind to using ZeroMQ.
 /// </summary>

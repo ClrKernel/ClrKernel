@@ -1,48 +1,102 @@
 using System;
-using System.IO;
-using ClrKernel.Core;
-using ClrKernel.Protocols;
+using System.Threading.Tasks;
+using ClrKernel.Jupyter;
+using ClrKernel.Runner;
+using ClrKernel.Server;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel;
 
-public class Program {
-    public static void Main(string[] args) {
-
-        // Handle requests for kernel-spec information
-        if (KernelSpec.HandleKernelSpecRequest(args)) {
-            return;
+/// <summary>
+/// The ClrKernel command-line tool. Dispatches to one of three modes:
+/// <c>jupyter</c> (Jupyter kernel), <c>serve</c> (stdio JSON-RPC notebook server),
+/// and <c>run</c> (headless notebook runner). A bare connection-file argument is
+/// still accepted for backward compatibility with kernel specs that invoke
+/// <c>clrkernel {connection_file}</c>.
+/// </summary>
+public static class Program {
+    public static async Task<int> Main(string[] args) {
+        // Kernel-spec queries are terminal — answer and exit before mode dispatch.
+        if (args.Length >= 1 && args[0] is "--kernel-spec-path" or "--kernel-spec-details") {
+            using var kf = CreateLoggerFactory();
+            JupyterKernelHost.Run(args, kf);
+            return 0;
         }
 
-        var loggerFactory = LoggerFactory.Create(builder => {
+        if (args.Length == 0 || args[0] is "-h" or "--help" or "help") {
+            PrintUsage();
+            return args.Length == 0 ? 1 : 0;
+        }
+
+        var mode = args[0];
+        var rest = args[1..];
+
+        switch (mode) {
+            case "jupyter": {
+                    using var lf = CreateLoggerFactory();
+                    JupyterKernelHost.Run(rest, lf);
+                    return 0;
+                }
+            case "serve":
+                // ServerHost owns stdio and its own stderr logger factory.
+                await ServerHost.RunAsync();
+                return 0;
+            case "run": {
+                    RunnerOptions options;
+                    try {
+                        options = RunnerOptions.Parse(rest);
+                    } catch (Exception e) {
+                        Console.Error.WriteLine(e.Message);
+                        return 2;
+                    }
+                    if (options.HelpRequested) {
+                        Console.WriteLine(RunnerOptions.Usage);
+                        return 0;
+                    }
+                    using var lf = CreateStderrLoggerFactory();
+                    return await NotebookRunner.RunAsync(options, lf);
+                }
+            default: {
+                    // Back-compat: a kernel spec may invoke `clrkernel {connection_file}`.
+                    // Treat an unknown first argument as the Jupyter connection file.
+                    using var lf = CreateLoggerFactory();
+                    JupyterKernelHost.Run(args, lf);
+                    return 0;
+                }
+        }
+    }
+
+    private static ILoggerFactory CreateLoggerFactory() =>
+        LoggerFactory.Create(builder => {
             builder.AddConsole();
             builder.SetMinimumLevel(LogLevel.Information);
         });
 
+    private static ILoggerFactory CreateStderrLoggerFactory() =>
+        LoggerFactory.Create(builder => {
+            builder.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+            builder.SetMinimumLevel(LogLevel.Information);
+        });
 
-        // When Jupyter starts a kernel, it passes it a connection file.
-        // This specifies how to set up communications with the frontend.
-        Console.WriteLine("Kernel connecting...");
-        for (int i = 0; i < args.Length; i++) {
-            Console.WriteLine($"arg {i}: {args[i]}");
-        }
+    private static void PrintUsage() {
+        Console.WriteLine(
+            """
+            ClrKernel — multi-language .NET notebook tool.
 
-        // Create the connection model
-        string json = File.ReadAllText(args[0]);
-        var connInfo = ProtocolJson.Deserialize<ConnInfo>(json);
-        Console.WriteLine(ProtocolJson.Serialize(connInfo));
+            Usage: clrkernel <command> [options]
 
-        if (args.Length > 1) {
-            InteractiveScriptEngine.RefsFilePath = args[1];
-        }
+            Commands:
+              jupyter <connection_file> [refs_file]   Run as a Jupyter kernel.
+              serve                                   Run the stdio JSON-RPC notebook server
+                                                      (VS Code extension and other clients).
+              run <notebook> [parameters]             Execute a .nb.md/.dib/.ipynb/.csx notebook
+                                                      headlessly, with papermill-style parameters.
 
-        // Handling messages
+              --kernel-spec-path                      Print the bundled kernel-spec directory.
+              --kernel-spec-details                   Print the bundled kernel.json details.
+              -h, --help                              Show this help.
 
-        // After reading the connection file and binding to the necessary sockets, 
-        // the kernel should go into an event loop, 
-        // listening on the hb (heartbeat), 
-        // control and shell sockets.
-        var kernel = new Kernel(connInfo, loggerFactory);
-        kernel.Start();
+            Run `clrkernel run --help` for the parameter flags.
+            """);
     }
 }

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 
 public class ExecuteRequest {
     public string Code { get; set; }

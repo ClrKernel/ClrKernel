@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
-using ClrKernel.Protocols;
+using ClrKernel.Jupyter.Protocols;
 using NetMQ;
 
-namespace ClrKernel.Kernels;
+namespace ClrKernel.Jupyter.Kernels;
 
 public class MessageSender {
     private string _key;

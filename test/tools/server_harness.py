@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Content-Length framed JSON-RPC harness for ClrKernel.Server over stdio."""
+"""Content-Length framed JSON-RPC harness for the ClrKernel notebook server
+over stdio. Usage: server_harness.py <path/to/ClrKernel.dll> — the harness
+launches `dotnet ClrKernel.dll serve`."""
 import json, subprocess, sys, threading, queue, time
 
 SERVER = sys.argv[1]
 
-proc = subprocess.Popen(["dotnet", SERVER], stdin=subprocess.PIPE,
+proc = subprocess.Popen(["dotnet", SERVER, "serve"], stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 incoming = queue.Queue()

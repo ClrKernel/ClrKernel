@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ClrKernel.Core;
-using ClrKernel.Kernels;
+using ClrKernel.Jupyter.Kernels;
+using ClrKernel.Jupyter.Protocols;
 using ClrKernel.Primitives;
-using ClrKernel.Protocols;
 using Microsoft.Extensions.Logging;
 
-namespace ClrKernel.RequestHandlers;
+namespace ClrKernel.Jupyter.RequestHandlers;
 
 public class ExecuteHandler<T> where T : ExecuteRequest {
     private MessageSender _ioPub;

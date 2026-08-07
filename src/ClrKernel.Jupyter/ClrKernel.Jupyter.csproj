@@ -1,28 +1,28 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace>ClrKernel.Server</RootNamespace>
-    <PackageId>ClrKernel.Server</PackageId>
-    <Description>JSON-RPC-over-stdio notebook host for ClrKernel: executes C# cells via ClrKernel.Core for editor integrations (VS Code notebooks) — no Python or Jupyter required. Hosted by the ClrKernel CLI (`clrkernel serve`) and embeddable by other clients.</Description>
+    <RootNamespace>ClrKernel.Jupyter</RootNamespace>
+    <PackageId>ClrKernel.Jupyter</PackageId>
+    <Description>Jupyter kernel implementation for ClrKernel: the ZeroMQ wire protocol, message handlers, and kernel event loop that host ClrKernel.Core over the Jupyter messaging protocol. Used by the ClrKernel CLI tool and embeddable by other hosts.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>Notebook,C#,CSharp,dotnet,CLR,Roslyn,VSCode,JSON-RPC</PackageTags>
+    <PackageTags>Jupyter,Notebook,Kernel,C#,CSharp,dotnet,CLR,Roslyn,ZeroMQ</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>logo-64x64.png</PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
+    <PackageReference Include="NetMQ" Version="4.0.4.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ClrKernel.Core/ClrKernel.Core.csproj" />
     <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
   </ItemGroup>
 
-  <!-- nuget.org gallery assets -->
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />

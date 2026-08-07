@@ -1,7 +1,7 @@
-using ClrKernel.Kernels;
-using ClrKernel.Protocols;
+using ClrKernel.Jupyter.Kernels;
+using ClrKernel.Jupyter.Protocols;
 
-namespace ClrKernel.RequestHandlers;
+namespace ClrKernel.Jupyter.RequestHandlers;
 
 public class KernelInfoHandler<T> : IRequestHandler<T> where T : KernelInfoRequest {
     private MessageSender _ioPub;

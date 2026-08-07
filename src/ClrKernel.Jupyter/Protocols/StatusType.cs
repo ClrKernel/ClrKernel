@@ -1,4 +1,4 @@
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 
 public static class StatusType {
     public const string Ok = "ok";

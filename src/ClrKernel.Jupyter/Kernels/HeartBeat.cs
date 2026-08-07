@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using NetMQ;
 using NetMQ.Sockets;
 
-namespace ClrKernel;
+namespace ClrKernel.Jupyter;
 /// <summary>
 /// This socket allows for simple bytestring messages to be sent between 
 /// the frontend and the kernel to ensure that they are still connected.

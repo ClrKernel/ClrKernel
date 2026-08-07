@@ -41,7 +41,7 @@ export class ServerClient {
             const fail = (reason: string) => reject(new Error(
                 `Could not start ClrKernel server (${this.command} ${this.args.join(' ')}): ${reason}. ` +
                 `Check the 'clrkernel.server.command' and 'clrkernel.server.args' settings — ` +
-                `e.g. command "dotnet" with args ["<path>/ClrKernel.Server.dll"].`));
+                `e.g. command "clrkernel" with args ["serve"], or "dotnet" with args ["<path>/ClrKernel.dll", "serve"].`));
             child.once('spawn', () => resolve());
             child.once('error', (err) => fail(err.message));
             child.once('exit', (exitCode) => fail(`exited immediately (${exitCode})`));

@@ -1,7 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 
 /// <summary>
 /// Shared System.Text.Json configuration for the Jupyter wire protocol.

@@ -27,8 +27,8 @@ three lives.
 
 1. Install the [.NET SDK](https://dotnet.microsoft.com/download) (8.0 or later).
 2. Install this extension.
-3. Run a cell. The first time, if `ClrKernel.Server` isn't found the extension
-   offers to install it for you (`dotnet tool install --global ClrKernel.Server`).
+3. Run a cell. The first time, if `ClrKernel` isn't found the extension
+   offers to install it for you (`dotnet tool install --global ClrKernel`).
    Prefer to do it yourself? Run that command in a terminal ahead of time.
 4. Create a notebook — either run **ClrKernel: New Markdown Notebook** from the
    Command Palette (or File → New File… → *Markdown Notebook*), or make a file
@@ -54,15 +54,15 @@ settings.
 
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
-| `clrkernel.server.command` | `clrkernel-server` | Command that launches the server. The default works when ClrKernel.Server is installed as a global dotnet tool. |
-| `clrkernel.server.args` | `[]` | Arguments for the command — e.g. set command to `dotnet` and args to the path of a locally built `ClrKernel.Server.dll`. |
+| `clrkernel.server.command` | `clrkernel` | Command that launches the server. The default works when the `ClrKernel` global dotnet tool is installed. |
+| `clrkernel.server.args` | `["serve"]` | Arguments for the command. For a dev build, set command to `dotnet` and args to `["<path>/ClrKernel.dll", "serve"]`. |
 
 The server's log (including anything it writes to stderr) is in the
 **ClrKernel** output channel (View → Output).
 
 ## How it works
 
-The extension spawns `ClrKernel.Server` — a small JSON-RPC-over-stdio host —
+The extension spawns `clrkernel serve` — a small JSON-RPC-over-stdio host —
 and executes cells through `ClrKernel.Core`, the same execution engine behind
 the [ClrKernel Jupyter kernel](https://www.nuget.org/packages/ClrKernel). One
 server runs per VS Code window; REPL state is shared across notebooks in that
@@ -71,20 +71,20 @@ window, like a Jupyter kernel session.
 ## Requirements
 
 - .NET runtime 8.0+ (newer majors work)
-- `ClrKernel.Server` on PATH (dotnet tool) or configured via settings
+- `ClrKernel` on PATH (dotnet tool) or configured via settings
 
 ## Developing this extension
 
 ```bash
-dotnet build src/ClrKernel.Server/ClrKernel.Server.csproj -c Release
+dotnet build src/ClrKernel/ClrKernel.csproj -c Release
 cd editors/vscode
 npm install
 npm run compile
 ```
 
 Open `editors/vscode` in VS Code and press F5 — the Extension Development Host
-launches with `samples/` open. Point the settings at your built
-`ClrKernel.Server.dll` (command `dotnet`, args `[<path-to-dll>]`).
+launches with `samples/` open. Point the settings at your built `ClrKernel.dll`
+(command `dotnet`, args `[<path-to-dll>, "serve"]`).
 
 ## License
 

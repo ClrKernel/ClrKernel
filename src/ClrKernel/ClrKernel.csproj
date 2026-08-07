@@ -6,7 +6,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>clrkernel</ToolCommandName>
     <PackageId>ClrKernel</PackageId>
-    <Description>Multi-language .NET Jupyter kernel. C# cells evaluated with Roslyn scripting; runs interactively and headlessly (nbconvert/papermill). Fork of SciSharp/ICSharpCore.</Description>
+    <Description>Multi-language .NET notebook CLI. One tool, three modes: `clrkernel jupyter` (Jupyter kernel), `clrkernel serve` (stdio JSON-RPC server for the VS Code extension), and `clrkernel run` (headless .nb.md/.dib/.ipynb runner with papermill-style parameters). C# cells evaluated with Roslyn scripting. Fork of SciSharp/ICSharpCore.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -14,7 +14,7 @@
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>Jupyter,Notebook,Kernel,C#,CSharp,dotnet,CLR,Roslyn</PackageTags>
+    <PackageTags>Jupyter,Notebook,Kernel,C#,CSharp,dotnet,CLR,Roslyn,papermill,VSCode</PackageTags>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -23,11 +23,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
-    <PackageReference Include="NetMQ" Version="4.0.4.3" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../ClrKernel.Core/ClrKernel.Core.csproj" />
-    <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
+    <!-- The three execution modes. Core + Primitives arrive transitively. -->
+    <ProjectReference Include="../ClrKernel.Jupyter/ClrKernel.Jupyter.csproj" />
+    <ProjectReference Include="../ClrKernel.Server/ClrKernel.Server.csproj" />
+    <ProjectReference Include="../ClrKernel.Runner/ClrKernel.Runner.csproj" />
   </ItemGroup>
   <!-- this will include the kernel spec in the nuget pkg, reference properly -->
   <ItemGroup>

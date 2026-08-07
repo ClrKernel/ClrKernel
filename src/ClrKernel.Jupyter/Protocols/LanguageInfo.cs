@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 
 public class LanguageInfo {
     [JsonPropertyName("file_extension")]

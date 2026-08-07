@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using NetMQ;
 
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 
 public class Message<T> {
     /// <summary>

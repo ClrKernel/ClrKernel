@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace ClrKernel;
+namespace ClrKernel.Jupyter;
 
 public class KernelSpec {
     /// <summary>

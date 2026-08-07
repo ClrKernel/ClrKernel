@@ -15,7 +15,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ClrKernel\ClrKernel.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Core\ClrKernel.Core.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Primitives\ClrKernel.Primitives.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Runner\ClrKernel.Runner.csproj" />
   </ItemGroup>
 
 </Project>

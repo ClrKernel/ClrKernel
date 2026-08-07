@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0] - 2026-08-07
+- The notebook server now ships inside the `ClrKernel` CLI tool and is launched
+  as `clrkernel serve` (the standalone `ClrKernel.Server` dotnet tool is gone).
+- Auto-install now installs the `ClrKernel` global tool
+  (`dotnet tool install --global ClrKernel`).
+- Default settings updated: `clrkernel.server.command` is now `clrkernel` and
+  `clrkernel.server.args` defaults to `["serve"]`. If you previously overrode
+  these to point at `ClrKernel.Server`, update them to `clrkernel`/`serve` (or
+  `dotnet` with `["<path>/ClrKernel.dll", "serve"]` for a dev build).
+
 ## [0.1.1] - 2026-08-07
 - Setting up automatic publish extension
 

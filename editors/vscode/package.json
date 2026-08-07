@@ -2,7 +2,7 @@
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
   "description": "Run C# notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
@@ -34,16 +34,18 @@
       "properties": {
         "clrkernel.server.command": {
           "type": "string",
-          "default": "clrkernel-server",
-          "description": "Command that launches ClrKernel.Server. Use the dotnet tool ('clrkernel-server') or 'dotnet' with args pointing at ClrKernel.Server.dll."
+          "default": "clrkernel",
+          "description": "Command that launches the ClrKernel notebook server. The default uses the ClrKernel global dotnet tool ('clrkernel serve'). Set to 'dotnet' and point args at a locally built ClrKernel.dll to use a dev build."
         },
         "clrkernel.server.args": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "default": [],
-          "description": "Arguments passed to the server command (e.g. the path to ClrKernel.Server.dll when the command is 'dotnet')."
+          "default": [
+            "serve"
+          ],
+          "description": "Arguments passed to the server command. Defaults to ['serve']. For a dev build set command to 'dotnet' and args to ['<path>/ClrKernel.dll', 'serve']."
         }
       }
     },

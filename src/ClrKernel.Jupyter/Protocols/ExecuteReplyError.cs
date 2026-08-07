@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 /// <summary>
 /// https://jupyter-client.readthedocs.io/en/stable/messaging.html#execution-results
 /// </summary>

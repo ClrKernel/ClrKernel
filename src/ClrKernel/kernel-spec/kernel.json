@@ -1,5 +1,5 @@
 {
-    "argv": ["clrkernel", "{connection_file}"],
+    "argv": ["clrkernel", "jupyter", "{connection_file}"],
     "display_name": "ClrKernel (C#)",
     "language": "csharp"
 }

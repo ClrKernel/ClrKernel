@@ -18,7 +18,7 @@ mkdir -p "$STAGE"
 cp "$PROJ"/kernel-spec/logo-*.png "$STAGE"/ 2>/dev/null || true
 cat > "$STAGE/kernel.json" << JSON
 {
-    "argv": ["$(command -v dotnet)", "$DLL", "{connection_file}"],
+    "argv": ["$(command -v dotnet)", "$DLL", "jupyter", "{connection_file}"],
     "display_name": "ClrKernel (dev build)",
     "language": "csharp"
 }

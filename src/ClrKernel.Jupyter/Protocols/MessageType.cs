@@ -1,4 +1,4 @@
-namespace ClrKernel.Protocols;
+namespace ClrKernel.Jupyter.Protocols;
 
 public class MessageType {
     public const string ExecuteRequest = "execute_request";

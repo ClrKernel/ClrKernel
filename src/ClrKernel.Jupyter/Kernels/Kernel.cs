@@ -1,13 +1,13 @@
 using System;
 using System.Threading;
-using ClrKernel.Kernels;
-using ClrKernel.Protocols;
-using ClrKernel.RequestHandlers;
+using ClrKernel.Jupyter.Kernels;
+using ClrKernel.Jupyter.Protocols;
+using ClrKernel.Jupyter.RequestHandlers;
 using Microsoft.Extensions.Logging;
 using NetMQ;
 using NetMQ.Sockets;
 
-namespace ClrKernel;
+namespace ClrKernel.Jupyter;
 /// <summary>
 /// A 'kernel' is a program that runs and introspects the user's code. 
 /// https://jupyter-client.readthedocs.io/en/stable/kernels.html

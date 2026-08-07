@@ -4,8 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-const TOOL_PACKAGE = 'ClrKernel.Server';
-const TOOL_COMMAND = 'clrkernel-server';
+// The server now ships inside the ClrKernel CLI tool: `clrkernel serve`.
+const TOOL_PACKAGE = 'ClrKernel';
+const TOOL_COMMAND = 'clrkernel';
 const DOTNET_DOWNLOAD_URL = 'https://dotnet.microsoft.com/download';
 
 type Logger = (message: string) => void;
@@ -64,7 +65,7 @@ export async function offerServerInstall(log: Logger): Promise<string | undefine
     }
 
     const pick = await vscode.window.showInformationMessage(
-        'ClrKernel.Server is not installed. Install it as a global .NET tool now?',
+        'ClrKernel is not installed. Install it as a global .NET tool now?',
         { modal: true, detail: `Runs: dotnet tool install --global ${TOOL_PACKAGE}` },
         'Install',
     );
@@ -73,7 +74,7 @@ export async function offerServerInstall(log: Logger): Promise<string | undefine
     }
 
     const ok = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'Installing ClrKernel.Server…', cancellable: false },
+        { location: vscode.ProgressLocation.Notification, title: 'Installing ClrKernel…', cancellable: false },
         async () => {
             let result = await run('dotnet', ['tool', 'install', '--global', TOOL_PACKAGE], log);
             if (result.code !== 0 && /already installed/i.test(result.output)) {
@@ -85,7 +86,7 @@ export async function offerServerInstall(log: Logger): Promise<string | undefine
 
     if (!ok) {
         const pickFail = await vscode.window.showErrorMessage(
-            'Installing ClrKernel.Server failed. See the ClrKernel output for details.',
+            'Installing ClrKernel failed. See the ClrKernel output for details.',
             'Show Output',
         );
         if (pickFail === 'Show Output') {
@@ -96,6 +97,6 @@ export async function offerServerInstall(log: Logger): Promise<string | undefine
 
     // Prefer the absolute path so this session works without a VS Code restart.
     const resolved = resolveGlobalToolPath();
-    void vscode.window.showInformationMessage('ClrKernel.Server installed.');
+    void vscode.window.showInformationMessage('ClrKernel installed.');
     return resolved ?? TOOL_COMMAND;
 }
