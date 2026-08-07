@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: production # must match the environment on the nuget.org trusted publishing policy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -41,7 +41,7 @@ jobs:
       - name: Test
         run: dotnet test ClrKernel.slnx -c Release --no-build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -84,7 +84,7 @@ jobs:
             --skip-duplicate
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/pkg/*.nupkg
           generate_release_notes: true
