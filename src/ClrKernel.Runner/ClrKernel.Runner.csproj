@@ -2,7 +2,7 @@
   <PropertyGroup>
     <RootNamespace>ClrKernel.Runner</RootNamespace>
     <PackageId>ClrKernel.Runner</PackageId>
-    <Description>Headless runner for ClrKernel notebooks: parses and executes .nb.md (executable markdown), .dib, .ipynb, and .csx files with papermill-style parameterization (-p/-r/-f/-y). Built on ClrKernel.Core; no Jupyter or Python required.</Description>
+    <Description>Headless runner for ClrKernel notebooks: parses and executes .nb.md (executable markdown), .dib, .ipynb, and .csx files with papermill-style parameterization (-p/-r/-f/-y) and executed .ipynb output (-o). Built on ClrKernel.Core; no Jupyter or Python required.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
