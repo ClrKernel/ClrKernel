@@ -157,9 +157,10 @@ public class NotebookImporter {
         return extension switch {
             ".dib" => ParseDib(content),
             ".ipynb" => ParseIpynb(content),
+            ".md" or ".markdown" => ParseMarkdown(content),
             ".csx" or ".cs" => new[] { content },
             _ => throw new NotSupportedException(
-                $"#!import: unsupported file type '{extension}' (supported: .dib, .ipynb, .csx, .cs)"),
+                $"#!import: unsupported file type '{extension}' (supported: .dib, .ipynb, .md, .csx, .cs)"),
         };
     }
 
@@ -192,6 +193,42 @@ public class NotebookImporter {
             }
         }
         Flush();
+
+        return blocks;
+    }
+
+    // Fence opener for executable markdown: ``` or ~~~ followed by a C# language tag.
+    private static readonly Regex _markdownFencePattern = new(
+        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs)\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Extracts executable blocks from a markdown document ("executable
+    /// markdown"): fenced code blocks tagged csharp/c#/cs run; prose and
+    /// fences with other language tags are ignored.
+    /// </summary>
+    public static IReadOnlyList<string> ParseMarkdown(string content) {
+        var blocks = new List<string>();
+        List<string> current = null;
+        string closingFence = null;
+
+        foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
+            if (current == null) {
+                var match = _markdownFencePattern.Match(line);
+                if (match.Success) {
+                    current = new List<string>();
+                    closingFence = match.Groups["fence"].Value;
+                }
+            } else if (line.Trim() == closingFence) {
+                var text = string.Join("\n", current).Trim();
+                if (text.Length > 0) {
+                    blocks.Add(text);
+                }
+                current = null;
+            } else {
+                current.Add(line);
+            }
+        }
 
         return blocks;
     }

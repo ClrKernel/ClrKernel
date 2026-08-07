@@ -108,6 +108,29 @@ public class NotebookImporterTest {
         CollectionAssert.AreEqual(new[] { "var early = true;" }, blocks.ToArray());
     }
 
+    // --- executable markdown parsing ---
+
+    [TestMethod]
+    public void MarkdownRunsCSharpFencesSkipsProseAndOtherLanguages() {
+        var content = string.Join("\n",
+            "# Title", "Some prose.", "",
+            "```csharp", "var a = 1;", "```", "",
+            "```sql", "select 1", "```", "",
+            "```cs", "var b = 2;", "```", "",
+            "```", "untagged fence, skipped", "```");
+        var blocks = NotebookImporter.ParseMarkdown(content);
+        CollectionAssert.AreEqual(new[] { "var a = 1;", "var b = 2;" }, blocks.ToArray());
+    }
+
+    [TestMethod]
+    public void MarkdownHandlesTildeFencesAndBackticksInsideCode() {
+        var content = string.Join("\n",
+            "~~~csharp", "var s = \"```not a fence```\";", "~~~");
+        var blocks = NotebookImporter.ParseMarkdown(content);
+        Assert.AreEqual(1, blocks.Count);
+        StringAssert.Contains(blocks[0], "not a fence");
+    }
+
     // --- .ipynb parsing ---
 
     [TestMethod]
