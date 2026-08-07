@@ -1,0 +1,63 @@
+{
+  "name": "clrkernel-notebooks",
+  "displayName": "ClrKernel Notebooks",
+  "description": "Run C# notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "version": "0.1.0",
+  "publisher": "clrkernel",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ClrKernel/ClrKernel"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Notebooks"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "notebooks": [
+      {
+        "type": "clrkernel-markdown",
+        "displayName": "ClrKernel Markdown Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.nb.md"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "ClrKernel",
+      "properties": {
+        "clrkernel.server.command": {
+          "type": "string",
+          "default": "clrkernel-server",
+          "description": "Command that launches ClrKernel.Server. Use the dotnet tool ('clrkernel-server') or 'dotnet' with args pointing at ClrKernel.Server.dll."
+        },
+        "clrkernel.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Arguments passed to the server command (e.g. the path to ClrKernel.Server.dll when the command is 'dotnet')."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./"
+  },
+  "dependencies": {
+    "vscode-jsonrpc": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  }
+}
