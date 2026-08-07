@@ -1,0 +1,52 @@
+name: Publish Extension
+
+# Pushing a tag like ext-v0.1.0 packages the VS Code extension, publishes it to
+# the Visual Studio Marketplace, and attaches the .vsix to a GitHub Release.
+# (The plain v* tags are for the NuGet packages; ext-v* is the extension.)
+on:
+  push:
+    tags: ['ext-v*']
+
+permissions:
+  contents: write # create the GitHub Release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#ext-v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "tag=$TAG_VERSION pkg=$PKG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "ERROR: tag ext-v$TAG_VERSION does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package
+        run: npx --yes @vscode/vsce package -o clrkernel-notebooks.vsix
+
+      - name: Publish to VS Code Marketplace
+        # vsce reads the PAT from the VSCE_PAT environment variable.
+        run: npx --yes @vscode/vsce publish --packagePath clrkernel-notebooks.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: editors/vscode/clrkernel-notebooks.vsix
+          generate_release_notes: true

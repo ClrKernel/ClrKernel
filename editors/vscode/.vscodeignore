@@ -1,5 +1,7 @@
 .vscode/**
 src/**
+scripts/**
 tsconfig.json
 node_modules/@types/**
 **/*.map
+*.vsix
