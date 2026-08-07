@@ -347,3 +347,5 @@ editors/vscode/node_modules/
 
 # Dotnet.Script restore scratch (defensive; the engine now keeps this in temp)
 dotnet-script/
+editors/vscode/*.vsix
+

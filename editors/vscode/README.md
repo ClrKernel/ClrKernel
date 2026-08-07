@@ -26,14 +26,13 @@ three lives.
 ## Quick start
 
 1. Install the [.NET SDK](https://dotnet.microsoft.com/download) (8.0 or later).
-2. Install the ClrKernel server:
-
-   ```bash
-   dotnet tool install --global ClrKernel.Server
-   ```
-
-3. Install this extension.
-4. Create a file called `hello.nb.md`:
+2. Install this extension.
+3. Run a cell. The first time, if `ClrKernel.Server` isn't found the extension
+   offers to install it for you (`dotnet tool install --global ClrKernel.Server`).
+   Prefer to do it yourself? Run that command in a terminal ahead of time.
+4. Create a notebook — either run **ClrKernel: New Markdown Notebook** from the
+   Command Palette (or File → New File… → *Markdown Notebook*), or make a file
+   ending in `.nb.md`:
 
    ````markdown
    # My first ClrKernel notebook
@@ -43,8 +42,13 @@ three lives.
    ```
    ````
 
-5. Open it — it appears as a notebook. Run the cell with the **ClrKernel C#**
-   controller.
+5. Run the cell with the **ClrKernel C#** controller.
+
+`.nb.md` files open as notebooks automatically. If one opens as plain text
+instead (a pre-existing editor association can win), right-click it →
+**Reopen Editor With…** → **ClrKernel Markdown Notebook**, or add
+`"workbench.editorAssociations": { "*.nb.md": "clrkernel-markdown" }` to your
+settings.
 
 ## Settings
 

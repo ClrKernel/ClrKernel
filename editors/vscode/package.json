@@ -46,6 +46,27 @@
           "description": "Arguments passed to the server command (e.g. the path to ClrKernel.Server.dll when the command is 'dotnet')."
         }
       }
+    },
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.nb.md": "clrkernel-markdown"
+      }
+    },
+    "commands": [
+      {
+        "command": "clrkernel.newNotebook",
+        "title": "New Markdown Notebook",
+        "shortTitle": "Markdown Notebook",
+        "category": "ClrKernel"
+      }
+    ],
+    "menus": {
+      "file/newFile": [
+        {
+          "command": "clrkernel.newNotebook",
+          "group": "notebook"
+        }
+      ]
     }
   },
   "scripts": {

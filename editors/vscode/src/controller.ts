@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { DisplayNotification, ServerClient } from './serverClient';
+import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 
 /**
  * NotebookController that executes C# cells through ClrKernel.Server. One
@@ -32,26 +33,52 @@ export class ClrKernelController {
         }
 
         const configuration = vscode.workspace.getConfiguration('clrkernel');
-        const command = configuration.get<string>('server.command', 'clrkernel-server');
+        const configuredCommand = configuration.get<string>('server.command', 'clrkernel-server');
         const args = configuration.get<string[]>('server.args', []);
         const cwd = path.dirname(notebook.uri.fsPath);
+        const usingDefault = configuredCommand === 'clrkernel-server' && args.length === 0;
+        const log = (message: string) => this.output.appendLine(message);
 
-        const client = new ServerClient(command, args, cwd, (message) => this.output.appendLine(message));
+        // When relying on the global tool, prefer its absolute path if present
+        // (dodges the PATH gap after a fresh `dotnet tool install -g`).
+        const command = usingDefault ? (resolveGlobalToolPath() ?? configuredCommand) : configuredCommand;
+
         try {
-            await client.start();
-        } catch (e) {
-            const message = e instanceof Error ? e.message : String(e);
-            void vscode.window.showErrorMessage(message);
-            this.output.appendLine(message);
-            this.output.show(true);
-            throw e;
+            return await this.startClient(command, args, cwd, log);
+        } catch (startError) {
+            // A misconfigured custom command is the user's to fix — just report.
+            if (!usingDefault) {
+                this.reportStartError(startError);
+                throw startError;
+            }
+            // Default path: the tool is probably just not installed. Offer to fix.
+            const installedCommand = await offerServerInstall(log);
+            if (!installedCommand) {
+                this.reportStartError(startError);
+                throw startError;
+            }
+            try {
+                return await this.startClient(installedCommand, args, cwd, log);
+            } catch (retryError) {
+                this.reportStartError(retryError);
+                throw retryError;
+            }
         }
+    }
 
+    private async startClient(command: string, args: string[], cwd: string, log: (message: string) => void): Promise<ServerClient> {
+        const client = new ServerClient(command, args, cwd, log);
+        await client.start();
         client.onDisplay((note) => this.onDisplay(note, false));
         client.onUpdateDisplay((note) => this.onDisplay(note, true));
-
         this.client = client;
         return client;
+    }
+
+    private reportStartError(error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(message);
+        this.output.show(true);
     }
 
     private onDisplay(note: DisplayNotification, isUpdate: boolean): void {
