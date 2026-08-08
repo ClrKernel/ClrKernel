@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""LSP-over-stdio harness for the ClrKernel unified language server.
+Usage: lsp_harness.py <path/to/ClrKernel.dll> — launches `dotnet ClrKernel.dll lsp`.
+
+Verifies the Option-A premise: a cell executed over clrkernel/execute is visible
+to textDocument/completion, plus hover and signature help."""
+import json, subprocess, sys, threading, queue
+
+SERVER = sys.argv[1]
+proc = subprocess.Popen(["dotnet", SERVER, "lsp"], stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+responses, notifications = queue.Queue(), queue.Queue()
+
+def reader():
+    buf = proc.stdout
+    while True:
+        headers = {}
+        line = buf.readline()
+        if not line:
+            return
+        while line.strip():
+            k, _, v = line.decode().partition(":")
+            headers[k.strip().lower()] = v.strip()
+            line = buf.readline()
+        length = int(headers.get("content-length", 0))
+        msg = json.loads(buf.read(length))
+        (responses if "id" in msg else notifications).put(msg)
+
+threading.Thread(target=reader, daemon=True).start()
+
+_id = 0
+def send(method, params, notify=False):
+    global _id
+    msg = {"jsonrpc": "2.0", "method": method, "params": params}
+    if not notify:
+        _id += 1
+        msg["id"] = _id
+    raw = json.dumps(msg).encode()
+    proc.stdin.write(f"Content-Length: {len(raw)}\r\n\r\n".encode() + raw)
+    proc.stdin.flush()
+    return _id if not notify else None
+
+def request(method, params):
+    rid = send(method, params)
+    while True:
+        msg = responses.get(timeout=30)
+        if msg.get("id") == rid:
+            return msg.get("result")
+
+passed = failed = 0
+def check(name, ok):
+    global passed, failed
+    print(("PASS " if ok else "FAIL ") + name)
+    if ok: passed += 1
+    else: failed += 1
+
+# 1. initialize
+init = request("initialize", {"capabilities": {}})
+caps = (init or {}).get("capabilities", {})
+check("initialize advertises completion", bool(caps.get("completionProvider")))
+check("initialize advertises hover", caps.get("hoverProvider") is True)
+check("initialize advertises signature help", bool(caps.get("signatureHelpProvider")))
+send("initialized", {}, notify=True)
+
+# 2. execute a cell — its state must become visible to completion
+ex = request("clrkernel/execute", {"cellId": "c1", "code": 'var greeting = "hello"; var count = 42;'})
+check("execute returns ok", (ex or {}).get("status") == "ok")
+
+def open_doc(uri, text):
+    send("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "csharp", "version": 1, "text": text}}, notify=True)
+
+def labels(uri, text, line, ch):
+    open_doc(uri, text)
+    res = request("textDocument/completion",
+                  {"textDocument": {"uri": uri}, "position": {"line": line, "character": ch}})
+    items = res.get("items", []) if isinstance(res, dict) else (res or [])
+    return [i["label"] for i in items]
+
+# 3. completion sees the executed variable, by member
+member = labels("mem://1", "greeting.", 0, 9)
+check("member completion on executed var (ToUpper)", "ToUpper" in member)
+check("member completion on executed var (Length)", "Length" in member)
+
+# 4. completion sees the variable name itself
+names = labels("id://1", "coun", 0, 4)
+check("identifier completion of executed var (count)", "count" in names)
+
+# 5. BCL completion
+bcl = labels("bcl://1", "System.Console.Wri", 0, 18)
+check("BCL member completion (WriteLine)", "WriteLine" in bcl)
+
+# 6. hover on the executed variable
+open_doc("hov://1", "greeting")
+hov = request("textDocument/hover", {"textDocument": {"uri": "hov://1"}, "position": {"line": 0, "character": 3}})
+hov_text = (hov or {}).get("contents", {}).get("value", "") if hov else ""
+check("hover reports string type", "string" in hov_text and "greeting" in hov_text)
+
+# 7. signature help inside a call
+open_doc("sig://1", "System.Console.WriteLine(")
+sig = request("textDocument/signatureHelp", {"textDocument": {"uri": "sig://1"}, "position": {"line": 0, "character": 25}})
+sigs = (sig or {}).get("signatures", []) if sig else []
+check("signature help lists WriteLine overloads", any("WriteLine" in s.get("label", "") for s in sigs))
+
+send("shutdown", {})
+send("exit", {}, notify=True)
+print(f"\n{passed} passed, {failed} failed")
+sys.exit(1 if failed else 0)

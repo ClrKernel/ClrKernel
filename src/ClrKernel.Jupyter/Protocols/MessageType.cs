@@ -19,6 +19,12 @@ public class MessageType {
 
     public const string CompleteRequest = "complete_request";
 
+    public const string CompleteReply = "complete_reply";
+
+    public const string InspectRequest = "inspect_request";
+
+    public const string InspectReply = "inspect_reply";
+
     public const string Status = "status";
 
     public const string Error = "error";

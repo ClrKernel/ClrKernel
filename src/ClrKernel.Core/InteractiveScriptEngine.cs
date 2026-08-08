@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
@@ -46,6 +47,19 @@ public class InteractiveScriptEngine {
 
     private string[] _references;
 
+    // Ordered, successfully-compiled submissions (the initial usings preamble
+    // then each executed cell). Language services replay these to reconstruct
+    // the script context for completion without re-running anything.
+    private readonly List<string> _submissions = new();
+
+    // Default using-static directives that expose the cell-callable helpers
+    // (GetVariable, HTML, Display, ...). Always handed to language services as a
+    // preamble so completion offers them even before the first cell has run.
+    internal static readonly string[] DefaultUsingStatics = {
+        "using static ClrKernel.Core.Extensions;",
+        "using static ClrKernel.Primitives.DisplayDataEmitter;"
+    };
+
     public static string RefsFilePath { get; set; }
 
     /// <summary>
@@ -61,6 +75,19 @@ public class InteractiveScriptEngine {
     public object GetVariableValue(string name) {
         return _scriptState?.GetVariable(name)?.Value;
     }
+
+    /// <summary>
+    /// An immutable snapshot of the accumulated script context — resolved
+    /// references, imported namespaces, and prior submissions — for building a
+    /// parallel Roslyn workspace (completion/hover/signature help) in lockstep
+    /// with execution. Copied so language services never observe a half-applied
+    /// <c>#r</c> resolution.
+    /// </summary>
+    public ScriptStateSnapshot SnapshotState() =>
+        new(_scriptOptions.MetadataReferences.ToArray(),
+            _scriptOptions.Imports.ToArray(),
+            _submissions.ToArray(),
+            string.Join("\n", DefaultUsingStatics));
 
     public InteractiveScriptEngine(string currentDir, ILogger logger) {
         Current = this;
@@ -158,12 +185,7 @@ public class InteractiveScriptEngine {
         statement = PrepareStatement(statement);
 
         if (_scriptState == null) {
-            var usingStatements = new[]
-            {
-                "using static ClrKernel.Core.Extensions;",
-                "using static ClrKernel.Primitives.DisplayDataEmitter;"
-            };
-
+            string[] usingStatements = DefaultUsingStatics;
 
             var references = _references;
 
@@ -182,6 +204,11 @@ public class InteractiveScriptEngine {
         } else {
             _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
         }
+
+        // Record the successfully-compiled submission (this line is only reached
+        // when the submission compiled and ran) so language services can rebuild
+        // the same script context for completion/hover/signature help.
+        _submissions.Add(statement);
 
         if (_scriptState.ReturnValue == null) {
             return null;

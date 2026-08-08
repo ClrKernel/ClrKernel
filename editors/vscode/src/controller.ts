@@ -34,9 +34,9 @@ export class ClrKernelController {
 
         const configuration = vscode.workspace.getConfiguration('clrkernel');
         const configuredCommand = configuration.get<string>('server.command', 'clrkernel');
-        const args = configuration.get<string[]>('server.args', ['serve']);
+        const args = configuration.get<string[]>('server.args', ['lsp']);
         const cwd = path.dirname(notebook.uri.fsPath);
-        const usingDefault = configuredCommand === 'clrkernel' && args.length === 1 && args[0] === 'serve';
+        const usingDefault = configuredCommand === 'clrkernel' && args.length === 1 && args[0] === 'lsp';
         const log = (message: string) => this.output.appendLine(message);
 
         // When relying on the global tool, prefer its absolute path if present
@@ -44,7 +44,7 @@ export class ClrKernelController {
         const command = usingDefault ? (resolveGlobalToolPath() ?? configuredCommand) : configuredCommand;
 
         try {
-            return await this.startClient(command, args, cwd, log);
+            return await this.startClient(command, args, cwd);
         } catch (startError) {
             // A misconfigured custom command is the user's to fix — just report.
             if (!usingDefault) {
@@ -58,7 +58,7 @@ export class ClrKernelController {
                 throw startError;
             }
             try {
-                return await this.startClient(installedCommand, args, cwd, log);
+                return await this.startClient(installedCommand, args, cwd);
             } catch (retryError) {
                 this.reportStartError(retryError);
                 throw retryError;
@@ -66,8 +66,8 @@ export class ClrKernelController {
         }
     }
 
-    private async startClient(command: string, args: string[], cwd: string, log: (message: string) => void): Promise<ServerClient> {
-        const client = new ServerClient(command, args, cwd, log);
+    private async startClient(command: string, args: string[], cwd: string): Promise<ServerClient> {
+        const client = new ServerClient(command, args, cwd, this.output);
         await client.start();
         client.onDisplay((note) => this.onDisplay(note, false));
         client.onUpdateDisplay((note) => this.onDisplay(note, true));
@@ -145,7 +145,7 @@ export class ClrKernelController {
     }
 
     dispose(): void {
-        this.client?.dispose();
+        void this.client?.dispose();
         this.controller.dispose();
         this.output.dispose();
     }

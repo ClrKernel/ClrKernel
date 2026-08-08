@@ -1,5 +1,11 @@
-import * as cp from 'child_process';
-import * as rpc from 'vscode-jsonrpc/node';
+import * as vscode from 'vscode';
+import {
+    LanguageClient,
+    LanguageClientOptions,
+    ServerOptions,
+    State,
+    TransportKind,
+} from 'vscode-languageclient/node';
 
 export interface DisplayNotification {
     cellId: string;
@@ -15,87 +21,76 @@ export interface ExecuteResult {
 }
 
 /**
- * Owns the ClrKernel.Server child process and the JSON-RPC connection over
- * its stdio (Content-Length framing on both sides).
+ * Wraps the ClrKernel unified language server (`clrkernel lsp`). A single
+ * LanguageClient owns one server process that provides BOTH standard LSP
+ * language features (completion, hover, signature help — routed automatically
+ * for csharp cells) AND cell execution via the custom `clrkernel/execute`
+ * request and `clrkernel/display` notifications. One process means completion
+ * sees the live REPL state.
  */
 export class ServerClient {
-    private process: cp.ChildProcess | undefined;
-    private connection: rpc.MessageConnection | undefined;
+    private client: LanguageClient | undefined;
+    private displayHandler?: (note: DisplayNotification) => void;
+    private updateHandler?: (note: DisplayNotification) => void;
 
     constructor(
         private readonly command: string,
         private readonly args: string[],
         private readonly cwd: string | undefined,
-        private readonly log: (message: string) => void,
+        private readonly output: vscode.OutputChannel,
     ) { }
 
     async start(): Promise<void> {
-        this.log(`starting server: ${this.command} ${this.args.join(' ')}`);
-        const child = cp.spawn(this.command, this.args, { cwd: this.cwd });
-        this.process = child;
+        this.output.appendLine(`starting language server: ${this.command} ${this.args.join(' ')}`);
 
-        // Fail loudly (with a hint) if the command can't be spawned or dies
-        // immediately — otherwise the first RPC write hits a destroyed stream
-        // and surfaces as an unhelpful "write after a stream was destroyed".
-        await new Promise<void>((resolve, reject) => {
-            const fail = (reason: string) => reject(new Error(
-                `Could not start ClrKernel server (${this.command} ${this.args.join(' ')}): ${reason}. ` +
-                `Check the 'clrkernel.server.command' and 'clrkernel.server.args' settings — ` +
-                `e.g. command "clrkernel" with args ["serve"], or "dotnet" with args ["<path>/ClrKernel.dll", "serve"].`));
-            child.once('spawn', () => resolve());
-            child.once('error', (err) => fail(err.message));
-            child.once('exit', (exitCode) => fail(`exited immediately (${exitCode})`));
-        });
+        const run = {
+            command: this.command,
+            args: this.args,
+            transport: TransportKind.stdio,
+            options: { cwd: this.cwd },
+        };
+        const serverOptions: ServerOptions = { run, debug: run };
 
-        child.stderr?.on('data', (chunk: Buffer) => this.log(chunk.toString().trimEnd()));
-        child.on('exit', (exitCode) => {
-            this.log(`server exited (${exitCode})`);
-            this.connection?.dispose();
-            this.connection = undefined;
-        });
+        const clientOptions: LanguageClientOptions = {
+            // Matches C# notebook cells (and any csharp document). Cell documents
+            // sync to the server, so completion/hover/signature help work in cells.
+            documentSelector: [{ language: 'csharp' }],
+            outputChannel: this.output,
+        };
 
-        this.connection = rpc.createMessageConnection(
-            new rpc.StreamMessageReader(child.stdout!),
-            new rpc.StreamMessageWriter(child.stdin!),
-        );
-        this.connection.listen();
+        this.client = new LanguageClient('clrkernel', 'ClrKernel', serverOptions, clientOptions);
+        await this.client.start();
 
-        const info = await this.connection.sendRequest('initialize');
-        this.log(`connected: ${JSON.stringify(info)}`);
+        this.client.onNotification('clrkernel/display', (note: DisplayNotification) => this.displayHandler?.(note));
+        this.client.onNotification('clrkernel/updateDisplay', (note: DisplayNotification) => this.updateHandler?.(note));
+        this.output.appendLine('language server connected');
     }
 
     get running(): boolean {
-        return this.connection !== undefined && this.process?.exitCode == null;
+        return this.client?.state === State.Running;
     }
 
     onDisplay(handler: (note: DisplayNotification) => void): void {
-        this.connection?.onNotification('display', handler);
+        this.displayHandler = handler;
     }
 
     onUpdateDisplay(handler: (note: DisplayNotification) => void): void {
-        this.connection?.onNotification('updateDisplay', handler);
+        this.updateHandler = handler;
     }
 
     execute(cellId: string, code: string): Promise<ExecuteResult> {
-        if (!this.connection) {
+        if (!this.client) {
             throw new Error('ClrKernel server is not running');
         }
-        return this.connection.sendRequest<ExecuteResult>(
-            'execute',
-            rpc.ParameterStructures.byName as unknown as object,
-            { cellId, code } as unknown as object,
-        ) as Promise<ExecuteResult>;
+        return this.client.sendRequest<ExecuteResult>('clrkernel/execute', { cellId, code });
     }
 
-    dispose(): void {
+    async dispose(): Promise<void> {
         try {
-            this.connection?.sendNotification('shutdown');
+            await this.client?.stop();
         } catch {
             // best effort
         }
-        this.connection?.dispose();
-        this.process?.kill();
-        this.process = undefined;
-        this.connection = undefined;
+        this.client = undefined;
     }
 }
