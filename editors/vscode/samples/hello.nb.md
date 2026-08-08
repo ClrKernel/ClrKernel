@@ -29,9 +29,11 @@ Console.WriteLine(TimeSpan.FromDays(45).Humanize());
 using YamlDotNet.Serialization;
 Console.WriteLine("YamlDotNet loaded");
 var yaml = @"name: ClrKernel
-version: 0.3.0
+version: 0.6.0
 tags:
   - jupyter
   - dotnet";
-  var deserializer = new Deseriali
+var deserializer = new DeserializerBuilder().Build();
+var doc = deserializer.Deserialize<Dictionary<string, object>>(yaml);
+Console.WriteLine($"parsed {doc["name"]} v{doc["version"]} with {((List<object>)doc["tags"]).Count} tags");
 ```

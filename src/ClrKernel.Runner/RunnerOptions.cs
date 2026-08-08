@@ -18,6 +18,7 @@ namespace ClrKernel.Runner;
 public class RunnerOptions {
     public string InputPath { get; private set; }
     public string WorkingDirectory { get; private set; }
+    public string OutputPath { get; private set; }
     public RunnerParameters Parameters { get; } = new();
     public bool HelpRequested { get; private set; }
 
@@ -34,6 +35,8 @@ public class RunnerOptions {
                                          Set a parameter as a raw string.
           -f, --parameters_file PATH     Load parameters from a YAML or JSON file.
           -y, --parameters_yaml YAML     Load parameters from an inline YAML/JSON string.
+          -o, --output PATH              Write an executed .ipynb notebook to PATH
+                                         (cells with their captured outputs).
           --cwd DIR                      Working directory for the run
                                          (defaults to the notebook's directory).
           -h, --help                     Show this help.
@@ -87,6 +90,11 @@ public class RunnerOptions {
                 case "--parameters_yaml": {
                         var yaml = TakeOne(args, ref i, arg);
                         baseLayer.Add(() => options.Parameters.MergeYaml(yaml));
+                        break;
+                    }
+                case "-o":
+                case "--output": {
+                        options.OutputPath = TakeOne(args, ref i, arg);
                         break;
                     }
                 case "--cwd": {
