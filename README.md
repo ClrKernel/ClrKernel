@@ -60,6 +60,30 @@ papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p ru
 A failing cell exits non-zero (job schedulers see the failure); papermill also
 persists the partially-executed output notebook as a diagnostic artifact.
 
+## Build & test
+
+A cross-platform task runner (built on [Nuke](https://nuke.build)) drives build,
+test, format, and the VS Code extension. It needs only the .NET SDK — no extra
+tools to install. Use `./build.sh` on macOS/Linux, `.\build.ps1` (or
+`build.cmd`) on Windows.
+
+```bash
+./build.sh --help                        # list all targets and flags
+./build.sh                               # default: restore + build + test the solution
+./build.sh Build                         # build the whole solution
+./build.sh Test                          # run all unit tests
+./build.sh Build --project ClrKernel.Http   # build one project (searches src/ then test/)
+./build.sh Test  --filter Mermaid           # run a subset of tests (dotnet test --filter)
+./build.sh Format                        # verify formatting  (Format --apply to fix)
+./build.sh Extension                     # build the VS Code extension (npm install + tsc)
+./build.sh All                           # solution build + test AND the extension
+./build.sh Clean                         # delete bin/obj and the extension's out/
+./build.sh --configuration Debug Build   # any target accepts --configuration
+```
+
+Targets chain their dependencies automatically (e.g. `Test` builds first), so a
+bare `./build.sh` restores, builds, and tests in one go.
+
 ## Develop
 
 ```bash

@@ -1,0 +1,3 @@
+<Project>
+  <!-- Isolate the Nuke build project from the repository Directory.Build.props/.targets. -->
+</Project>
