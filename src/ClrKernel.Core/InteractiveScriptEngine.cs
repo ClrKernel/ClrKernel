@@ -254,12 +254,10 @@ public class InteractiveScriptEngine {
             return displayData;
         }
 
-        _globals.Print(_scriptState.ReturnValue);
-
-        var output = _interactiveOutput.ToString();
-        _interactiveOutput.Clear();
-
-        return new DisplayData(output);
+        // Rich default rendering: sequences become HTML tables, objects a
+        // property table, anonymous types a clean { x = 10 }, all with a
+        // type-hint badge — instead of Roslyn's CSharpObjectFormatter output.
+        return ResultFormatter.Format(_scriptState.ReturnValue);
     }
 
     public object Execute(string statement) {
