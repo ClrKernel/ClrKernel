@@ -35,6 +35,11 @@ public class NotebookImporter {
 
     private static readonly string[] _csharpSectionNames = { "csharp", "c#" };
 
+    // The #!http selector marks a section whose body is a .http document; the
+    // engine routes it to the HTTP session. We re-emit the marker so the block
+    // is self-describing when it flows through execution.
+    private const string _httpSelector = "#!http";
+
     private readonly HashSet<string> _importedPaths = new(
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? StringComparer.OrdinalIgnoreCase
@@ -173,12 +178,16 @@ public class NotebookImporter {
     public static IReadOnlyList<string> ParseDib(string content) {
         var blocks = new List<string>();
         var current = new List<string>();
-        var currentIsCSharp = true; // leading content defaults to C#
+        var section = "csharp"; // leading content defaults to C#
 
         void Flush() {
             var text = string.Join("\n", current).Trim();
-            if (currentIsCSharp && text.Length > 0) {
-                blocks.Add(text);
+            if (text.Length > 0) {
+                if (_csharpSectionNames.Contains(section)) {
+                    blocks.Add(text);
+                } else if (section == "http") {
+                    blocks.Add(_httpSelector + "\n" + text);
+                }
             }
             current.Clear();
         }
@@ -187,7 +196,7 @@ public class NotebookImporter {
             var match = _dibSectionPattern.Match(line);
             if (match.Success) {
                 Flush();
-                currentIsCSharp = _csharpSectionNames.Contains(match.Groups[1].Value.ToLowerInvariant());
+                section = match.Groups[1].Value.ToLowerInvariant();
             } else {
                 current.Add(line);
             }
@@ -197,20 +206,22 @@ public class NotebookImporter {
         return blocks;
     }
 
-    // Fence opener for executable markdown: ``` or ~~~ followed by a C# language tag.
+    // Fence opener for executable markdown: ``` or ~~~ followed by an executable
+    // language tag (C# or http).
     private static readonly Regex _markdownFencePattern = new(
-        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs)\s*$",
+        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs|http)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Extracts executable blocks from a markdown document ("executable
-    /// markdown"): fenced code blocks tagged csharp/c#/cs run; prose and
-    /// fences with other language tags are ignored.
+    /// markdown"): fenced code blocks tagged csharp/c#/cs (C#) or http (a .http
+    /// request) run; prose and fences with other language tags are ignored.
     /// </summary>
     public static IReadOnlyList<string> ParseMarkdown(string content) {
         var blocks = new List<string>();
         List<string> current = null;
         string closingFence = null;
+        var isHttp = false;
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (current == null) {
@@ -218,11 +229,12 @@ public class NotebookImporter {
                 if (match.Success) {
                     current = new List<string>();
                     closingFence = match.Groups["fence"].Value;
+                    isHttp = match.Groups["lang"].Value.Equals("http", StringComparison.OrdinalIgnoreCase);
                 }
             } else if (line.Trim() == closingFence) {
                 var text = string.Join("\n", current).Trim();
                 if (text.Length > 0) {
-                    blocks.Add(text);
+                    blocks.Add(isHttp ? _httpSelector + "\n" + text : text);
                 }
                 current = null;
             } else {

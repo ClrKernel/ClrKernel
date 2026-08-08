@@ -44,6 +44,10 @@ public static class NotebookDocument {
     private static readonly HashSet<string> _csharpLangs =
         new(StringComparer.OrdinalIgnoreCase) { "csharp", "cs", "c#" };
 
+    // A .http fence/section becomes a code cell carrying the #!http selector so
+    // the engine routes it to the HTTP session.
+    private const string _httpSelector = "#!http";
+
     public static IReadOnlyList<NotebookCell> Parse(string path) {
         var extension = Path.GetExtension(path).ToLowerInvariant();
         var content = File.ReadAllText(path);
@@ -67,6 +71,7 @@ public static class NotebookDocument {
         List<string> code = null;
         string closingFence = null;
         var codeIsCSharp = false;
+        var codeIsHttp = false;
 
         void FlushMarkdown() {
             var text = string.Join("\n", markdown).Trim();
@@ -83,26 +88,27 @@ public static class NotebookDocument {
                     code = new List<string>();
                     closingFence = new string(match.Groups["fence"].Value[0], match.Groups["fence"].Value.Length);
                     codeIsCSharp = _csharpLangs.Contains(match.Groups["lang"].Value);
-                    if (!codeIsCSharp) {
-                        // Keep non-C# fences verbatim inside the markdown cell.
+                    codeIsHttp = match.Groups["lang"].Value.Equals("http", StringComparison.OrdinalIgnoreCase);
+                    if (!codeIsCSharp && !codeIsHttp) {
+                        // Keep other-language fences verbatim inside the markdown cell.
                         markdown.Add(line);
                     }
                 } else {
                     markdown.Add(line);
                 }
             } else if (line.TrimEnd() == closingFence || line.StartsWith(closingFence, StringComparison.Ordinal)) {
-                if (codeIsCSharp) {
+                if (codeIsCSharp || codeIsHttp) {
                     var text = string.Join("\n", code).Trim();
                     if (text.Length > 0) {
                         FlushMarkdown();
-                        cells.Add(new NotebookCell(CellKind.Code, text));
+                        cells.Add(new NotebookCell(CellKind.Code, codeIsHttp ? _httpSelector + "\n" + text : text));
                     }
                 } else {
                     markdown.Add(line);
                 }
                 code = null;
             } else {
-                if (codeIsCSharp) {
+                if (codeIsCSharp || codeIsHttp) {
                     code.Add(line);
                 } else {
                     markdown.Add(line);
@@ -119,11 +125,12 @@ public static class NotebookDocument {
         var cells = new List<NotebookCell>();
         var current = new List<string>();
         var kind = CellKind.Code; // leading content defaults to C#
+        var httpSection = false;
 
         void Flush() {
             var text = string.Join("\n", current).Trim();
             if (text.Length > 0) {
-                cells.Add(new NotebookCell(kind, text));
+                cells.Add(new NotebookCell(kind, httpSection ? _httpSelector + "\n" + text : text));
             }
             current.Clear();
         }
@@ -133,9 +140,10 @@ public static class NotebookDocument {
             if (match.Success) {
                 Flush();
                 var section = match.Groups["kind"].Value.ToLowerInvariant();
-                kind = section is "csharp" or "c#" ? CellKind.Code
+                kind = section is "csharp" or "c#" or "http" ? CellKind.Code
                     : section is "markdown" or "md" ? CellKind.Markdown
                     : CellKind.Markdown; // other kernels: keep as prose, not executed
+                httpSection = section == "http";
             } else {
                 current.Add(line);
             }

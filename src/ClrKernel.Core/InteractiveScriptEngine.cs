@@ -132,6 +132,32 @@ public class InteractiveScriptEngine {
 
     private readonly NotebookImporter _importer = new();
 
+    // Lazily created on the first #!http cell; holds HTTP session state (file
+    // variables, named responses) so requests chain across cells like one
+    // growing .http file.
+    private ClrKernel.Http.HttpSession _httpSession;
+
+    // A cell whose first non-blank line is the #!http selector runs as a
+    // .http document (VS Code REST Client syntax) instead of C#.
+    private static bool TryStripHttpSelector(string statement, out string body) {
+        body = null;
+        var normalized = statement.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length) {
+            return false;
+        }
+        var selector = lines[index].Trim();
+        if (!selector.Equals("#!http", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
+        return true;
+    }
+
     /// <summary>
     /// Executes a cell. Lines holding a #!import directive are handled by the
     /// kernel (loading the referenced .dib/.ipynb/.csx/.cs into this session's
@@ -144,6 +170,14 @@ public class InteractiveScriptEngine {
         NotebookImporter.TryParseDirective(line, out _, out _);
 
     public async Task<object> ExecuteAsync(string statement) {
+        // #!http cells run as .http documents (their response cards are emitted
+        // as display data); nothing flows back to the C# script state.
+        if (TryStripHttpSelector(statement, out var httpBody)) {
+            _httpSession ??= new ClrKernel.Http.HttpSession(_currentDirectory);
+            await _httpSession.ExecuteAsync(httpBody);
+            return null;
+        }
+
         if (!statement.Split('\n').Any(IsImporterDirective)) {
             return await ExecuteCoreAsync(statement);
         }
