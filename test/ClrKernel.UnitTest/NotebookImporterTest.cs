@@ -77,7 +77,7 @@ public class NotebookImporterTest {
             "#!csharp", "var a = 1;",
             "#!markdown", "# heading, not code",
             "#!csharp", "var b = 2;",
-            "#!pwsh", "Get-ChildItem");
+            "#!fsharp", "let x = 1");
         var blocks = NotebookImporter.ParseDib(content);
         CollectionAssert.AreEqual(new[] { "var a = 1;", "var b = 2;" }, blocks.ToArray());
     }

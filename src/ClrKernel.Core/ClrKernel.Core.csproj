@@ -30,6 +30,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../ClrKernel.Http/ClrKernel.Http.csproj" />
+    <ProjectReference Include="../ClrKernel.Mermaid/ClrKernel.Mermaid.csproj" />
+    <ProjectReference Include="../ClrKernel.PowerShell/ClrKernel.PowerShell.csproj" />
     <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
   </ItemGroup>
 

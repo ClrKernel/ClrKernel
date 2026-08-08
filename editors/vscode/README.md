@@ -19,11 +19,25 @@ three lives.
   `#r "nuget:"` packages, and your imports.
 - **NuGet packages in cells** — `#r "nuget: PackageName, Version"`, plus custom
   feeds via `#i "nuget:<feed-url>"`.
+- **HTTP request cells** — set a cell's language to **HTTP** (or use a
+  ` ```http ` fence) to make requests in the VS Code REST Client `.http` syntax:
+  variables, system variables (`{{$guid}}`, `{{$timestamp}}`), `###`-separated
+  requests, and chaining (`{{login.response.body.$.token}}`). Responses render
+  as rich cards — status, timing, collapsible headers, highlighted JSON.
 - **Shared libraries** — `#!import "lib.dib"` / `#!lib` with `--register`
   prefixes and run-once semantics; imports `.dib`, `.ipynb`, `.md`, and `.csx`
   files.
 - **Live output** — `Console.WriteLine` streams as it happens; displays created
   with `DisplayAs` update in place (progress, timers, tables).
+- **Mermaid diagram cells** — set a cell's language to **Mermaid** (or use a
+  ` ```mermaid ` fence) to render flowcharts, sequence diagrams, and more. They
+  render fully offline (the library is embedded — no CDN), follow the editor
+  theme, and can also be produced from C# with `source.DisplayMermaid()`.
+- **PowerShell cells** — set a cell's language to **PowerShell** (or use a
+  ` ```powershell ` fence) to run PowerShell in a persistent in-process runspace,
+  with state shared across cells and native IntelliSense — completion, hover, and
+  signature help (cmdlets, parameters, paths, and session variables). No separate
+  PowerShell install required.
 - **Executable markdown** — notebooks that render as plain markdown everywhere
   else and diff cleanly in pull requests.
 

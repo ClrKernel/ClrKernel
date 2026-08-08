@@ -1,6 +1,8 @@
 <Solution>
   <Project Path="src/ClrKernel.Core/ClrKernel.Core.csproj" />
   <Project Path="src/ClrKernel.Http/ClrKernel.Http.csproj" />
+  <Project Path="src/ClrKernel.Mermaid/ClrKernel.Mermaid.csproj" />
+  <Project Path="src/ClrKernel.PowerShell/ClrKernel.PowerShell.csproj" />
   <Project Path="src/ClrKernel.Jupyter/ClrKernel.Jupyter.csproj" />
   <Project Path="src/ClrKernel.LanguageServices/ClrKernel.LanguageServices.csproj" />
   <Project Path="src/ClrKernel.Primitives/ClrKernel.Primitives.csproj" />

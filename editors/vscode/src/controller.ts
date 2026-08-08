@@ -19,8 +19,10 @@ export class ClrKernelController {
 
     constructor(notebookType: string) {
         this.output = vscode.window.createOutputChannel('ClrKernel');
-        this.controller = vscode.notebooks.createNotebookController('clrkernel-csharp', notebookType, 'ClrKernel C#');
-        this.controller.supportedLanguages = ['csharp'];
+        this.controller = vscode.notebooks.createNotebookController('clrkernel-csharp', notebookType, 'ClrKernel');
+        // C# cells run as script; http cells run as .http requests; mermaid
+        // cells render as diagrams; powershell cells run in the runspace.
+        this.controller.supportedLanguages = ['csharp', 'http', 'mermaid', 'powershell'];
         this.controller.supportsExecutionOrder = true;
         this.controller.executeHandler = (cells) => this.executeCells(cells);
     }
@@ -121,7 +123,7 @@ export class ClrKernelController {
 
         try {
             const client = await this.ensureClient(cell.notebook);
-            const result = await client.execute(cellId, cell.document.getText());
+            const result = await client.execute(cellId, this.cellCode(cell));
 
             if (result.status === 'ok') {
                 if (result.data && Object.keys(result.data).length > 0) {
@@ -142,6 +144,26 @@ export class ClrKernelController {
         } finally {
             this.activeExecutions.delete(cellId);
         }
+    }
+
+    /**
+     * The code to send for a cell. HTTP cells are prefixed with `#!http`,
+     * Mermaid cells with `#!mermaid`, and PowerShell cells with `#!pwsh`, so the
+     * engine routes them (unless the user already typed the selector). C# cells
+     * are sent verbatim.
+     */
+    private cellCode(cell: vscode.NotebookCell): string {
+        const text = cell.document.getText();
+        if (cell.document.languageId === 'http' && !/^\s*#!http\b/i.test(text)) {
+            return '#!http\n' + text;
+        }
+        if (cell.document.languageId === 'mermaid' && !/^\s*#!mermaid\b/i.test(text)) {
+            return '#!mermaid\n' + text;
+        }
+        if (cell.document.languageId === 'powershell' && !/^\s*#!(pwsh|powershell)\b/i.test(text)) {
+            return '#!pwsh\n' + text;
+        }
+        return text;
     }
 
     dispose(): void {

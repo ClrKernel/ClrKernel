@@ -1,0 +1,106 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Mermaid",
+    "scopeName": "source.mermaid",
+    "patterns": [
+        { "include": "#comment" },
+        { "include": "#diagram-keyword" },
+        { "include": "#keyword" },
+        { "include": "#direction" },
+        { "include": "#arrow" },
+        { "include": "#string" },
+        { "include": "#pipe-label" },
+        { "include": "#bracket-label" },
+        { "include": "#number" }
+    ],
+    "repository": {
+        "comment": {
+            "patterns": [
+                {
+                    "comment": "Init directive: %%{ ... }%%",
+                    "begin": "%%\\{",
+                    "end": "\\}%%",
+                    "name": "meta.directive.mermaid",
+                    "patterns": [{ "include": "#string" }]
+                },
+                {
+                    "match": "%%.*$",
+                    "name": "comment.line.percentage.mermaid"
+                }
+            ]
+        },
+        "diagram-keyword": {
+            "comment": "Diagram type, usually the first token of the document.",
+            "match": "(?i)^\\s*(graph|flowchart|sequenceDiagram|classDiagram(?:-v2)?|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|sankey(?:-beta)?|xychart(?:-beta)?|block(?:-beta)?|C4Context|C4Container|C4Component|C4Dynamic|C4Deployment)\\b",
+            "captures": {
+                "1": { "name": "keyword.control.diagram.mermaid" }
+            }
+        },
+        "direction": {
+            "match": "\\b(TB|TD|BT|RL|LR)\\b",
+            "name": "constant.language.direction.mermaid"
+        },
+        "keyword": {
+            "comment": "Statement keywords shared across diagram types.",
+            "match": "(?i)\\b(subgraph|end|direction|participant|actor|note(?:\\s+(?:right\\s+of|left\\s+of|over))?|loop|alt|else|opt|par|and|rect|activate|deactivate|autonumber|class|state|section|title|accTitle|accDescr|dateFormat|axisFormat|tickInterval|excludes|includes|todayMarker|click|call|link|href|style|classDef|linkStyle|subgraph|as|over|of|from|to)\\b",
+            "name": "keyword.control.statement.mermaid"
+        },
+        "arrow": {
+            "comment": "Links and message arrows across flowchart/sequence/class/state/er.",
+            "match": "(<\\|--\\|>|<-->|<<->>|-->>|->>|--[xo]\\b|-\\.->|-\\.-|-{1,3}>|-{2,3}|={2,3}>|={2,3}|\\.\\.>|\\.\\.|~~~|<\\|--|--\\|>|\\|>|<\\||o--o|\\}o--o\\{|--\\)|:::)",
+            "name": "keyword.operator.arrow.mermaid"
+        },
+        "string": {
+            "patterns": [
+                {
+                    "begin": "\"",
+                    "end": "\"",
+                    "name": "string.quoted.double.mermaid",
+                    "patterns": [{ "include": "#interpolation-hint" }]
+                }
+            ]
+        },
+        "interpolation-hint": {
+            "match": "#\\w+;",
+            "name": "constant.character.entity.mermaid"
+        },
+        "pipe-label": {
+            "comment": "Edge labels: -->|text|",
+            "begin": "\\|",
+            "end": "\\|",
+            "name": "string.other.label.mermaid"
+        },
+        "bracket-label": {
+            "comment": "Node text inside shape brackets [ ], ( ), { }, (( )), etc.",
+            "patterns": [
+                {
+                    "begin": "\\(\\(",
+                    "end": "\\)\\)",
+                    "name": "string.other.node.mermaid"
+                },
+                {
+                    "begin": "\\[",
+                    "end": "\\]",
+                    "name": "string.other.node.mermaid",
+                    "patterns": [{ "include": "#string" }]
+                },
+                {
+                    "begin": "\\{",
+                    "end": "\\}",
+                    "name": "string.other.node.mermaid",
+                    "patterns": [{ "include": "#string" }]
+                },
+                {
+                    "begin": "\\(",
+                    "end": "\\)",
+                    "name": "string.other.node.mermaid",
+                    "patterns": [{ "include": "#string" }]
+                }
+            ]
+        },
+        "number": {
+            "match": "\\b\\d+(?:\\.\\d+)?\\b",
+            "name": "constant.numeric.mermaid"
+        }
+    }
+}

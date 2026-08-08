@@ -1,8 +1,8 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C# notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
-  "version": "0.3.0",
+  "description": "Run C#, HTTP, Mermaid, and PowerShell notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "version": "0.4.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
@@ -27,6 +27,47 @@
             "filenamePattern": "*.nb.md"
           }
         ]
+      }
+    ],
+    "languages": [
+      {
+        "id": "http",
+        "aliases": [
+          "HTTP",
+          "http"
+        ],
+        "extensions": [
+          ".http",
+          ".rest"
+        ],
+        "configuration": "./language-configuration.http.json"
+      },
+      {
+        "id": "mermaid",
+        "aliases": [
+          "Mermaid",
+          "mermaid"
+        ],
+        "extensions": [
+          ".mmd",
+          ".mermaid"
+        ],
+        "configuration": "./language-configuration.mermaid.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "http",
+        "scopeName": "source.http",
+        "path": "./syntaxes/http.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.json": "json"
+        }
+      },
+      {
+        "language": "mermaid",
+        "scopeName": "source.mermaid",
+        "path": "./syntaxes/mermaid.tmLanguage.json"
       }
     ],
     "configuration": {
@@ -96,7 +137,9 @@
     "markdown",
     "dotnet",
     "roslyn",
-    "interactive"
+    "interactive",
+    "http",
+    "rest"
   ],
   "bugs": {
     "url": "https://github.com/ClrKernel/ClrKernel/issues"

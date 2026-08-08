@@ -1,0 +1,140 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "HTTP",
+    "scopeName": "source.http",
+    "patterns": [
+        { "include": "#separator" },
+        { "include": "#metadata" },
+        { "include": "#comment" },
+        { "include": "#variable-definition" },
+        { "include": "#request" },
+        { "include": "#interpolation" }
+    ],
+    "repository": {
+        "separator": {
+            "match": "^\\s*(#{3,}).*$",
+            "name": "keyword.control.separator.http",
+            "captures": {
+                "1": { "name": "punctuation.definition.separator.http" }
+            }
+        },
+        "metadata": {
+            "comment": "REST Client request metadata: # @name foo, // @note, @prompt, @no-redirect …",
+            "match": "^\\s*(#{1,2}|//)\\s*(@[A-Za-z][\\w-]*)(.*)$",
+            "captures": {
+                "1": { "name": "punctuation.definition.comment.http" },
+                "2": { "name": "keyword.other.metadata.http" },
+                "3": {
+                    "name": "comment.line.metadata.http",
+                    "patterns": [{ "include": "#interpolation" }]
+                }
+            }
+        },
+        "comment": {
+            "patterns": [
+                {
+                    "match": "^\\s*(#(?!#)).*$",
+                    "name": "comment.line.number-sign.http"
+                },
+                {
+                    "match": "^\\s*(//).*$",
+                    "name": "comment.line.double-slash.http"
+                }
+            ]
+        },
+        "variable-definition": {
+            "comment": "@name = value — value may contain {{interpolation}}",
+            "begin": "^\\s*(@)([A-Za-z_][\\w-]*)\\s*(=)",
+            "beginCaptures": {
+                "1": { "name": "punctuation.definition.variable.http" },
+                "2": { "name": "variable.other.definition.http" },
+                "3": { "name": "keyword.operator.assignment.http" }
+            },
+            "end": "$",
+            "name": "meta.variable.http",
+            "patterns": [
+                { "include": "#interpolation" },
+                { "match": ".", "name": "string.unquoted.http" }
+            ]
+        },
+        "request": {
+            "comment": "A request: the request line, its headers, then a body after a blank line.",
+            "begin": "^(?=\\s*(?i:(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|TRACE|CONNECT)\\b|https?://))",
+            "end": "^(?=\\s*#{2,})",
+            "name": "meta.request.http",
+            "patterns": [
+                { "include": "#request-line" },
+                { "include": "#metadata" },
+                { "include": "#comment" },
+                { "include": "#body" },
+                { "include": "#header" },
+                { "include": "#interpolation" }
+            ]
+        },
+        "request-line": {
+            "patterns": [
+                {
+                    "comment": "METHOD url [HTTP/x]",
+                    "match": "^\\s*(?i:(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|TRACE|CONNECT))\\s+(.*?)(?:\\s+(HTTP/\\d(?:\\.\\d)?))?\\s*$",
+                    "captures": {
+                        "1": { "name": "keyword.control.http.method.http" },
+                        "2": {
+                            "name": "markup.underline.link.http",
+                            "patterns": [{ "include": "#interpolation" }]
+                        },
+                        "3": { "name": "constant.language.http.version.http" }
+                    }
+                },
+                {
+                    "comment": "Bare URL request (method defaults to GET)",
+                    "match": "^\\s*(https?://.*?)(?:\\s+(HTTP/\\d(?:\\.\\d)?))?\\s*$",
+                    "captures": {
+                        "1": {
+                            "name": "markup.underline.link.http",
+                            "patterns": [{ "include": "#interpolation" }]
+                        },
+                        "2": { "name": "constant.language.http.version.http" }
+                    }
+                }
+            ]
+        },
+        "header": {
+            "match": "^\\s*([A-Za-z][A-Za-z0-9-]*)\\s*(:)\\s*(.*)$",
+            "captures": {
+                "1": { "name": "support.type.property-name.header.http" },
+                "2": { "name": "punctuation.separator.key-value.http" },
+                "3": {
+                    "name": "string.unquoted.header-value.http",
+                    "patterns": [{ "include": "#interpolation" }]
+                }
+            }
+        },
+        "body": {
+            "comment": "Everything after the first blank line is the body; JSON is embedded.",
+            "begin": "^\\s*$",
+            "end": "^(?=\\s*#{2,})",
+            "contentName": "meta.embedded.block.json",
+            "patterns": [
+                { "include": "#interpolation" },
+                { "include": "source.json" }
+            ]
+        },
+        "interpolation": {
+            "comment": "{{var}}, {{$guid}}, {{login.response.body.$.token}}",
+            "begin": "\\{\\{",
+            "end": "\\}\\}",
+            "name": "meta.interpolation.http",
+            "beginCaptures": {
+                "0": { "name": "punctuation.definition.template-expression.begin.http" }
+            },
+            "endCaptures": {
+                "0": { "name": "punctuation.definition.template-expression.end.http" }
+            },
+            "patterns": [
+                { "match": "\\$[A-Za-z][\\w]*", "name": "support.function.system-variable.http" },
+                { "match": "[A-Za-z_][\\w-]*", "name": "variable.other.interpolation.http" },
+                { "match": "\\.", "name": "punctuation.accessor.http" }
+            ]
+        }
+    }
+}

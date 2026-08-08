@@ -33,6 +33,10 @@ public sealed class LspServer {
     // Full-sync document store: uri -> current text (notebook cells and files).
     private readonly ConcurrentDictionary<string, string> _documents = new();
 
+    // uri -> languageId (from didOpen), so language features dispatch by language
+    // (csharp -> Roslyn, powershell -> the PowerShell runspace).
+    private readonly ConcurrentDictionary<string, string> _languages = new();
+
     // Serializes execution against language queries so completion never reads a
     // half-applied #r; both are cheap when the engine is idle.
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -90,6 +94,7 @@ public sealed class LspServer {
     public void DidOpen(DidOpenTextDocumentParams p) {
         if (p?.TextDocument?.Uri != null) {
             _documents[p.TextDocument.Uri] = p.TextDocument.Text ?? string.Empty;
+            _languages[p.TextDocument.Uri] = p.TextDocument.LanguageId ?? "csharp";
         }
     }
 
@@ -106,8 +111,14 @@ public sealed class LspServer {
     public void DidClose(DidCloseTextDocumentParams p) {
         if (p?.TextDocument?.Uri != null) {
             _documents.TryRemove(p.TextDocument.Uri, out _);
+            _languages.TryRemove(p.TextDocument.Uri, out _);
         }
     }
+
+    private bool IsPowerShell(TextDocumentPositionParams p) =>
+        p?.TextDocument?.Uri != null
+        && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
+        && lang.Equals("powershell", StringComparison.OrdinalIgnoreCase);
 
     // --- Language features -------------------------------------------------
 
@@ -116,6 +127,10 @@ public sealed class LspServer {
         var (code, offset) = Resolve(p);
         if (code == null) {
             return new CompletionList();
+        }
+
+        if (IsPowerShell(p)) {
+            return await PowerShellCompletion(code, offset).ConfigureAwait(false);
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -146,11 +161,47 @@ public sealed class LspServer {
         return list;
     }
 
+    // PowerShell completions come from the session runspace, so they reflect
+    // cmdlets, parameters, provider paths, and session-defined variables.
+    private async Task<CompletionList> PowerShellCompletion(string code, int offset) {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        ClrKernel.PowerShell.PowerShellCompletion completion;
+        try {
+            completion = await Task.Run(() => _engine.PowerShell.Complete(code, offset)).ConfigureAwait(false);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "PowerShell completion failed");
+            return new CompletionList();
+        } finally {
+            _gate.Release();
+        }
+
+        var startPos = OffsetToPosition(code, completion.ReplaceStart);
+        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
+        var list = new CompletionList { IsIncomplete = false };
+        foreach (var item in completion.Items) {
+            list.Items.Add(new CompletionItem {
+                Label = item.Label,
+                Kind = MapPowerShellKind(item.Kind),
+                Detail = item.Detail,
+                InsertText = item.InsertText,
+                TextEdit = new TextEdit {
+                    Range = new Range { Start = startPos, End = endPos },
+                    NewText = item.InsertText,
+                },
+            });
+        }
+        return list;
+    }
+
     [JsonRpcMethod("textDocument/hover", UseSingleObjectParameterDeserialization = true)]
     public async Task<Hover> Hover(TextDocumentPositionParams p) {
         var (code, offset) = Resolve(p);
         if (code == null) {
             return null;
+        }
+
+        if (IsPowerShell(p)) {
+            return await PowerShellHover(code, offset).ConfigureAwait(false);
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -173,11 +224,70 @@ public sealed class LspServer {
         };
     }
 
+    // PowerShell hover: command help, parameter, or session variable type/value.
+    private async Task<Hover> PowerShellHover(string code, int offset) {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        ClrKernel.PowerShell.PowerShellHover hover;
+        try {
+            hover = await Task.Run(() => _engine.PowerShell.Hover(code, offset)).ConfigureAwait(false);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "PowerShell hover failed");
+            return null;
+        } finally {
+            _gate.Release();
+        }
+
+        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
+            return null;
+        }
+        return new Hover {
+            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
+            Range = new Range {
+                Start = OffsetToPosition(code, hover.Start),
+                End = OffsetToPosition(code, hover.Start + hover.Length),
+            },
+        };
+    }
+
+    // PowerShell signature help: one signature per parameter set of the command.
+    private async Task<SignatureHelp> PowerShellSignatureHelp(string code, int offset) {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        ClrKernel.PowerShell.PowerShellSignatureHelp help;
+        try {
+            help = await Task.Run(() => _engine.PowerShell.SignatureHelp(code, offset)).ConfigureAwait(false);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "PowerShell signature help failed");
+            return null;
+        } finally {
+            _gate.Release();
+        }
+
+        if (help == null || help.Signatures.Count == 0) {
+            return null;
+        }
+        var result = new SignatureHelp {
+            ActiveSignature = help.ActiveSignature,
+            ActiveParameter = help.ActiveParameter,
+        };
+        foreach (var sig in help.Signatures) {
+            var info = new SignatureInformation { Label = sig.Label };
+            foreach (var param in sig.Parameters) {
+                info.Parameters.Add(new ParameterInformation { Label = param.Label });
+            }
+            result.Signatures.Add(info);
+        }
+        return result;
+    }
+
     [JsonRpcMethod("textDocument/signatureHelp", UseSingleObjectParameterDeserialization = true)]
     public async Task<SignatureHelp> SignatureHelp(TextDocumentPositionParams p) {
         var (code, offset) = Resolve(p);
         if (code == null) {
             return null;
+        }
+
+        if (IsPowerShell(p)) {
+            return await PowerShellSignatureHelp(code, offset).ConfigureAwait(false);
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -311,4 +421,25 @@ public sealed class LspServer {
 
     private static int MapKind(string tag) =>
         tag != null && _kindMap.TryGetValue(tag, out var kind) ? kind : 1; // Text
+
+    // PowerShell CompletionResultType name -> LSP CompletionItemKind.
+    private static readonly Dictionary<string, int> _powerShellKindMap = new(StringComparer.Ordinal) {
+        ["Command"] = 3,           // Function
+        ["ParameterName"] = 5,     // Field
+        ["ParameterValue"] = 12,   // Value
+        ["Variable"] = 6,          // Variable
+        ["Property"] = 10,         // Property
+        ["Method"] = 2,            // Method
+        ["ProviderItem"] = 17,     // File
+        ["ProviderContainer"] = 19,// Folder
+        ["Type"] = 7,              // Class
+        ["Namespace"] = 9,         // Module
+        ["Keyword"] = 14,          // Keyword
+        ["DynamicKeyword"] = 14,   // Keyword
+        ["History"] = 1,           // Text
+        ["Text"] = 1,              // Text
+    };
+
+    private static int MapPowerShellKind(string type) =>
+        type != null && _powerShellKindMap.TryGetValue(type, out var kind) ? kind : 1; // Text
 }

@@ -171,6 +171,41 @@ public class InteractiveScriptEngine {
         NotebookImporter.TryParseRegister(line, out _, out _) ||
         NotebookImporter.TryParseDirective(line, out _, out _);
 
+    // Lazily created on the first #!pwsh cell (or completion query); hosts the
+    // persistent PowerShell runspace so state and completions share one session.
+    private ClrKernel.PowerShell.PowerShellSession _powerShellSession;
+
+    /// <summary>The session's PowerShell host, created on demand.</summary>
+    public ClrKernel.PowerShell.PowerShellSession PowerShell =>
+        _powerShellSession ??= new ClrKernel.PowerShell.PowerShellSession();
+
+    private static readonly string[] _pwshSelectors = { "#!pwsh", "#!powershell" };
+
+    // A cell whose first non-blank line is the given selector runs in that
+    // language instead of C#.
+    private static bool TryStripSelector(string statement, string selector, out string body) =>
+        TryStripSelector(statement, new[] { selector }, out body);
+
+    // A cell whose first non-blank line is one of these selectors runs in the
+    // named language rather than as C#.
+    private static bool TryStripSelector(string statement, string[] selectors, out string body) {
+        body = null;
+        var lines = statement.Replace("\r\n", "\n").Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length) {
+            return false;
+        }
+        var selector = lines[index].Trim();
+        if (!selectors.Any(s => selector.Equals(s, StringComparison.OrdinalIgnoreCase))) {
+            return false;
+        }
+        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
+        return true;
+    }
+
     public async Task<object> ExecuteAsync(string statement) {
         // #!http cells run as .http documents (their response cards are emitted
         // as display data); nothing flows back to the C# script state.
@@ -178,6 +213,18 @@ public class InteractiveScriptEngine {
             _httpSession ??= new ClrKernel.Http.HttpSession(_currentDirectory);
             await _httpSession.ExecuteAsync(httpBody);
             return null;
+        }
+
+        // #!mermaid cells render a diagram (offline, self-contained) and return
+        // it as display data; nothing flows into the C# script state.
+        if (TryStripSelector(statement, "#!mermaid", out var mermaidBody)) {
+            return await Task.FromResult(ClrKernel.Mermaid.MermaidRenderer.Render(mermaidBody));
+        }
+
+        // #!pwsh / #!powershell cells run in the PowerShell runspace and return
+        // their output as display data; nothing flows into the C# script state.
+        if (TryStripSelector(statement, _pwshSelectors, out var pwshBody)) {
+            return await Task.FromResult(PowerShell.Execute(pwshBody));
         }
 
         if (!statement.Split('\n').Any(IsImporterDirective)) {
@@ -384,7 +431,8 @@ public class InteractiveScriptEngine {
                 Assembly.GetAssembly(typeof(Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo)),// Microsoft.CSharp
                 Assembly.GetAssembly(typeof(System.Dynamic.ExpandoObject)),// System.Dynamic
                 this.GetType().Assembly, // ClrKernel.Core (Extensions, GetVariable)
-                typeof(DisplayData).Assembly // ClrKernel.Primitives (display API)
+                typeof(DisplayData).Assembly, // ClrKernel.Primitives (display API)
+                typeof(ClrKernel.Mermaid.MermaidRenderer).Assembly // ClrKernel.Mermaid (DisplayMermaid)
             };
 
         options = options.AddReferences(references);
@@ -397,6 +445,7 @@ public class InteractiveScriptEngine {
 
         return scriptOptions.AddImports(new[] {
             "ClrKernel.Primitives", // DisplayAs/DisplayedValue live updates
+            "ClrKernel.Mermaid", // DisplayMermaid() helper
             "System",
             "System.IO",
             "System.Collections",

@@ -37,3 +37,32 @@ var deserializer = new DeserializerBuilder().Build();
 var doc = deserializer.Deserialize<Dictionary<string, object>>(yaml);
 Console.WriteLine($"parsed {doc["name"]} v{doc["version"]} with {((List<object>)doc["tags"]).Count} tags");
 ```
+
+## HTTP requests
+
+Set a cell's language to **HTTP** to make requests in the VS Code REST Client
+`.http` syntax. Each request renders a rich response card.
+
+```http
+GET https://httpbin.org/json
+Accept: application/json
+```
+
+## Mermaid diagrams
+
+Set a cell's language to **Mermaid** to render diagrams (fully offline).
+
+```mermaid
+graph LR
+  A[Write] --> B[Run] --> C[Render]
+```
+
+## PowerShell
+
+Set a cell's language to **PowerShell** to run it in a persistent runspace.
+
+```powershell
+$greeting = 'Hello from PowerShell'
+Get-Date | Select-Object DayOfWeek, Year
+$greeting
+```

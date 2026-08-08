@@ -2,12 +2,22 @@ import * as vscode from 'vscode';
 
 /**
  * Executable markdown <-> notebook. Fenced code blocks tagged csharp/c#/cs
- * become code cells; everything between them becomes markup cells. The same
- * files run headlessly via ClrKernel's `#!import` and in CI, so serialization
- * is careful to round-trip cleanly.
+ * become C# code cells, http fences HTTP (.http) cells, mermaid fences Mermaid
+ * cells, and powershell/pwsh/ps1 fences PowerShell cells;
+ * everything between them becomes markup cells. The same files run headlessly
+ * via ClrKernel's `#!import` and in CI, so serialization round-trips cleanly.
  */
 export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
-    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*(csharp|c#|cs)\s*$/i;
+    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*(csharp|c#|cs|http|mermaid|powershell|pwsh|ps1)\s*$/i;
+
+    // Cell languageId for a fence tag; also the tag emitted when serializing.
+    private static languageForTag(tag: string): string {
+        const t = tag.toLowerCase();
+        if (t === 'http') { return 'http'; }
+        if (t === 'mermaid') { return 'mermaid'; }
+        if (t === 'powershell' || t === 'pwsh' || t === 'ps1') { return 'powershell'; }
+        return 'csharp';
+    }
 
     deserializeNotebook(content: Uint8Array): vscode.NotebookData {
         const text = new TextDecoder().decode(content);
@@ -16,6 +26,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         let markup: string[] = [];
         let code: string[] | null = null;
         let closingFence = '';
+        let language = 'csharp';
 
         const flushMarkup = () => {
             const value = markup.join('\n').trim();
@@ -32,11 +43,12 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
                     flushMarkup();
                     code = [];
                     closingFence = match[1];
+                    language = MarkdownNotebookSerializer.languageForTag(match[2]);
                 } else {
                     markup.push(line);
                 }
             } else if (line.trim() === closingFence) {
-                cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code.join('\n'), 'csharp'));
+                cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code.join('\n'), language));
                 code = null;
             } else {
                 code.push(line);
@@ -44,7 +56,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         }
         if (code !== null) {
             // unterminated fence: keep the content as a code cell rather than losing it
-            cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code.join('\n'), 'csharp'));
+            cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code.join('\n'), language));
         }
         flushMarkup();
 
@@ -55,7 +67,10 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         const parts: string[] = [];
         for (const cell of data.cells) {
             if (cell.kind === vscode.NotebookCellKind.Code) {
-                parts.push('```csharp\n' + cell.value.replace(/\s+$/, '') + '\n```');
+                const tag = cell.languageId === 'http' ? 'http'
+                    : cell.languageId === 'mermaid' ? 'mermaid'
+                    : cell.languageId === 'powershell' ? 'powershell' : 'csharp';
+                parts.push('```' + tag + '\n' + cell.value.replace(/\s+$/, '') + '\n```');
             } else {
                 parts.push(cell.value.replace(/\s+$/, ''));
             }
