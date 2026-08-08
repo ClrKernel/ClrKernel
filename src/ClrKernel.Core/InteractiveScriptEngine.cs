@@ -11,8 +11,10 @@ using Dotnet.Script.DependencyModel.Context;
 using Dotnet.Script.DependencyModel.NuGet;
 using Dotnet.Script.DependencyModel.Runtime;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.CSharp.Scripting.Hosting;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.CodeAnalysis.Scripting.Hosting;
 using Microsoft.Extensions.Logging;
@@ -297,8 +299,73 @@ public class InteractiveScriptEngine {
 
     private string PrepareStatement(string statement) {
         TryLoadReferenceFromScript(statement);
-        return statement;
+        return NormalizeTrailingExpression(statement);
     }
+
+    private static readonly CSharpParseOptions _scriptParseOptions =
+        new(kind: SourceCodeKind.Script, languageVersion: LanguageVersion.Preview);
+
+    /// <summary>
+    /// Makes a cell that is a single "value" expression print like the REPL
+    /// expects. Writing just <c>x</c> already returns its value, but adding the
+    /// semicolon a linter asks for (<c>x;</c>) is a C# error — a bare expression
+    /// (identifier, member access, literal, arithmetic, …) can't be a statement
+    /// (CS0201). When the whole cell is exactly one such expression statement, we
+    /// drop the trailing semicolon so it becomes the submission's value and is
+    /// displayed. Expressions that <em>are</em> legal statements — calls,
+    /// assignments, <c>new</c>, <c>++</c>/<c>--</c>, <c>await</c> — are left
+    /// untouched, so nothing that already works changes behavior.
+    /// </summary>
+    private static string NormalizeTrailingExpression(string statement) {
+        if (string.IsNullOrWhiteSpace(statement)) {
+            return statement;
+        }
+
+        SyntaxTree tree;
+        try {
+            tree = CSharpSyntaxTree.ParseText(statement, _scriptParseOptions);
+        } catch {
+            return statement;
+        }
+
+        if (tree.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error)) {
+            return statement; // don't touch code that doesn't even parse
+        }
+
+        if (tree.GetRoot() is not CompilationUnitSyntax root
+            || root.Members.Count != 1
+            || root.Members[0] is not GlobalStatementSyntax global
+            || global.Statement is not ExpressionStatementSyntax expressionStatement) {
+            return statement;
+        }
+
+        var semicolon = expressionStatement.SemicolonToken;
+        if (semicolon.IsMissing || semicolon.Span.Length == 0) {
+            return statement; // already an unterminated trailing expression — prints as-is
+        }
+
+        if (IsLegalStatementExpression(expressionStatement.Expression)) {
+            return statement; // a valid statement (call/assignment/…): keep normal semantics
+        }
+
+        // Remove just the trailing semicolon so the expression's value is returned.
+        var index = semicolon.SpanStart;
+        return statement.Substring(0, index) + statement.Substring(index + 1);
+    }
+
+    // Expressions C# allows as a statement (so `expr;` is valid and discards the
+    // value). Everything else would be CS0201 as a statement.
+    private static bool IsLegalStatementExpression(ExpressionSyntax expression) =>
+        expression is InvocationExpressionSyntax
+        || expression is ObjectCreationExpressionSyntax
+        || expression is ImplicitObjectCreationExpressionSyntax
+        || expression is AssignmentExpressionSyntax
+        || expression is AwaitExpressionSyntax
+        || expression is ConditionalAccessExpressionSyntax
+        || expression.IsKind(SyntaxKind.PostIncrementExpression)
+        || expression.IsKind(SyntaxKind.PostDecrementExpression)
+        || expression.IsKind(SyntaxKind.PreIncrementExpression)
+        || expression.IsKind(SyntaxKind.PreDecrementExpression);
 
     private ScriptOptions CreateScriptOptions() {
         var dir = AppContext.BaseDirectory;
