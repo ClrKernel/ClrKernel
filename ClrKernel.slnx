@@ -7,6 +7,7 @@
   <Project Path="src/ClrKernel.LanguageServices/ClrKernel.LanguageServices.csproj" />
   <Project Path="src/ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
   <Project Path="src/ClrKernel.Runner/ClrKernel.Runner.csproj" />
+  <Project Path="src/ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj" />
   <Project Path="src/ClrKernel.Server/ClrKernel.Server.csproj" />
   <Project Path="src/ClrKernel.Sql/ClrKernel.Sql.csproj" />
   <Project Path="src/ClrKernel/ClrKernel.csproj" />

@@ -189,6 +189,14 @@ public class InteractiveScriptEngine {
     public ClrKernel.Sql.SqlSession Sql =>
         _sqlSession ??= new ClrKernel.Sql.SqlSession();
 
+    // Lazily created on the first #!dax / #!dax-connect cell; holds the named cube
+    // (Analysis Services / Fabric) connections for DAX cells.
+    private ClrKernel.AnalysisServices.SsasSession _ssasSession;
+
+    /// <summary>The session's cube (Analysis Services) connections, created on demand.</summary>
+    public ClrKernel.AnalysisServices.SsasSession Cubes =>
+        _ssasSession ??= new ClrKernel.AnalysisServices.SsasSession();
+
 
     // A cell whose first non-blank line begins with #!dax (but not #!dax-connect)
     // runs DAX. Strips that selector line, capturing an inline --connections cube.
@@ -573,6 +581,7 @@ public class InteractiveScriptEngine {
                 typeof(DisplayData).Assembly, // ClrKernel.Primitives (display API)
                 typeof(ClrKernel.Mermaid.MermaidRenderer).Assembly, // ClrKernel.Mermaid (DisplayMermaid)
                 typeof(ClrKernel.Sql.SqlSession).Assembly, // ClrKernel.Sql (Sql.BulkCopy / Sql.Merge)
+                typeof(ClrKernel.AnalysisServices.Ssas).Assembly, // ClrKernel.AnalysisServices (Ssas.Connect)
             };
 
         options = options.AddReferences(references);
@@ -588,6 +597,7 @@ public class InteractiveScriptEngine {
             "ClrKernel.Mermaid", // DisplayMermaid() helper
             "ClrKernel.Sql", // SqlSession, MergeSpec (Sql.BulkCopy / Sql.Merge)
             "ClrKernel.Sql.Etl", // BulkCopyOptions, MergeSpec, DataTableBuilder
+            "ClrKernel.AnalysisServices", // Ssas.Connect / ProcessPartitions (SSAS/Fabric)
             "System",
             "System.IO",
             "System.Collections",

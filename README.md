@@ -134,6 +134,24 @@ cross-file dependencies). The `-- step` / `-- needs` directives and every
 `#!sql-*` magic and flag autocomplete (Ctrl+Space) — `-- needs` even completes
 step names from your other cells. See
 [samples/SqlPipeline.nb.md](samples/SqlPipeline.nb.md).
+### Analysis Services (SSAS / Fabric)
+
+C# cells can drive Tabular models — on-prem SQL Server Analysis Services, Azure
+Analysis Services, or Microsoft Fabric / Power BI semantic models — via the `Ssas`
+helper: query with DAX, read table/partition metadata, and process the model.
+
+```csharp
+var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");   // Integrated auth
+cube.Query("EVALUATE TOPN(100, 'Sales')");                   // DAX → interactive grid
+cube.Tables().DisplayTable();                                // model metadata
+cube.ProcessPartitions(new[] { ("Sales", "2026") });         // refresh a partition
+cube.Recalculate();
+```
+
+`Ssas.ConnectFabric("Workspace", "Model")` connects to a Fabric/Power BI semantic
+model with Entra auth. On-prem SSAS + Integrated auth + processing generally run
+on Windows (e.g. SQL Server Agent). See
+[samples/AnalysisServices.nb.md](samples/AnalysisServices.nb.md).
 
 Headless / scheduled execution:
 
