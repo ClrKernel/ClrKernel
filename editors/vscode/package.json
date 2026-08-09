@@ -147,6 +147,11 @@
         "command": "clrkernel.dax.addConnection",
         "title": "DAX: Add Cube…",
         "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.dax.editConnection",
+        "title": "DAX: Edit Cube…",
+        "category": "ClrKernel"
       }
     ],
     "menus": {

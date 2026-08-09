@@ -612,6 +612,9 @@ public sealed class LspServer {
             items.Add(new {
                 name,
                 describe = spec.Describe(),
+                server = spec.Server,
+                database = spec.Database,
+                auth = spec.Auth.ToString(),
                 isDefault = string.Equals(name, cubes.DefaultName, StringComparison.OrdinalIgnoreCase),
             });
         }
