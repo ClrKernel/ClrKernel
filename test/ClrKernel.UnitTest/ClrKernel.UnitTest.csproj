@@ -21,6 +21,9 @@
     <ProjectReference Include="..\..\src\ClrKernel.Mermaid\ClrKernel.Mermaid.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.PowerShell\ClrKernel.PowerShell.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Sql\ClrKernel.Sql.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Data\ClrKernel.Data.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Data.Oracle\ClrKernel.Data.Oracle.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Data.Odbc\ClrKernel.Data.Odbc.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.AnalysisServices\ClrKernel.AnalysisServices.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Fabric\ClrKernel.Fabric.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Primitives\ClrKernel.Primitives.csproj" />

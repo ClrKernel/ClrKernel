@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    EXPERIMENTAL / UNTESTED. This provider runs Java JDBC drivers inside .NET via IKVM.
+    It needs IKVM (Windows-centric: IkvmConfiguration resolves IKVM.Home from a win-x64
+    NuGet path) and a JDBC driver assembly you supply (e.g. the DataDirect OpenEdge
+    driver). It is intentionally NOT part of ClrKernel.slnx or the release pack so it
+    can't break CI on Linux. Build/validate it on Windows, then add it to the solution +
+    release workflow to publish. See the JDBC section of the handoff.
+  -->
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Data.Jdbc</RootNamespace>
+    <PackageId>ClrKernel.Data.Jdbc</PackageId>
+    <Description>EXPERIMENTAL JDBC database provider for ClrKernel: run Java JDBC drivers inside .NET (via IKVM) and query them with the same fluent API as the other providers. Requires IKVM (currently Windows-centric) and a JDBC driver assembly you supply. Includes an OpenEdge helper (DataDirect driver). Opt-in and unverified — validate on Windows with your driver before relying on it.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,JDBC,OpenEdge,IKVM,Database,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="IKVM" Version="8.11.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Data/ClrKernel.Data.csproj" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

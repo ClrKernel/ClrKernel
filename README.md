@@ -134,6 +134,52 @@ cross-file dependencies). The `-- step` / `-- needs` directives and every
 `#!sql-*` magic and flag autocomplete (Ctrl+Space) — `-- needs` even completes
 step names from your other cells. See
 [samples/SqlPipeline.nb.md](samples/SqlPipeline.nb.md).
+
+### Other databases (Oracle, ODBC, JDBC)
+
+The fluent query API isn't SQL-Server-only. Opt-in provider packages give the exact
+same `Query(sql).Results()` experience — interactive grid + dynamic rows, typed
+`.Results<T>()`, `.Table()`, `.Transaction()` — against other engines. Load a
+provider per notebook with `#r "nuget: …"` so its driver isn't pulled unless you use
+it:
+
+```csharp
+#r "nuget: ClrKernel.Data.Oracle"
+using ClrKernel.Data.Oracle;
+var erp = Oracle.Connect("orahost", 1521, "ORCL", "scott", "oracle:erp");   // password from the secret store
+erp.Query("select * from emp").Results()
+```
+
+```csharp
+#r "nuget: ClrKernel.Data.Odbc"
+using ClrKernel.Data.Odbc;
+var db = Odbc.FromConnectionString("Driver={PostgreSQL Unicode};Server=host;Database=app;");
+db.Query("select * from public.orders").Results<Order>();
+```
+
+`ClrKernel.Data.Jdbc` (experimental) runs Java JDBC drivers via IKVM, including an
+`OpenEdge` helper — you supply the driver assembly; validate on Windows before
+relying on it.
+
+**Config-file connections.** Keep connection settings out of notebooks in a
+`connections.json` (searched up the folder tree; `$type` selects the provider,
+passwords are secret references resolved from the OS store / env var):
+
+```json
+{
+  "erp": { "$type": "Oracle", "server": "orahost", "port": 1521,
+           "serviceName": "ORCL", "userId": "scott",
+           "password": { "secret": "oracle:erp" } }
+}
+```
+
+```csharp
+var erp = Oracle.FromConfig("erp");   // Odbc.FromConfig(...) too
+```
+
+All providers share the `ClrKernel.Data` core (the same secret store and result grid
+as `#!sql` cells). See [samples/MultiProvider.nb.md](samples/MultiProvider.nb.md).
+
 ### Analysis Services (SSAS / Fabric)
 
 C# cells can drive Tabular models — on-prem SQL Server Analysis Services, Azure

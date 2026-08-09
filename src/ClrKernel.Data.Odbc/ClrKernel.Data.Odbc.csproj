@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Data.Odbc</RootNamespace>
+    <PackageId>ClrKernel.Data.Odbc</PackageId>
+    <Description>ODBC database provider for ClrKernel: connect to any ODBC data source (a DSN or driver + connection string) from C# notebook cells with the same fluent query API as the other providers — Odbc.FromConnectionString(cs).Query(sql).Results(). Built on System.Data.Odbc; the ODBC driver for your database must be installed on the machine. An opt-in package (add via #r "nuget: ClrKernel.Data.Odbc").</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,ODBC,Database,ADO,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Data.Odbc" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Data/ClrKernel.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

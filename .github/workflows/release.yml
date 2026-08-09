@@ -72,6 +72,9 @@ jobs:
           dotnet pack src/ClrKernel.Sql/ClrKernel.Sql.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Fabric/ClrKernel.Fabric.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Data/ClrKernel.Data.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Data.Oracle/ClrKernel.Data.Oracle.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Data.Odbc/ClrKernel.Data.Odbc.csproj -c Release --no-build -o artifacts/pkg
           ls -l artifacts/pkg
 
       # Trusted publishing: exchange the GitHub OIDC token for a short-lived
