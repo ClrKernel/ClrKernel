@@ -622,6 +622,7 @@ public class InteractiveScriptEngine {
                 typeof(ClrKernel.Mermaid.MermaidRenderer).Assembly, // ClrKernel.Mermaid (DisplayMermaid)
                 typeof(ClrKernel.Sql.SqlSession).Assembly, // ClrKernel.Sql (Sql.BulkCopy / Sql.Merge)
                 typeof(ClrKernel.AnalysisServices.Ssas).Assembly, // ClrKernel.AnalysisServices (Ssas.Connect)
+                typeof(ClrKernel.Fabric.FabricConnection).Assembly // ClrKernel.Fabric (Fabric.Connect / warehouse bulk-insert)
             };
 
         options = options.AddReferences(references);
@@ -638,6 +639,7 @@ public class InteractiveScriptEngine {
             "ClrKernel.Sql", // SqlSession, MergeSpec (Sql.BulkCopy / Sql.Merge)
             "ClrKernel.Sql.Etl", // BulkCopyOptions, MergeSpec, DataTableBuilder
             "ClrKernel.AnalysisServices", // Ssas.Connect / ProcessPartitions (SSAS/Fabric)
+            "ClrKernel.Fabric", // Fabric.Connect() → warehouse bulk-insert / reload-batch
             "System",
             "System.IO",
             "System.Collections",

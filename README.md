@@ -170,6 +170,50 @@ EVALUATE TOPN(100, SUMMARIZECOLUMNS('Date'[Year], "Revenue", [Total Sales]), [Re
 `#!dax-connect --fabric --workspace W --model M` targets a Fabric / Power BI
 semantic model. See [samples/Dax.nb.md](samples/Dax.nb.md).
 
+### Fabric warehouse writes
+
+C# cells can write to **Microsoft Fabric Warehouse** tables via the `Fabric`
+helper (`ClrKernel.Fabric`). It bulk-inserts a data reader by staging Parquet to a
+lakehouse in OneLake and loading it with `OPENROWSET` — the fast path for large
+loads — and it can create the target table from the reader's schema using
+Fabric-supported types (UTF-8 `varchar`, `datetime2` — never `nvarchar`). All auth
+is Microsoft Entra; no passwords are handled.
+
+```csharp
+var wh = Fabric.Connect()                       // interactive / default Entra sign-in
+    .Workspace("Analytics")
+    .Warehouse("SalesDW")
+    .WithStaging("Lakehouse_Staging");          // a lakehouse in the same workspace
+
+// Bulk-insert any IDataReader (e.g. a SQL Server query via ClrKernel.Sql):
+using var conn = Sql.OpenConnection("analytics");
+using var cmd = new SqlCommand("SELECT * FROM dbo.Orders", conn);
+using var reader = cmd.ExecuteReader();
+wh.BulkInsert(reader, "dbo.Orders", createIfMissing: true);
+```
+
+The **reload-batch** wrapper deletes a segment and reloads it for a set of tables
+in parallel — each table gets a fresh source reader from your factory:
+
+```csharp
+var requests = new[] {
+    new FabricReloadRequest { TableName = "FactSales", SegmentFilter = "Year = 2026" },
+    new FabricReloadRequest { TableName = "FactReturns", SegmentFilter = "Year = 2026" },
+};
+var results = wh.ReloadBatch(
+    requests,
+    req => {
+        var c = Sql.OpenConnection("analytics");
+        var q = new SqlCommand($"SELECT * FROM {req.TableName} WHERE {req.SegmentFilter}", c);
+        return q.ExecuteReader(CommandBehavior.CloseConnection); // reader owns/closes the connection
+    },
+    maxParallelism: 4);
+results.DisplayTable();
+```
+
+For a service principal, use `Fabric.ClientSecret(tenantId, clientId, secret)`. See
+[samples/FabricWarehouse.nb.md](samples/FabricWarehouse.nb.md). (Fabric execution
+needs a live tenant, so validate against your own workspace.)
 
 Headless / scheduled execution:
 

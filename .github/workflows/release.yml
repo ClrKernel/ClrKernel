@@ -1,8 +1,8 @@
 name: Release
 
-# Pushing a tag like v0.5.0 runs the full test suite, packs all six packages,
-# publishes them to nuget.org, and creates the GitHub Release with the
-# .nupkg files attached.
+# Pushing a tag like v0.5.0 runs the full test suite, packs every publishable
+# package (all carry PackageId + README + icon), publishes them to nuget.org,
+# and creates the GitHub Release with the .nupkg files attached.
 on:
   push:
     tags: ['v*']
@@ -66,6 +66,12 @@ jobs:
           dotnet pack src/ClrKernel.Server/ClrKernel.Server.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Runner/ClrKernel.Runner.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Primitives/ClrKernel.Primitives.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Http/ClrKernel.Http.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Mermaid/ClrKernel.Mermaid.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.PowerShell/ClrKernel.PowerShell.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Sql/ClrKernel.Sql.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Fabric/ClrKernel.Fabric.csproj -c Release --no-build -o artifacts/pkg
           ls -l artifacts/pkg
 
       # Trusted publishing: exchange the GitHub OIDC token for a short-lived
