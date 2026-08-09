@@ -26,7 +26,8 @@ var app = Sql.Connection("sql01", "AppDb", "svc_reader", "sql:app-reader");
 var azure = Sql.AzureConnection("myserver.database.windows.net", "Sales");
 
 // Reuse a connection already defined with #!sql-connect:
-var analytics = Sql.Database("analytics");
+var reused = Sql.Database("analytics");
+// (a #!sql-connect --name analytics cell also binds `analytics` for you directly)
 
 // Full connection string (escape hatch):
 var raw = Sql.ConnectionString("Server=...;Database=...;Trusted_Connection=True;");

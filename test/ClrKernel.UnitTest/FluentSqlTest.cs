@@ -186,6 +186,45 @@ public class FluentSqlEngineTest {
     }
 }
 
+[TestClass]
+public class SqlConnectVariableTest {
+    [TestMethod]
+    public void Auto_variable_from_valid_name() {
+        Assert.AreEqual("analytics",
+            SqlDirectives.ParseConnect("#!sql-connect --name analytics --server s --database d").Variable);
+    }
+
+    [TestMethod]
+    public void No_variable_when_name_is_not_an_identifier_or_is_a_keyword() {
+        Assert.IsNull(SqlDirectives.ParseConnect("#!sql-connect --name sql-warehouse --server s").Variable);
+        Assert.IsNull(SqlDirectives.ParseConnect("#!sql-connect --name default --server s").Variable);
+    }
+
+    [TestMethod]
+    public void Explicit_var_as_and_no_var() {
+        Assert.AreEqual("dw", SqlDirectives.ParseConnect("#!sql-connect --name sql-warehouse --var dw --server s").Variable);
+        Assert.AreEqual("dw", SqlDirectives.ParseConnect("#!sql-connect --name analytics --as dw --server s").Variable);
+        Assert.IsNull(SqlDirectives.ParseConnect("#!sql-connect --name analytics --no-var --server s").Variable);
+    }
+
+    [TestMethod]
+    public void Invalid_var_throws() {
+        Assert.ThrowsExactly<FormatException>(
+            () => SqlDirectives.ParseConnect("#!sql-connect --name a --var 1bad --server s"));
+    }
+
+    [TestMethod]
+    public async System.Threading.Tasks.Task Engine_binds_variable_usable_from_a_csharp_cell() {
+        var engine = new ClrKernel.Core.InteractiveScriptEngine(
+            System.IO.Directory.GetCurrentDirectory(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        // Registers the connection AND binds `dw` (a SqlDatabase) — no server contact.
+        await engine.ExecuteAsync("#!sql-connect --name analytics --var dw --server s --database d --default");
+        var result = await engine.ExecuteAsync("#!csharp\ndw.Name");
+        var text = result is DisplayData d && d.Data.TryGetValue("text/plain", out var t) ? t?.ToString() : result?.ToString();
+        StringAssert.Contains(text, "analytics");
+    }
+}
+
 // ---- Live integration tests (gated on CLRKERNEL_TEST_SQL) ------------------
 
 [TestClass]

@@ -20,6 +20,8 @@ public static class SqlDirectives {
         var spec = new SqlConnectionSpec();
         bool isDefault = false;
         bool authExplicit = false;
+        string explicitVariable = null;
+        bool variableFlagSeen = false;
 
         for (var i = 0; i < tokens.Count; i++) {
             var t = tokens[i];
@@ -35,6 +37,13 @@ public static class SqlDirectives {
                 case "--encrypt": spec.Encrypt = ParseBool(Next()); break;
                 case "--trust-cert": case "--trust-server-certificate": spec.TrustServerCertificate = true; break;
                 case "--default": isDefault = true; break;
+                case "--var":
+                case "--variable":
+                case "--as":
+                    explicitVariable = Next();
+                    variableFlagSeen = true;
+                    break;
+                case "--no-var": case "--no-variable": variableFlagSeen = true; break;
                 case "--auth": case "-a": spec.Auth = ParseAuth(Next()); authExplicit = true; break;
                 case "--option": {
                         var kv = Next();
@@ -67,8 +76,46 @@ public static class SqlDirectives {
                 spec.Auth = SqlAuthMode.SqlPassword;
             }
         }
-        return new SqlConnectDirective(spec, isDefault);
+        var variable = ResolveVariable(explicitVariable, variableFlagSeen, spec.Name);
+        return new SqlConnectDirective(spec, isDefault, variable);
     }
+
+    // Decides the C# variable to bind: an explicit --var (validated), else the
+    // connection --name when it is a valid, non-keyword identifier, else none.
+    private static string ResolveVariable(string explicitVariable, bool variableFlagSeen, string name) {
+        if (!string.IsNullOrEmpty(explicitVariable)) {
+            if (!IsValidIdentifier(explicitVariable)) {
+                throw new FormatException($"--var '{explicitVariable}' is not a valid C# identifier.");
+            }
+            return explicitVariable;
+        }
+        if (variableFlagSeen) {
+            return null; // --no-var: suppress the auto binding
+        }
+        return IsValidIdentifier(name) && !_cSharpKeywords.Contains(name) ? name : null;
+    }
+
+    internal static bool IsValidIdentifier(string s) {
+        if (string.IsNullOrEmpty(s) || !(char.IsLetter(s[0]) || s[0] == '_')) {
+            return false;
+        }
+        for (var i = 1; i < s.Length; i++) {
+            if (!(char.IsLetterOrDigit(s[i]) || s[i] == '_')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static readonly HashSet<string> _cSharpKeywords = new HashSet<string>(StringComparer.Ordinal) {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const",
+        "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit", "extern",
+        "false", "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int", "interface",
+        "internal", "is", "lock", "long", "namespace", "new", "null", "object", "operator", "out", "override",
+        "params", "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof",
+        "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true", "try", "typeof", "uint",
+        "ulong", "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile", "while", "var",
+    };
 
     private static SqlAuthMode ParseAuth(string value) {
         switch (value.ToLowerInvariant()) {
@@ -210,12 +257,18 @@ public static class SqlDirectives {
 
 /// <summary>A parsed <c>#!sql-connect</c>: the spec plus whether it is the default.</summary>
 public sealed class SqlConnectDirective {
-    public SqlConnectDirective(SqlConnectionSpec spec, bool isDefault) {
+    public SqlConnectDirective(SqlConnectionSpec spec, bool isDefault, string variable = null) {
         Spec = spec;
         IsDefault = isDefault;
+        Variable = variable;
     }
     public SqlConnectionSpec Spec { get; }
     public bool IsDefault { get; }
+
+    /// <summary>The C# identifier to bind this connection to for later <c>#!csharp</c>
+    /// cells (a <c>SqlDatabase</c>), or null when none applies. Comes from
+    /// <c>--var</c>, or the connection's <c>--name</c> when that is a valid identifier.</summary>
+    public string Variable { get; }
 }
 
 /// <summary>A parsed <c>#!sql</c> cell: the chosen connection name (or null) and the SQL.</summary>

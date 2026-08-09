@@ -54,8 +54,9 @@ and can `#!import` further files.
 
 Set a cell's language to **SQL** (or start it with `#!sql`) to run T-SQL against
 Microsoft SQL Server. You get T-SQL highlighting, live syntax checking,
-keyword/function completion, and results as the same interactive grid (sort,
-filter, Analyze) that C# query results use.
+keyword/function completion, and results as the same interactive grid (sort, a
+global filter, per-column filters and value pickers that combine, and Analyze)
+that C# query results use.
 
 Connections are **named** and **secret-free** — passwords never go in the
 notebook. Define them with `#!sql-connect`, or use the connection button next to
@@ -72,7 +73,10 @@ Linux libsecret):
 password comes from the secret store (or the `CLRKERNEL_SECRET_SQL_<NAME>` env
 var for headless runs). A cell targets the default connection, or one named with
 a leading `-- connections <name>` comment. Multiple connections can be used
-across cells in one notebook. See [samples/Sql.nb.md](samples/Sql.nb.md).
+across cells in one notebook. A `#!sql-connect --name analytics` also binds a C#
+variable `analytics` (when the name is a valid identifier) so C# cells can query
+it straight away; use `--var <name>` for a custom variable or `--no-var` to skip.
+See [samples/Sql.nb.md](samples/Sql.nb.md).
 
 #### Querying from C#
 

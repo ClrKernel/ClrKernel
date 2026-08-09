@@ -562,7 +562,7 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/addConnection", UseSingleObjectParameterDeserialization = true)]
     public object SqlAddConnection(SqlConnectParams p) {
         try {
-            var spec = _engine.Sql.Connect(p?.Directive ?? string.Empty);
+            var spec = _engine.Sql.Connect(p?.Directive ?? string.Empty).Spec;
             if (!string.IsNullOrEmpty(p?.Secret)) {
                 _engine.Sql.StoreSecret(spec.EffectiveSecretRef, p.Secret);
             }

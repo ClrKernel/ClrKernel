@@ -28,11 +28,12 @@ public sealed partial class SqlSession {
     public SqlConnectionRegistry Connections => _registry;
     public SecretStore Secrets => _secrets;
 
-    /// <summary>Registers a connection from a <c>#!sql-connect</c> line.</summary>
-    public SqlConnectionSpec Connect(string directiveLine) {
+    /// <summary>Registers a connection from a <c>#!sql-connect</c> line and returns the
+    /// parsed directive (spec, default flag, and any C# variable to bind).</summary>
+    public SqlConnectDirective Connect(string directiveLine) {
         var directive = SqlDirectives.ParseConnect(directiveLine);
         _registry.Register(directive.Spec, directive.IsDefault);
-        return directive.Spec;
+        return directive;
     }
 
     /// <summary>Registers a pre-built spec (used by the connection UI).</summary>

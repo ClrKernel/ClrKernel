@@ -4,8 +4,9 @@ ClrKernel runs **SQL cells** against Microsoft SQL Server. In a notebook, set a
 cell's language to **SQL** (or start it with the `#!sql` selector); in a plain
 `.nb.md` file, use a ` ```sql ` fenced block. You get T-SQL syntax highlighting,
 live syntax checking as you type, keyword/function completion, and results
-rendered as an interactive grid (sort, filter, and an Analyze panel) — the same
-grid C# query results use.
+rendered as an interactive grid (sort, a global filter, a per-column filter row,
+a per-column value picker, and an Analyze panel) — the same grid C# query
+results use.
 
 ## Connect
 
@@ -24,6 +25,26 @@ never written into the notebook.
 (Azure AD) sign-in on macOS/Linux. For a SQL login (`--auth sql`), store the
 password once from the connection button, or set the
 `CLRKERNEL_SECRET_SQL_<NAME>` environment variable for headless / CI runs.
+
+## Use a connection from C#
+
+A `#!sql-connect` connection is also handed to C# cells as a variable. When the
+`--name` is a valid C# identifier, ClrKernel binds a variable of that name
+automatically, so you can drop straight into the fluent query API:
+
+```csharp
+// `analytics` was defined by the #!sql-connect cell above:
+analytics.Query("select top 100 * from dbo.Orders order by OrderDate desc").Results()
+```
+
+If the name isn't identifier-safe (e.g. `--name my-dw`), add `--var` to pick the
+variable name yourself, or `--no-var` to skip the binding entirely:
+
+```sql
+#!sql-connect --name my-dw --server sql-warehouse --database reports --var dw
+```
+
+Either way `Sql.Database("<name>")` still resolves the connection by name.
 
 ## Query
 
@@ -49,5 +70,8 @@ servers:
 SELECT COUNT(*) AS Orders, SUM(Total) AS Revenue FROM dbo.Orders;
 ```
 
-Results come back as an interactive grid: click a column header to sort, use the
-filter row to narrow rows, and open **Analyze** for per-column stats.
+Results come back as an interactive grid: click a column header to sort, type in
+the top box to filter across all columns, type in a column's own filter box (or
+open its ▾ value picker to check specific values) to narrow individual columns —
+all filters combine — and open **Analyze** for per-column stats. **Clear** resets
+every filter at once.

@@ -355,13 +355,28 @@ public class InteractiveScriptEngine {
         // short confirmation listing what is now available.
         if (TryStripSqlConnect(statement, out var connectLines)) {
             var names = new System.Collections.Generic.List<string>();
+            var bound = new System.Collections.Generic.List<string>();
             foreach (var line in connectLines) {
-                names.Add(Sql.Connect(line).Name);
+                var directive = Sql.Connect(line);
+                names.Add(directive.Spec.Name);
+                // Bind a C# variable so #!csharp cells can use the connection directly,
+                // e.g. `dw.Query("...").Results()`. The variable is a SqlDatabase for the
+                // just-registered connection.
+                if (!string.IsNullOrEmpty(directive.Variable)) {
+                    await EnsureScriptStateAsync().ConfigureAwait(false);
+                    var binding = $"var {directive.Variable} = Sql.Database({CSharpStringLiteral(directive.Spec.Name)});";
+                    _scriptState = await _scriptState.ContinueWithAsync(binding, _scriptOptions).ConfigureAwait(false);
+                    _submissions.Add(binding);
+                    bound.Add(directive.Variable);
+                }
             }
-            var summary = names.Count == 1
-                ? $"Connected: {names[0]} (default: {Sql.Connections.DefaultName})"
-                : $"Connected: {string.Join(", ", names)} (default: {Sql.Connections.DefaultName})";
-            return await Task.FromResult(new ClrKernel.Primitives.DisplayData(summary));
+            var label = names.Count == 1 ? $"Connected: {names[0]}" : $"Connected: {string.Join(", ", names)}";
+            if (bound.Count > 0) {
+                label += bound.Count == 1
+                    ? $" → C# variable `{bound[0]}`"
+                    : $" → C# variables {string.Join(", ", bound.ConvertAll(b => "`" + b + "`"))}";
+            }
+            return new ClrKernel.Primitives.DisplayData($"{label} (default: {Sql.Connections.DefaultName})");
         }
 
         // #!sql-bulk copies rows from one connection into a table on another; the
@@ -454,26 +469,8 @@ public class InteractiveScriptEngine {
     private async Task<object> ExecuteCoreAsync(string statement) {
         statement = PrepareStatement(statement);
 
-        if (_scriptState == null) {
-            string[] usingStatements = DefaultUsingStatics;
-
-            var references = _references;
-
-            if (references != null && references.Any()) {
-                foreach (var line in references) {
-                    if (line.StartsWith("#r ") || line.StartsWith("#load ")) {
-                        TryLoadReferenceFromScript(line);
-                    }
-                }
-
-                usingStatements = references.Union(usingStatements).ToArray();
-            }
-
-            _scriptState = await CSharpScript.RunAsync(string.Join("\r\n", usingStatements), _scriptOptions, globals: _globals);
-            _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
-        } else {
-            _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
-        }
+        await EnsureScriptStateAsync();
+        _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
 
         // Record the successfully-compiled submission (this line is only reached
         // when the submission compiled and ran) so language services can rebuild
@@ -499,6 +496,30 @@ public class InteractiveScriptEngine {
     public object Execute(string statement) {
         return ExecuteAsync(statement).Result;
     }
+
+    // Initializes the persistent C# script state (default usings + any #r/#load
+    // references) once, on first use. Shared by #!csharp cells and by side-effect
+    // submissions such as the variable bound after #!sql-connect.
+    private async Task EnsureScriptStateAsync() {
+        if (_scriptState != null) {
+            return;
+        }
+        string[] usingStatements = DefaultUsingStatics;
+        var references = _references;
+        if (references != null && references.Any()) {
+            foreach (var line in references) {
+                if (line.StartsWith("#r ") || line.StartsWith("#load ")) {
+                    TryLoadReferenceFromScript(line);
+                }
+            }
+            usingStatements = references.Union(usingStatements).ToArray();
+        }
+        _scriptState = await CSharpScript.RunAsync(string.Join("\r\n", usingStatements), _scriptOptions, globals: _globals);
+    }
+
+    // A C# string literal for an arbitrary value (quotes/backslashes escaped).
+    private static string CSharpStringLiteral(string value) =>
+        "\"" + (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
     private bool TryLoadReferenceFromScript(string statement) {
         // A #r / #load / #i (nuget source) directive can appear on any line of a
