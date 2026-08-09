@@ -30,6 +30,7 @@ returns the rows as objects for further C# processing.
 ```csharp
 cube.Query("EVALUATE TOPN(100, 'Sales', 'Sales'[Amount], DESC)")
 ```
+
 ```csharp
 var rows = cube.QueryRows("EVALUATE ROW(\"Total\", SUM('Sales'[Amount]))");
 var total = rows[0]["[Total]"];
@@ -43,6 +44,7 @@ straight from the model DMVs:
 ```csharp
 cube.Tables().DisplayTable()
 ```
+
 ```csharp
 cube.Partitions().DisplayTable()
 ```

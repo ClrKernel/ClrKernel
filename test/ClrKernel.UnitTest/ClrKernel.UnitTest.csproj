@@ -12,7 +12,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
     <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.10" />
+    <!-- Pin the patched native SQLite: Microsoft.Data.Sqlite pulls
+         SQLitePCLRaw.lib.e_sqlite3 2.1.10, still under NU1903 advisory
+         GHSA-2m69-gcr7-jv3q; 2.1.12 is the fixed build. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,8 +24,8 @@
     <ProjectReference Include="..\..\src\ClrKernel.Http\ClrKernel.Http.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Mermaid\ClrKernel.Mermaid.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.PowerShell\ClrKernel.PowerShell.csproj" />
-    <ProjectReference Include="..\..\src\ClrKernel.Sql\ClrKernel.Sql.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Data\ClrKernel.Data.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Sql\ClrKernel.Sql.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Data.Oracle\ClrKernel.Data.Oracle.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Data.Odbc\ClrKernel.Data.Odbc.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.AnalysisServices\ClrKernel.AnalysisServices.csproj" />
