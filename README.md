@@ -105,6 +105,35 @@ from the secret store); `Sql.AzureConnection(...)` for Entra, or
 `Sql.Database("analytics")` to reuse a registered `#!sql-connect` connection. See
 [samples/SqlQuery.nb.md](samples/SqlQuery.nb.md).
 
+#### Bulk copy & MERGE (ETL)
+
+SQL cells can also move and upsert data, as cell magics or a C# API (both share
+the same connections). `#!sql-bulk` streams a query's rows into a table (with a
+live progress bar); `#!sql-merge` upserts a source into a target on key columns
+and reports inserted/updated/deleted counts:
+
+```sql
+#!sql-bulk  --from analytics --query "SELECT * FROM dbo.Orders" --to warehouse --table stg.Orders --truncate
+#!sql-merge --connection warehouse --target dbo.Customers --source stg.Customers --on Id
+```
+
+From C# cells, `Sql` bulk-loads any collection (POCOs, dictionaries, scalar
+arrays) and runs MERGEs — `Sql.BulkCopy("warehouse", "dbo.Items", rows)`,
+`Sql.Merge("warehouse", new MergeSpec { Target = "dbo.Customers", Source =
+"stg.Customers", KeyColumns = new[] { "Id" } })`. See
+[samples/SqlEtl.nb.md](samples/SqlEtl.nb.md).
+
+#### Pipelines & deployment
+
+Annotate SQL cells with `-- step <name>` and `-- needs <a, b>` to build an ETL
+pipeline. `#!sql-run` executes the steps as a dependency DAG — independent steps
+run in parallel, a failure skips everything downstream, and a live status board
+tracks each step. `#!sql-deploy --path <folder>` deploys a folder of `.sql`
+definitions idempotently (`CREATE OR ALTER`, retried across passes to resolve
+cross-file dependencies). The `-- step` / `-- needs` directives and every
+`#!sql-*` magic and flag autocomplete (Ctrl+Space) — `-- needs` even completes
+step names from your other cells. See
+[samples/SqlPipeline.nb.md](samples/SqlPipeline.nb.md).
 
 Headless / scheduled execution:
 

@@ -335,10 +335,26 @@ public class InteractiveScriptEngine {
             return await Task.FromResult(new ClrKernel.Primitives.DisplayData(summary));
         }
 
+        // #!sql-bulk copies rows from one connection into a table on another; the
+        // cell returns a summary (a progress bar streams during the copy).
+        if (TryStripFirstLineSelector(statement, "#!sql-bulk", out var bulkLine)) {
+            return await Task.FromResult(Sql.ExecuteBulk(bulkLine));
+        }
+
+        // #!sql-merge upserts a target from a source and returns per-action counts.
+        if (TryStripFirstLineSelector(statement, "#!sql-merge", out var mergeLine)) {
+            return await Task.FromResult(Sql.ExecuteMerge(mergeLine));
+        }
+
         // #!sql-run executes the registered pipeline steps as a dependency DAG
         // (independent steps run in parallel) with a live status board.
         if (TryStripFirstLineSelector(statement, "#!sql-run", out var runLine)) {
             return await Task.FromResult(Sql.ExecuteRun(runLine));
+        }
+
+        // #!sql-deploy applies a folder of .sql definitions idempotently.
+        if (TryStripFirstLineSelector(statement, "#!sql-deploy", out var deployLine)) {
+            return await Task.FromResult(Sql.ExecuteDeploy(deployLine));
         }
 
         // #!sql cells run T-SQL against a named (or default) connection; each result
@@ -571,6 +587,7 @@ public class InteractiveScriptEngine {
             "ClrKernel.Primitives", // DisplayAs/DisplayedValue live updates
             "ClrKernel.Mermaid", // DisplayMermaid() helper
             "ClrKernel.Sql", // SqlSession, MergeSpec (Sql.BulkCopy / Sql.Merge)
+            "ClrKernel.Sql.Etl", // BulkCopyOptions, MergeSpec, DataTableBuilder
             "System",
             "System.IO",
             "System.Collections",
