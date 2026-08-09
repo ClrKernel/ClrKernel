@@ -190,7 +190,12 @@
     "roslyn",
     "interactive",
     "http",
-    "rest"
+    "rest",
+    "sql",
+    "dax",
+    "database",
+    "powershell",
+    "mermaid"
   ],
   "bugs": {
     "url": "https://github.com/ClrKernel/ClrKernel/issues"
