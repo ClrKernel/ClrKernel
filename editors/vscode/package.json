@@ -134,6 +134,11 @@
         "category": "ClrKernel"
       },
       {
+        "command": "clrkernel.sql.editConnection",
+        "title": "SQL: Edit Connection…",
+        "category": "ClrKernel"
+      },
+      {
         "command": "clrkernel.dax.selectConnection",
         "title": "DAX: Select Cube for Cell",
         "category": "ClrKernel"

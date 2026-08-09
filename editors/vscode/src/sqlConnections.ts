@@ -48,6 +48,7 @@ export class SqlConnectionUi {
             vscode.notebooks.registerNotebookCellStatusBarItemProvider(NOTEBOOK_TYPE, this.statusBarProvider()),
             vscode.commands.registerCommand('clrkernel.sql.selectConnection', (cell?: vscode.NotebookCell) => this.selectConnection(cell)),
             vscode.commands.registerCommand('clrkernel.sql.addConnection', (cell?: vscode.NotebookCell) => this.addConnection(cell)),
+            vscode.commands.registerCommand('clrkernel.sql.editConnection', (cell?: vscode.NotebookCell) => this.editConnection(cell)),
             this.changeEmitter,
         );
     }
@@ -102,7 +103,7 @@ export class SqlConnectionUi {
             return;
         }
 
-        type Pick = vscode.QuickPickItem & { conn?: string; action?: 'add' };
+        type Pick = vscode.QuickPickItem & { conn?: string; action?: 'add' | 'edit' };
         const picks: Pick[] = list.connections.map((c) => ({
             label: '$(database) ' + c.name,
             description: c.describe + (c.isDefault ? '  •  default' : ''),
@@ -112,6 +113,9 @@ export class SqlConnectionUi {
             picks.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
         }
         picks.push({ label: '$(add) Add connection…', action: 'add' });
+        if (list.connections.length > 0) {
+            picks.push({ label: '$(edit) Edit connection…', action: 'edit' });
+        }
 
         const pick = await vscode.window.showQuickPick(picks, {
             placeHolder: list.connections.length > 0
@@ -125,6 +129,10 @@ export class SqlConnectionUi {
             await this.addConnection(cell);
             return;
         }
+        if (pick.action === 'edit') {
+            await this.editConnection(cell);
+            return;
+        }
         if (pick.conn) {
             await applyConnection(cell, pick.conn);
             this.changeEmitter.fire();
@@ -133,22 +141,81 @@ export class SqlConnectionUi {
 
     private async addConnection(cellArg?: vscode.NotebookCell): Promise<void> {
         const cell = this.resolveCell(cellArg);
+        if (cell) {
+            await this.runConnectionWizard(cell);
+        }
+    }
+
+    /** Pick an existing connection and re-run the wizard pre-filled with its settings. */
+    private async editConnection(cellArg?: vscode.NotebookCell): Promise<void> {
+        const cell = this.resolveCell(cellArg);
         if (!cell) {
             return;
         }
 
-        const name = await vscode.window.showInputBox({
-            title: 'New SQL connection (1/5)',
-            prompt: 'Connection name (used in cells, e.g. analytics)',
-            validateInput: (v) => (/^\w[\w-]*$/.test(v) ? undefined : 'Use letters, digits, _ or -'),
-        });
-        if (!name) {
+        let list: ListResult;
+        try {
+            const client = await this.controller.getClient(cell.notebook);
+            list = await client.request<ListResult>('clrkernel/sql/listConnections', {});
+        } catch (e) {
+            void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
+            return;
+        }
+        if (list.connections.length === 0) {
+            void vscode.window.showInformationMessage('There are no SQL connections to edit yet.');
             return;
         }
 
+        // If more than one, ask which; if the cell already targets one, offer it first.
+        let target = list.connections[0];
+        if (list.connections.length > 1) {
+            const current = currentConnection(cell.document.getText());
+            const ordered = [...list.connections].sort((a, b) =>
+                (a.name === current ? -1 : 0) - (b.name === current ? -1 : 0));
+            const pick = await vscode.window.showQuickPick(
+                ordered.map((c) => ({
+                    label: '$(database) ' + c.name,
+                    description: c.describe + (c.name === current ? '  •  this cell' : ''),
+                    conn: c,
+                })),
+                { title: 'Edit SQL connection', placeHolder: 'Which connection?' },
+            );
+            if (!pick) {
+                return;
+            }
+            target = pick.conn;
+        }
+
+        await this.runConnectionWizard(cell, target);
+    }
+
+    // Add (existing == null) and Edit (existing set) share this wizard. When editing,
+    // the name is fixed, server/database/auth are pre-filled, and the password can be
+    // left blank to keep the one already in the OS credential store.
+    private async runConnectionWizard(cell: vscode.NotebookCell, existing?: SqlConnectionInfo): Promise<void> {
+        const editing = existing !== undefined;
+        const verb = editing ? 'Edit' : 'New';
+        let step = 1;
+        const steps = editing ? 5 : 6; // editing skips the name prompt
+        const title = () => `${verb} SQL connection (${step++}/${steps})`;
+
+        let name = existing?.name ?? '';
+        if (!editing) {
+            const entered = await vscode.window.showInputBox({
+                title: title(),
+                prompt: 'Connection name (used in cells, e.g. analytics)',
+                validateInput: (v) => (/^\w[\w-]*$/.test(v) ? undefined : 'Use letters, digits, _ or -'),
+            });
+            if (!entered) {
+                return;
+            }
+            name = entered;
+        }
+
         const server = await vscode.window.showInputBox({
-            title: 'New SQL connection (2/5)',
+            title: title(),
             prompt: 'Server / host (e.g. sql-warehouse or tcp:host,1433)',
+            value: existing?.server,
             ignoreFocusOut: true,
         });
         if (!server) {
@@ -156,25 +223,49 @@ export class SqlConnectionUi {
         }
 
         const database = await vscode.window.showInputBox({
-            title: 'New SQL connection (3/5)',
+            title: title(),
             prompt: 'Database (optional)',
+            value: existing?.database,
             ignoreFocusOut: true,
         });
         if (database === undefined) {
             return;
         }
 
-        const authPick = await vscode.window.showQuickPick(
-            [
-                { label: 'SQL login (username + password)', auth: 'sql', creds: true },
-                { label: 'Integrated (Windows; Microsoft Entra default on macOS/Linux)', auth: 'integrated', creds: false },
-                { label: 'Microsoft Entra — default (managed identity / az login)', auth: 'entra', creds: false },
-                { label: 'Microsoft Entra — username + password', auth: 'entra-password', creds: true },
-                { label: 'Microsoft Entra — interactive (browser sign-in)', auth: 'entra-interactive', creds: false },
-            ],
-            { title: 'New SQL connection (4/5)', placeHolder: 'Authentication' },
-        );
+        // Pre-select the current auth mode first when editing.
+        const authOptions = [
+            { label: 'SQL login (username + password)', auth: 'sql', creds: true },
+            { label: 'Integrated (Windows; Microsoft Entra default on macOS/Linux)', auth: 'integrated', creds: false },
+            { label: 'Microsoft Entra — default (managed identity / az login)', auth: 'entra', creds: false },
+            { label: 'Microsoft Entra — username + password', auth: 'entra-password', creds: true },
+            { label: 'Microsoft Entra — interactive (browser sign-in)', auth: 'entra-interactive', creds: false },
+        ];
+        const currentAuth = existing ? authFromMode(existing.auth) : undefined;
+        const orderedAuth = currentAuth
+            ? [...authOptions].sort((a, b) => (a.auth === currentAuth ? -1 : 0) - (b.auth === currentAuth ? -1 : 0))
+                .map((o) => (o.auth === currentAuth ? { ...o, description: 'current' } : o))
+            : authOptions;
+        const authPick = await vscode.window.showQuickPick(orderedAuth, {
+            title: title(),
+            placeHolder: 'Authentication',
+        });
         if (!authPick) {
+            return;
+        }
+
+        // Encryption / certificate. SQL Server defaults to Encrypt=true with certificate
+        // validation; local / on-prem servers usually have a self-signed cert, which fails
+        // with "the certificate chain was issued by an authority that is not trusted" unless
+        // the certificate is trusted.
+        const encPick = await vscode.window.showQuickPick(
+            [
+                { label: 'Encrypt, trust the server certificate', description: 'self-signed / local or on-prem SQL Server', encrypt: true, trustCert: true },
+                { label: 'Encrypt, validate the certificate (default)', description: 'Azure SQL or a trusted CA certificate', encrypt: true, trustCert: false },
+                { label: 'Do not encrypt', description: 'legacy servers only', encrypt: false, trustCert: false },
+            ],
+            { title: title(), placeHolder: 'Encryption' },
+        );
+        if (!encPick) {
             return;
         }
 
@@ -182,21 +273,24 @@ export class SqlConnectionUi {
         let secret: string | undefined;
         if (authPick.creds) {
             user = await vscode.window.showInputBox({
-                title: 'New SQL connection (5/5)',
+                title: title(),
                 prompt: 'Username',
+                value: existing?.user,
                 ignoreFocusOut: true,
             });
             if (!user) {
                 return;
             }
             secret = await vscode.window.showInputBox({
-                title: 'New SQL connection (5/5)',
-                prompt: 'Password (stored in your OS credential store — never written to the notebook)',
+                title: title(),
+                prompt: editing
+                    ? 'Password — leave blank to keep the current one (stored in your OS credential store)'
+                    : 'Password (stored in your OS credential store — never written to the notebook)',
                 password: true,
                 ignoreFocusOut: true,
             });
             if (secret === undefined) {
-                return;
+                return; // cancelled
             }
         }
 
@@ -206,28 +300,47 @@ export class SqlConnectionUi {
             database: database.trim(),
             auth: authPick.auth,
             user,
+            encrypt: encPick.encrypt,
+            trustCert: encPick.trustCert,
         });
 
         try {
             const client = await this.controller.getClient(cell.notebook);
+            // Empty secret leaves the existing stored password untouched (the kernel only
+            // writes the secret when a non-empty one is sent), so blank on edit keeps it.
             const result = await client.request<AddResult>('clrkernel/sql/addConnection', {
                 directive,
                 secret: secret ?? '',
             });
             if (!result.ok) {
-                void vscode.window.showErrorMessage('Could not add connection: ' + (result.error ?? 'unknown error'));
+                void vscode.window.showErrorMessage(`Could not ${editing ? 'update' : 'add'} connection: ` + (result.error ?? 'unknown error'));
                 return;
             }
         } catch (e) {
-            void vscode.window.showErrorMessage('Could not add connection: ' + errorText(e));
+            void vscode.window.showErrorMessage(`Could not ${editing ? 'update' : 'add'} connection: ` + errorText(e));
             return;
         }
 
-        await applyConnection(cell, name);
+        if (!editing) {
+            await applyConnection(cell, name);
+        }
         this.changeEmitter.fire();
+        const savedPw = secret ? ' Password saved to your OS credential store.' : '';
         void vscode.window.showInformationMessage(
-            `SQL connection '${name}' is ready.` + (secret ? ' Password saved to your OS credential store.' : ''),
+            editing ? `SQL connection '${name}' updated.${savedPw}` : `SQL connection '${name}' is ready.${savedPw}`,
         );
+    }
+}
+
+/** Maps a SqlAuthMode enum name (from listConnections) to the wizard's auth value. */
+function authFromMode(mode: string): string | undefined {
+    switch (mode) {
+        case 'SqlPassword': return 'sql';
+        case 'Integrated': return 'integrated';
+        case 'AzureAdDefault': return 'entra';
+        case 'AzureAdPassword': return 'entra-password';
+        case 'AzureAdInteractive': return 'entra-interactive';
+        default: return undefined;
     }
 }
 
@@ -265,6 +378,8 @@ function buildConnectDirective(opts: {
     database?: string;
     auth: string;
     user?: string;
+    encrypt?: boolean;
+    trustCert?: boolean;
 }): string {
     const parts = ['#!sql-connect', '--name', quote(opts.name), '--server', quote(opts.server)];
     if (opts.database) {
@@ -273,6 +388,12 @@ function buildConnectDirective(opts: {
     parts.push('--auth', opts.auth);
     if (opts.user) {
         parts.push('--user', quote(opts.user));
+    }
+    if (opts.encrypt === false) {
+        parts.push('--encrypt', 'false');
+    }
+    if (opts.trustCert) {
+        parts.push('--trust-cert');
     }
     return parts.join(' ');
 }

@@ -141,7 +141,12 @@ export class ClrKernelController {
             }
             const error = new Error(result.error?.message ?? 'execution failed');
             error.name = result.error?.name ?? 'Error';
-            error.stack = result.error?.stack;
+            // .NET stack traces are frames only — they don't include the "Name: message"
+            // line JS stacks start with. VS Code renders error.stack, so without prepending
+            // the message the cell shows a bare stack with no reason. Only set a stack when
+            // we have one to prepend to; otherwise let VS Code show the message itself.
+            const netStack = result.error?.stack;
+            error.stack = netStack ? `${error.name}: ${error.message}\n${netStack}` : undefined;
             void execution.appendOutput(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.error(error)]));
             execution.end(false, Date.now());
             return false;
