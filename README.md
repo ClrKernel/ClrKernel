@@ -58,6 +58,8 @@ keyword/function completion, and results as the same interactive grid (sort, a
 global filter, per-column filters and value pickers that combine, and Analyze)
 that C# query results use.
 
+![ClrKernel interactive results grid with a per-column value picker open](https://raw.githubusercontent.com/ClrKernel/ClrKernel/main/docs/images/grid-value-picker.png)
+
 Connections are **named** and **secret-free** — passwords never go in the
 notebook. Define them with `#!sql-connect`, or use the connection button next to
 the cell's language picker, which prompts for credentials and stores the
