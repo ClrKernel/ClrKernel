@@ -107,12 +107,19 @@ export class ClrKernelController {
     }
 
     private async executeCells(cells: vscode.NotebookCell[]): Promise<void> {
+        // Stop at the first failing cell by default (matches the headless runner and
+        // Jupyter's nbconvert). Set clrkernel.stopOnCellError=false to run every
+        // selected cell regardless of failures.
+        const stopOnError = vscode.workspace.getConfiguration('clrkernel').get<boolean>('stopOnCellError', true);
         for (const cell of cells) {
-            await this.executeCell(cell);
+            const ok = await this.executeCell(cell);
+            if (!ok && stopOnError) {
+                break;
+            }
         }
     }
 
-    private async executeCell(cell: vscode.NotebookCell): Promise<void> {
+    private async executeCell(cell: vscode.NotebookCell): Promise<boolean> {
         const execution = this.controller.createNotebookCellExecution(cell);
         execution.executionOrder = ++this.executionOrder;
         execution.start(Date.now());
@@ -130,17 +137,19 @@ export class ClrKernelController {
                     void execution.appendOutput(new vscode.NotebookCellOutput(toOutputItems(result.data)));
                 }
                 execution.end(true, Date.now());
-            } else {
-                const error = new Error(result.error?.message ?? 'execution failed');
-                error.name = result.error?.name ?? 'Error';
-                error.stack = result.error?.stack;
-                void execution.appendOutput(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.error(error)]));
-                execution.end(false, Date.now());
+                return true;
             }
+            const error = new Error(result.error?.message ?? 'execution failed');
+            error.name = result.error?.name ?? 'Error';
+            error.stack = result.error?.stack;
+            void execution.appendOutput(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.error(error)]));
+            execution.end(false, Date.now());
+            return false;
         } catch (e) {
             const error = e instanceof Error ? e : new Error(String(e));
             void execution.appendOutput(new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.error(error)]));
             execution.end(false, Date.now());
+            return false;
         } finally {
             this.activeExecutions.delete(cellId);
         }
