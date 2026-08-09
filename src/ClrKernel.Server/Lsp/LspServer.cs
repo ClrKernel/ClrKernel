@@ -178,6 +178,12 @@ public sealed class LspServer {
         p?.TextDocument?.Uri != null
         && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
         && lang.Equals("sql", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsDax(TextDocumentPositionParams p) =>
+        p?.TextDocument?.Uri != null
+        && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
+        && lang.Equals("dax", StringComparison.OrdinalIgnoreCase);
+
     // --- Language features -------------------------------------------------
 
     [JsonRpcMethod("textDocument/completion", UseSingleObjectParameterDeserialization = true)]
@@ -193,6 +199,10 @@ public sealed class LspServer {
 
         if (IsSql(p)) {
             return SqlCompletion(code, offset);
+        }
+
+        if (IsDax(p)) {
+            return DaxCompletion(code, offset);
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -270,6 +280,9 @@ public sealed class LspServer {
             return SqlHover(code, offset);
         }
 
+        if (IsDax(p)) {
+            return DaxHover(code, offset);
+        }
 
         await _gate.WaitAsync().ConfigureAwait(false);
         HoverDto hover;
@@ -459,6 +472,54 @@ public sealed class LspServer {
         };
     }
 
+    private CompletionList DaxCompletion(string code, int offset) {
+        ClrKernel.AnalysisServices.DaxCompletion completion;
+        try {
+            var context = new ClrKernel.AnalysisServices.DaxCompletionContext {
+                CubeNames = _engine.Cubes.Cubes.Names.ToList(),
+            };
+            completion = ClrKernel.AnalysisServices.DaxLanguage.Complete(code, offset, context);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "DAX completion failed");
+            return new CompletionList();
+        }
+        var startPos = OffsetToPosition(code, completion.ReplaceStart);
+        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
+        var list = new CompletionList { IsIncomplete = false };
+        foreach (var item in completion.Items) {
+            list.Items.Add(new CompletionItem {
+                Label = item.Label,
+                Kind = MapSqlKind(item.Kind == "cube" ? "connection" : item.Kind),
+                Detail = item.Detail,
+                InsertText = item.InsertText,
+                TextEdit = new TextEdit {
+                    Range = new Range { Start = startPos, End = endPos },
+                    NewText = item.InsertText,
+                },
+            });
+        }
+        return list;
+    }
+
+    private Hover DaxHover(string code, int offset) {
+        ClrKernel.AnalysisServices.DaxHover hover;
+        try {
+            hover = ClrKernel.AnalysisServices.DaxLanguage.Hover(code, offset);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "DAX hover failed");
+            return null;
+        }
+        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
+            return null;
+        }
+        return new Hover {
+            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
+            Range = new Range {
+                Start = OffsetToPosition(code, hover.Start),
+                End = OffsetToPosition(code, hover.Start + hover.Length),
+            },
+        };
+    }
 
     // LSP CompletionItemKind values.
     private static int MapSqlKind(string kind) => kind switch {
@@ -538,6 +599,41 @@ public sealed class LspServer {
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
         }
+    }
+
+    // --- DAX cube connection management (custom methods for the extension UI) ---
+
+    /// <summary>Lists registered cubes for the DAX connection panel.</summary>
+    [JsonRpcMethod("clrkernel/dax/listConnections")]
+    public object DaxListConnections() {
+        var cubes = _engine.Cubes.Cubes;
+        var items = new List<object>();
+        foreach (var (name, spec) in cubes.All) {
+            items.Add(new {
+                name,
+                describe = spec.Describe(),
+                isDefault = string.Equals(name, cubes.DefaultName, StringComparison.OrdinalIgnoreCase),
+            });
+        }
+        return new { defaultName = cubes.DefaultName, connections = items };
+    }
+
+    /// <summary>Registers a cube from a #!dax-connect line built by the UI.</summary>
+    [JsonRpcMethod("clrkernel/dax/addConnection", UseSingleObjectParameterDeserialization = true)]
+    public object DaxAddConnection(SqlConnectParams p) {
+        try {
+            var name = _engine.Cubes.Connect(p?.Directive ?? string.Empty);
+            return new { ok = true, name };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
+    }
+
+    /// <summary>Removes a cube from the session.</summary>
+    [JsonRpcMethod("clrkernel/dax/removeConnection", UseSingleObjectParameterDeserialization = true)]
+    public object DaxRemoveConnection(SqlNameParams p) {
+        var removed = _engine.Cubes.Cubes.Remove(p?.Name ?? string.Empty);
+        return new { ok = removed };
     }
 
     // --- Execution (custom methods) ---------------------------------------

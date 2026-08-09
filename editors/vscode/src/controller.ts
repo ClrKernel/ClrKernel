@@ -166,6 +166,9 @@ export class ClrKernelController {
         if (cell.document.languageId === 'sql' && !/^\s*#!sql\b/i.test(text)) {
             return '#!sql\n' + text;
         }
+        if (cell.document.languageId === 'dax' && !/^\s*#!dax\b/i.test(text)) {
+            return '#!dax\n' + text;
+        }
         return text;
     }
 

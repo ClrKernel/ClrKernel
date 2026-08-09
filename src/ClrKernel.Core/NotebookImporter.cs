@@ -30,7 +30,7 @@ public class NotebookImporter {
 
     // Lines that separate sections in a .dib file. Any other #! line is cell content.
     private static readonly Regex _dibSectionPattern = new(
-        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|kql)\s*$",
+        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|dax|kql)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly string[] _csharpSectionNames = { "csharp", "c#" };
@@ -42,6 +42,7 @@ public class NotebookImporter {
     private const string _mermaidSelector = "#!mermaid";
     private const string _pwshSelector = "#!pwsh";
     private const string _sqlSelector = "#!sql";
+    private const string _daxSelector = "#!dax";
     private static readonly string[] _pwshSectionNames = { "pwsh", "powershell" };
 
     private readonly HashSet<string> _importedPaths = new(
@@ -197,6 +198,8 @@ public class NotebookImporter {
                     blocks.Add(_pwshSelector + "\n" + text);
                 } else if (section == "sql") {
                     blocks.Add(SqlBlock(text));
+                } else if (section == "dax") {
+                    blocks.Add(DaxBlock(text));
                 }
             }
             current.Clear();
@@ -224,6 +227,7 @@ public class NotebookImporter {
 
     private static readonly string[] _pwshFenceTags = { "pwsh", "powershell", "ps1" };
     private static readonly string[] _sqlFenceTags = { "sql", "tsql" };
+    private static readonly string[] _daxFenceTags = { "dax" };
 
     // A SQL block already carrying a #!sql / #!sql-connect selector (e.g. a
     // connection-setup fence) is passed through as-is; a bare query gets the
@@ -233,6 +237,10 @@ public class NotebookImporter {
             ? text
             : _sqlSelector + "\n" + text;
 
+    private static string DaxBlock(string text) =>
+        text.TrimStart().StartsWith("#!dax", StringComparison.OrdinalIgnoreCase)
+            ? text
+            : _daxSelector + "\n" + text;
 
     /// <summary>
     /// Extracts executable blocks from a markdown document ("executable
@@ -248,6 +256,7 @@ public class NotebookImporter {
         var isMermaid = false;
         var isPwsh = false;
         var isSql = false;
+        var isDax = false;
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (current == null) {
@@ -259,6 +268,7 @@ public class NotebookImporter {
                     isMermaid = match.Groups["lang"].Value.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
                     isPwsh = _pwshFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
                     isSql = _sqlFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
+                    isDax = _daxFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
                 }
             } else if (line.Trim() == closingFence) {
                 var text = string.Join("\n", current).Trim();
@@ -267,6 +277,7 @@ public class NotebookImporter {
                         : isMermaid ? _mermaidSelector + "\n" + text
                         : isPwsh ? _pwshSelector + "\n" + text
                         : isSql ? SqlBlock(text)
+                        : isDax ? DaxBlock(text)
                         : text);
                 }
                 current = null;

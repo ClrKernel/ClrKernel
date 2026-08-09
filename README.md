@@ -153,6 +153,24 @@ model with Entra auth. On-prem SSAS + Integrated auth + processing generally run
 on Windows (e.g. SQL Server Agent). See
 [samples/AnalysisServices.nb.md](samples/AnalysisServices.nb.md).
 
+#### DAX cells
+
+Set a cell's language to **DAX** (or start it with `#!dax`) to run DAX against a
+cube, results in an interactive grid. Define cubes with `#!dax-connect` (the
+default, or `--connections <name>` per cell); the `#!dax-*` magics/flags, cube
+names, and DAX keywords/functions autocomplete.
+
+```dax
+#!dax-connect --name analytics --server ssas.db.local --database DataWarehouse --default
+```
+```dax
+EVALUATE TOPN(100, SUMMARIZECOLUMNS('Date'[Year], "Revenue", [Total Sales]), [Revenue], DESC)
+```
+
+`#!dax-connect --fabric --workspace W --model M` targets a Fabric / Power BI
+semantic model. See [samples/Dax.nb.md](samples/Dax.nb.md).
+
+
 Headless / scheduled execution:
 
 ```bash

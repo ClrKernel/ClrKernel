@@ -197,6 +197,27 @@ public class InteractiveScriptEngine {
     public ClrKernel.AnalysisServices.SsasSession Cubes =>
         _ssasSession ??= new ClrKernel.AnalysisServices.SsasSession();
 
+    // A cell whose first non-blank line begins with #!dax-connect registers one or
+    // more named cube connections (one per #!dax-connect line).
+    private static bool TryStripDaxConnect(string statement, out System.Collections.Generic.List<string> connectLines) {
+        connectLines = null;
+        var lines = statement.Replace("\r\n", "\n").Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length ||
+            !lines[index].TrimStart().StartsWith("#!dax-connect", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        connectLines = new System.Collections.Generic.List<string>();
+        foreach (var line in lines) {
+            if (line.TrimStart().StartsWith("#!dax-connect", StringComparison.OrdinalIgnoreCase)) {
+                connectLines.Add(line.Trim());
+            }
+        }
+        return connectLines.Count > 0;
+    }
 
     // A cell whose first non-blank line begins with #!dax (but not #!dax-connect)
     // runs DAX. Strips that selector line, capturing an inline --connections cube.
@@ -372,6 +393,25 @@ public class InteractiveScriptEngine {
                 ? sqlBody
                 : "-- connections " + inlineConnection + "\n" + sqlBody;
             return await Task.FromResult(Sql.Execute(cellText));
+        }
+
+        // #!dax-connect cells register named cube (Analysis Services / Fabric)
+        // connections; return a short confirmation.
+        if (TryStripDaxConnect(statement, out var daxConnectLines)) {
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var line in daxConnectLines) {
+                names.Add(Cubes.Connect(line));
+            }
+            var summary = $"Connected cube(s): {string.Join(", ", names)} (default: {Cubes.Cubes.DefaultName})";
+            return await Task.FromResult(new ClrKernel.Primitives.DisplayData(summary));
+        }
+
+        // #!dax cells run DAX against a named (or default) cube and return a grid.
+        if (TryStripDaxSelector(statement, out var daxBody, out var inlineCube)) {
+            var cellText = string.IsNullOrEmpty(inlineCube)
+                ? daxBody
+                : "-- connections " + inlineCube + "\n" + daxBody;
+            return await Task.FromResult(Cubes.Execute(cellText));
         }
 
         if (!statement.Split('\n').Any(IsImporterDirective)) {

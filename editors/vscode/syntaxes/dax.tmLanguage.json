@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "DAX",
+  "scopeName": "source.dax",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#directives" },
+    { "include": "#keywords" },
+    { "include": "#functions" },
+    { "include": "#references" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-dash.dax", "match": "--.*$" },
+        { "name": "comment.line.double-slash.dax", "match": "//.*$" },
+        { "name": "comment.block.dax", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.dax",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [{ "name": "constant.character.escape.dax", "match": "\"\"" }]
+    },
+    "numbers": {
+      "name": "constant.numeric.dax",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+    "directives": {
+      "name": "keyword.control.directive.dax",
+      "match": "^\\s*#!\\S+"
+    },
+    "keywords": {
+      "name": "keyword.control.dax",
+      "match": "(?i)\\b(EVALUATE|DEFINE|MEASURE|COLUMN|TABLE|VAR|RETURN|ORDER\\s+BY|START\\s+AT|ASC|DESC|IN|NOT|TRUE|FALSE|BLANK)\\b"
+    },
+    "functions": {
+      "name": "support.function.dax",
+      "match": "(?i)\\b(CALCULATE|CALCULATETABLE|FILTER|ALL|ALLEXCEPT|ALLSELECTED|VALUES|DISTINCT|RELATED|RELATEDTABLE|SUM|SUMX|AVERAGE|AVERAGEX|MIN|MINX|MAX|MAXX|COUNT|COUNTA|COUNTROWS|COUNTX|DISTINCTCOUNT|DIVIDE|IF|SWITCH|AND|OR|SUMMARIZE|SUMMARIZECOLUMNS|ADDCOLUMNS|SELECTCOLUMNS|TOPN|RANKX|ROW|GROUPBY|CROSSJOIN|UNION|EXCEPT|INTERSECT|TREATAS|USERELATIONSHIP|DATEADD|DATESBETWEEN|DATESYTD|DATESMTD|DATESQTD|TOTALYTD|TOTALMTD|TOTALQTD|SAMEPERIODLASTYEAR|PARALLELPERIOD|FORMAT|CONCATENATE|CONCATENATEX|LEFT|RIGHT|MID|LEN|UPPER|LOWER|TRIM|ISBLANK|ISFILTERED|HASONEVALUE|SELECTEDVALUE|LOOKUPVALUE|EARLIER|CONTAINS|GENERATE)\\b(?=\\s*\\()"
+    },
+    "references": {
+      "patterns": [
+        { "name": "entity.name.type.table.dax", "match": "'[^']*'" },
+        { "name": "variable.other.column.dax", "match": "\\[[^\\]]*\\]" }
+      ]
+    },
+    "operators": {
+      "name": "keyword.operator.dax",
+      "match": "(:=|<=|>=|<>|[-+*/=<>&|])"
+    }
+  }
+}
