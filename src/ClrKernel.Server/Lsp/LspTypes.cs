@@ -51,6 +51,21 @@ public sealed class TextDocumentPositionParams {
     public Position Position { get; set; }
 }
 
+// --- Diagnostics -------------------------------------------------------
+
+public sealed class Diagnostic {
+    public Range Range { get; set; }
+    public int Severity { get; set; } = 1; // 1 = Error, 2 = Warning
+    public string Code { get; set; }
+    public string Source { get; set; }
+    public string Message { get; set; }
+}
+
+public sealed class PublishDiagnosticsParams {
+    public string Uri { get; set; }
+    public List<Diagnostic> Diagnostics { get; set; } = new();
+}
+
 // --- Completion --------------------------------------------------------
 
 public sealed class CompletionItem {

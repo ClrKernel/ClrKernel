@@ -33,6 +33,7 @@
     <ProjectReference Include="../ClrKernel.Mermaid/ClrKernel.Mermaid.csproj" />
     <ProjectReference Include="../ClrKernel.PowerShell/ClrKernel.PowerShell.csproj" />
     <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
+    <ProjectReference Include="../ClrKernel.Sql/ClrKernel.Sql.csproj" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->

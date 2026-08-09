@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core;
@@ -16,6 +18,24 @@ namespace ClrKernel.Server.Lsp;
 public sealed class ExecuteParams {
     public string CellId { get; set; }
     public string Code { get; set; }
+}
+
+/// <summary>Params for clrkernel/sql/addConnection: a #!sql-connect line plus an
+/// optional secret to store (never written to a file).</summary>
+public sealed class SqlConnectParams {
+    public string Directive { get; set; }
+    public string Secret { get; set; }
+}
+
+/// <summary>Params for clrkernel/sql/storeSecret.</summary>
+public sealed class SqlSecretParams {
+    public string SecretRef { get; set; }
+    public string Secret { get; set; }
+}
+
+/// <summary>Params for connection lookups by name.</summary>
+public sealed class SqlNameParams {
+    public string Name { get; set; }
 }
 
 /// <summary>
@@ -95,6 +115,7 @@ public sealed class LspServer {
         if (p?.TextDocument?.Uri != null) {
             _documents[p.TextDocument.Uri] = p.TextDocument.Text ?? string.Empty;
             _languages[p.TextDocument.Uri] = p.TextDocument.LanguageId ?? "csharp";
+            PublishSqlDiagnostics(p.TextDocument.Uri);
         }
     }
 
@@ -105,6 +126,7 @@ public sealed class LspServer {
         }
         // Full sync: last change carries the whole document.
         _documents[p.TextDocument.Uri] = p.ContentChanges[^1].Text ?? string.Empty;
+        PublishSqlDiagnostics(p.TextDocument.Uri);
     }
 
     [JsonRpcMethod("textDocument/didClose", UseSingleObjectParameterDeserialization = true)]
@@ -115,11 +137,47 @@ public sealed class LspServer {
         }
     }
 
+    // Live T-SQL syntax checking: on every open/change of a sql document, parse
+    // with ScriptDom and push diagnostics. No-op for other languages.
+    private void PublishSqlDiagnostics(string uri) {
+        if (Rpc == null || uri == null) {
+            return;
+        }
+        if (!_languages.TryGetValue(uri, out var lang) || !lang.Equals("sql", StringComparison.OrdinalIgnoreCase)) {
+            return;
+        }
+        var text = _documents.TryGetValue(uri, out var t) ? t : string.Empty;
+        var diagnostics = new List<Diagnostic>();
+        try {
+            foreach (var d in ClrKernel.Sql.TSqlSyntax.Check(text)) {
+                diagnostics.Add(new Diagnostic {
+                    Range = new Range {
+                        Start = new Position { Line = d.Line, Character = d.Column },
+                        End = new Position { Line = d.EndLine, Character = d.EndColumn },
+                    },
+                    Severity = 1,
+                    Source = "clrkernel-sql",
+                    Code = d.Number.ToString(),
+                    Message = d.Message,
+                });
+            }
+        } catch (Exception e) {
+            _logger.LogWarning(e, "SQL diagnostics failed");
+            return;
+        }
+        _ = Rpc.NotifyWithParameterObjectAsync("textDocument/publishDiagnostics",
+            new PublishDiagnosticsParams { Uri = uri, Diagnostics = diagnostics });
+    }
+
     private bool IsPowerShell(TextDocumentPositionParams p) =>
         p?.TextDocument?.Uri != null
         && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
         && lang.Equals("powershell", StringComparison.OrdinalIgnoreCase);
 
+    private bool IsSql(TextDocumentPositionParams p) =>
+        p?.TextDocument?.Uri != null
+        && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
+        && lang.Equals("sql", StringComparison.OrdinalIgnoreCase);
     // --- Language features -------------------------------------------------
 
     [JsonRpcMethod("textDocument/completion", UseSingleObjectParameterDeserialization = true)]
@@ -131,6 +189,10 @@ public sealed class LspServer {
 
         if (IsPowerShell(p)) {
             return await PowerShellCompletion(code, offset).ConfigureAwait(false);
+        }
+
+        if (IsSql(p)) {
+            return SqlCompletion(code, offset);
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -203,6 +265,11 @@ public sealed class LspServer {
         if (IsPowerShell(p)) {
             return await PowerShellHover(code, offset).ConfigureAwait(false);
         }
+
+        if (IsSql(p)) {
+            return SqlHover(code, offset);
+        }
+
 
         await _gate.WaitAsync().ConfigureAwait(false);
         HoverDto hover;
@@ -290,6 +357,10 @@ public sealed class LspServer {
             return await PowerShellSignatureHelp(code, offset).ConfigureAwait(false);
         }
 
+        if (IsSql(p) || IsDax(p)) {
+            return null; // signature help is not offered for SQL/DAX in this foundation
+        }
+
         await _gate.WaitAsync().ConfigureAwait(false);
         SignatureHelpDto help;
         try {
@@ -313,6 +384,160 @@ public sealed class LspServer {
             result.Signatures.Add(info);
         }
         return result;
+    }
+
+    // --- SQL language features --------------------------------------------
+
+    // T-SQL keyword / function / type completion (offline, no connection needed).
+    // Session-aware completion context: connection names + pipeline step names
+    // (from registered steps and any -- step declared in open SQL cells).
+    private ClrKernel.Sql.SqlCompletionContext BuildSqlContext() {
+        var connections = _engine.Sql.Connections.All.Select(c => c.Name).ToList();
+        var steps = new HashSet<string>(_engine.Sql.Pipeline.All.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in _languages) {
+            if (!kv.Value.Equals("sql", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (_documents.TryGetValue(kv.Key, out var text)) {
+                foreach (Match m in _stepDeclaration.Matches(text)) {
+                    steps.Add(m.Groups[1].Value);
+                }
+            }
+        }
+        return new ClrKernel.Sql.SqlCompletionContext {
+            ConnectionNames = connections,
+            StepNames = steps.ToList(),
+        };
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _stepDeclaration =
+        new System.Text.RegularExpressions.Regex(@"(?im)^\s*--\s*step\s+([A-Za-z0-9_-]+)");
+
+    private CompletionList SqlCompletion(string code, int offset) {
+        ClrKernel.Sql.SqlCompletion completion;
+        try {
+            completion = ClrKernel.Sql.SqlLanguage.Complete(code, offset, BuildSqlContext());
+        } catch (Exception e) {
+            _logger.LogWarning(e, "SQL completion failed");
+            return new CompletionList();
+        }
+        var startPos = OffsetToPosition(code, completion.ReplaceStart);
+        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
+        var list = new CompletionList { IsIncomplete = false };
+        foreach (var item in completion.Items) {
+            list.Items.Add(new CompletionItem {
+                Label = item.Label,
+                Kind = MapSqlKind(item.Kind),
+                Detail = item.Detail,
+                InsertText = item.InsertText,
+                TextEdit = new TextEdit {
+                    Range = new Range { Start = startPos, End = endPos },
+                    NewText = item.InsertText,
+                },
+            });
+        }
+        return list;
+    }
+
+    private Hover SqlHover(string code, int offset) {
+        ClrKernel.Sql.SqlHover hover;
+        try {
+            hover = ClrKernel.Sql.SqlLanguage.Hover(code, offset);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "SQL hover failed");
+            return null;
+        }
+        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
+            return null;
+        }
+        return new Hover {
+            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
+            Range = new Range {
+                Start = OffsetToPosition(code, hover.Start),
+                End = OffsetToPosition(code, hover.Start + hover.Length),
+            },
+        };
+    }
+
+
+    // LSP CompletionItemKind values.
+    private static int MapSqlKind(string kind) => kind switch {
+        "keyword" => 14,   // Keyword
+        "function" => 3,   // Function
+        "type" => 7,       // Class
+        "magic" => 15,     // Snippet
+        "flag" => 10,      // Property
+        "directive" => 15, // Snippet
+        "connection" => 21,// Constant
+        "step" => 6,       // Variable
+        "value" => 12,     // Value
+        _ => 1,
+    };
+
+    // --- SQL connection management (custom methods for the extension UI) ---
+
+    /// <summary>Lists registered connections (secret-free) for the connection panel.</summary>
+    [JsonRpcMethod("clrkernel/sql/listConnections")]
+    public object SqlListConnections() {
+        var sql = _engine.Sql;
+        var items = new List<object>();
+        foreach (var c in sql.Connections.All) {
+            items.Add(new {
+                name = c.Name,
+                server = c.Server,
+                database = c.Database,
+                auth = c.Auth.ToString(),
+                user = c.User,
+                describe = c.Describe(),
+                needsSecret = c.NeedsSecret,
+                secretRef = c.EffectiveSecretRef,
+                isDefault = string.Equals(c.Name, sql.Connections.DefaultName, StringComparison.OrdinalIgnoreCase),
+            });
+        }
+        return new { defaultName = sql.Connections.DefaultName, connections = items };
+    }
+
+    /// <summary>Registers/updates a connection from a #!sql-connect line built by the UI.</summary>
+    [JsonRpcMethod("clrkernel/sql/addConnection", UseSingleObjectParameterDeserialization = true)]
+    public object SqlAddConnection(SqlConnectParams p) {
+        try {
+            var spec = _engine.Sql.Connect(p?.Directive ?? string.Empty);
+            if (!string.IsNullOrEmpty(p?.Secret)) {
+                _engine.Sql.StoreSecret(spec.EffectiveSecretRef, p.Secret);
+            }
+            return new { ok = true, name = spec.Name, secretRef = spec.EffectiveSecretRef };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
+    }
+
+    /// <summary>Stores a secret (password) in the OS credential store for a ref.</summary>
+    [JsonRpcMethod("clrkernel/sql/storeSecret", UseSingleObjectParameterDeserialization = true)]
+    public object SqlStoreSecret(SqlSecretParams p) {
+        try {
+            var provider = _engine.Sql.StoreSecret(p?.SecretRef ?? string.Empty, p?.Secret ?? string.Empty);
+            return new { ok = true, provider };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
+    }
+
+    /// <summary>Removes a connection from the session registry.</summary>
+    [JsonRpcMethod("clrkernel/sql/removeConnection", UseSingleObjectParameterDeserialization = true)]
+    public object SqlRemoveConnection(SqlNameParams p) {
+        var removed = _engine.Sql.Connections.Remove(p?.Name ?? string.Empty);
+        return new { ok = removed };
+    }
+
+    /// <summary>Sets the default connection.</summary>
+    [JsonRpcMethod("clrkernel/sql/setDefault", UseSingleObjectParameterDeserialization = true)]
+    public object SqlSetDefault(SqlNameParams p) {
+        try {
+            _engine.Sql.Connections.SetDefault(p?.Name ?? string.Empty);
+            return new { ok = true };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
     }
 
     // --- Execution (custom methods) ---------------------------------------

@@ -4,6 +4,16 @@ using ClrKernel.Primitives;
 namespace ClrKernel.Core;
 
 public static class Extensions {
+    /// <summary>
+    /// The session's SQL connections and ETL API, for use from C# cells:
+    /// <c>Sql.BulkCopy("warehouse", "dbo.Orders", rows)</c>,
+    /// <c>Sql.Merge("warehouse", new MergeSpec { ... })</c>,
+    /// <c>Sql.OpenConnection("analytics")</c>. Shares the same connections and
+    /// secret store as <c>#!sql</c> / <c>#!sql-connect</c> cells.
+    /// </summary>
+    public static ClrKernel.Sql.SqlSession Sql =>
+        InteractiveScriptEngine.Current?.Sql;
+
     public static DisplayData HTML(string html) {
         return new DisplayData {
             Data = new Dictionary<string, object>

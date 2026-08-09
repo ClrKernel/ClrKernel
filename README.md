@@ -50,6 +50,62 @@ once per session — re-importing is a no-op unless you pass `--force`
 itself. Imported files can use `#r` directives, including `#r "nuget: ..."`,
 and can `#!import` further files.
 
+### SQL cells
+
+Set a cell's language to **SQL** (or start it with `#!sql`) to run T-SQL against
+Microsoft SQL Server. You get T-SQL highlighting, live syntax checking,
+keyword/function completion, and results as the same interactive grid (sort,
+filter, Analyze) that C# query results use.
+
+Connections are **named** and **secret-free** — passwords never go in the
+notebook. Define them with `#!sql-connect`, or use the connection button next to
+the cell's language picker, which prompts for credentials and stores the
+password in your OS credential store (macOS Keychain, Windows Credential Manager,
+Linux libsecret):
+
+```sql
+#!sql-connect --name analytics --server sql-warehouse --database reports --auth integrated --default
+```
+
+`--auth integrated` is Windows Integrated auth on Windows and Microsoft Entra
+(Azure AD) sign-in on macOS/Linux; `--auth sql --user <u>` is a SQL login whose
+password comes from the secret store (or the `CLRKERNEL_SECRET_SQL_<NAME>` env
+var for headless runs). A cell targets the default connection, or one named with
+a leading `-- connections <name>` comment. Multiple connections can be used
+across cells in one notebook. See [samples/Sql.nb.md](samples/Sql.nb.md).
+
+#### Querying from C#
+
+C# cells get an ergonomic query API on `Sql` — no `#!sql-connect` needed for
+ad-hoc work. `Sql.Connection(server, database)` opens a connection (Integrated
+Security by default), and `.Query(sql).Results()` returns rows that **render as
+the interactive grid and are enumerable as dynamic rows** in the same object:
+
+```csharp
+var dw = Sql.Connection("dw.db.local", "datawarehouse");
+
+var orders = dw.Query("select * from dbo.Orders").Results();  // grid when shown…
+foreach (var o in orders) Console.WriteLine($"{o.OrderId}: {o.Total}");  // …rows in code
+```
+
+`.Results<T>()` maps rows to a record or class; `.Query(sql, new { id })` binds
+parameters; `.Scalar<T>(sql)` and `.Execute(sql)` cover single values and
+non-queries. A `.Table(name)` reads as a source and writes as a bulk-copy target
+(`createIfMissing` builds it from the source schema), and `.Transaction()` scopes
+a unit of work:
+
+```csharp
+var recent = dw.Query("select * from dbo.Orders where Year = @y", new { y = 2026 }).Results<Order>();
+dw.Table("stg.Orders").BulkCopyFrom(dw.Query("select * from dbo.Orders"), createIfMissing: true);
+record Order(int OrderId, string Customer, decimal Total);
+```
+
+For a SQL login use `Sql.Connection(server, db, user, "sql:secretRef")` (password
+from the secret store); `Sql.AzureConnection(...)` for Entra, or
+`Sql.Database("analytics")` to reuse a registered `#!sql-connect` connection. See
+[samples/SqlQuery.nb.md](samples/SqlQuery.nb.md).
+
+
 Headless / scheduled execution:
 
 ```bash

@@ -181,6 +181,101 @@ public class InteractiveScriptEngine {
 
     private static readonly string[] _pwshSelectors = { "#!pwsh", "#!powershell" };
 
+    // Lazily created on the first #!sql / #!sql-connect cell; holds the named SQL
+    // connections and the OS-backed secret store for the session.
+    private ClrKernel.Sql.SqlSession _sqlSession;
+
+    /// <summary>The session's SQL connections/executor, created on demand.</summary>
+    public ClrKernel.Sql.SqlSession Sql =>
+        _sqlSession ??= new ClrKernel.Sql.SqlSession();
+
+
+    // A cell whose first non-blank line begins with #!dax (but not #!dax-connect)
+    // runs DAX. Strips that selector line, capturing an inline --connections cube.
+    private static bool TryStripDaxSelector(string statement, out string body, out string inlineCube) {
+        body = null;
+        inlineCube = null;
+        var lines = statement.Replace("\r\n", "\n").Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length) {
+            return false;
+        }
+        var first = lines[index].TrimStart();
+        if (!first.StartsWith("#!dax", StringComparison.OrdinalIgnoreCase) ||
+            first.StartsWith("#!dax-connect", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        inlineCube = ClrKernel.AnalysisServices.DaxDirectives.SelectorConnection(lines[index]);
+        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
+        return true;
+    }
+
+    // A cell whose first non-blank line begins with #!sql-connect registers one or
+    // more named connections (one per #!sql-connect line). Returns those lines.
+    private static bool TryStripSqlConnect(string statement, out System.Collections.Generic.List<string> connectLines) {
+        connectLines = null;
+        var lines = statement.Replace("\r\n", "\n").Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length ||
+            !lines[index].TrimStart().StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        connectLines = new System.Collections.Generic.List<string>();
+        foreach (var line in lines) {
+            if (line.TrimStart().StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
+                connectLines.Add(line.Trim());
+            }
+        }
+        return connectLines.Count > 0;
+    }
+
+    // A single-line magic cell: if the first non-blank line begins with the given
+    // selector, return that whole line (the directive) for the magic to parse.
+    private static bool TryStripFirstLineSelector(string statement, string selector, out string line) {
+        line = null;
+        var lines = statement.Replace("\r\n", "\n").Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length ||
+            !lines[index].TrimStart().StartsWith(selector, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        line = lines[index].Trim();
+        return true;
+    }
+
+    // A cell whose first non-blank line begins with #!sql (but not #!sql-connect)
+    // runs as SQL. Strips that selector line, capturing an inline --connections
+    // name so it can be re-expressed as a leading SQL comment for the executor.
+    private static bool TryStripSqlSelector(string statement, out string body, out string inlineConnection) {
+        body = null;
+        inlineConnection = null;
+        var lines = statement.Replace("\r\n", "\n").Split('\n');
+        var index = 0;
+        while (index < lines.Length && lines[index].Trim().Length == 0) {
+            index++;
+        }
+        if (index >= lines.Length) {
+            return false;
+        }
+        var first = lines[index].TrimStart();
+        if (!first.StartsWith("#!sql", StringComparison.OrdinalIgnoreCase) ||
+            first.StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        inlineConnection = ClrKernel.Sql.SqlDirectives.SelectorConnection(lines[index]);
+        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
+        return true;
+    }
+
     // A cell whose first non-blank line is the given selector runs in that
     // language instead of C#.
     private static bool TryStripSelector(string statement, string selector, out string body) =>
@@ -225,6 +320,34 @@ public class InteractiveScriptEngine {
         // their output as display data; nothing flows into the C# script state.
         if (TryStripSelector(statement, _pwshSelectors, out var pwshBody)) {
             return await Task.FromResult(PowerShell.Execute(pwshBody));
+        }
+
+        // #!sql-connect cells register named connections (no query runs); return a
+        // short confirmation listing what is now available.
+        if (TryStripSqlConnect(statement, out var connectLines)) {
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var line in connectLines) {
+                names.Add(Sql.Connect(line).Name);
+            }
+            var summary = names.Count == 1
+                ? $"Connected: {names[0]} (default: {Sql.Connections.DefaultName})"
+                : $"Connected: {string.Join(", ", names)} (default: {Sql.Connections.DefaultName})";
+            return await Task.FromResult(new ClrKernel.Primitives.DisplayData(summary));
+        }
+
+        // #!sql-run executes the registered pipeline steps as a dependency DAG
+        // (independent steps run in parallel) with a live status board.
+        if (TryStripFirstLineSelector(statement, "#!sql-run", out var runLine)) {
+            return await Task.FromResult(Sql.ExecuteRun(runLine));
+        }
+
+        // #!sql cells run T-SQL against a named (or default) connection; each result
+        // set is emitted as an interactive grid and the cell returns a run summary.
+        if (TryStripSqlSelector(statement, out var sqlBody, out var inlineConnection)) {
+            var cellText = string.IsNullOrEmpty(inlineConnection)
+                ? sqlBody
+                : "-- connections " + inlineConnection + "\n" + sqlBody;
+            return await Task.FromResult(Sql.Execute(cellText));
         }
 
         if (!statement.Split('\n').Any(IsImporterDirective)) {
@@ -432,7 +555,8 @@ public class InteractiveScriptEngine {
                 Assembly.GetAssembly(typeof(System.Dynamic.ExpandoObject)),// System.Dynamic
                 this.GetType().Assembly, // ClrKernel.Core (Extensions, GetVariable)
                 typeof(DisplayData).Assembly, // ClrKernel.Primitives (display API)
-                typeof(ClrKernel.Mermaid.MermaidRenderer).Assembly // ClrKernel.Mermaid (DisplayMermaid)
+                typeof(ClrKernel.Mermaid.MermaidRenderer).Assembly, // ClrKernel.Mermaid (DisplayMermaid)
+                typeof(ClrKernel.Sql.SqlSession).Assembly, // ClrKernel.Sql (Sql.BulkCopy / Sql.Merge)
             };
 
         options = options.AddReferences(references);
@@ -446,6 +570,7 @@ public class InteractiveScriptEngine {
         return scriptOptions.AddImports(new[] {
             "ClrKernel.Primitives", // DisplayAs/DisplayedValue live updates
             "ClrKernel.Mermaid", // DisplayMermaid() helper
+            "ClrKernel.Sql", // SqlSession, MergeSpec (Sql.BulkCopy / Sql.Merge)
             "System",
             "System.IO",
             "System.Collections",

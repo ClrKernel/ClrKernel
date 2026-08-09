@@ -52,9 +52,10 @@ export class ServerClient {
         const serverOptions: ServerOptions = { run, debug: run };
 
         const clientOptions: LanguageClientOptions = {
-            // Matches C# notebook cells (and any csharp document). Cell documents
-            // sync to the server, so completion/hover/signature help work in cells.
-            documentSelector: [{ language: 'csharp' }],
+            // Cell documents sync to the server, so completion/hover/signature help
+            // work in cells. SQL cells also get live T-SQL diagnostics (the server
+            // pushes textDocument/publishDiagnostics for sql documents).
+            documentSelector: [{ language: 'csharp' }, { language: 'sql' }, { language: 'dax' }],
             outputChannel: this.output,
         };
 
@@ -83,6 +84,14 @@ export class ServerClient {
             throw new Error('ClrKernel server is not running');
         }
         return this.client.sendRequest<ExecuteResult>('clrkernel/execute', { cellId, code });
+    }
+
+    /** Sends an arbitrary custom request (e.g. clrkernel/sql/*). */
+    request<T>(method: string, params: unknown): Promise<T> {
+        if (!this.client) {
+            throw new Error('ClrKernel server is not running');
+        }
+        return this.client.sendRequest<T>(method, params);
     }
 
     async dispose(): Promise<void> {

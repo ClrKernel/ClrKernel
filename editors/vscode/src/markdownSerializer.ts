@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
  * via ClrKernel's `#!import` and in CI, so serialization round-trips cleanly.
  */
 export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
-    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*(csharp|c#|cs|http|mermaid|powershell|pwsh|ps1)\s*$/i;
+    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*(csharp|c#|cs|http|mermaid|powershell|pwsh|ps1|sql|tsql|dax)\s*$/i;
 
     // Cell languageId for a fence tag; also the tag emitted when serializing.
     private static languageForTag(tag: string): string {
@@ -16,6 +16,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         if (t === 'http') { return 'http'; }
         if (t === 'mermaid') { return 'mermaid'; }
         if (t === 'powershell' || t === 'pwsh' || t === 'ps1') { return 'powershell'; }
+        if (t === 'sql' || t === 'tsql') { return 'sql'; }
         return 'csharp';
     }
 
@@ -69,7 +70,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
             if (cell.kind === vscode.NotebookCellKind.Code) {
                 const tag = cell.languageId === 'http' ? 'http'
                     : cell.languageId === 'mermaid' ? 'mermaid'
-                    : cell.languageId === 'powershell' ? 'powershell' : 'csharp';
+                    : cell.languageId === 'sql' ? 'sql'
                 parts.push('```' + tag + '\n' + cell.value.replace(/\s+$/, '') + '\n```');
             } else {
                 parts.push(cell.value.replace(/\s+$/, ''));

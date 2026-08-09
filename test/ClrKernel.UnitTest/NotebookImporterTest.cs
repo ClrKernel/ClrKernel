@@ -115,7 +115,7 @@ public class NotebookImporterTest {
         var content = string.Join("\n",
             "# Title", "Some prose.", "",
             "```csharp", "var a = 1;", "```", "",
-            "```sql", "select 1", "```", "",
+            "```python", "print(1)", "```", "",
             "```cs", "var b = 2;", "```", "",
             "```", "untagged fence, skipped", "```");
         var blocks = NotebookImporter.ParseMarkdown(content);

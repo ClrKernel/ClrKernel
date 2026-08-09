@@ -1,15 +1,21 @@
 import * as vscode from 'vscode';
 import { ClrKernelController } from './controller';
 import { MarkdownNotebookSerializer } from './markdownSerializer';
+import { SqlConnectionUi } from './sqlConnections';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
 export function activate(context: vscode.ExtensionContext): void {
+    const controller = new ClrKernelController(NOTEBOOK_TYPE);
     context.subscriptions.push(
         vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new MarkdownNotebookSerializer()),
-        new ClrKernelController(NOTEBOOK_TYPE),
+        controller,
         vscode.commands.registerCommand('clrkernel.newNotebook', createNewNotebook),
     );
+
+    // SQL connection button + guided QuickPick (pick / add / manage connections).
+    new SqlConnectionUi(controller).register(context);
+
 }
 
 /** Opens a fresh untitled ClrKernel markdown notebook with one empty C# cell. */

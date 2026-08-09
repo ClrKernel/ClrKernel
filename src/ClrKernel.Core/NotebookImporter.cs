@@ -41,6 +41,7 @@ public class NotebookImporter {
     private const string _httpSelector = "#!http";
     private const string _mermaidSelector = "#!mermaid";
     private const string _pwshSelector = "#!pwsh";
+    private const string _sqlSelector = "#!sql";
     private static readonly string[] _pwshSectionNames = { "pwsh", "powershell" };
 
     private readonly HashSet<string> _importedPaths = new(
@@ -194,6 +195,8 @@ public class NotebookImporter {
                     blocks.Add(_mermaidSelector + "\n" + text);
                 } else if (_pwshSectionNames.Contains(section)) {
                     blocks.Add(_pwshSelector + "\n" + text);
+                } else if (section == "sql") {
+                    blocks.Add(SqlBlock(text));
                 }
             }
             current.Clear();
@@ -216,10 +219,20 @@ public class NotebookImporter {
     // Fence opener for executable markdown: ``` or ~~~ followed by an executable
     // language tag (C#, http, mermaid, or PowerShell).
     private static readonly Regex _markdownFencePattern = new(
-        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs|http|mermaid|pwsh|powershell|ps1)\s*$",
+        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs|http|mermaid|pwsh|powershell|ps1|sql|tsql|dax)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly string[] _pwshFenceTags = { "pwsh", "powershell", "ps1" };
+    private static readonly string[] _sqlFenceTags = { "sql", "tsql" };
+
+    // A SQL block already carrying a #!sql / #!sql-connect selector (e.g. a
+    // connection-setup fence) is passed through as-is; a bare query gets the
+    // #!sql selector prepended so the engine routes it.
+    private static string SqlBlock(string text) =>
+        text.TrimStart().StartsWith("#!sql", StringComparison.OrdinalIgnoreCase)
+            ? text
+            : _sqlSelector + "\n" + text;
+
 
     /// <summary>
     /// Extracts executable blocks from a markdown document ("executable
@@ -234,6 +247,7 @@ public class NotebookImporter {
         var isHttp = false;
         var isMermaid = false;
         var isPwsh = false;
+        var isSql = false;
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (current == null) {
@@ -244,6 +258,7 @@ public class NotebookImporter {
                     isHttp = match.Groups["lang"].Value.Equals("http", StringComparison.OrdinalIgnoreCase);
                     isMermaid = match.Groups["lang"].Value.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
                     isPwsh = _pwshFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
+                    isSql = _sqlFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
                 }
             } else if (line.Trim() == closingFence) {
                 var text = string.Join("\n", current).Trim();
@@ -251,6 +266,7 @@ public class NotebookImporter {
                     blocks.Add(isHttp ? _httpSelector + "\n" + text
                         : isMermaid ? _mermaidSelector + "\n" + text
                         : isPwsh ? _pwshSelector + "\n" + text
+                        : isSql ? SqlBlock(text)
                         : text);
                 }
                 current = null;

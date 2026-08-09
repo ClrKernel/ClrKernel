@@ -87,6 +87,11 @@
             "lsp"
           ],
           "description": "Arguments passed to the server command. Defaults to ['lsp']. For a dev build set command to 'dotnet' and args to ['<path>/ClrKernel.dll', 'lsp']."
+        },
+        "clrkernel.stopOnCellError": {
+          "type": "boolean",
+          "default": true,
+          "description": "When running multiple cells (e.g. Run All), stop at the first cell that errors instead of continuing. Matches the headless command-line runner and Jupyter's nbconvert. Set to false to run every selected cell regardless of failures."
         }
       }
     },
@@ -100,6 +105,16 @@
         "command": "clrkernel.newNotebook",
         "title": "New Markdown Notebook",
         "shortTitle": "Markdown Notebook",
+        "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.sql.selectConnection",
+        "title": "SQL: Select Connection for Cell",
+        "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.sql.addConnection",
+        "title": "SQL: Add Connection…",
         "category": "ClrKernel"
       }
     ],

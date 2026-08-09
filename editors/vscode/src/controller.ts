@@ -22,7 +22,7 @@ export class ClrKernelController {
         this.controller = vscode.notebooks.createNotebookController('clrkernel-csharp', notebookType, 'ClrKernel');
         // C# cells run as script; http cells run as .http requests; mermaid
         // cells render as diagrams; powershell cells run in the runspace.
-        this.controller.supportedLanguages = ['csharp', 'http', 'mermaid', 'powershell'];
+        this.controller.supportedLanguages = ['csharp', 'http', 'mermaid', 'powershell', 'sql', 'dax'];
         this.controller.supportsExecutionOrder = true;
         this.controller.executeHandler = (cells) => this.executeCells(cells);
     }
@@ -163,7 +163,19 @@ export class ClrKernelController {
         if (cell.document.languageId === 'powershell' && !/^\s*#!(pwsh|powershell)\b/i.test(text)) {
             return '#!pwsh\n' + text;
         }
+        if (cell.document.languageId === 'sql' && !/^\s*#!sql\b/i.test(text)) {
+            return '#!sql\n' + text;
+        }
         return text;
+    }
+
+    /**
+     * Ensures the server is running for the given notebook and returns the client,
+     * so the SQL connection UI can issue clrkernel/sql/* requests over the same
+     * process that runs cells (and therefore shares the connection registry).
+     */
+    async getClient(notebook: vscode.NotebookDocument): Promise<ServerClient> {
+        return this.ensureClient(notebook);
     }
 
     dispose(): void {

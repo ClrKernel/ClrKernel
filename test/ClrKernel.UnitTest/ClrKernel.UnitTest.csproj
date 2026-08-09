@@ -12,6 +12,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
     <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,6 +20,7 @@
     <ProjectReference Include="..\..\src\ClrKernel.Http\ClrKernel.Http.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Mermaid\ClrKernel.Mermaid.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.PowerShell\ClrKernel.PowerShell.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Sql\ClrKernel.Sql.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Primitives\ClrKernel.Primitives.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Runner\ClrKernel.Runner.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.LanguageServices\ClrKernel.LanguageServices.csproj" />
