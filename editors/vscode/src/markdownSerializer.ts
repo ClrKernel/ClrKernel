@@ -17,6 +17,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         if (t === 'mermaid') { return 'mermaid'; }
         if (t === 'powershell' || t === 'pwsh' || t === 'ps1') { return 'powershell'; }
         if (t === 'sql' || t === 'tsql') { return 'sql'; }
+        if (t === 'dax') { return 'dax'; }
         return 'csharp';
     }
 
@@ -70,7 +71,9 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
             if (cell.kind === vscode.NotebookCellKind.Code) {
                 const tag = cell.languageId === 'http' ? 'http'
                     : cell.languageId === 'mermaid' ? 'mermaid'
+                    : cell.languageId === 'powershell' ? 'powershell'
                     : cell.languageId === 'sql' ? 'sql'
+                    : cell.languageId === 'dax' ? 'dax' : 'csharp';
                 parts.push('```' + tag + '\n' + cell.value.replace(/\s+$/, '') + '\n```');
             } else {
                 parts.push(cell.value.replace(/\s+$/, ''));

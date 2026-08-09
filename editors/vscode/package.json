@@ -1,8 +1,8 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C#, HTTP, Mermaid, and PowerShell notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
-  "version": "0.4.0",
+  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "version": "0.6.1",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
@@ -53,6 +53,17 @@
           ".mermaid"
         ],
         "configuration": "./language-configuration.mermaid.json"
+      },
+      {
+        "id": "dax",
+        "aliases": [
+          "DAX",
+          "dax"
+        ],
+        "extensions": [
+          ".dax"
+        ],
+        "configuration": "./language-configuration.dax.json"
       }
     ],
     "grammars": [
@@ -68,6 +79,11 @@
         "language": "mermaid",
         "scopeName": "source.mermaid",
         "path": "./syntaxes/mermaid.tmLanguage.json"
+      },
+      {
+        "language": "dax",
+        "scopeName": "source.dax",
+        "path": "./syntaxes/dax.tmLanguage.json"
       }
     ],
     "configuration": {
@@ -115,6 +131,16 @@
       {
         "command": "clrkernel.sql.addConnection",
         "title": "SQL: Add Connection…",
+        "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.dax.selectConnection",
+        "title": "DAX: Select Cube for Cell",
+        "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.dax.addConnection",
+        "title": "DAX: Add Cube…",
         "category": "ClrKernel"
       }
     ],

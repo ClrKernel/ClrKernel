@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ClrKernelController } from './controller';
 import { MarkdownNotebookSerializer } from './markdownSerializer';
 import { SqlConnectionUi } from './sqlConnections';
+import { DaxConnectionUi } from './daxConnections';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
@@ -16,6 +17,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // SQL connection button + guided QuickPick (pick / add / manage connections).
     new SqlConnectionUi(controller).register(context);
 
+    // Cube (Analysis Services / Fabric) connection button for #!dax cells.
+    new DaxConnectionUi(controller).register(context);
 }
 
 /** Opens a fresh untitled ClrKernel markdown notebook with one empty C# cell. */
