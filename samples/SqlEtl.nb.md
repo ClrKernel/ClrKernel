@@ -21,8 +21,10 @@ bar streams during the load.
 ```
 
 Flags: `--from`/`--to` (connections), `--query` or `--from-table`, `--table`
-(destination), `--truncate`, `--batch-size`, `--timeout`, `--keep-identity`,
-`--keep-nulls`, `--no-lock`, `--no-progress`, `--map src=dest`.
+(destination), `--truncate`, `--create`, `--batch-size`, `--timeout`,
+`--keep-identity`, `--keep-nulls`, `--no-lock`, `--no-progress`, `--map src=dest`.
+`--create` builds the destination table from the source schema when it doesn't
+already exist — handy for staging tables you don't want to define by hand.
 
 ## Upsert with MERGE (magic)
 

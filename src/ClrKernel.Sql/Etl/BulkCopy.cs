@@ -17,6 +17,9 @@ public sealed class BulkCopyOptions {
     /// <summary>TRUNCATE the destination before copying.</summary>
     public bool TruncateFirst { get; set; }
 
+    /// <summary>Create the destination table (from the source schema) if it doesn't exist.</summary>
+    public bool CreateIfMissing { get; set; }
+
     /// <summary>Take a bulk update lock on the destination (faster for big loads).</summary>
     public bool TableLock { get; set; } = true;
 
@@ -54,6 +57,10 @@ public static class BulkCopyRunner {
     /// <summary>Copies from a DataTable (row count known → determinate progress).</summary>
     public static BulkCopyResult Execute(SqlConnection connection, string table, DataTable data, BulkCopyOptions options) {
         options ??= new BulkCopyOptions();
+        if (options.CreateIfMissing) {
+            using var schemaReader = data.CreateDataReader();
+            CreateIfMissing(connection, table, schemaReader);
+        }
         // Named source columns → map by name (robust to column order), unless the
         // caller supplied explicit mappings.
         if (options.ColumnMappings.Count == 0) {
@@ -68,8 +75,33 @@ public static class BulkCopyRunner {
     /// <summary>Copies from a streaming reader (total unknown → indeterminate progress).</summary>
     public static BulkCopyResult Execute(SqlConnection connection, string table, IDataReader reader, BulkCopyOptions options) {
         options ??= new BulkCopyOptions();
+        // Build the CREATE from the reader's own schema before we start streaming its rows.
+        if (options.CreateIfMissing) {
+            CreateIfMissing(connection, table, reader);
+        }
         var counting = new CountingDataReader(reader);
         return Run(connection, table, options, 0, bulk => bulk.WriteToServer(counting), () => counting.RowsRead);
+    }
+
+    // Creates the destination from the source reader's schema when it doesn't already
+    // exist (mirrors SqlTable.BulkCopyFrom's createIfMissing, for the #!sql-bulk magic).
+    private static void CreateIfMissing(SqlConnection connection, string table, IDataReader schemaSource) {
+        if (TableExists(connection, table)) {
+            return;
+        }
+        using var create = connection.CreateCommand();
+        create.CommandText = SqlServerTableDefinition.Generate(schemaSource.GetSchemaTable(), table);
+        create.ExecuteNonQuery();
+    }
+
+    private static bool TableExists(SqlConnection connection, string table) {
+        using var command = connection.CreateCommand();
+        command.CommandText = "select convert(bit, iif(object_id(@tableName) is not null, 1, 0))";
+        var p = command.CreateParameter();
+        p.ParameterName = "@tableName";
+        p.Value = table;
+        command.Parameters.Add(p);
+        return command.ExecuteScalar() is bool b && b;
     }
 
     private static BulkCopyResult Run(

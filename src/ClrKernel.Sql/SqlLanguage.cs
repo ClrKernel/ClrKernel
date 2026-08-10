@@ -241,7 +241,7 @@ public static class SqlLanguage {
         },
         ["#!sql-bulk"] = new[] {
             "--from", "--to", "--query", "--from-table", "--table", "--batch-size",
-            "--timeout", "--truncate", "--no-lock", "--keep-identity", "--keep-nulls", "--no-progress", "--map",
+            "--timeout", "--truncate", "--create", "--no-lock", "--keep-identity", "--keep-nulls", "--no-progress", "--map",
         },
         ["#!sql-merge"] = new[] { "--connection", "--target", "--source", "--on", "--update", "--insert", "--delete" },
         ["#!sql-run"] = new[] { "--select", "--max-parallel" },

@@ -41,6 +41,7 @@ public static class SqlEtlDirectives {
                 case "--timeout": d.Options.TimeoutSeconds = ParseInt(Next(), t); break;
                 case "--notify-after": d.Options.NotifyAfter = ParseInt(Next(), t); break;
                 case "--truncate": d.Options.TruncateFirst = true; break;
+                case "--create": case "--create-if-missing": d.Options.CreateIfMissing = true; break;
                 case "--no-lock": d.Options.TableLock = false; break;
                 case "--keep-identity": d.Options.KeepIdentity = true; break;
                 case "--keep-nulls": d.Options.KeepNulls = true; break;
