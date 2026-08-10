@@ -9,7 +9,7 @@ namespace ClrKernel.Data.Jdbc;
 /// <code>
 /// var db = OpenEdge.Connect("host", "sports2000", "user", "openedge:app",
 ///     driverAssemblyPath: "OpenEdge.JdbcDriver.dll");
-/// var rows = db.Query("select * from PUB.Customer").Results();
+/// var rows = db.Query("select * from public.Customer").Results();
 /// </code>
 /// You supply the DataDirect OpenEdge JDBC driver assembly (IKVM-compiled from the
 /// vendor jar). Validate on Windows before relying on it.

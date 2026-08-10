@@ -63,7 +63,7 @@ using ClrKernel.Data.Jdbc;
 ```csharp
 var oe = OpenEdge.Connect("host", "sports2000", "user", "openedge:app",
     driverAssemblyPath: "OpenEdge.JdbcDriver.dll");
-oe.Query("select CustNum, Name from PUB.Customer").Results()
+oe.Query("select CustNum, Name from public.Customer").Results()
 ```
 
 ```csharp
