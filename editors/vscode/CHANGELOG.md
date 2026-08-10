@@ -1,36 +1,76 @@
 # Changelog
 
-## [0.4.0] - 2026-08-08
-- HTTP request cells. Set a cell's language to **HTTP** (or start it with the
-  `#!http` selector) and write requests in the VS Code REST Client `.http`
-  syntax — variables, system variables (`{{$guid}}`, `{{$timestamp}}`, …),
-  `###`-separated multiple requests, and request chaining
-  (`{{login.response.body.$.token}}`). Each request renders a rich response
-  card: color-coded status, timing and size, collapsible headers, and a
+## [0.4.0] - 2026-08-09
+
+Data notebooks — SQL, DAX, and multi-database querying with an interactive
+results grid — plus HTTP, Mermaid, and PowerShell cells.
+
+- **SQL cells.** Set a cell's language to **SQL** (or start it with `#!sql`) to
+  run T-SQL against Microsoft SQL Server, with T-SQL highlighting, live syntax
+  checking, and keyword/function completion. Connections are named and
+  secret-free: define them with `#!sql-connect`, or use the **connection button**
+  next to the cell's language picker — it prompts for server, database,
+  authentication, and encryption, and stores the password in your OS credential
+  store (macOS Keychain, Windows Credential Manager, or Linux libsecret), never
+  in the notebook.
+- **Interactive results grid.** SQL results and C# query output render in a
+  sortable grid with a global filter, a **per-column filter row**, a **per-column
+  value picker** (a ▾ dropdown of that column's distinct values, with search and
+  select-all / clear), a one-click **Clear**, and an **Analyze** panel of
+  per-column statistics. All filters combine.
+- **Connections as C# variables.** A `#!sql-connect --name analytics` also binds
+  a C# variable `analytics` (when the name is a valid identifier), so C# cells can
+  query it right away; use `--var <name>` for a custom name or `--no-var` to skip.
+- **Query databases from C#.** An ergonomic `Sql` API —
+  `Sql.Connection(server, db).Query(sql).Results()` — returns rows that render as
+  the grid and enumerate as dynamic or typed (`.Results<T>()`) objects, plus
+  `.Scalar<T>()`, `.Execute()`, `.Table()` (a bulk-copy target that can create
+  itself from the source schema), and `.Transaction()`.
+- **Bulk copy, MERGE & pipelines.** Move and upsert data with `#!sql-bulk` /
+  `#!sql-merge` (or the `Sql.BulkCopy` / `Sql.Merge` API), build dependency-ordered
+  ETL from `-- step` / `-- needs` annotations with `#!sql-run`, and deploy a folder
+  of `.sql` definitions idempotently with `#!sql-deploy`.
+- **Other databases (Oracle, ODBC).** Opt-in provider packages
+  (`ClrKernel.Data.Oracle`, `ClrKernel.Data.Odbc`) give the same
+  `Query(sql).Results()` experience — grid, typed rows, tables, transactions —
+  against Oracle and ODBC sources, and a `connections.json` config file keeps
+  connection settings out of notebooks. (A JDBC provider is available as
+  experimental.)
+- **DAX cells & Analysis Services.** Set a cell's language to **DAX** (or `#!dax`)
+  to query SSAS, Azure Analysis Services, or Fabric / Power BI semantic models,
+  with a cube **connection button** that adds and edits cubes. From C#, the `Ssas`
+  helper queries with DAX, reads model metadata, and processes partitions.
+- **Fabric Warehouse writes.** The `Fabric` helper bulk-loads Microsoft Fabric
+  Warehouse tables (staging Parquet to OneLake and loading with `OPENROWSET`),
+  can create the target table from a reader's schema, and reloads table segments
+  in parallel — all with Microsoft Entra authentication.
+- **HTTP request cells.** Set a cell's language to **HTTP** (or `#!http`) and
+  write requests in the VS Code REST Client `.http` syntax — variables, system
+  variables (`{{$guid}}`, `{{$timestamp}}`, …), `###`-separated requests, and
+  chaining (`{{login.response.body.$.token}}`). Each request renders a rich
+  response card: color-coded status, timing and size, collapsible headers, and a
   pretty-printed, highlighted JSON body.
-- Executable markdown now round-trips ` ```http ` fenced blocks as HTTP cells,
-  alongside the existing `csharp` blocks.
-- Syntax highlighting for HTTP cells (methods, URLs, headers, comments, `###`
-  separators, `@variables`, `{{…}}` interpolation, and an embedded JSON body).
-- Mermaid diagram cells. Set a cell's language to **Mermaid** (or start it with
-  the `#!mermaid` selector) and write Mermaid syntax — flowcharts, sequence,
-  class, state, ER, gantt, pie, and more. Diagrams render **fully offline** (the
-  Mermaid library is embedded — no CDN) and follow the editor's light/dark theme.
-- Executable markdown now round-trips ` ```mermaid ` fenced blocks as diagram
-  cells, alongside the existing `csharp` blocks.
-- Syntax highlighting for Mermaid cells (diagram keywords, directions, arrows,
-  node labels, `%%` comments, strings).
-- PowerShell cells. Set a cell's language to **PowerShell** (or start it with the
-  `#!pwsh` selector) and run PowerShell in an in-process runspace: variables,
-  functions, and imported modules persist across cells, and output is formatted
-  the way the console shows it. Self-contained — no separate PowerShell install
+- **Mermaid diagram cells.** Set a cell's language to **Mermaid** (or `#!mermaid`)
+  to render flowcharts, sequence, class, state, ER, gantt, pie, and more —
+  **fully offline** (the library is embedded, no CDN) and following the editor's
+  light/dark theme.
+- **PowerShell cells.** Set a cell's language to **PowerShell** (or `#!pwsh`) to
+  run PowerShell in an in-process runspace — variables, functions, and imported
+  modules persist across cells — with native IntelliSense (completion, hover, and
+  signature help) served from the live runspace. No separate PowerShell install
   needed.
-- **PowerShell IntelliSense** — native completion, hover, and signature help for
-  cmdlets, parameters, provider paths, and session-defined variables/functions,
-  served from the live runspace over the same language server.
-- Syntax highlighting uses VS Code's built-in PowerShell grammar.
-- Executable markdown round-trips ` ```powershell ` fenced blocks as PowerShell
-  cells, alongside the existing `csharp` blocks.
+- **Executable markdown** now round-trips ` ```sql `, ` ```dax `, ` ```http `,
+  ` ```mermaid `, and ` ```powershell ` fenced blocks as their respective cells,
+  alongside `csharp` — the file stays readable markdown on GitHub.
+- **Clearer SQL errors.** The actual server message — with error number,
+  severity, and line — now surfaces in the cell output instead of a bare stack
+  trace, and the connection prompt offers a **trust-server-certificate** option
+  for self-signed or local servers.
+- **Edit connections in place.** The SQL connection dropdown (and the DAX cube
+  dropdown) now lets you edit an existing connection, not just add one.
+- **Run All** stops at the first failing cell by default (matching the headless
+  runner); set `clrkernel.stopOnCellError` to `false` to run every selected cell
+  regardless.
 
 ## [0.3.0] - 2026-08-07
 - C# IntelliSense in notebook cells — completion, hover, and signature help —
