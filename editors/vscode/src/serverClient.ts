@@ -56,7 +56,7 @@ export class ServerClient {
             // Cell documents sync to the server, so completion/hover/signature help
             // work in cells. SQL cells also get live T-SQL diagnostics (the server
             // pushes textDocument/publishDiagnostics for sql documents).
-            documentSelector: [{ language: 'csharp' }, { language: 'sql' }, { language: 'dax' }],
+            documentSelector: [{ language: 'csharp-script' }, { language: 'sql' }, { language: 'dax' }],
             outputChannel: this.output,
         };
 

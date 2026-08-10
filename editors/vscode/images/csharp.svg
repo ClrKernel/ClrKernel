@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="C#">
+  <rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="#8A2BE2"/>
+  <rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="none" stroke="#6A1FB0" stroke-width="1"/>
+  <text x="15.5" y="21.5" font-family="'Segoe UI',-apple-system,Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">C#</text>
+</svg>

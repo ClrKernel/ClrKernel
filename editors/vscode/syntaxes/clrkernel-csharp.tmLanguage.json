@@ -1,0 +1,8 @@
+{
+  "name": "ClrKernel C#",
+  "scopeName": "source.clrkernel-cs",
+  "comment": "ClrKernel C# script cells. A distinct language id keeps other C# tooling (e.g. C# Dev Kit) from attaching to notebook cells and producing duplicate completions or non-script-mode 'syntax error' squiggles on trailing expressions. Highlighting delegates entirely to the built-in C# grammar (source.cs).",
+  "patterns": [
+    { "include": "source.cs" }
+  ]
+}

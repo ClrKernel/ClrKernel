@@ -28,7 +28,11 @@ export class ClrKernelController {
         this.controller = vscode.notebooks.createNotebookController('clrkernel-csharp', notebookType, 'ClrKernel');
         // C# cells run as script; http cells run as .http requests; mermaid
         // cells render as diagrams; powershell cells run in the runspace.
-        this.controller.supportedLanguages = ['csharp', 'http', 'mermaid', 'powershell', 'sql', 'dax'];
+        // C# cells use the 'csharp-script' language id (shown as "C#", keeps other C#
+        // tooling from attaching). Plain 'csharp' is intentionally NOT listed: it would
+        // add a second "C#" entry to the cell language picker, and the serializer already
+        // maps every ```csharp fence to 'csharp-script' on load, so no cell is 'csharp'.
+        this.controller.supportedLanguages = ['csharp-script', 'http', 'mermaid', 'powershell', 'sql', 'dax'];
         this.controller.supportsExecutionOrder = true;
         this.controller.executeHandler = (cells) => this.executeCells(cells);
     }

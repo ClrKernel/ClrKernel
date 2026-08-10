@@ -18,7 +18,12 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         if (t === 'powershell' || t === 'pwsh' || t === 'ps1') { return 'powershell'; }
         if (t === 'sql' || t === 'tsql') { return 'sql'; }
         if (t === 'dax') { return 'dax'; }
-        return 'csharp';
+        // A dedicated C# language id (not 'csharp') so other C# tooling — C# Dev Kit,
+        // the Roslyn language server — doesn't attach to notebook cells and emit
+        // duplicate completions or non-script 'syntax error' squiggles. It's shown as
+        // "C#" with the C# icon; highlighting uses the embedded C# grammar; serialization
+        // writes ```csharp.
+        return 'csharp-script';
     }
 
     deserializeNotebook(content: Uint8Array): vscode.NotebookData {
@@ -28,7 +33,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         let markup: string[] = [];
         let code: string[] | null = null;
         let closingFence = '';
-        let language = 'csharp';
+        let language = 'csharp-script';
 
         const flushMarkup = () => {
             const value = markup.join('\n').trim();

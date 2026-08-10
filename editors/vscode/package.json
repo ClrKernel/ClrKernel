@@ -31,6 +31,19 @@
     ],
     "languages": [
       {
+        "id": "csharp-script",
+        "aliases": [
+          "C#",
+          "C# Script",
+          "csharp-script"
+        ],
+        "configuration": "./language-configuration.csharp.json",
+        "icon": {
+          "light": "./images/csharp.svg",
+          "dark": "./images/csharp.svg"
+        }
+      },
+      {
         "id": "http",
         "aliases": [
           "HTTP",
@@ -67,6 +80,11 @@
       }
     ],
     "grammars": [
+      {
+        "language": "csharp-script",
+        "scopeName": "source.clrkernel-cs",
+        "path": "./syntaxes/clrkernel-csharp.tmLanguage.json"
+      },
       {
         "language": "http",
         "scopeName": "source.http",
