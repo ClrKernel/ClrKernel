@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { ClrKernelController } from './controller';
 
@@ -27,6 +28,20 @@ interface AddResult {
     ok: boolean;
     name?: string;
     secretRef?: string;
+    error?: string;
+}
+
+interface ConfigStatusResult {
+    ok: boolean;
+    found: boolean;
+    path?: string;
+    names: string[];
+    error?: string;
+}
+
+interface SaveConfigResult {
+    ok: boolean;
+    path?: string;
     error?: string;
 }
 
@@ -93,6 +108,9 @@ export class SqlConnectionUi {
         if (!cell) {
             return;
         }
+
+        // Bring in any saved connections.json entries so they appear in the list.
+        await this.controller.ensureConnectionsConfigLoaded(cell.notebook);
 
         let list: ListResult;
         try {
@@ -329,6 +347,88 @@ export class SqlConnectionUi {
         void vscode.window.showInformationMessage(
             editing ? `SQL connection '${name}' updated.${savedPw}` : `SQL connection '${name}' is ready.${savedPw}`,
         );
+
+        await this.promptSaveToConfig(cell, name);
+    }
+
+    // Offers to persist the just-added/edited connection to a connections.json so it
+    // reloads automatically in future sessions. Shows whether one was found nearby and
+    // always lets the user confirm that file or choose another (the password is never
+    // written — only a secret reference).
+    private async promptSaveToConfig(cell: vscode.NotebookCell, name: string): Promise<void> {
+        let client;
+        try {
+            client = await this.controller.getClient(cell.notebook);
+        } catch {
+            return; // server not reachable — nothing to offer
+        }
+
+        const directory = path.dirname(cell.notebook.uri.fsPath);
+        let status: ConfigStatusResult;
+        try {
+            status = await client.request<ConfigStatusResult>('clrkernel/sql/configStatus', { directory });
+        } catch {
+            return; // couldn't check — don't nag
+        }
+
+        type SavePick = vscode.QuickPickItem & { action: 'existing' | 'choose' | 'skip' };
+        const picks: SavePick[] = [];
+        if (status.found && status.path) {
+            picks.push({
+                label: '$(save) Save to this file',
+                description: status.path,
+                detail: status.names.length ? `Existing connections: ${status.names.join(', ')}` : 'No connections yet',
+                action: 'existing',
+            });
+        }
+        picks.push({
+            label: '$(new-file) Choose a file…',
+            description: status.found ? 'a different connections.json' : 'no connections.json found nearby',
+            action: 'choose',
+        });
+        picks.push({ label: "Don't save", action: 'skip' });
+
+        const pick = await vscode.window.showQuickPick(picks, {
+            title: `Save '${name}' to connections.json?`,
+            placeHolder: status.found
+                ? `Found ${status.path}`
+                : 'No connections.json found nearby — choose where to save',
+        });
+        if (!pick || pick.action === 'skip') {
+            return;
+        }
+
+        let targetPath: string | undefined;
+        if (pick.action === 'existing') {
+            targetPath = status.path;
+        } else {
+            const chosen = await vscode.window.showSaveDialog({
+                title: 'Save connection to…',
+                defaultUri: vscode.Uri.file(path.join(directory, 'connections.json')),
+                filters: { JSON: ['json'] },
+                saveLabel: 'Save connection',
+            });
+            if (!chosen) {
+                return;
+            }
+            targetPath = chosen.fsPath;
+        }
+
+        try {
+            const result = await client.request<SaveConfigResult>('clrkernel/sql/saveConnection', {
+                name,
+                filePath: targetPath,
+            });
+            if (!result.ok) {
+                void vscode.window.showErrorMessage('Could not save connection: ' + (result.error ?? 'unknown error'));
+                return;
+            }
+            void vscode.window.showInformationMessage(
+                `Saved '${name}' to ${result.path} — it will load automatically next session.`,
+            );
+        } catch (e) {
+            void vscode.window.showErrorMessage('Could not save connection: ' + errorText(e));
+        }
     }
 }
 

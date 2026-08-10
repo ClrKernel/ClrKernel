@@ -26,6 +26,31 @@ never written into the notebook.
 password once from the connection button, or set the
 `CLRKERNEL_SECRET_SQL_<NAME>` environment variable for headless / CI runs.
 
+## Save a connection for next time
+
+By default a connection lives in the running session — great for the current
+notebook, but gone when the kernel restarts. After you add one with the
+**connection button**, ClrKernel offers to **save it to a `connections.json`**: it
+shows a file found up the folder tree (or lets you choose where to create one) and
+writes the connection there. Only a secret *reference* is stored — the password
+stays in your OS credential store. Saved `SqlServer` entries are loaded
+automatically the next time you open a notebook in (or under) that folder, so the
+connection is ready without re-adding it. You can also hand-write the file:
+
+```json
+{
+  "analytics": {
+    "$type": "SqlServer",
+    "server": "sql-warehouse",
+    "database": "reports",
+    "auth": "integrated"
+  }
+}
+```
+
+The same `connections.json` feeds the C# `Oracle.FromConfig` / `Odbc.FromConfig`
+providers, so one file can hold every kind of connection.
+
 ## Use a connection from C#
 
 A `#!sql-connect` connection is also handed to C# cells as a variable. When the

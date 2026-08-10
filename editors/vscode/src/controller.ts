@@ -20,6 +20,9 @@ export class ClrKernelController {
     private readonly activeExecutions = new Map<string, vscode.NotebookCellExecution>();
     private readonly displayOutputs = new Map<string, { execution: vscode.NotebookCellExecution; output: vscode.NotebookCellOutput }>();
 
+    // Notebooks whose connections.json has already been auto-loaded this session.
+    private readonly loadedConfigNotebooks = new Set<string>();
+
     constructor(notebookType: string) {
         this.output = vscode.window.createOutputChannel('ClrKernel');
         this.controller = vscode.notebooks.createNotebookController('clrkernel-csharp', notebookType, 'ClrKernel');
@@ -138,6 +141,9 @@ export class ClrKernelController {
         // Jupyter's nbconvert). Set clrkernel.stopOnCellError=false to run every
         // selected cell regardless of failures.
         const stopOnError = vscode.workspace.getConfiguration('clrkernel').get<boolean>('stopOnCellError', true);
+        if (cells.length > 0) {
+            await this.ensureConnectionsConfigLoaded(cells[0].notebook);
+        }
         for (const cell of cells) {
             const ok = await this.executeCell(cell);
             if (!ok && stopOnError) {
@@ -220,6 +226,29 @@ export class ClrKernelController {
      */
     async getClient(notebook: vscode.NotebookDocument): Promise<ServerClient> {
         return this.ensureClient(notebook);
+    }
+
+    /**
+     * Registers any SqlServer entries from a connections.json at/above the notebook's
+     * folder into the session, once per notebook, so saved connections resolve when a
+     * cell runs — without the user re-adding them. Best-effort: never blocks execution.
+     */
+    async ensureConnectionsConfigLoaded(notebook: vscode.NotebookDocument): Promise<void> {
+        const key = notebook.uri.toString();
+        if (this.loadedConfigNotebooks.has(key)) {
+            return;
+        }
+        this.loadedConfigNotebooks.add(key);
+        try {
+            const client = await this.ensureClient(notebook);
+            const directory = path.dirname(notebook.uri.fsPath);
+            await client.request('clrkernel/sql/loadConnectionsConfig', { directory });
+        } catch (error) {
+            // A missing/unreadable config or an unstarted server must not block the run.
+            this.loadedConfigNotebooks.delete(key); // allow a later retry
+            this.output.appendLine(
+                'connections.json auto-load skipped: ' + (error instanceof Error ? error.message : String(error)));
+        }
     }
 
     dispose(): void {

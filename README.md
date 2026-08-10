@@ -80,6 +80,13 @@ variable `analytics` (when the name is a valid identifier) so C# cells can query
 it straight away; use `--var <name>` for a custom variable or `--no-var` to skip.
 See [samples/Sql.nb.md](samples/Sql.nb.md).
 
+After adding a connection with the button you can **save it to a
+`connections.json`** (the prompt shows a file found up the folder tree or lets you
+choose one). Only a secret *reference* is written — the password stays in the OS
+credential store. Saved `SqlServer` entries are **auto-loaded** in later sessions,
+so a saved connection resolves without re-adding it (and the same file feeds the C#
+`Oracle.FromConfig` / `Odbc.FromConfig` providers).
+
 #### Querying from C#
 
 C# cells get an ergonomic query API on `Sql` — no `#!sql-connect` needed for
@@ -88,7 +95,7 @@ Security by default), and `.Query(sql).Results()` returns rows that **render as
 the interactive grid and are enumerable as dynamic rows** in the same object:
 
 ```csharp
-var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");
+var dw = Sql.Connection("dw.db.local", "datawarehouse");
 
 var orders = dw.Query("select * from dbo.Orders").Results();  // grid when shown…
 foreach (var o in orders) Console.WriteLine($"{o.OrderId}: {o.Total}");  // …rows in code
@@ -122,6 +129,10 @@ and reports inserted/updated/deleted counts:
 #!sql-bulk  --from analytics --query "SELECT * FROM dbo.Orders" --to warehouse --table stg.Orders --truncate
 #!sql-merge --connection warehouse --target dbo.Customers --source stg.Customers --on Id
 ```
+
+Add `--create` to `#!sql-bulk` to create the destination table from the source
+schema when it doesn't already exist (the same create-from-schema the C#
+`.Table(name).BulkCopyFrom(query, createIfMissing: true)` uses).
 
 From C# cells, `Sql` bulk-loads any collection (POCOs, dictionaries, scalar
 arrays) and runs MERGEs — `Sql.BulkCopy("warehouse", "dbo.Items", rows)`,
@@ -193,7 +204,7 @@ Analysis Services, or Microsoft Fabric / Power BI semantic models — via the `S
 helper: query with DAX, read table/partition metadata, and process the model.
 
 ```csharp
-var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");   // Integrated auth
+var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");   // Integrated auth
 cube.Query("EVALUATE TOPN(100, 'Sales')");                   // DAX → interactive grid
 cube.Tables().DisplayTable();                                // model metadata
 cube.ProcessPartitions(new[] { ("Sales", "2026") });         // refresh a partition
@@ -213,7 +224,7 @@ default, or `--connections <name>` per cell); the `#!dax-*` magics/flags, cube
 names, and DAX keywords/functions autocomplete.
 
 ```dax
-#!dax-connect --name analytics --server DataWarehouseServer01.yourdomain.local --database AdventureWorksDW2025 --default
+#!dax-connect --name analytics --server ssas.db.local --database DataWarehouse --default
 ```
 ```dax
 EVALUATE TOPN(100, SUMMARIZECOLUMNS('Date'[Year], "Revenue", [Total Sales]), [Revenue], DESC)

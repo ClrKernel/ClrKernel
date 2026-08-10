@@ -38,6 +38,17 @@ public sealed class SqlNameParams {
     public string Name { get; set; }
 }
 
+/// <summary>Params for connections.json discovery/auto-load: the notebook's directory.</summary>
+public sealed class SqlConfigDirParams {
+    public string Directory { get; set; }
+}
+
+/// <summary>Params for saving a registered connection to a connections.json file.</summary>
+public sealed class SqlSaveConfigParams {
+    public string Name { get; set; }
+    public string FilePath { get; set; }
+}
+
 /// <summary>
 /// The unified ClrKernel language server (Option A): standard LSP language
 /// features (completion, hover, signature help) and cell execution
@@ -600,6 +611,44 @@ public sealed class LspServer {
             return new { ok = false, error = e.Message };
         }
     }
+
+    /// <summary>Reports whether a connections.json exists at/above the notebook's directory,
+    /// and the connection names it holds — so the UI can offer to confirm or choose a file.</summary>
+    [JsonRpcMethod("clrkernel/sql/configStatus", UseSingleObjectParameterDeserialization = true)]
+    public object SqlConfigStatus(SqlConfigDirParams p) {
+        try {
+            var path = _engine.Sql.FindConfigFile(NullIfBlank(p?.Directory));
+            var names = path != null ? _engine.Sql.ConfigConnectionNames(path) : System.Array.Empty<string>();
+            return new { ok = true, found = path != null, path, names };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
+    }
+
+    /// <summary>Registers SqlServer entries from the nearest connections.json into the session
+    /// (called on notebook open so saved connections are available without re-adding them).</summary>
+    [JsonRpcMethod("clrkernel/sql/loadConnectionsConfig", UseSingleObjectParameterDeserialization = true)]
+    public object SqlLoadConnectionsConfig(SqlConfigDirParams p) {
+        try {
+            var loaded = _engine.Sql.LoadFromConfig(NullIfBlank(p?.Directory));
+            return new { ok = true, loaded };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
+    }
+
+    /// <summary>Writes a registered connection into a connections.json file (secret-free).</summary>
+    [JsonRpcMethod("clrkernel/sql/saveConnection", UseSingleObjectParameterDeserialization = true)]
+    public object SqlSaveConnection(SqlSaveConfigParams p) {
+        try {
+            var path = _engine.Sql.SaveConnectionToConfig(p?.Name ?? string.Empty, p?.FilePath ?? string.Empty);
+            return new { ok = true, path };
+        } catch (Exception e) {
+            return new { ok = false, error = e.Message };
+        }
+    }
+
+    private static string NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
     // --- DAX cube connection management (custom methods for the extension UI) ---
 

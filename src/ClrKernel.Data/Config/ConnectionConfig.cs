@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ClrKernel.Data.Secrets;
 
 namespace ClrKernel.Data;
@@ -21,8 +22,8 @@ namespace ClrKernel.Data;
 /// {
 ///   "warehouse": {
 ///     "$type": "SqlServer",
-///     "server": "database.example.com",
-///     "database": "AdventureWorksDW2025",
+///     "server": "dw.db.local",
+///     "database": "datawarehouse",
 ///     "user": "svc",
 ///     "password": { "secret": "sql:warehouse" }
 ///   }
@@ -129,6 +130,122 @@ public sealed class ConnectionConfig {
             properties[property.Name] = ResolveValue(property.Value, secrets, name, property.Name);
         }
         return new ConnectionConfig(name, type, file, properties);
+    }
+
+    // --- discovery / raw read / write (no secret resolution) ---------------
+
+    /// <summary>The nearest config file at or above <paramref name="startDirectory"/>, or null
+    /// if none exists. Used to tell the UI whether a <c>connections.json</c> was found.</summary>
+    public static string FindFile(string startDirectory = null, string env = null, int maxParents = 10) =>
+        CandidateFiles(env, startDirectory ?? Directory.GetCurrentDirectory(), maxParents).FirstOrDefault();
+
+    /// <summary>The connection names defined in a specific config file (empty if missing/blank).</summary>
+    public static IReadOnlyList<string> ListNames(string filePath) {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) {
+            return Array.Empty<string>();
+        }
+        var text = File.ReadAllText(filePath);
+        if (string.IsNullOrWhiteSpace(text)) {
+            return Array.Empty<string>();
+        }
+        using var doc = JsonDocument.Parse(text);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+            return Array.Empty<string>();
+        }
+        return doc.RootElement.EnumerateObject().Select(p => p.Name).ToList();
+    }
+
+    /// <summary>Reads every object node in a config file as a <see cref="RawConnectionNode"/>,
+    /// without resolving secrets. String <c>"inherit"</c> nodes are skipped.</summary>
+    public static IReadOnlyList<RawConnectionNode> LoadAllRaw(string filePath) {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) {
+            return Array.Empty<RawConnectionNode>();
+        }
+        var text = File.ReadAllText(filePath);
+        if (string.IsNullOrWhiteSpace(text)) {
+            return Array.Empty<RawConnectionNode>();
+        }
+        using var doc = JsonDocument.Parse(text);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+            return Array.Empty<RawConnectionNode>();
+        }
+        var nodes = new List<RawConnectionNode>();
+        foreach (var property in doc.RootElement.EnumerateObject()) {
+            if (property.Value.ValueKind != JsonValueKind.Object) {
+                continue; // "inherit" markers and anything non-object
+            }
+            nodes.Add(MaterializeRaw(property.Name, filePath, property.Value));
+        }
+        return nodes;
+    }
+
+    private static RawConnectionNode MaterializeRaw(string name, string file, JsonElement node) {
+        string type = null;
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var secretRefs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in node.EnumerateObject()) {
+            if (property.NameEquals("$type")) {
+                type = property.Value.GetString();
+                continue;
+            }
+            if (property.Value.ValueKind == JsonValueKind.Object &&
+                property.Value.TryGetProperty("secret", out var secretRef)) {
+                secretRefs[property.Name] = secretRef.GetString();
+                continue;
+            }
+            values[property.Name] = RawScalar(property.Value);
+        }
+        return new RawConnectionNode(name, type, file, values, secretRefs);
+    }
+
+    private static string RawScalar(JsonElement value) => value.ValueKind switch {
+        JsonValueKind.String => value.GetString(),
+        JsonValueKind.Number => value.GetRawText(),
+        JsonValueKind.True => "true",
+        JsonValueKind.False => "false",
+        JsonValueKind.Null => null,
+        _ => value.GetRawText(),
+    };
+
+    /// <summary>Creates or replaces a named connection node in <paramref name="filePath"/>,
+    /// preserving every other node and the file's formatting intent (2-space indent).
+    /// Secrets are written as <c>{ "secret": "&lt;ref&gt;" }</c> — never the password.</summary>
+    public static void Upsert(string filePath, string name, string type, IEnumerable<ConfigProperty> properties) {
+        if (string.IsNullOrWhiteSpace(filePath)) {
+            throw new ArgumentException("filePath is required.", nameof(filePath));
+        }
+        if (string.IsNullOrWhiteSpace(name)) {
+            throw new ArgumentException("name is required.", nameof(name));
+        }
+
+        JsonObject root;
+        if (File.Exists(filePath)) {
+            var text = File.ReadAllText(filePath);
+            root = string.IsNullOrWhiteSpace(text)
+                ? new JsonObject()
+                : JsonNode.Parse(text) as JsonObject
+                    ?? throw new ConnectionConfigException($"'{filePath}' is not a JSON object.");
+        } else {
+            root = new JsonObject();
+        }
+
+        var entry = new JsonObject { ["$type"] = type };
+        foreach (var property in properties) {
+            if (property?.Value == null) {
+                continue;
+            }
+            entry[property.Key] = property.IsSecret
+                ? new JsonObject { ["secret"] = property.Value }
+                : JsonValue.Create(property.Value);
+        }
+        root[name] = entry; // replaces an existing node in place, or appends a new one
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+        if (!string.IsNullOrEmpty(directory)) {
+            Directory.CreateDirectory(directory);
+        }
+        var json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(filePath, json + Environment.NewLine);
     }
 
     private static string ResolveValue(JsonElement value, SecretStore secrets, string node, string key) {
