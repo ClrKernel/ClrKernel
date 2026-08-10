@@ -14,12 +14,12 @@ namespace ClrKernel.UnitTest;
 public class DaxDirectiveTest {
     [TestMethod]
     public void ParseConnect_integrated_by_default() {
-        var d = DaxDirectives.ParseConnect("#!dax-connect --name analytics --server ssas.db.local --database DataWarehouse --default");
+        var d = DaxDirectives.ParseConnect("#!dax-connect --name analytics --server DataWarehouseServer01.yourdomain.local --database AdventureWorksDW2025 --default");
         Assert.AreEqual("analytics", d.Name);
         Assert.IsTrue(d.IsDefault);
         Assert.AreEqual(SsasAuthMode.Integrated, d.Spec.Auth);
-        Assert.AreEqual("ssas.db.local", d.Spec.Server);
-        Assert.AreEqual("DataWarehouse", d.Spec.Database);
+        Assert.AreEqual("DataWarehouseServer01.yourdomain.local", d.Spec.Server);
+        Assert.AreEqual("AdventureWorksDW2025", d.Spec.Database);
     }
 
     [TestMethod]

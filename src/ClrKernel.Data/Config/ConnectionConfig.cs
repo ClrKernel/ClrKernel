@@ -21,8 +21,8 @@ namespace ClrKernel.Data;
 /// {
 ///   "warehouse": {
 ///     "$type": "SqlServer",
-///     "server": "dw.db.local",
-///     "database": "datawarehouse",
+///     "server": "database.example.com",
+///     "database": "AdventureWorksDW2025",
 ///     "user": "svc",
 ///     "password": { "secret": "sql:warehouse" }
 ///   }

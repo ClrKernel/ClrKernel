@@ -88,7 +88,7 @@ Security by default), and `.Query(sql).Results()` returns rows that **render as
 the interactive grid and are enumerable as dynamic rows** in the same object:
 
 ```csharp
-var dw = Sql.Connection("dw.db.local", "datawarehouse");
+var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");
 
 var orders = dw.Query("select * from dbo.Orders").Results();  // grid when shown…
 foreach (var o in orders) Console.WriteLine($"{o.OrderId}: {o.Total}");  // …rows in code
@@ -193,7 +193,7 @@ Analysis Services, or Microsoft Fabric / Power BI semantic models — via the `S
 helper: query with DAX, read table/partition metadata, and process the model.
 
 ```csharp
-var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");   // Integrated auth
+var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");   // Integrated auth
 cube.Query("EVALUATE TOPN(100, 'Sales')");                   // DAX → interactive grid
 cube.Tables().DisplayTable();                                // model metadata
 cube.ProcessPartitions(new[] { ("Sales", "2026") });         // refresh a partition
@@ -213,7 +213,7 @@ default, or `--connections <name>` per cell); the `#!dax-*` magics/flags, cube
 names, and DAX keywords/functions autocomplete.
 
 ```dax
-#!dax-connect --name analytics --server ssas.db.local --database DataWarehouse --default
+#!dax-connect --name analytics --server DataWarehouseServer01.yourdomain.local --database AdventureWorksDW2025 --default
 ```
 ```dax
 EVALUATE TOPN(100, SUMMARIZECOLUMNS('Date'[Year], "Revenue", [Total Sales]), [Revenue], DESC)

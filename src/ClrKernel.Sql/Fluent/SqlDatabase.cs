@@ -12,7 +12,7 @@ namespace ClrKernel.Sql;
 /// <see cref="Query(string, object)"/>, <see cref="Table(string)"/>,
 /// <see cref="Execute(string, object)"/>, or <see cref="Scalar{T}(string, object)"/>:
 /// <code>
-/// var dw = Sql.Connection("dw.db.local", "datawarehouse");
+/// var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");
 /// var orders = dw.Query("select * from dbo.Orders").Results();   // grid + rows
 /// </code>
 /// Each call opens and closes its own connection unless run inside

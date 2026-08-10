@@ -13,7 +13,7 @@ Security by default (Windows Integrated on Windows, Microsoft Entra "Default" on
 macOS/Linux):
 
 ```csharp
-var dw = Sql.Connection("dw.db.local", "datawarehouse");
+var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");
 ```
 
 Other ways to connect:

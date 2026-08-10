@@ -244,7 +244,7 @@ export class DaxConnectionUi {
         } else {
             const serverPrompt = typePick.cubeKind === 'azure-as'
                 ? 'Server (e.g. asazure://westus.asazure.windows.net/myserver)'
-                : 'Server / host (e.g. ssas.db.local)';
+                : 'Server / host (e.g. DataWarehouseServer01.yourdomain.local)';
             const server = await vscode.window.showInputBox({
                 title: `${verb} (3/3)`, prompt: serverPrompt,
                 value: same ? prefill?.server : undefined, ignoreFocusOut: true,

@@ -15,10 +15,10 @@ public class SsasCSharpCellTest {
     public async Task Ssas_is_usable_from_a_csharp_cell() {
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
         // Ssas is imported into C# cells; Connect builds a spec without touching a server.
-        var result = await engine.ExecuteAsync("Ssas.Connect(\"ssas.db.local\", \"DataWarehouse\").Spec.Describe()");
+        var result = await engine.ExecuteAsync("Ssas.Connect(\"DataWarehouseServer01.yourdomain.local\", \"AdventureWorksDW2025\").Spec.Describe()");
         var dd = result as DisplayData;
         Assert.IsNotNull(dd, "a C# cell should return display data");
-        StringAssert.Contains((string)dd.Data["text/plain"], "ssas.db.local/DataWarehouse");
+        StringAssert.Contains((string)dd.Data["text/plain"], "DataWarehouseServer01.yourdomain.local/AdventureWorksDW2025");
     }
 }
 
@@ -26,12 +26,12 @@ public class SsasCSharpCellTest {
 public class SsasConnectionStringTest {
     [TestMethod]
     public void Integrated_builds_adomd_and_tom_strings() {
-        var spec = new SsasConnectionSpec { Server = "ssas.db.local", Database = "DataWarehouse" };
+        var spec = new SsasConnectionSpec { Server = "DataWarehouseServer01.yourdomain.local", Database = "AdventureWorksDW2025" };
         var adomd = spec.BuildAdomdConnectionString();
         StringAssert.Contains(adomd, "Provider=MSOLAP");
-        StringAssert.Contains(adomd, "Data Source=ssas.db.local");
-        StringAssert.Contains(adomd, "Catalog=DataWarehouse");
-        StringAssert.Contains(spec.BuildTomConnectionString(), "Initial Catalog=DataWarehouse");
+        StringAssert.Contains(adomd, "Data Source=DataWarehouseServer01.yourdomain.local");
+        StringAssert.Contains(adomd, "Catalog=AdventureWorksDW2025");
+        StringAssert.Contains(spec.BuildTomConnectionString(), "Initial Catalog=AdventureWorksDW2025");
     }
 
     [TestMethod]

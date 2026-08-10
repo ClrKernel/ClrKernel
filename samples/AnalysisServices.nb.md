@@ -9,10 +9,10 @@ Fabric / Power BI semantic models. Query with DAX, read metadata, and process
 
 ```csharp
 // On-prem SSAS with Windows Integrated auth (the default):
-var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");
+var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 
 // SSAS with a username/password:
-var cube2 = Ssas.Connect("ssas.db.local", "DataWarehouse", "svc_reporting", password);
+var cube2 = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025", "svc_reporting", password);
 
 // A Microsoft Fabric / Power BI semantic model (Entra auth via az login / managed identity):
 var model = Ssas.ConnectFabric("Analytics Workspace", "Sales Model");
@@ -79,7 +79,7 @@ Add or update a partition's query, or remove one — idempotently.
 cube.EnsurePartition(
     tableName: "Sales",
     partitionName: "2026",
-    dataSourceName: "DataWarehouse",
+    dataSourceName: "AdventureWorksDW2025",
     query: "SELECT * FROM fact.Sales WHERE Year = 2026");
 
 cube.RemovePartition("Sales", "2019");
@@ -89,8 +89,8 @@ cube.RemovePartition("Sales", "2019");
 
 ```csharp
 // 1) stage keys in SQL, 2) ensure this year's partition exists, 3) process it.
-var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");
-cube.EnsurePartition("Sales", "2026", "DataWarehouse", "SELECT * FROM fact.Sales WHERE Year = 2026");
+var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
+cube.EnsurePartition("Sales", "2026", "AdventureWorksDW2025", "SELECT * FROM fact.Sales WHERE Year = 2026");
 cube.ProcessPartitions(new[] { ("Sales", "2026") });
 cube.Recalculate();
 ```

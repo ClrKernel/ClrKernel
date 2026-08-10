@@ -11,7 +11,7 @@ Define one or more cubes with `#!dax-connect`; the first (or `--default`) become
 the default cube for `#!dax` cells.
 
 ```dax
-#!dax-connect --name analytics --server ssas.db.local --database DataWarehouse --default
+#!dax-connect --name analytics --server DataWarehouseServer01.yourdomain.local --database AdventureWorksDW2025 --default
 #!dax-connect --name sales --fabric --workspace "Analytics WS" --model "Sales Model"
 ```
 
@@ -51,6 +51,6 @@ The same models are reachable from C# cells via `Ssas` (ad-hoc, outside the
 `#!dax` cube registry):
 
 ```csharp
-var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");
+var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 cube.Query("EVALUATE VALUES('Product'[Category])");
 ```

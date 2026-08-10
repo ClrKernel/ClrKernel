@@ -18,7 +18,7 @@ public enum SsasRefresh {
 /// on-prem SSAS, Azure Analysis Services, or a Microsoft Fabric / Power BI
 /// semantic model, then query with DAX, read metadata, and process the model.
 /// <code>
-/// var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");
+/// var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 /// cube.Query("EVALUATE TOPN(100, 'Sales')");
 /// cube.ProcessPartitions(new[] { ("Sales", "2026") });
 /// </code>

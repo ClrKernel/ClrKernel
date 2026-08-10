@@ -7,7 +7,7 @@ namespace ClrKernel.Sql;
 /// a <see cref="SqlDatabase"/> inline without registering a named <c>#!sql-connect</c>
 /// connection first.
 /// <code>
-/// var dw = Sql.Connection("dw.db.local", "datawarehouse");   // Integrated Security
+/// var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");   // Integrated Security
 /// var orders = dw.Query("select * from dbo.Orders").Results();
 /// </code>
 /// </summary>

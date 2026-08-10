@@ -180,9 +180,9 @@ public class FluentSqlEngineTest {
             System.IO.Directory.GetCurrentDirectory(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         // Exercises the full path: Sql helper -> Connection(...) -> SqlDatabase, with
         // ClrKernel.Sql imported so the fluent types resolve in a cell.
-        var result = await engine.ExecuteAsync("#!csharp\nSql.Connection(\"dw.db.local\", \"datawarehouse\").Name");
+        var result = await engine.ExecuteAsync("#!csharp\nSql.Connection(\"Server01.yourdomain.local\", \"AdventureWorksDW2025\").Name");
         var text = result is DisplayData d && d.Data.TryGetValue("text/plain", out var t) ? t?.ToString() : result?.ToString();
-        StringAssert.Contains(text, "dw.db.local/datawarehouse");
+        StringAssert.Contains(text, Server01.yourdomain.local/AdventureWorksDW2025 );
     }
 }
 
