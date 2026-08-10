@@ -158,14 +158,15 @@ namespace ClrKernel.Primitives {
                 s + " .ck-count{margin-left:auto;opacity:.7;font-size:11px;white-space:nowrap}" +
                 s + " .ck-scroll{overflow:auto;max-height:420px}" +
                 s + " table{border-collapse:collapse;width:100%}" +
-                s + " th,td{text-align:left;padding:3px 10px;border-bottom:1px solid var(--vscode-panel-border,rgba(128,128,128,.18));white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}" +
-                s + " thead .ck-h th{position:sticky;top:0;cursor:pointer;user-select:none;background:var(--vscode-editorWidget-background,rgba(128,128,128,.09));font-weight:600;z-index:2}" +
+                s + " th,td{text-align:left;padding:3px 10px;white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}" +
+                s + " tbody td{border-bottom:1px solid var(--vscode-panel-border,rgba(128,128,128,.18))}" +
+                s + " thead .ck-h th{position:sticky;top:0;cursor:pointer;user-select:none;background:var(--vscode-editorWidget-background,#eceff3);font-weight:600;z-index:3;padding-bottom:2px;box-shadow:inset 0 -1px 0 var(--vscode-panel-border,rgba(128,128,128,.3))}" +
                 s + " thead .ck-h th:hover{background:var(--vscode-list-hoverBackground,rgba(128,128,128,.18))}" +
                 s + " thead .ck-arrow{opacity:.5;font-size:10px;margin-left:4px}" +
                 s + " thead .ck-fbtn{opacity:.35;font-size:10px;margin-left:6px;padding:0 3px;border-radius:3px;cursor:pointer}" +
                 s + " thead .ck-fbtn:hover{opacity:.9;background:var(--vscode-toolbar-hoverBackground,rgba(128,128,128,.25))}" +
                 s + " thead .ck-fbtn.ck-active{opacity:1;color:var(--vscode-button-background,#0a64c2)}" +
-                s + " thead .ck-f th{position:sticky;top:26px;background:var(--vscode-editorWidget-background,rgba(128,128,128,.05));padding:2px 4px;z-index:1}" +
+                s + " thead .ck-f th{position:sticky;top:var(--ck-hh,26px);background:var(--vscode-editorWidget-background,#eceff3);padding:0 4px 4px;z-index:2;box-shadow:inset 0 -1px 0 var(--vscode-panel-border,rgba(128,128,128,.5))}" +
                 s + " .ck-cfilter{width:100%;box-sizing:border-box;padding:2px 5px;font:inherit;font-size:11px;color:var(--vscode-input-foreground,inherit);background:var(--vscode-input-background,rgba(128,128,128,.10));border:1px solid var(--vscode-input-border,rgba(128,128,128,.3));border-radius:3px;outline:none}" +
                 s + " td.ck-num{text-align:right;font-variant-numeric:tabular-nums}" +
                 s + " td.ck-null{opacity:.5;font-style:italic}" +
@@ -224,9 +225,10 @@ if(colSel[i]&&!colSel[i][keyOf(v)])return false;}
 return true;}
 function visibleRows(){var out=[];for(var r=0;r<rows.length;r++){if(passRow(rows[r]))out.push(rows[r]);}
 if(sortCol>=0){var t=types[sortCol];out.sort(function(a,b){return cmp(a[sortCol],b[sortCol],t)*sortDir;});}return out;}
+function syncSticky(){root.style.setProperty('--ck-hh',(hRow.offsetHeight||26)+'px');}
 function buildHeader(){var h='';for(var i=0;i<cols.length;i++){var ar=sortCol===i?(sortDir>0?'▲':'▼'):'';
 h+='<th data-c=""'+i+'""><span class=""ck-lbl"">'+esc(cols[i])+'</span><span class=""ck-arrow"">'+ar+'</span><span class=""ck-fbtn'+(funnelActive(i)?' ck-active':'')+'"" data-f=""'+i+'"" title=""Filter this column"">▾</span></th>';}
-hRow.innerHTML=h;}
+hRow.innerHTML=h;syncSticky();}
 function buildFilterRow(){var h='';for(var i=0;i<cols.length;i++){h+='<th><input class=""ck-cfilter"" type=""text"" data-c=""'+i+'"" placeholder=""filter"" value=""'+escA(colText[i])+'"" /></th>';}fRow.innerHTML=h;}
 function updateFunnels(){var fs=hRow.querySelectorAll('.ck-fbtn');for(var i=0;i<fs.length;i++){var c=+fs[i].getAttribute('data-f');fs[i].classList.toggle('ck-active',funnelActive(c));}}
 function body(){var vis=visibleRows();var h='';for(var r=0;r<vis.length;r++){h+='<tr>';for(var c=0;c<cols.length;c++){var v=vis[r][c];var cls=v==null?'ck-null':(isNum(types[c])?'ck-num':'');h+='<td'+(cls?' class=""'+cls+'""':'')+'>'+(v==null?'null':esc(v))+'</td>';}h+='</tr>';}tbody.innerHTML=h;
@@ -262,7 +264,7 @@ root.querySelector('.ck-filter').addEventListener('input',function(e){gfilter=e.
 root.querySelector('.ck-clear').addEventListener('click',function(){gfilter='';for(var c=0;c<cols.length;c++){colText[c]='';colSel[c]=null;}root.querySelector('.ck-filter').value='';buildFilterRow();closePop();buildHeader();body();});
 aBtn.addEventListener('click',function(){var on=panel.style.display==='none';panel.style.display=on?'block':'none';aBtn.classList.toggle('ck-on',on);if(on)panel.innerHTML=stats();});
 document.addEventListener('click',function(e){if(pop.style.display==='none')return;if(pop.contains(e.target))return;if(e.target.classList&&e.target.classList.contains('ck-fbtn'))return;closePop();});
-buildHeader();buildFilterRow();body();
+buildHeader();buildFilterRow();syncSticky();body();
 ";
 
         // --- column-type inference from CLR types ------------------------------
