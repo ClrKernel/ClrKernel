@@ -40,6 +40,10 @@ public sealed class SqlCellLanguage : ICellLanguage {
         "#!sql", "#!sql-connect", "#!sql-bulk", "#!sql-merge", "#!sql-run", "#!sql-deploy",
     };
 
+    public ICellLanguageServices Services => _services ??= new SqlCellLanguageServices(_session);
+
+    private ICellLanguageServices _services;
+
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(SqlSession).Assembly },
         imports: new[] {

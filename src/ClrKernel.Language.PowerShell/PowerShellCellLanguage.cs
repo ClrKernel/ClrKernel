@@ -16,6 +16,10 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
 
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!pwsh", "#!powershell" };
 
+    public ICellLanguageServices Services => _services ??= new PowerShellCellLanguageServices(this);
+
+    private ICellLanguageServices _services;
+
     public ScriptContribution ScriptContribution => null;
 
     /// <summary>The runspace, created on first use (also by completion queries).</summary>

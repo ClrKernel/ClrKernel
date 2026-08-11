@@ -17,6 +17,8 @@ public sealed class HttpCellLanguage : ICellLanguage {
 
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!http" };
 
+    public ICellLanguageServices Services => null;
+
     public ScriptContribution ScriptContribution => null;
 
     /// <summary>The session's HTTP state, created on first use.</summary>

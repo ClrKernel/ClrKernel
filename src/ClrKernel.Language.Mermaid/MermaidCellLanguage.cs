@@ -13,6 +13,8 @@ public sealed class MermaidCellLanguage : ICellLanguage {
 
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!mermaid" };
 
+    public ICellLanguageServices Services => null;
+
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(MermaidRenderer).Assembly },
         imports: new[] { "ClrKernel.Language.Mermaid" });   // DisplayMermaid() helper

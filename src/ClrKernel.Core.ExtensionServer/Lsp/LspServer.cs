@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.LanguageServices;
@@ -126,7 +124,7 @@ public sealed class LspServer {
         if (p?.TextDocument?.Uri != null) {
             _documents[p.TextDocument.Uri] = p.TextDocument.Text ?? string.Empty;
             _languages[p.TextDocument.Uri] = p.TextDocument.LanguageId ?? "csharp";
-            PublishSqlDiagnostics(p.TextDocument.Uri);
+            PublishDiagnostics(p.TextDocument.Uri);
         }
     }
 
@@ -137,7 +135,7 @@ public sealed class LspServer {
         }
         // Full sync: last change carries the whole document.
         _documents[p.TextDocument.Uri] = p.ContentChanges[^1].Text ?? string.Empty;
-        PublishSqlDiagnostics(p.TextDocument.Uri);
+        PublishDiagnostics(p.TextDocument.Uri);
     }
 
     [JsonRpcMethod("textDocument/didClose", UseSingleObjectParameterDeserialization = true)]
@@ -161,50 +159,62 @@ public sealed class LspServer {
     private ClrKernel.Language.PowerShell.PowerShellSession PowerShell =>
         _engine.Languages.Get<ClrKernel.Language.PowerShell.PowerShellCellLanguage>()?.Session;
 
-    private void PublishSqlDiagnostics(string uri) {
+    private void PublishDiagnostics(string uri) {
         if (Rpc == null || uri == null) {
             return;
         }
-        if (!_languages.TryGetValue(uri, out var lang) || !lang.Equals("sql", StringComparison.OrdinalIgnoreCase)) {
+        if (!_languages.TryGetValue(uri, out var lang)) {
+            return;
+        }
+        var services = _engine.Languages.ById(lang)?.Services;
+        if (services == null) {
             return;
         }
         var text = _documents.TryGetValue(uri, out var t) ? t : string.Empty;
         var diagnostics = new List<Diagnostic>();
         try {
-            foreach (var d in ClrKernel.Sql.TSqlSyntax.Check(text)) {
+            foreach (var d in services.Diagnose(text)) {
                 diagnostics.Add(new Diagnostic {
                     Range = new Range {
                         Start = new Position { Line = d.Line, Character = d.Column },
                         End = new Position { Line = d.EndLine, Character = d.EndColumn },
                     },
                     Severity = 1,
-                    Source = "clrkernel-sql",
-                    Code = d.Number.ToString(),
+                    Source = "clrkernel-" + lang,
+                    Code = d.Code.ToString(),
                     Message = d.Message,
                 });
             }
         } catch (Exception e) {
-            _logger.LogWarning(e, "SQL diagnostics failed");
+            _logger.LogWarning(e, "diagnostics failed for {Language}", lang);
             return;
         }
         _ = Rpc.NotifyWithParameterObjectAsync("textDocument/publishDiagnostics",
             new PublishDiagnosticsParams { Uri = uri, Diagnostics = diagnostics });
     }
 
-    private bool IsPowerShell(TextDocumentPositionParams p) =>
-        p?.TextDocument?.Uri != null
-        && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
-        && lang.Equals("powershell", StringComparison.OrdinalIgnoreCase);
+    // Language features dispatch by the cell's languageId through the registry,
+    // so adding a language means registering it, not editing this file. (The
+    // clrkernel/sql/* and clrkernel/dax/* connection RPCs below are the
+    // documented exception -- see HANDOFF-17 section 4.2.)
+    private ICellLanguageServices ServicesFor(TextDocumentPositionParams p) {
+        if (p?.TextDocument?.Uri == null || !_languages.TryGetValue(p.TextDocument.Uri, out var lang)) {
+            return null;
+        }
+        return _engine.Languages.ById(lang)?.Services;
+    }
 
-    private bool IsSql(TextDocumentPositionParams p) =>
-        p?.TextDocument?.Uri != null
-        && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
-        && lang.Equals("sql", StringComparison.OrdinalIgnoreCase);
-
-    private bool IsDax(TextDocumentPositionParams p) =>
-        p?.TextDocument?.Uri != null
-        && _languages.TryGetValue(p.TextDocument.Uri, out var lang)
-        && lang.Equals("dax", StringComparison.OrdinalIgnoreCase);
+    // Every open cell of one language, so completion can see sibling cells.
+    private LanguageServiceContext ContextFor(string languageId) {
+        var open = new List<string>();
+        foreach (var kv in _languages) {
+            if (kv.Value.Equals(languageId, StringComparison.OrdinalIgnoreCase)
+                && _documents.TryGetValue(kv.Key, out var text)) {
+                open.Add(text);
+            }
+        }
+        return new LanguageServiceContext(open);
+    }
 
     // --- Language features -------------------------------------------------
 
@@ -215,16 +225,9 @@ public sealed class LspServer {
             return new CompletionList();
         }
 
-        if (IsPowerShell(p)) {
-            return await PowerShellCompletion(code, offset).ConfigureAwait(false);
-        }
-
-        if (IsSql(p)) {
-            return SqlCompletion(code, offset);
-        }
-
-        if (IsDax(p)) {
-            return DaxCompletion(code, offset);
+        var services = ServicesFor(p);
+        if (services != null) {
+            return await LanguageCompletion(services, p, code, offset).ConfigureAwait(false);
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -255,38 +258,6 @@ public sealed class LspServer {
         return list;
     }
 
-    // PowerShell completions come from the session runspace, so they reflect
-    // cmdlets, parameters, provider paths, and session-defined variables.
-    private async Task<CompletionList> PowerShellCompletion(string code, int offset) {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        ClrKernel.Language.PowerShell.PowerShellCompletion completion;
-        try {
-            completion = await Task.Run(() => PowerShell.Complete(code, offset)).ConfigureAwait(false);
-        } catch (Exception e) {
-            _logger.LogWarning(e, "PowerShell completion failed");
-            return new CompletionList();
-        } finally {
-            _gate.Release();
-        }
-
-        var startPos = OffsetToPosition(code, completion.ReplaceStart);
-        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
-        var list = new CompletionList { IsIncomplete = false };
-        foreach (var item in completion.Items) {
-            list.Items.Add(new CompletionItem {
-                Label = item.Label,
-                Kind = MapPowerShellKind(item.Kind),
-                Detail = item.Detail,
-                InsertText = item.InsertText,
-                TextEdit = new TextEdit {
-                    Range = new Range { Start = startPos, End = endPos },
-                    NewText = item.InsertText,
-                },
-            });
-        }
-        return list;
-    }
-
     [JsonRpcMethod("textDocument/hover", UseSingleObjectParameterDeserialization = true)]
     public async Task<Hover> Hover(TextDocumentPositionParams p) {
         var (code, offset) = Resolve(p);
@@ -294,17 +265,11 @@ public sealed class LspServer {
             return null;
         }
 
-        if (IsPowerShell(p)) {
-            return await PowerShellHover(code, offset).ConfigureAwait(false);
+        var services = ServicesFor(p);
+        if (services != null) {
+            return await LanguageHover(services, code, offset).ConfigureAwait(false);
         }
 
-        if (IsSql(p)) {
-            return SqlHover(code, offset);
-        }
-
-        if (IsDax(p)) {
-            return DaxHover(code, offset);
-        }
 
         await _gate.WaitAsync().ConfigureAwait(false);
         HoverDto hover;
@@ -326,61 +291,6 @@ public sealed class LspServer {
         };
     }
 
-    // PowerShell hover: command help, parameter, or session variable type/value.
-    private async Task<Hover> PowerShellHover(string code, int offset) {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        ClrKernel.Language.PowerShell.PowerShellHover hover;
-        try {
-            hover = await Task.Run(() => PowerShell.Hover(code, offset)).ConfigureAwait(false);
-        } catch (Exception e) {
-            _logger.LogWarning(e, "PowerShell hover failed");
-            return null;
-        } finally {
-            _gate.Release();
-        }
-
-        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
-            return null;
-        }
-        return new Hover {
-            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
-            Range = new Range {
-                Start = OffsetToPosition(code, hover.Start),
-                End = OffsetToPosition(code, hover.Start + hover.Length),
-            },
-        };
-    }
-
-    // PowerShell signature help: one signature per parameter set of the command.
-    private async Task<SignatureHelp> PowerShellSignatureHelp(string code, int offset) {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        ClrKernel.Language.PowerShell.PowerShellSignatureHelp help;
-        try {
-            help = await Task.Run(() => PowerShell.SignatureHelp(code, offset)).ConfigureAwait(false);
-        } catch (Exception e) {
-            _logger.LogWarning(e, "PowerShell signature help failed");
-            return null;
-        } finally {
-            _gate.Release();
-        }
-
-        if (help == null || help.Signatures.Count == 0) {
-            return null;
-        }
-        var result = new SignatureHelp {
-            ActiveSignature = help.ActiveSignature,
-            ActiveParameter = help.ActiveParameter,
-        };
-        foreach (var sig in help.Signatures) {
-            var info = new SignatureInformation { Label = sig.Label };
-            foreach (var param in sig.Parameters) {
-                info.Parameters.Add(new ParameterInformation { Label = param.Label });
-            }
-            result.Signatures.Add(info);
-        }
-        return result;
-    }
-
     [JsonRpcMethod("textDocument/signatureHelp", UseSingleObjectParameterDeserialization = true)]
     public async Task<SignatureHelp> SignatureHelp(TextDocumentPositionParams p) {
         var (code, offset) = Resolve(p);
@@ -388,13 +298,11 @@ public sealed class LspServer {
             return null;
         }
 
-        if (IsPowerShell(p)) {
-            return await PowerShellSignatureHelp(code, offset).ConfigureAwait(false);
+        var services = ServicesFor(p);
+        if (services != null) {
+            return await LanguageSignatureHelp(services, code, offset).ConfigureAwait(false);
         }
 
-        if (IsSql(p) || IsDax(p)) {
-            return null; // signature help is not offered for SQL/DAX in this foundation
-        }
 
         await _gate.WaitAsync().ConfigureAwait(false);
         SignatureHelpDto help;
@@ -423,127 +331,106 @@ public sealed class LspServer {
 
     // --- SQL language features --------------------------------------------
 
-    // T-SQL keyword / function / type completion (offline, no connection needed).
-    // Session-aware completion context: connection names + pipeline step names
-    // (from registered steps and any -- step declared in open SQL cells).
-    private ClrKernel.Sql.SqlCompletionContext BuildSqlContext() {
-        var connections = Sql.Connections.All.Select(c => c.Name).ToList();
-        var steps = new HashSet<string>(Sql.Pipeline.All.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in _languages) {
-            if (!kv.Value.Equals("sql", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            if (_documents.TryGetValue(kv.Key, out var text)) {
-                foreach (Match m in _stepDeclaration.Matches(text)) {
-                    steps.Add(m.Groups[1].Value);
-                }
-            }
-        }
-        return new ClrKernel.Sql.SqlCompletionContext {
-            ConnectionNames = connections,
-            StepNames = steps.ToList(),
-        };
-    }
-
     private static readonly System.Text.RegularExpressions.Regex _stepDeclaration =
         new System.Text.RegularExpressions.Regex(@"(?im)^\s*--\s*step\s+([A-Za-z0-9_-]+)");
 
-    private CompletionList SqlCompletion(string code, int offset) {
-        ClrKernel.Sql.SqlCompletion completion;
-        try {
-            completion = ClrKernel.Sql.SqlLanguage.Complete(code, offset, BuildSqlContext());
-        } catch (Exception e) {
-            _logger.LogWarning(e, "SQL completion failed");
-            return new CompletionList();
-        }
-        var startPos = OffsetToPosition(code, completion.ReplaceStart);
-        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
-        var list = new CompletionList { IsIncomplete = false };
-        foreach (var item in completion.Items) {
-            list.Items.Add(new CompletionItem {
-                Label = item.Label,
-                Kind = MapSqlKind(item.Kind),
-                Detail = item.Detail,
-                InsertText = item.InsertText,
-                TextEdit = new TextEdit {
-                    Range = new Range { Start = startPos, End = endPos },
-                    NewText = item.InsertText,
-                },
-            });
-        }
-        return list;
-    }
-
-    private Hover SqlHover(string code, int offset) {
-        ClrKernel.Sql.SqlHover hover;
-        try {
-            hover = ClrKernel.Sql.SqlLanguage.Hover(code, offset);
-        } catch (Exception e) {
-            _logger.LogWarning(e, "SQL hover failed");
-            return null;
-        }
-        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
-            return null;
-        }
-        return new Hover {
-            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
-            Range = new Range {
-                Start = OffsetToPosition(code, hover.Start),
-                End = OffsetToPosition(code, hover.Start + hover.Length),
-            },
-        };
-    }
-
-    private CompletionList DaxCompletion(string code, int offset) {
-        ClrKernel.AnalysisServices.DaxCompletion completion;
-        try {
-            var context = new ClrKernel.AnalysisServices.DaxCompletionContext {
-                CubeNames = Cubes.Cubes.Names.ToList(),
-            };
-            completion = ClrKernel.AnalysisServices.DaxLanguage.Complete(code, offset, context);
-        } catch (Exception e) {
-            _logger.LogWarning(e, "DAX completion failed");
-            return new CompletionList();
-        }
-        var startPos = OffsetToPosition(code, completion.ReplaceStart);
-        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
-        var list = new CompletionList { IsIncomplete = false };
-        foreach (var item in completion.Items) {
-            list.Items.Add(new CompletionItem {
-                Label = item.Label,
-                Kind = MapSqlKind(item.Kind == "cube" ? "connection" : item.Kind),
-                Detail = item.Detail,
-                InsertText = item.InsertText,
-                TextEdit = new TextEdit {
-                    Range = new Range { Start = startPos, End = endPos },
-                    NewText = item.InsertText,
-                },
-            });
-        }
-        return list;
-    }
-
-    private Hover DaxHover(string code, int offset) {
-        ClrKernel.AnalysisServices.DaxHover hover;
-        try {
-            hover = ClrKernel.AnalysisServices.DaxLanguage.Hover(code, offset);
-        } catch (Exception e) {
-            _logger.LogWarning(e, "DAX hover failed");
-            return null;
-        }
-        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
-            return null;
-        }
-        return new Hover {
-            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
-            Range = new Range {
-                Start = OffsetToPosition(code, hover.Start),
-                End = OffsetToPosition(code, hover.Start + hover.Length),
-            },
-        };
-    }
-
     // LSP CompletionItemKind values.
+    // --- Language-neutral feature plumbing ---------------------------------
+
+    private async Task<CompletionList> LanguageCompletion(
+        ICellLanguageServices services, TextDocumentPositionParams p, string code, int offset) {
+        CompletionResult completion;
+        try {
+            var languageId = _languages[p.TextDocument.Uri];
+            completion = await services.CompleteAsync(code, offset, ContextFor(languageId)).ConfigureAwait(false);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "completion failed");
+            return new CompletionList();
+        }
+        if (completion == null) {
+            return new CompletionList();
+        }
+
+        var startPos = OffsetToPosition(code, completion.ReplaceStart);
+        var endPos = OffsetToPosition(code, completion.ReplaceStart + completion.ReplaceLength);
+        var list = new CompletionList { IsIncomplete = false };
+        foreach (var item in completion.Items) {
+            list.Items.Add(new CompletionItem {
+                Label = item.Label,
+                Kind = MapCompletionKind(item.Kind),
+                Detail = item.Detail,
+                InsertText = item.InsertText,
+                TextEdit = new TextEdit {
+                    Range = new Range { Start = startPos, End = endPos },
+                    NewText = item.InsertText,
+                },
+            });
+        }
+        return list;
+    }
+
+    private async Task<Hover> LanguageHover(ICellLanguageServices services, string code, int offset) {
+        HoverResult hover;
+        try {
+            hover = await services.HoverAsync(code, offset).ConfigureAwait(false);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "hover failed");
+            return null;
+        }
+        if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
+            return null;
+        }
+        return new Hover {
+            Contents = new MarkupContent { Kind = "markdown", Value = hover.Markdown },
+            Range = new Range {
+                Start = OffsetToPosition(code, hover.Start),
+                End = OffsetToPosition(code, hover.Start + hover.Length),
+            },
+        };
+    }
+
+    private async Task<SignatureHelp> LanguageSignatureHelp(
+        ICellLanguageServices services, string code, int offset) {
+        SignatureHelpResult help;
+        try {
+            help = await services.SignatureHelpAsync(code, offset).ConfigureAwait(false);
+        } catch (Exception e) {
+            _logger.LogWarning(e, "signature help failed");
+            return null;
+        }
+        if (help == null || help.Signatures.Count == 0) {
+            return null;
+        }
+        var result = new SignatureHelp {
+            ActiveSignature = help.ActiveSignature,
+            ActiveParameter = help.ActiveParameter,
+        };
+        foreach (var sig in help.Signatures) {
+            var info = new SignatureInformation { Label = sig.Label };
+            foreach (var param in sig.Parameters) {
+                info.Parameters.Add(new ParameterInformation { Label = param.Label });
+            }
+            result.Signatures.Add(info);
+        }
+        return result;
+    }
+
+    // Completion kinds from every language funnel through one map: the SQL/DAX
+    // vocabulary ("keyword", "function", …) and PowerShell's CompletionResultType
+    // names ("Command", "ParameterName", …).
+    private static int MapCompletionKind(string kind) => kind switch {
+        "Command" => 3,        // Function
+        "ParameterName" => 10, // Property
+        "Variable" => 6,       // Variable
+        "Property" => 10,      // Property
+        "Method" => 2,         // Method
+        "ProviderItem" => 17,  // File
+        "ProviderContainer" => 19, // Folder
+        "Type" => 7,           // Class
+        "Namespace" => 9,      // Module
+        _ => MapSqlKind(kind),
+    };
+
     private static int MapSqlKind(string kind) => kind switch {
         "keyword" => 14,   // Keyword
         "function" => 3,   // Function
@@ -824,6 +711,4 @@ public sealed class LspServer {
         ["Text"] = 1,              // Text
     };
 
-    private static int MapPowerShellKind(string type) =>
-        type != null && _powerShellKindMap.TryGetValue(type, out var kind) ? kind : 1; // Text
 }

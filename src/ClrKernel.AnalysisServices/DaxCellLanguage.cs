@@ -21,6 +21,10 @@ public sealed class DaxCellLanguage : ICellLanguage {
 
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!dax", "#!dax-connect" };
 
+    public ICellLanguageServices Services => _services ??= new DaxCellLanguageServices(_session);
+
+    private ICellLanguageServices _services;
+
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(Ssas).Assembly },
         imports: new[] { "ClrKernel.AnalysisServices" });   // Ssas.Connect / ProcessPartitions

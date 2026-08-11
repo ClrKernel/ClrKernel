@@ -32,6 +32,12 @@ public interface ICellLanguage {
     /// </summary>
     ScriptContribution ScriptContribution { get; }
 
+    /// <summary>
+    /// Editor language features for this language, or null when it has none
+    /// (a cell language is not obliged to provide completion or diagnostics).
+    /// </summary>
+    ICellLanguageServices Services { get; }
+
     /// <summary>Runs a cell that matched one of <see cref="Selectors"/>.</summary>
     Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context);
 }

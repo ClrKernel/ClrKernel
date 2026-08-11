@@ -40,7 +40,7 @@ accepted.
 | P1 | Extract `ClrKernel.Core.Secrets` | DONE |
 | P2a | Rename the `Core.*` group | DONE |
 | P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | DONE |
-| P3 | Cell-language registration seam in `Core.Scripting` | TODO |
+| P3 | Cell-language registration seam in `Core.Scripting` | DONE |
 | P4 | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (incl. fluent dedup) | TODO |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | TODO |
 | P6 | Extract shared Entra auth into `ClrKernel.Database` | TODO |
@@ -88,7 +88,9 @@ Established by inspection on 2026-08-10. Re-verify if resuming much later.
   `Directory.Build.props`** (currently `0.8.0`).
 - **Baseline moved from 267 to 275 total in P3 slice 1**: `CellSelectorOrderingTest` adds 8
   passing tests (selector precedence for every prefix pair). Skips stay at 8. Compare later
-  phases against **267 passed / 8 skipped / 275 total**.
+  phases against **272 passed / 8 skipped / 280 total** — P3 slice 4 added 5 more
+  (`CellLanguageServicesTest`, covering the language-service adapters, which no RPC harness
+  reaches: `lsp_harness.py` only exercises C#).
 - **CI gates on formatting before build**: `dotnet format ClrKernel.slnx --verify-no-changes`. A
   phase that renames namespaces without a format pass fails CI, not the phase.
 - **P0 found `main` already format-dirty** and therefore CI-red before this refactor started:
