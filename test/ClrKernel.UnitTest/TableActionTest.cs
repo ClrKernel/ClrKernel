@@ -126,3 +126,42 @@ public class TableActionTest {
         StringAssert.Contains(e.Message, "staging table");
     }
 }
+
+/// <summary>
+/// The merge-source guard runs before any connection is opened, so it is testable offline —
+/// and it needs to be: it decides whether a legitimate call is refused.
+/// </summary>
+[TestClass]
+public class SqlServerMergeSourceGuardTest {
+    private static SqlConnectionRegistry Registry() {
+        var registry = new SqlConnectionRegistry();
+        registry.Register(new SqlConnectionSpec { Name = "warehouse", Server = "s1", Database = "d" }, asDefault: true);
+        registry.Register(new SqlConnectionSpec { Name = "staging", Server = "s2", Database = "d" }, asDefault: false);
+        return registry;
+    }
+
+    private static TableAction MergeFrom(string connection) =>
+        TableAction.Merge("dbo.T", TableSource.Query(connection, "select 1"), new[] { "Id" });
+
+    [TestMethod]
+    public void Naming_the_default_connection_explicitly_is_still_the_target() {
+        // Target left as null (the registry default = "warehouse"); the source names it outright.
+        // Comparing raw strings would refuse this and send the caller off to stage a table that is
+        // already on the right server.
+        var target = new SqlServerTableTarget(Registry());
+        target.MergeSourceMustBeOnTarget(MergeFrom("warehouse"));
+    }
+
+    [TestMethod]
+    public void An_omitted_source_connection_means_the_target() {
+        new SqlServerTableTarget(Registry()).MergeSourceMustBeOnTarget(MergeFrom(null));
+    }
+
+    [TestMethod]
+    public void A_genuinely_different_connection_is_refused_with_both_names() {
+        var target = new SqlServerTableTarget(Registry(), connection: "warehouse");
+        var e = Assert.ThrowsExactly<NotSupportedException>(() => target.MergeSourceMustBeOnTarget(MergeFrom("staging")));
+        StringAssert.Contains(e.Message, "'staging' is not 'warehouse'");
+        StringAssert.Contains(e.Message, "staging table");
+    }
+}

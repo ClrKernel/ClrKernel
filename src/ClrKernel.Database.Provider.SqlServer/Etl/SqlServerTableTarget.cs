@@ -88,14 +88,7 @@ public sealed class SqlServerTableTarget : ITableActionTarget {
     }
 
     private void Merge(TableAction action, TableActionResult result) {
-        if (action.Source.Kind != TableSourceKind.Rows &&
-            !string.IsNullOrEmpty(action.Source.Connection) &&
-            !string.Equals(action.Source.Connection, _connection, StringComparison.OrdinalIgnoreCase)) {
-            throw new NotSupportedException(
-                $"SQL Server merges on the server, so the source must live on the target connection. " +
-                $"'{action.Source.Connection}' is not '{_connection ?? "the default connection"}' — " +
-                "load it into a staging table there first (Insert or TruncateInsert), then merge from that.");
-        }
+        MergeSourceMustBeOnTarget(action);
 
         var spec = SqlServerTableActions.ToMergeSpec(action);
         using var connection = Open();
@@ -118,6 +111,29 @@ public sealed class SqlServerTableTarget : ITableActionTarget {
         } catch (SqlException e) {
             throw new SqlCellException($"MERGE into {spec.Target} failed: {e.Message}", e);
         }
+    }
+
+    /// <summary>
+    /// MERGE reads its source on the server, so the source has to resolve to the same connection as
+    /// the target. Compare the <em>resolved</em> specs, not the raw names: naming the default
+    /// connection explicitly is the same connection as leaving it out, and refusing that would send
+    /// the caller off to stage a table that is already on the right server.
+    /// </summary>
+    internal void MergeSourceMustBeOnTarget(TableAction action) {
+        if (action.Source.Kind == TableSourceKind.Rows || string.IsNullOrEmpty(action.Source.Connection)) {
+            return;
+        }
+
+        var sourceName = _registry.Resolve(action.Source.Connection).Name;
+        var targetName = _registry.Resolve(_connection).Name;
+        if (string.Equals(sourceName, targetName, StringComparison.OrdinalIgnoreCase)) {
+            return;
+        }
+
+        throw new NotSupportedException(
+            "SQL Server merges on the server, so the source must live on the target connection. " +
+            $"'{sourceName}' is not '{targetName}' — load it into a staging table there first " +
+            "(Insert or TruncateInsert), then merge from that.");
     }
 
     private SqlDatabase Target() => Db(_connection);
