@@ -20,6 +20,9 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
 
     private ICellLanguageServices _services;
 
+    /// <summary>Nothing to connect to.</summary>
+    public IConnectionCatalog Connections => null;
+
     public ScriptContribution ScriptContribution => null;
 
     /// <summary>The runspace, created on first use (also by completion queries).</summary>

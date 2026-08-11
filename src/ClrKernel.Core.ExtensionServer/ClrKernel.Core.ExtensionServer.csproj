@@ -29,8 +29,6 @@
       hover, signature help, diagnostics) must keep going through the cell
       language registry, never through these references.
     -->
-    <ProjectReference Include="../ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
-    <ProjectReference Include="../ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets -->

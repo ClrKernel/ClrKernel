@@ -18,32 +18,33 @@ public sealed class ExecuteParams {
     public string Code { get; set; }
 }
 
-/// <summary>Params for clrkernel/sql/addConnection: a #!sql-connect line plus an
-/// optional secret to store (never written to a file).</summary>
-public sealed class SqlConnectParams {
+/// <summary>
+/// Params for the <c>clrkernel/connections/*</c> methods. One shape for every language: the
+/// <see cref="LanguageId"/> selects the catalog, and each method reads the fields it needs.
+/// </summary>
+/// <remarks>
+/// The connect <see cref="Directive"/> is the language's own <c>#!x-connect</c> line. Keeping the
+/// directive as the wire format means the UI never has to model each provider's options — it
+/// builds the line a user could have typed, and the language parses it.
+/// </remarks>
+public sealed class ConnectionParams {
+    /// <summary>Which language's connections — "sql", "dax", … Required.</summary>
+    public string LanguageId { get; set; }
+
+    /// <summary>A <c>#!x-connect</c> line, for add.</summary>
     public string Directive { get; set; }
-    public string Secret { get; set; }
-}
 
-/// <summary>Params for clrkernel/sql/storeSecret.</summary>
-public sealed class SqlSecretParams {
-    public string SecretRef { get; set; }
+    /// <summary>A password to store against the new connection's secret ref. Never persisted
+    /// to a notebook or config file.</summary>
     public string Secret { get; set; }
-}
 
-/// <summary>Params for connection lookups by name.</summary>
-public sealed class SqlNameParams {
+    /// <summary>A connection name, for remove / setDefault / saveConfig.</summary>
     public string Name { get; set; }
-}
 
-/// <summary>Params for connections.json discovery/auto-load: the notebook's directory.</summary>
-public sealed class SqlConfigDirParams {
+    /// <summary>The notebook's directory, for the connections.json methods.</summary>
     public string Directory { get; set; }
-}
 
-/// <summary>Params for saving a registered connection to a connections.json file.</summary>
-public sealed class SqlSaveConfigParams {
-    public string Name { get; set; }
+    /// <summary>Target file, for saveConfig.</summary>
     public string FilePath { get; set; }
 }
 
@@ -150,12 +151,6 @@ public sealed class LspServer {
     // with ScriptDom and push diagnostics. No-op for other languages.
     // Sessions come from the cell-language registry, not from engine properties:
     // the engine no longer knows these types.
-    private ClrKernel.Language.Sql.SqlSession Sql =>
-        _engine.Languages.Get<ClrKernel.Language.Sql.SqlCellLanguage>()?.Session;
-
-    private ClrKernel.Language.Dax.SsasSession Cubes =>
-        _engine.Languages.Get<ClrKernel.Language.Dax.DaxCellLanguage>()?.Session;
-
 
     private void PublishDiagnostics(string uri) {
         if (Rpc == null || uri == null) {
@@ -442,146 +437,106 @@ public sealed class LspServer {
         _ => 1,
     };
 
-    // --- SQL connection management (custom methods for the extension UI) ---
+    // --- Connection management (custom methods for the extension UI) ------
+    //
+    // One set of methods for every language, routed through IConnectionCatalog the same way
+    // language features route through ICellLanguageServices. This replaced eight clrkernel/sql/*
+    // and three clrkernel/dax/* methods that were the same four operations written twice, and is
+    // what lets this host reference no Language.* package at all.
 
-    /// <summary>Lists registered connections (secret-free) for the connection panel.</summary>
-    [JsonRpcMethod("clrkernel/sql/listConnections")]
-    public object SqlListConnections() {
-        var sql = Sql;
+    /// <summary>The named connections for a language, secret-free, for the connection panel.</summary>
+    [JsonRpcMethod("clrkernel/connections/list", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsList(ConnectionParams p) {
+        var catalog = CatalogFor(p);
+        if (catalog is null) {
+            return new { ok = false, error = NoCatalog(p) };
+        }
         var items = new List<object>();
-        foreach (var c in sql.Connections.All) {
+        foreach (var c in catalog.List()) {
             items.Add(new {
                 name = c.Name,
                 server = c.Server,
                 database = c.Database,
-                auth = c.Auth.ToString(),
+                auth = c.Auth,
                 user = c.User,
-                describe = c.Describe(),
+                describe = c.Describe,
                 needsSecret = c.NeedsSecret,
-                secretRef = c.EffectiveSecretRef,
-                isDefault = string.Equals(c.Name, sql.Connections.DefaultName, StringComparison.OrdinalIgnoreCase),
+                secretRef = c.SecretRef,
+                isDefault = c.IsDefault,
             });
         }
-        return new { defaultName = sql.Connections.DefaultName, connections = items };
+        return new { ok = true, defaultName = catalog.DefaultName, connections = items };
     }
 
-    /// <summary>Registers/updates a connection from a #!sql-connect line built by the UI.</summary>
-    [JsonRpcMethod("clrkernel/sql/addConnection", UseSingleObjectParameterDeserialization = true)]
-    public object SqlAddConnection(SqlConnectParams p) {
-        try {
-            var spec = Sql.Connect(p?.Directive ?? string.Empty).Spec;
-            if (!string.IsNullOrEmpty(p?.Secret)) {
-                Sql.StoreSecret(spec.EffectiveSecretRef, p.Secret);
-            }
-            return new { ok = true, name = spec.Name, secretRef = spec.EffectiveSecretRef };
-        } catch (Exception e) {
-            return new { ok = false, error = e.Message };
-        }
-    }
+    /// <summary>Registers/updates a connection from a connect directive built by the UI.</summary>
+    [JsonRpcMethod("clrkernel/connections/add", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsAdd(ConnectionParams p) => Guarded(p, catalog => {
+        var name = catalog.Add(p?.Directive ?? string.Empty, p?.Secret);
+        return new { ok = true, name };
+    });
 
-    /// <summary>Stores a secret (password) in the OS credential store for a ref.</summary>
-    [JsonRpcMethod("clrkernel/sql/storeSecret", UseSingleObjectParameterDeserialization = true)]
-    public object SqlStoreSecret(SqlSecretParams p) {
-        try {
-            var provider = Sql.StoreSecret(p?.SecretRef ?? string.Empty, p?.Secret ?? string.Empty);
-            return new { ok = true, provider };
-        } catch (Exception e) {
-            return new { ok = false, error = e.Message };
-        }
-    }
-
-    /// <summary>Removes a connection from the session registry.</summary>
-    [JsonRpcMethod("clrkernel/sql/removeConnection", UseSingleObjectParameterDeserialization = true)]
-    public object SqlRemoveConnection(SqlNameParams p) {
-        var removed = Sql.Connections.Remove(p?.Name ?? string.Empty);
-        return new { ok = removed };
-    }
+    /// <summary>Removes a connection from the session.</summary>
+    [JsonRpcMethod("clrkernel/connections/remove", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsRemove(ConnectionParams p) =>
+        Guarded(p, catalog => new { ok = catalog.Remove(p?.Name ?? string.Empty) });
 
     /// <summary>Sets the default connection.</summary>
-    [JsonRpcMethod("clrkernel/sql/setDefault", UseSingleObjectParameterDeserialization = true)]
-    public object SqlSetDefault(SqlNameParams p) {
-        try {
-            Sql.Connections.SetDefault(p?.Name ?? string.Empty);
-            return new { ok = true };
-        } catch (Exception e) {
-            return new { ok = false, error = e.Message };
-        }
-    }
+    [JsonRpcMethod("clrkernel/connections/setDefault", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsSetDefault(ConnectionParams p) => Guarded(p, catalog => {
+        catalog.SetDefault(p?.Name ?? string.Empty);
+        return new { ok = true };
+    });
 
-    /// <summary>Reports whether a connections.json exists at/above the notebook's directory,
-    /// and the connection names it holds — so the UI can offer to confirm or choose a file.</summary>
-    [JsonRpcMethod("clrkernel/sql/configStatus", UseSingleObjectParameterDeserialization = true)]
-    public object SqlConfigStatus(SqlConfigDirParams p) {
-        try {
-            var path = Sql.FindConfigFile(NullIfBlank(p?.Directory));
-            var names = path != null ? Sql.ConfigConnectionNames(path) : System.Array.Empty<string>();
-            return new { ok = true, found = path != null, path, names };
-        } catch (Exception e) {
-            return new { ok = false, error = e.Message };
-        }
-    }
+    /// <summary>Whether a connections.json exists at/above the notebook's directory, and what
+    /// it holds — so the UI can offer to confirm or choose a file.</summary>
+    [JsonRpcMethod("clrkernel/connections/configStatus", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsConfigStatus(ConnectionParams p) => GuardedConfig(p, config => {
+        var status = config.Status(p?.Directory);
+        return new { ok = true, found = status.Found, path = status.Path, names = status.Names };
+    });
 
-    /// <summary>Registers SqlServer entries from the nearest connections.json into the session
-    /// (called on notebook open so saved connections are available without re-adding them).</summary>
-    [JsonRpcMethod("clrkernel/sql/loadConnectionsConfig", UseSingleObjectParameterDeserialization = true)]
-    public object SqlLoadConnectionsConfig(SqlConfigDirParams p) {
-        try {
-            var loaded = Sql.LoadFromConfig(NullIfBlank(p?.Directory));
-            return new { ok = true, loaded };
-        } catch (Exception e) {
-            return new { ok = false, error = e.Message };
-        }
-    }
+    /// <summary>Registers this language's entries from the nearest connections.json (called on
+    /// notebook open, so saved connections are available without re-adding them).</summary>
+    [JsonRpcMethod("clrkernel/connections/loadConfig", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsLoadConfig(ConnectionParams p) =>
+        GuardedConfig(p, config => new { ok = true, loaded = config.LoadFromConfig(p?.Directory) });
 
     /// <summary>Writes a registered connection into a connections.json file (secret-free).</summary>
-    [JsonRpcMethod("clrkernel/sql/saveConnection", UseSingleObjectParameterDeserialization = true)]
-    public object SqlSaveConnection(SqlSaveConfigParams p) {
+    [JsonRpcMethod("clrkernel/connections/saveConfig", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsSaveConfig(ConnectionParams p) =>
+        GuardedConfig(p, config => new { ok = true, path = config.SaveToConfig(p?.Name ?? string.Empty, p?.FilePath ?? string.Empty) });
+
+    private IConnectionCatalog CatalogFor(ConnectionParams p) =>
+        _engine.Languages.ById(p?.LanguageId ?? string.Empty)?.Connections;
+
+    private static string NoCatalog(ConnectionParams p) =>
+        $"No connection support for language '{p?.LanguageId}'.";
+
+    // Every method reports failure the same way ({ ok = false, error }) rather than throwing, so
+    // the UI can show the server's message instead of a transport-level JSON-RPC fault.
+    private object Guarded(ConnectionParams p, Func<IConnectionCatalog, object> act) {
+        var catalog = CatalogFor(p);
+        if (catalog is null) {
+            return new { ok = false, error = NoCatalog(p) };
+        }
         try {
-            var path = Sql.SaveConnectionToConfig(p?.Name ?? string.Empty, p?.FilePath ?? string.Empty);
-            return new { ok = true, path };
+            return act(catalog);
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
         }
     }
 
-    private static string NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
-
-    // --- DAX cube connection management (custom methods for the extension UI) ---
-
-    /// <summary>Lists registered cubes for the DAX connection panel.</summary>
-    [JsonRpcMethod("clrkernel/dax/listConnections")]
-    public object DaxListConnections() {
-        var cubes = Cubes.Cubes;
-        var items = new List<object>();
-        foreach (var (name, spec) in cubes.All) {
-            items.Add(new {
-                name,
-                describe = spec.Describe(),
-                server = spec.Server,
-                database = spec.Database,
-                auth = spec.Auth.ToString(),
-                isDefault = string.Equals(name, cubes.DefaultName, StringComparison.OrdinalIgnoreCase),
-            });
+    // A language only offers these when its catalog also implements IConfigBackedConnections —
+    // a type check, not a capability flag, so a provider without config files simply says so.
+    private object GuardedConfig(ConnectionParams p, Func<IConfigBackedConnections, object> act) {
+        if (CatalogFor(p) is not IConfigBackedConnections config) {
+            return new { ok = false, error = $"Language '{p?.LanguageId}' has no connections.json support." };
         }
-        return new { defaultName = cubes.DefaultName, connections = items };
-    }
-
-    /// <summary>Registers a cube from a #!dax-connect line built by the UI.</summary>
-    [JsonRpcMethod("clrkernel/dax/addConnection", UseSingleObjectParameterDeserialization = true)]
-    public object DaxAddConnection(SqlConnectParams p) {
         try {
-            var name = Cubes.Connect(p?.Directive ?? string.Empty);
-            return new { ok = true, name };
+            return act(config);
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
         }
-    }
-
-    /// <summary>Removes a cube from the session.</summary>
-    [JsonRpcMethod("clrkernel/dax/removeConnection", UseSingleObjectParameterDeserialization = true)]
-    public object DaxRemoveConnection(SqlNameParams p) {
-        var removed = Cubes.Cubes.Remove(p?.Name ?? string.Empty);
-        return new { ok = removed };
     }
 
     // --- Execution (custom methods) ---------------------------------------

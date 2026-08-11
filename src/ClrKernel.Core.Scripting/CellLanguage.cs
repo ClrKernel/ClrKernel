@@ -38,6 +38,13 @@ public interface ICellLanguage {
     /// </summary>
     ICellLanguageServices Services { get; }
 
+    /// <summary>
+    /// This language's named connections, or null when it has none — HTTP, Mermaid and
+    /// PowerShell do not connect to anything. Lets an editor serve a connection UI for any
+    /// language without the host referencing that language's package.
+    /// </summary>
+    IConnectionCatalog Connections { get; }
+
     /// <summary>Runs a cell that matched one of <see cref="Selectors"/>.</summary>
     Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context);
 }

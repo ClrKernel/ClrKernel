@@ -31,6 +31,11 @@ public sealed class DaxCellLanguage : ICellLanguage {
     // namespace. Both are resolved when a cell compiles, so a stale string here builds
     // clean and fails only at run time; SsasTest executes `AnalysisServices.Connect(...)` in a cell
     // and is what catches it.
+    /// <summary>The session's cubes, for the editor's connection UI.</summary>
+    public IConnectionCatalog Connections => _connections ??= new DaxConnectionCatalog(_session);
+
+    private IConnectionCatalog _connections;
+
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(AnalysisServices).Assembly },
         imports: new[] { "ClrKernel.Database.Provider.AnalysisServices" });   // AnalysisServices.Connect / ProcessPartitions

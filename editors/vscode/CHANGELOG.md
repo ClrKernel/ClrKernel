@@ -2,6 +2,13 @@
 
 ## [0.5.0] - 2026-08-11
 
+- **BREAKING (protocol) — the connection RPCs are now language-neutral.** The eight
+  `clrkernel/sql/*` and three `clrkernel/dax/*` methods are replaced by one
+  `clrkernel/connections/*` set that takes a `languageId`: `list`, `add`, `remove`,
+  `setDefault`, `configStatus`, `loadConfig`, `saveConfig`. This extension version and the
+  kernel must be updated together. DAX gains `remove` and `setDefault`, which its registry
+  always supported but never exposed; a language with no connections (HTTP, Mermaid,
+  PowerShell) now answers with a clear "no connection support" instead of having no method.
 - **BREAKING — packages renamed.** The kernel's NuGet packages were reorganised into
   three tiers: `ClrKernel.Core.*` (engine and hosts), `ClrKernel.Language.*` (cell
   languages), and `ClrKernel.Database*` (data access). Notably `ClrKernel.Sql` split

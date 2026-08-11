@@ -98,7 +98,7 @@ export class ServerClient {
         return this.client.sendRequest<ExecuteResult>('clrkernel/execute', { cellId, code });
     }
 
-    /** Sends an arbitrary custom request (e.g. clrkernel/sql/*). */
+    /** Sends an arbitrary custom request (e.g. clrkernel/connections/*). */
     request<T>(method: string, params: unknown): Promise<T> {
         if (!this.client) {
             throw new Error('ClrKernel server is not running');

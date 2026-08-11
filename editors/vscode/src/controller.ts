@@ -225,7 +225,7 @@ export class ClrKernelController {
 
     /**
      * Ensures the server is running for the given notebook and returns the client,
-     * so the SQL connection UI can issue clrkernel/sql/* requests over the same
+     * so the SQL connection UI can issue clrkernel/connections/* requests over the same
      * process that runs cells (and therefore shares the connection registry).
      */
     async getClient(notebook: vscode.NotebookDocument): Promise<ServerClient> {
@@ -246,7 +246,7 @@ export class ClrKernelController {
         try {
             const client = await this.ensureClient(notebook);
             const directory = path.dirname(notebook.uri.fsPath);
-            await client.request('clrkernel/sql/loadConnectionsConfig', { directory });
+            await client.request('clrkernel/connections/loadConfig', { languageId: 'sql', directory });
         } catch (error) {
             // A missing/unreadable config or an unstarted server must not block the run.
             this.loadedConfigNotebooks.delete(key); // allow a later retry

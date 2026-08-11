@@ -115,7 +115,7 @@ export class SqlConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/sql/listConnections', {});
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql' });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -174,7 +174,7 @@ export class SqlConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/sql/listConnections', {});
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql' });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -326,7 +326,8 @@ export class SqlConnectionUi {
             const client = await this.controller.getClient(cell.notebook);
             // Empty secret leaves the existing stored password untouched (the kernel only
             // writes the secret when a non-empty one is sent), so blank on edit keeps it.
-            const result = await client.request<AddResult>('clrkernel/sql/addConnection', {
+            const result = await client.request<AddResult>('clrkernel/connections/add', {
+                languageId: 'sql',
                 directive,
                 secret: secret ?? '',
             });
@@ -366,7 +367,7 @@ export class SqlConnectionUi {
         const directory = path.dirname(cell.notebook.uri.fsPath);
         let status: ConfigStatusResult;
         try {
-            status = await client.request<ConfigStatusResult>('clrkernel/sql/configStatus', { directory });
+            status = await client.request<ConfigStatusResult>('clrkernel/connections/configStatus', { languageId: 'sql', directory });
         } catch {
             return; // couldn't check — don't nag
         }
@@ -415,7 +416,8 @@ export class SqlConnectionUi {
         }
 
         try {
-            const result = await client.request<SaveConfigResult>('clrkernel/sql/saveConnection', {
+            const result = await client.request<SaveConfigResult>('clrkernel/connections/saveConfig', {
+                languageId: 'sql',
                 name,
                 filePath: targetPath,
             });

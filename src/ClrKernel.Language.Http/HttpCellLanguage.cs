@@ -19,6 +19,9 @@ public sealed class HttpCellLanguage : ICellLanguage {
 
     public ICellLanguageServices Services => null;
 
+    /// <summary>Nothing to connect to.</summary>
+    public IConnectionCatalog Connections => null;
+
     public ScriptContribution ScriptContribution => null;
 
     /// <summary>The session's HTTP state, created on first use.</summary>

@@ -94,7 +94,7 @@ export class DaxConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/dax/listConnections', {});
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax' });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -144,7 +144,7 @@ export class DaxConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/dax/listConnections', {});
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax' });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -265,7 +265,7 @@ export class DaxConnectionUi {
 
         try {
             const client = await this.controller.getClient(cell.notebook);
-            const result = await client.request<AddResult>('clrkernel/dax/addConnection', { directive });
+            const result = await client.request<AddResult>('clrkernel/connections/add', { languageId: 'dax', directive });
             if (!result.ok) {
                 void vscode.window.showErrorMessage(`Could not ${editing ? 'update' : 'add'} cube: ` + (result.error ?? 'unknown error'));
                 return;

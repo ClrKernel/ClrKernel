@@ -15,6 +15,9 @@ public sealed class MermaidCellLanguage : ICellLanguage {
 
     public ICellLanguageServices Services => null;
 
+    /// <summary>Nothing to connect to.</summary>
+    public IConnectionCatalog Connections => null;
+
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(MermaidRenderer).Assembly },
         imports: new[] { "ClrKernel.Language.Mermaid" });   // DisplayMermaid() helper
