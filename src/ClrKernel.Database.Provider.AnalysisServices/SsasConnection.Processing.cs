@@ -5,7 +5,7 @@ using ClrKernel.Core.Primitives;
 using AMO = Microsoft.AnalysisServices;
 using Tabular = Microsoft.AnalysisServices.Tabular;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>Processing (refresh) and partition management via the Tabular Object Model.</summary>
 public sealed partial class SsasConnection {
     /// <summary>Default parallelism for a process operation.</summary>

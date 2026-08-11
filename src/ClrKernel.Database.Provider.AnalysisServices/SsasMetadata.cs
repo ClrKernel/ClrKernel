@@ -4,7 +4,7 @@ using System.Data;
 using System.Linq;
 using System.Reflection;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>A partition identified by table + name (for processing/removal).</summary>
 public interface IPartition {
     string TableName { get; }

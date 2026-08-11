@@ -1,7 +1,7 @@
 using Azure.Core;
 using Azure.Identity;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>Refresh/process kinds (maps to the Tabular Object Model's RefreshType).</summary>
 public enum SsasRefresh {
     Full,

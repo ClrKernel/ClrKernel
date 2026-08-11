@@ -5,7 +5,7 @@ using System.Linq;
 using ClrKernel.Core.Primitives;
 using Adomd = Microsoft.AnalysisServices.AdomdClient;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>
 /// A live handle to an Analysis Services (Tabular) model: DAX/DMV queries via
 /// ADOMD.NET and metadata reads, plus processing/partition management (in the

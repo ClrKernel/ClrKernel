@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using ClrKernel.Database.Provider.AnalysisServices;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Language.Dax;
 /// <summary>A parsed <c>#!dax-connect</c>: a named cube plus whether it is the default.</summary>
 public sealed class DaxConnectDirective {
     public DaxConnectDirective(string name, SsasConnectionSpec spec, bool isDefault) {

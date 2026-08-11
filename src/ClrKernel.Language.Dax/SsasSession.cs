@@ -1,7 +1,8 @@
 using System.Collections.Generic;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Database.Provider.AnalysisServices;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Language.Dax;
 /// <summary>
 /// Holds the named cube connections for a notebook session and runs <c>#!dax</c>
 /// cells: a cell's DAX executes against the chosen (or default) cube and the

@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
+using ClrKernel.Database.Provider.AnalysisServices;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Language.Dax;
 
 /// <summary>
 /// DAX cell magics: <c>#!dax-connect</c> registers named cubes (on-prem SSAS,
@@ -25,9 +26,14 @@ public sealed class DaxCellLanguage : ICellLanguage {
 
     private ICellLanguageServices _services;
 
+    // Only the provider is cell-facing — `Ssas` and everything it returns. Nothing in
+    // Language.Dax is called from a C# cell, so this names one assembly and one
+    // namespace. Both are resolved when a cell compiles, so a stale string here builds
+    // clean and fails only at run time; SsasTest executes `Ssas.Connect(...)` in a cell
+    // and is what catches it.
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(Ssas).Assembly },
-        imports: new[] { "ClrKernel.AnalysisServices" });   // Ssas.Connect / ProcessPartitions
+        imports: new[] { "ClrKernel.Database.Provider.AnalysisServices" });   // Ssas.Connect / ProcessPartitions
 
     public Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) {
         if (string.Equals(cell.Selector, "#!dax-connect", StringComparison.OrdinalIgnoreCase)) {

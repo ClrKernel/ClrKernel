@@ -153,8 +153,8 @@ public sealed class LspServer {
     private ClrKernel.Language.Sql.SqlSession Sql =>
         _engine.Languages.Get<ClrKernel.Language.Sql.SqlCellLanguage>()?.Session;
 
-    private ClrKernel.AnalysisServices.SsasSession Cubes =>
-        _engine.Languages.Get<ClrKernel.AnalysisServices.DaxCellLanguage>()?.Session;
+    private ClrKernel.Language.Dax.SsasSession Cubes =>
+        _engine.Languages.Get<ClrKernel.Language.Dax.DaxCellLanguage>()?.Session;
 
     private ClrKernel.Language.PowerShell.PowerShellSession PowerShell =>
         _engine.Languages.Get<ClrKernel.Language.PowerShell.PowerShellCellLanguage>()?.Session;

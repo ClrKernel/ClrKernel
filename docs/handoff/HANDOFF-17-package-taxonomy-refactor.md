@@ -43,7 +43,7 @@ accepted.
 | P3 | Cell-language registration seam in `Core.Scripting` | DONE |
 | P4a | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (move only) | DONE |
 | P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | CODE DONE — live gate OPEN |
-| P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | TODO |
+| P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | DONE |
 | P6 | Extract shared Entra auth into `ClrKernel.Database` | TODO |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | TODO |
 | P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | TODO |
@@ -511,12 +511,29 @@ unresolvable secret throws `SqlCellException` from `Open()` rather than at const
 `docs/windows-verification-checklist.md` before treating P4b as finished. Local 276/8/284 does
 **not** discharge this.
 
-### P5 — Split `ClrKernel.AnalysisServices`
+### P5 — Split `ClrKernel.AnalysisServices` (DONE)
 
-Per §4.4. `Language.Dax` references `Database.Provider.AnalysisServices`, and re-points the P3
-registration the same way P4 did.
+Per §4.4, and it went exactly as §4.4 predicted — the only phase so far where no placement had to
+be amended. `Language.Dax` holds `DaxLanguage`, `DaxDirectives`, `SsasSession` (the DAX cell
+session) and the two P3 files; `Database.Provider.AnalysisServices` holds `Ssas`,
+`SsasConnection`(+`.Processing`), `SsasConnectionSpec`, `SsasConnectionRegistry` and `SsasMetadata`.
+Namespaces are flat, matching P4a.
 
-**Gate:** P4 gate + `DaxTest`, `SsasTest` green.
+**The script contribution names one assembly here, not two** (unlike SQL): nothing in `Language.Dax`
+is reachable from a C# cell. Cells call `Ssas.Connect(...)`, which is entirely provider-side, so
+`DaxCellLanguage.ScriptContribution` imports only `ClrKernel.Database.Provider.AnalysisServices`.
+`SsasTest` executes `Ssas.Connect(...)` in a cell and is what would catch a stale string.
+
+**Gate (met):** P4a gate + `DaxTest`, `SsasTest` green — 276 passed / 8 skipped / 284 total,
+`dotnet format` clean, 0 warnings, extension compiles, both RPC harnesses 10/10.
+
+**Landmine handed to P7.** D8 renames the entry type `Ssas` → `AnalysisServices`, and it would now
+live in namespace `ClrKernel.Database.Provider.AnalysisServices` — a type whose name matches the
+last segment of its own namespace. That is the exact D13 collision: inside the namespace it
+resolves, but `ClrKernel.UnitTest` and `ClrKernel.Language.Dax` would bind `AnalysisServices` to the
+**namespace** and fail CS0118. D13 solved it by renaming the type (`Database` → `DataSource`).
+Decide the same way before starting P7 — either the entry type gets a different name, or every
+sibling-namespace reference gets fully qualified.
 
 ### P6 — Shared Entra auth into `ClrKernel.Database`
 

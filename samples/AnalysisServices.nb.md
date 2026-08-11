@@ -1,6 +1,6 @@
 # Analysis Services (SSAS / Fabric) in ClrKernel
 
-The `ClrKernel.AnalysisServices` helper lets C# cells work with Tabular models —
+The `ClrKernel.Database.Provider.AnalysisServices` helper lets C# cells work with Tabular models —
 on-premises SQL Server Analysis Services, Azure Analysis Services, or Microsoft
 Fabric / Power BI semantic models. Query with DAX, read metadata, and process
 (refresh) the model. It's available in every C# cell as `Ssas`.

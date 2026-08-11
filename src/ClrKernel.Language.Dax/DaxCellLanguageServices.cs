@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ClrKernel.Core.Scripting;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Language.Dax;
 
 /// <summary>
 /// DAX editor features. Completion offers the session's registered cube names

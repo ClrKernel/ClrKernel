@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace>ClrKernel.AnalysisServices</RootNamespace>
-    <PackageId>ClrKernel.AnalysisServices</PackageId>
-    <Description>SQL Server Analysis Services (Tabular) cells for ClrKernel: query models with DAX/DMV, read table &amp; partition metadata, recalculate, process partitions/tables/models, and add or remove partitions — from C# notebook cells via the `Ssas` helper. Works against on-premises SSAS (Windows auth), Azure Analysis Services, and Microsoft Fabric / Power BI semantic models (Entra auth). Built on the Tabular Object Model (AMO) and ADOMD.NET.</Description>
+    <RootNamespace>ClrKernel.Database.Provider.AnalysisServices</RootNamespace>
+    <PackageId>ClrKernel.Database.Provider.AnalysisServices</PackageId>
+    <Description>SQL Server Analysis Services (Tabular) provider for ClrKernel: connect to a semantic model, query it with DAX/DMV, read table &amp; partition metadata, recalculate, process partitions/tables/models, and add or remove partitions — from C# notebook cells via the `Ssas` helper. Works against on-premises SSAS (Windows auth), Azure Analysis Services, and Microsoft Fabric / Power BI semantic models (Entra auth). Built on the Tabular Object Model (AMO) and ADOMD.NET. The `#!dax` cell language lives in ClrKernel.Language.Dax.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>Jupyter,Notebook,Kernel,SSAS,AnalysisServices,Tabular,DAX,Fabric,PowerBI,dotnet,CLR</PackageTags>
+    <PackageTags>Jupyter,Notebook,Kernel,SSAS,AnalysisServices,Tabular,Fabric,PowerBI,dotnet,CLR</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>logo-64x64.png</PackageIcon>
   </PropertyGroup>
@@ -20,11 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
     <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.Language.Dax" />
     <InternalsVisibleTo Include="ClrKernel.UnitTest" />
   </ItemGroup>
 

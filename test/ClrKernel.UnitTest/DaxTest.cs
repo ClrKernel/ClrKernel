@@ -2,9 +2,10 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ClrKernel.AnalysisServices;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
+using ClrKernel.Database.Provider.AnalysisServices;
+using ClrKernel.Language.Dax;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

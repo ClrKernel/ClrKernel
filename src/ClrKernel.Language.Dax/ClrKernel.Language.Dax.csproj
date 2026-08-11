@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Language.Dax</RootNamespace>
+    <PackageId>ClrKernel.Language.Dax</PackageId>
+    <Description>DAX cells for ClrKernel: query Analysis Services Tabular models and Microsoft Fabric / Power BI semantic models from a notebook with `#!dax`, against named cubes registered by `#!dax-connect`, with results rendered as an interactive grid. Includes DAX completion and hover for the editor. Drives the `#!dax` cell language across the Jupyter kernel, the JSON-RPC server, and the headless runner; connections, metadata and model processing live in ClrKernel.Database.Provider.AnalysisServices.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,DAX,AnalysisServices,Tabular,Fabric,PowerBI,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.AnalysisServices/ClrKernel.Database.Provider.AnalysisServices.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

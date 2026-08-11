@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>How an <see cref="SsasConnection"/> authenticates.</summary>
 public enum SsasAuthMode {
     /// <summary>Windows Integrated auth (SSPI) — the default for on-prem SSAS.</summary>

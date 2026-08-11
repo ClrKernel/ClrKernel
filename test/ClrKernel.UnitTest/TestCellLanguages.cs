@@ -1,6 +1,6 @@
 using System;
-using ClrKernel.AnalysisServices;
 using ClrKernel.Core.Scripting;
+using ClrKernel.Language.Dax;
 using ClrKernel.Language.Http;
 using ClrKernel.Language.Mermaid;
 using ClrKernel.Language.PowerShell;

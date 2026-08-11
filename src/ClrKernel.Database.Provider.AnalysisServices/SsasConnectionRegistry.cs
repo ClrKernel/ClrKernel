@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>
 /// The set of named cube (Tabular model) connections available to <c>#!dax</c>
 /// cells in a session. A cell targets a named cube or the default.

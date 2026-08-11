@@ -1,9 +1,9 @@
 using System.Data;
 using System.IO;
 using System.Threading.Tasks;
-using ClrKernel.AnalysisServices;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
+using ClrKernel.Database.Provider.AnalysisServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

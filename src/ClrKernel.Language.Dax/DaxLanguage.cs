@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ClrKernel.AnalysisServices;
+namespace ClrKernel.Language.Dax;
 /// <summary>Hover info for a DAX token: markdown plus the covered span.</summary>
 public sealed class DaxHover {
     public string Markdown { get; set; }
