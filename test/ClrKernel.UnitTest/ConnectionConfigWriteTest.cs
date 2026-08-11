@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using ClrKernel.Data;
+using ClrKernel.Database;
 using ClrKernel.Sql;
 using ClrKernel.Sql.Etl;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

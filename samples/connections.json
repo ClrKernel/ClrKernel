@@ -1,0 +1,9 @@
+{
+  "example_servername": {
+    "$type": "SqlServer",
+    "server": "localhost",
+    "database": "master",
+    "auth": "integrated",
+    "trustServerCertificate": "true"
+  }
+}

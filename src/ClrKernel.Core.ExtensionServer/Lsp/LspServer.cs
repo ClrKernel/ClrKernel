@@ -248,7 +248,7 @@ public sealed class LspServer {
     // cmdlets, parameters, provider paths, and session-defined variables.
     private async Task<CompletionList> PowerShellCompletion(string code, int offset) {
         await _gate.WaitAsync().ConfigureAwait(false);
-        ClrKernel.PowerShell.PowerShellCompletion completion;
+        ClrKernel.Language.PowerShell.PowerShellCompletion completion;
         try {
             completion = await Task.Run(() => _engine.PowerShell.Complete(code, offset)).ConfigureAwait(false);
         } catch (Exception e) {
@@ -318,7 +318,7 @@ public sealed class LspServer {
     // PowerShell hover: command help, parameter, or session variable type/value.
     private async Task<Hover> PowerShellHover(string code, int offset) {
         await _gate.WaitAsync().ConfigureAwait(false);
-        ClrKernel.PowerShell.PowerShellHover hover;
+        ClrKernel.Language.PowerShell.PowerShellHover hover;
         try {
             hover = await Task.Run(() => _engine.PowerShell.Hover(code, offset)).ConfigureAwait(false);
         } catch (Exception e) {
@@ -343,7 +343,7 @@ public sealed class LspServer {
     // PowerShell signature help: one signature per parameter set of the command.
     private async Task<SignatureHelp> PowerShellSignatureHelp(string code, int offset) {
         await _gate.WaitAsync().ConfigureAwait(false);
-        ClrKernel.PowerShell.PowerShellSignatureHelp help;
+        ClrKernel.Language.PowerShell.PowerShellSignatureHelp help;
         try {
             help = await Task.Run(() => _engine.PowerShell.SignatureHelp(code, offset)).ConfigureAwait(false);
         } catch (Exception e) {

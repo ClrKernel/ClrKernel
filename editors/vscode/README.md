@@ -42,7 +42,7 @@ three lives.
 - **Query databases from C#** — an ergonomic `Sql` API (`Sql.Connection(...)
   .Query(sql).Results()`) returns rows that both render as the grid and enumerate
   as dynamic or typed objects; plus bulk-copy, MERGE, and transactions. Opt-in
-  provider packages (`ClrKernel.Data.Oracle`, `ClrKernel.Data.Odbc`) give the same
+  provider packages (`ClrKernel.Database.Provider.Oracle`, `ClrKernel.Database.Provider.Odbc`) give the same
   experience against Oracle and ODBC sources.
 - **DAX & Analysis Services** — set a cell to **DAX** (or a ` ```dax ` fence) to
   query SSAS / Azure AS / Fabric semantic models, with a cube **connection button**

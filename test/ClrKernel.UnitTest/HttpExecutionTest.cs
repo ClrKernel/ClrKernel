@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
-using ClrKernel.Http;
+using ClrKernel.Language.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

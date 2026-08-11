@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using ClrKernel.Data;
+using ClrKernel.Database;
 using Microsoft.Data.SqlClient;
 
 namespace ClrKernel.Sql;

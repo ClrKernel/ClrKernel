@@ -2,7 +2,7 @@ using System.IO;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
-using ClrKernel.Mermaid;
+using ClrKernel.Language.Mermaid;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

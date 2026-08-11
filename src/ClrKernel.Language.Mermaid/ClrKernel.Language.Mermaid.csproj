@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Language.Mermaid</RootNamespace>
+    <PackageId>ClrKernel.Language.Mermaid</PackageId>
+    <Description>Mermaid diagram cells for ClrKernel: renders Mermaid diagrams (flowchart, sequence, class, state, ER, gantt, …) as self-contained, fully offline notebook output. Drives the `#!mermaid` cell language and a C# DisplayMermaid() helper across the Jupyter kernel, the JSON-RPC server, and the headless runner.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,Mermaid,Diagram,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <!-- Mermaid (MIT, https://mermaid.js.org) is embedded so diagrams render
+       fully offline — no CDN, no network at view time. mermaid.LICENSE ships
+       alongside it for attribution. -->
+  <ItemGroup>
+    <EmbeddedResource Include="assets/mermaid.min.js" />
+    <EmbeddedResource Include="assets/mermaid.LICENSE" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

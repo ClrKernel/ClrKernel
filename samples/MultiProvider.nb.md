@@ -14,8 +14,8 @@ headless runs).
 ## Oracle
 
 ```csharp
-#r "nuget: ClrKernel.Data.Oracle"
-using ClrKernel.Data.Oracle;
+#r "nuget: ClrKernel.Database.Provider.Oracle"
+using ClrKernel.Database.Provider.Oracle;
 ```
 
 ```csharp
@@ -35,8 +35,8 @@ var top = erp.Query("select * from emp").Results<Employee>();
 The ODBC driver for your database must be installed on the machine.
 
 ```csharp
-#r "nuget: ClrKernel.Data.Odbc"
-using ClrKernel.Data.Odbc;
+#r "nuget: ClrKernel.Database.Provider.Odbc"
+using ClrKernel.Database.Provider.Odbc;
 ```
 
 ```csharp
@@ -51,13 +51,13 @@ var db = Odbc.FromDsn("MyWarehouse", user: "svc", secretRef: "odbc:warehouse");
 
 ## JDBC / OpenEdge (experimental)
 
-`ClrKernel.Data.Jdbc` runs Java JDBC drivers inside .NET via IKVM. It's experimental
+`ClrKernel.Database.Provider.Jdbc` runs Java JDBC drivers inside .NET via IKVM. It's experimental
 and currently Windows-centric; you supply the JDBC driver assembly. The JDBC bridge
 doesn't support command parameters — use parameter-less SQL.
 
 ```csharp
-#r "nuget: ClrKernel.Data.Jdbc"
-using ClrKernel.Data.Jdbc;
+#r "nuget: ClrKernel.Database.Provider.Jdbc"
+using ClrKernel.Database.Provider.Jdbc;
 ```
 
 ```csharp
@@ -105,6 +105,6 @@ erp.Query("select * from emp").Results()
 - **Secrets.** No passwords in notebooks: pass a `secretRef` (resolved from the OS
   store / `CLRKERNEL_SECRET_<REF>`), or a DSN/connection string that carries its own
   credentials.
-- **Provider-agnostic core.** All of this is `ClrKernel.Data` under the hood; you can
+- **Provider-agnostic core.** All of this is `ClrKernel.Database` under the hood; you can
   build a `Database` over any ADO.NET `DbConnection` factory directly:
   `new Database("name", () => new SomeDbConnection(cs))`.

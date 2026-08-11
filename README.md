@@ -161,20 +161,20 @@ provider per notebook with `#r "nuget: …"` so its driver isn't pulled unless y
 it:
 
 ```csharp
-#r "nuget: ClrKernel.Data.Oracle"
-using ClrKernel.Data.Oracle;
+#r "nuget: ClrKernel.Database.Provider.Oracle"
+using ClrKernel.Database.Provider.Oracle;
 var erp = Oracle.Connect("orahost", 1521, "ORCL", "scott", "oracle:erp");   // password from the secret store
 erp.Query("select * from emp").Results()
 ```
 
 ```csharp
-#r "nuget: ClrKernel.Data.Odbc"
-using ClrKernel.Data.Odbc;
+#r "nuget: ClrKernel.Database.Provider.Odbc"
+using ClrKernel.Database.Provider.Odbc;
 var db = Odbc.FromConnectionString("Driver={PostgreSQL Unicode};Server=host;Database=app;");
 db.Query("select * from public.orders").Results<Order>();
 ```
 
-`ClrKernel.Data.Jdbc` (experimental) runs Java JDBC drivers via IKVM, including an
+`ClrKernel.Database.Provider.Jdbc` (experimental) runs Java JDBC drivers via IKVM, including an
 `OpenEdge` helper — you supply the driver assembly; validate on Windows before
 relying on it.
 
@@ -194,7 +194,7 @@ passwords are secret references resolved from the OS store / env var):
 var erp = Oracle.FromConfig("erp");   // Odbc.FromConfig(...) too
 ```
 
-All providers share the `ClrKernel.Data` core (the same secret store and result grid
+All providers share the `ClrKernel.Database` core (the same secret store and result grid
 as `#!sql` cells). See [samples/MultiProvider.nb.md](samples/MultiProvider.nb.md).
 
 ### Analysis Services (SSAS / Fabric)
@@ -236,7 +236,7 @@ semantic model. See [samples/Dax.nb.md](samples/Dax.nb.md).
 ### Fabric warehouse writes
 
 C# cells can write to **Microsoft Fabric Warehouse** tables via the `Fabric`
-helper (`ClrKernel.Fabric`). It bulk-inserts a data reader by staging Parquet to a
+helper (`ClrKernel.Database.Provider.Fabric`). It bulk-inserts a data reader by staging Parquet to a
 lakehouse in OneLake and loading it with `OPENROWSET` — the fast path for large
 loads — and it can create the target table from the reader's schema using
 Fabric-supported types (UTF-8 `varchar`, `datetime2` — never `nvarchar`). All auth
@@ -300,7 +300,7 @@ tools to install. Use `./build.sh` on macOS/Linux, `.\build.ps1` (or
 ./build.sh                               # default: restore + build + test the solution
 ./build.sh Build                         # build the whole solution
 ./build.sh Test                          # run all unit tests
-./build.sh Build --project ClrKernel.Http   # build one project (searches src/ then test/)
+./build.sh Build --project ClrKernel.Language.Http   # build one project (searches src/ then test/)
 ./build.sh Test  --filter Mermaid           # run a subset of tests (dotnet test --filter)
 ./build.sh Format                        # verify formatting  (Format --apply to fix)
 ./build.sh Extension                     # build the VS Code extension (npm install + tsc)

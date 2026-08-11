@@ -39,7 +39,7 @@ accepted.
 | P0 | Baseline capture + guardrails | DONE |
 | P1 | Extract `ClrKernel.Core.Secrets` | DONE |
 | P2a | Rename the `Core.*` group | DONE |
-| P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | TODO |
+| P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | DONE |
 | P3 | Cell-language registration seam in `Core.Scripting` | TODO |
 | P4 | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (incl. fluent dedup) | TODO |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | TODO |
@@ -65,12 +65,13 @@ is the record. Add a `— <sha>` suffix only when back-filling a row after the f
 | D4 | **Add the registration seam now.** `Core.Scripting` must stop referencing `Language.*`. | The engine's selector chain and the LSP language surface both move behind contracts; the CLI becomes the composition root. See P3. |
 | D5 | **Fabric split by workload, shared Entra auth in `ClrKernel.Database`.** `Provider.AnalysisServices` keeps semantic-model work (incl. `ConnectFabric`); `Provider.Fabric` keeps warehouse/OneLake work; both consume shared auth. | New auth abstraction in `ClrKernel.Database` (P6). |
 | D6 | **Jdbc is renamed *and* added to `ClrKernel.slnx`.** | It compiles in CI for the first time. IKVM restore/build on ubuntu is **unverified** — see risk R2. |
-| D7 | **Collapse the fluent duplication during the split.** `SqlDatabase`/`SqlQuery`/`SqlTable` rebase onto `ClrKernel.Database`'s `Database`/`DatabaseQuery`/`DatabaseTable` while they move. | P4 mixes a move with a behavior-bearing refactor. Mitigation: sub-commits, and the SQL fluent tests run at each. |
+| D7 | **Collapse the fluent duplication during the split.** `SqlDatabase`/`SqlQuery`/`SqlTable` rebase onto `ClrKernel.Database`'s `DataSource`/`DataSourceQuery`/`DataSourceTable` (see D13) while they move. | P4 mixes a move with a behavior-bearing refactor. Mitigation: sub-commits, and the SQL fluent tests run at each. |
 | D8 | **Entry types renamed:** `Sql` → `SqlServer`, `Ssas` → `AnalysisServices`. `Fabric`, `Oracle`, `Odbc`, `Jdbc` already match and stay. | Every sample cell body, README snippet, and the C# variable binding emitted by `#!sql-connect` changes. |
 | D9 | **Phased commits on `main`.** No AI/assistant attribution in commit messages. `CLAUDE.md` is gitignored. | Done: `.gitignore` entry added. |
 | D10 | **Flat layout** — `src/<PackageName>/<PackageName>.csproj`. | Keeps `Build.cs`'s `ResolveProject` and `./build.sh --project <name>` working unchanged. |
 | D11 | **Test project split three ways** — `Core`, `Language`, `Database`. | `Build.cs` gains a test-project list; `InternalsVisibleTo` entries multiply. |
 | D12 | **Version bump is the user's call**, done manually once the refactor is tested and working. | `Directory.Build.props` stays `0.8.0` through every phase. No tag, no release, mid-refactor. `release.yml` hard-fails if a tag doesn't match `<Version>`. |
+| D13 | **The shared fluent type family is renamed `Database*` → `DataSource*`** (`DataSource`, `DataSourceQuery`, `DataSourceTable`, `DataSourceTransaction`), decided during P2b. Renaming the package/namespace to `ClrKernel.Database` collided with the type `Database`: inside `ClrKernel.Database.*` it resolves, but any sibling namespace (`ClrKernel.UnitTest`, and `ClrKernel.Language.Sql` after P4) binds `Database` to the **namespace** and fails CS0118. | Changes the return type of `Oracle.Connect` / `Odbc.FromConnectionString` / `Jdbc.Connect` / every `FromConfig`. `DataSourceTransaction`/`DataSourceTable` expose the owner as `.DataSource`. Inside `DataSource.cs` the static `CreateCommand` is called fully qualified (`ClrKernel.Database.DataSource.CreateCommand`) because the instance property shadows the type. |
 
 ---
 
@@ -368,7 +369,7 @@ The largest phase. Land it as sub-commits, each building:
 1. Create `Database.Provider.SqlServer`; move the provider-half files (§4.3) with namespaces
    updated. `Language.Sql` (the renamed remainder) references it.
 2. Rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `ClrKernel.Database`'s
-   `Database`/`DatabaseQuery`/`DatabaseTable` (D7). Keep the SqlClient-specific surface —
+   `DataSource`/`DataSourceQuery`/`DataSourceTable` (D7, renamed by D13). Keep the SqlClient-specific surface —
    `SqlConnection` typing, bulk copy, the connection registry — as SQL-Server additions on top of
    the shared base. `FluentSqlTest` and `MultiProviderTest` must both stay green; this is the one
    place in the plan where behavior can actually change.
@@ -486,6 +487,14 @@ Easy to miss; check on **every** rename phase.
       when a cell runs. P2a hit this. `grep -rn '"ClrKernel\.' --include="*.cs" src` after every
       rename, and rely on `./build.sh Test` (the scripting tests execute real cells) to catch it.
 
+**Shell gotcha, learned the hard way in P2b:** the default shell here is **zsh**, which does
+**not** word-split unquoted parameter expansions. `for x in $PAIRS` and `perl … $FILES` iterate
+over the whole string as a *single* word — in P2b that silently ran one rename with the first
+pair's old name and the last pair's new name, moving `ClrKernel.Data.Oracle` onto
+`ClrKernel.Database`. Use an array (`F=(a b c)` … `"${F[@]}"`) or a literal inline list. Also
+recompute any file list **after** a `git mv` — a list captured beforehand points at paths that no
+longer exist, and the later rewrites silently skip those files.
+
 **Residual-check gotcha, learned in P2a:** a `grep -rn OLD … | grep -v NEW` sweep filters on the
 whole output line, **including the file path** — and after a rename the path itself contains the
 new name, so real hits inside renamed folders are silently swallowed. Use `grep -rohE` (matched
@@ -503,7 +512,7 @@ Not affected (verified): `src/ClrKernel/kernel-spec/*`, `scripts/install-dev-ker
 | # | Risk | Mitigation |
 | --- | --- | --- |
 | R1 | **Selector ordering regression in P3.** The if-chain's order is correctness-bearing; a registry can lose it silently and `#!sql-connect` starts matching `#!sql`. | Explicit ordering in the registry + a unit test per prefix pair (`sql-connect`/`sql`, `dax-connect`/`dax`) asserting the longer selector wins. Write the test **before** the seam. |
-| R2 | **Jdbc breaks Linux CI** once it enters the solution (D6) — IKVM is Windows-centric by its own csproj comment. | Partly de-risked in P1: `dotnet build src/ClrKernel.Data.Jdbc -c Release` is clean (0 warnings, 0 errors) on macOS/arm64 with SDK 10.0.106, so IKVM at least restores and compiles off-Windows. **ubuntu CI is still unverified.** If it fails there, revert it out of `slnx`, keep the rename, and amend D6 here. |
+| R2 | **Jdbc breaks Linux CI** now that it is in the solution (D6, landed in P2b) — IKVM is Windows-centric by its own csproj comment. | Partly de-risked in P1: `dotnet build src/ClrKernel.Data.Jdbc -c Release` is clean (0 warnings, 0 errors) on macOS/arm64 with SDK 10.0.106, so IKVM at least restores and compiles off-Windows. **ubuntu CI is still unverified.** If it fails there, revert it out of `slnx`, keep the rename, and amend D6 here. |
 | R3 | **P4 mixes a move with a behavior refactor** (D7). | Sub-commits; SQL fluent + ETL tests green at each; no other work in the phase. |
 | R4 | **Clean break (D1) strands existing notebooks.** | Accepted. P7 sweeps every in-repo `#r` line; old packages get deprecated on nuget.org by hand, outside this plan. |
 | R5 | **Samples are not compiled by CI**, so entry-type renames (D8) can rot silently. | P7 gate runs each sample's first cell; P10 repeats it from a clean tree. |

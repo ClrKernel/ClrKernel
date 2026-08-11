@@ -3,21 +3,21 @@ using System.Collections.Generic;
 using System.IO;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
-using ClrKernel.Data;
+using ClrKernel.Database;
 using Microsoft.Data.Sqlite;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;
 
 /// <summary>
-/// Provider-agnostic core (ClrKernel.Data.Database) exercised end-to-end over a real
+/// Provider-agnostic core (ClrKernel.Database.DataSource) exercised end-to-end over a real
 /// ADO.NET provider that is NOT SQL Server — SQLite in-memory — so the shared query /
 /// results / table / transaction path is validated without a server.
 /// </summary>
 [TestClass]
 public class CoreDatabaseTest {
     private SqliteConnection _keepAlive;
-    private Database _db;
+    private DataSource _db;
 
     [TestInitialize]
     public void Setup() {
@@ -25,7 +25,7 @@ public class CoreDatabaseTest {
         var cs = $"Data Source=file:core-{Guid.NewGuid():N}?mode=memory&cache=shared";
         _keepAlive = new SqliteConnection(cs);
         _keepAlive.Open();
-        _db = new Database("sqlite", () => new SqliteConnection(cs));
+        _db = new DataSource("sqlite", () => new SqliteConnection(cs));
         _db.Execute("create table Person (Id integer, Name text, Amount real)");
     }
 
@@ -155,20 +155,20 @@ public class ConnectionConfigTest {
 public class ProviderFactoryTest {
     [TestMethod]
     public void Oracle_from_connection_string_builds_a_database() {
-        var db = ClrKernel.Data.Oracle.Oracle.FromConnectionString("User Id=scott;Password=x;Data Source=orcl", "erp");
+        var db = ClrKernel.Database.Provider.Oracle.Oracle.FromConnectionString("User Id=scott;Password=x;Data Source=orcl", "erp");
         Assert.AreEqual("erp", db.Name);
-        Assert.IsInstanceOfType(db, typeof(Database));
+        Assert.IsInstanceOfType(db, typeof(DataSource));
     }
 
     [TestMethod]
     public void Oracle_connect_requires_a_secret_ref() {
         Assert.ThrowsExactly<ArgumentException>(
-            () => ClrKernel.Data.Oracle.Oracle.Connect("h", 1521, "ORCL", "scott", secretRef: null));
+            () => ClrKernel.Database.Provider.Oracle.Oracle.Connect("h", 1521, "ORCL", "scott", secretRef: null));
     }
 
     [TestMethod]
     public void Odbc_from_connection_string_builds_a_database() {
-        var db = ClrKernel.Data.Odbc.Odbc.FromConnectionString("Driver={x};Server=h;Database=d;", "warehouse");
+        var db = ClrKernel.Database.Provider.Odbc.Odbc.FromConnectionString("Driver={x};Server=h;Database=d;", "warehouse");
         Assert.AreEqual("warehouse", db.Name);
     }
 
@@ -176,7 +176,7 @@ public class ProviderFactoryTest {
     public void Odbc_from_dsn_applies_secret_password() {
         Environment.SetEnvironmentVariable("CLRKERNEL_SECRET_ODBC_PW", "s3cret");
         try {
-            var db = ClrKernel.Data.Odbc.Odbc.FromDsn("MyDsn", "svc", "odbc:pw");
+            var db = ClrKernel.Database.Provider.Odbc.Odbc.FromDsn("MyDsn", "svc", "odbc:pw");
             Assert.AreEqual("MyDsn", db.Name);   // building doesn't connect; secret resolved into the string
         } finally {
             Environment.SetEnvironmentVariable("CLRKERNEL_SECRET_ODBC_PW", null);

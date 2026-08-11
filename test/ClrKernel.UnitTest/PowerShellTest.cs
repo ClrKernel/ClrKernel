@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
-using ClrKernel.PowerShell;
+using ClrKernel.Language.PowerShell;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Database.Provider.Oracle</RootNamespace>
+    <PackageId>ClrKernel.Database.Provider.Oracle</PackageId>
+    <Description>Oracle database provider for ClrKernel: connect to Oracle from C# notebook cells with the same fluent query API as the other providers — Oracle.Connect(host, port, service, user, secretRef).Query(sql).Results(). Built on Oracle.ManagedDataAccess.Core. An opt-in package (add via #r "nuget: ClrKernel.Database.Provider.Oracle") so the Oracle driver isn't pulled unless you use it.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,Oracle,Database,ADO,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.9.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

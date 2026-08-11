@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Database</RootNamespace>
+    <PackageId>ClrKernel.Database</PackageId>
+    <Description>Provider-agnostic data access for ClrKernel: an ergonomic C# query API (connect → Query(sql).Results()/.Results&lt;T&gt;() → interactive grid + dynamic rows), a secret-free connection/secret store (OS credential managers, env-var fallback), and JSON config-file connection definitions. The shared core beneath ClrKernel.Sql and the ClrKernel.Database.* database providers (Oracle, ODBC, JDBC).</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,Data,ADO,Database,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Sql" />
+    <InternalsVisibleTo Include="ClrKernel.Database.Provider.Oracle" />
+    <InternalsVisibleTo Include="ClrKernel.Database.Provider.Odbc" />
+    <InternalsVisibleTo Include="ClrKernel.Database.Provider.Jdbc" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

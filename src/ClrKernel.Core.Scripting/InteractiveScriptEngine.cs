@@ -137,7 +137,7 @@ public class InteractiveScriptEngine {
     // Lazily created on the first #!http cell; holds HTTP session state (file
     // variables, named responses) so requests chain across cells like one
     // growing .http file.
-    private ClrKernel.Http.HttpSession _httpSession;
+    private ClrKernel.Language.Http.HttpSession _httpSession;
 
     // A cell whose first non-blank line is the #!http selector runs as a
     // .http document (VS Code REST Client syntax) instead of C#.
@@ -173,11 +173,11 @@ public class InteractiveScriptEngine {
 
     // Lazily created on the first #!pwsh cell (or completion query); hosts the
     // persistent PowerShell runspace so state and completions share one session.
-    private ClrKernel.PowerShell.PowerShellSession _powerShellSession;
+    private ClrKernel.Language.PowerShell.PowerShellSession _powerShellSession;
 
     /// <summary>The session's PowerShell host, created on demand.</summary>
-    public ClrKernel.PowerShell.PowerShellSession PowerShell =>
-        _powerShellSession ??= new ClrKernel.PowerShell.PowerShellSession();
+    public ClrKernel.Language.PowerShell.PowerShellSession PowerShell =>
+        _powerShellSession ??= new ClrKernel.Language.PowerShell.PowerShellSession();
 
     private static readonly string[] _pwshSelectors = { "#!pwsh", "#!powershell" };
 
@@ -334,7 +334,7 @@ public class InteractiveScriptEngine {
         // #!http cells run as .http documents (their response cards are emitted
         // as display data); nothing flows back to the C# script state.
         if (TryStripHttpSelector(statement, out var httpBody)) {
-            _httpSession ??= new ClrKernel.Http.HttpSession(_currentDirectory);
+            _httpSession ??= new ClrKernel.Language.Http.HttpSession(_currentDirectory);
             await _httpSession.ExecuteAsync(httpBody);
             return null;
         }
@@ -342,7 +342,7 @@ public class InteractiveScriptEngine {
         // #!mermaid cells render a diagram (offline, self-contained) and return
         // it as display data; nothing flows into the C# script state.
         if (TryStripSelector(statement, "#!mermaid", out var mermaidBody)) {
-            return await Task.FromResult(ClrKernel.Mermaid.MermaidRenderer.Render(mermaidBody));
+            return await Task.FromResult(ClrKernel.Language.Mermaid.MermaidRenderer.Render(mermaidBody));
         }
 
         // #!pwsh / #!powershell cells run in the PowerShell runspace and return
@@ -640,10 +640,10 @@ public class InteractiveScriptEngine {
                 Assembly.GetAssembly(typeof(System.Dynamic.ExpandoObject)),// System.Dynamic
                 this.GetType().Assembly, // ClrKernel.Core.Scripting (Extensions, GetVariable)
                 typeof(DisplayData).Assembly, // ClrKernel.Core.Primitives (display API)
-                typeof(ClrKernel.Mermaid.MermaidRenderer).Assembly, // ClrKernel.Mermaid (DisplayMermaid)
+                typeof(ClrKernel.Language.Mermaid.MermaidRenderer).Assembly, // ClrKernel.Language.Mermaid (DisplayMermaid)
                 typeof(ClrKernel.Sql.SqlSession).Assembly, // ClrKernel.Sql (Sql.BulkCopy / Sql.Merge)
                 typeof(ClrKernel.AnalysisServices.Ssas).Assembly, // ClrKernel.AnalysisServices (Ssas.Connect)
-                typeof(ClrKernel.Fabric.FabricConnection).Assembly // ClrKernel.Fabric (Fabric.Connect / warehouse bulk-insert)
+                typeof(ClrKernel.Database.Provider.Fabric.FabricConnection).Assembly // ClrKernel.Database.Provider.Fabric (Fabric.Connect / warehouse bulk-insert)
             };
 
         options = options.AddReferences(references);
@@ -656,11 +656,11 @@ public class InteractiveScriptEngine {
 
         return scriptOptions.AddImports(new[] {
             "ClrKernel.Core.Primitives", // DisplayAs/DisplayedValue live updates
-            "ClrKernel.Mermaid", // DisplayMermaid() helper
+            "ClrKernel.Language.Mermaid", // DisplayMermaid() helper
             "ClrKernel.Sql", // SqlSession, MergeSpec (Sql.BulkCopy / Sql.Merge)
             "ClrKernel.Sql.Etl", // BulkCopyOptions, MergeSpec, DataTableBuilder
             "ClrKernel.AnalysisServices", // Ssas.Connect / ProcessPartitions (SSAS/Fabric)
-            "ClrKernel.Fabric", // Fabric.Connect() → warehouse bulk-insert / reload-batch
+            "ClrKernel.Database.Provider.Fabric", // Fabric.Connect() → warehouse bulk-insert / reload-batch
             "System",
             "System.IO",
             "System.Collections",

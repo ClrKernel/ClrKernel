@@ -1,6 +1,6 @@
 # Writing to a Microsoft Fabric Warehouse from ClrKernel
 
-The `ClrKernel.Fabric` helper lets C# cells load data into **Fabric Warehouse**
+The `ClrKernel.Database.Provider.Fabric` helper lets C# cells load data into **Fabric Warehouse**
 tables. It bulk-inserts an `IDataReader` by staging Parquet to a lakehouse in
 OneLake and loading it with `OPENROWSET` — the fast path for large loads — and it
 can create the target table from the reader's schema using Fabric-supported types.

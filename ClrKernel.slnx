@@ -1,19 +1,20 @@
 <Solution>
   <Project Path="src/ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
   <Project Path="src/ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
-  <Project Path="src/ClrKernel.Http/ClrKernel.Http.csproj" />
-  <Project Path="src/ClrKernel.Mermaid/ClrKernel.Mermaid.csproj" />
-  <Project Path="src/ClrKernel.PowerShell/ClrKernel.PowerShell.csproj" />
+  <Project Path="src/ClrKernel.Language.Http/ClrKernel.Language.Http.csproj" />
+  <Project Path="src/ClrKernel.Language.Mermaid/ClrKernel.Language.Mermaid.csproj" />
+  <Project Path="src/ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
   <Project Path="src/ClrKernel.Core.JupyterKernel/ClrKernel.Core.JupyterKernel.csproj" />
   <Project Path="src/ClrKernel.Core.LanguageServices/ClrKernel.Core.LanguageServices.csproj" />
   <Project Path="src/ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
   <Project Path="src/ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
   <Project Path="src/ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj" />
-  <Project Path="src/ClrKernel.Fabric/ClrKernel.Fabric.csproj" />
+  <Project Path="src/ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />
   <Project Path="src/ClrKernel.Core.ExtensionServer/ClrKernel.Core.ExtensionServer.csproj" />
-  <Project Path="src/ClrKernel.Data/ClrKernel.Data.csproj" />
-  <Project Path="src/ClrKernel.Data.Oracle/ClrKernel.Data.Oracle.csproj" />
-  <Project Path="src/ClrKernel.Data.Odbc/ClrKernel.Data.Odbc.csproj" />
+  <Project Path="src/ClrKernel.Database/ClrKernel.Database.csproj" />
+  <Project Path="src/ClrKernel.Database.Provider.Oracle/ClrKernel.Database.Provider.Oracle.csproj" />
+  <Project Path="src/ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj" />
+  <Project Path="src/ClrKernel.Database.Provider.Jdbc/ClrKernel.Database.Provider.Jdbc.csproj" />
   <Project Path="src/ClrKernel.Sql/ClrKernel.Sql.csproj" />
   <Project Path="src/ClrKernel/ClrKernel.csproj" />
   <Project Path="test/ClrKernel.UnitTest/ClrKernel.UnitTest.csproj" />
