@@ -13,7 +13,7 @@ using static Nuke.Common.Tools.Npm.NpmTasks;
 ///   ./build.sh                       # restore, build, and test the solution
 ///   ./build.sh Build                 # build the whole solution
 ///   ./build.sh Test                  # run all unit tests
-///   ./build.sh Build --project ClrKernel.Http   # build a single project
+///   ./build.sh Build --project ClrKernel.Language.Http   # build a single project
 ///   ./build.sh Test  --filter Http              # run a subset of tests
 ///   ./build.sh Extension             # build the VS Code extension
 ///   ./build.sh All                   # solution build+test AND the extension
@@ -25,7 +25,7 @@ class ClrKernelBuild : NukeBuild {
     [Parameter("Build configuration — Debug or Release (default: Release).")]
     readonly string Configuration = "Release";
 
-    [Parameter("Limit Build/Restore to a single project by name, e.g. --project ClrKernel.Http " +
+    [Parameter("Limit Build/Restore to a single project by name, e.g. --project ClrKernel.Language.Http " +
                "(searches src/ then test/). Omit for the whole solution.")]
     readonly string Project;
 

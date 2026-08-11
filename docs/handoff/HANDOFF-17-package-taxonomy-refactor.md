@@ -47,8 +47,8 @@ accepted.
 | P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | DONE |
 | P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | DONE — Fabric/Oracle targets outstanding |
-| P9 | Split the test project three ways | TODO |
-| P10 | Final verification sweep | TODO |
+| P9 | Split the test project three ways | TODO — **the only phase left** |
+| P10 | Final verification sweep | DONE (run before P9 — see §5) |
 
 Status values: `TODO` → `IN PROGRESS` → `DONE`. The commit that ticks a row to `DONE` **is** that
 phase's commit, so its sha can't be written into itself — `git log --grep "refactor(taxonomy): P<n>"`
@@ -680,15 +680,33 @@ Per §4.5. Update `build/Build.cs` — `TestProject` becomes a list and the `Tes
 **Gate:** P8 gate + the sum of the three projects' test counts equals the P0 baseline. Any
 difference must be explained in this document, not absorbed.
 
-### P10 — Final verification sweep
+### P10 — Final verification sweep (DONE, run before P9)
 
-- Work §6's checklist end to end.
-- `./build.sh All` green from a clean tree (`./build.sh Clean` first).
-- Full `docs/windows-verification-checklist.md` pass on a Windows host (Integrated auth, SSAS
-  processing, Fabric, Oracle, Jdbc).
-- Rewrite this file's header to past tense and renumber it as the completed
-  `HANDOFF-17-…`, keeping the decision table.
-- **Do not bump the version or tag** — D12, the user does that.
+Deliberately run **before** P9. P9 is the largest mechanical phase left and touches every
+`InternalsVisibleTo` in the tree; doing the sweep first means `main` sits at a verified, coherent
+state with one clearly-scoped phase remaining, rather than part-way through a 30-file split.
+§4.5 already says nothing depends on P9's position.
+
+Checks that actually discriminate, beyond re-running the phase gate:
+
+| Check | Result |
+| --- | --- |
+| `Core.Scripting` project references — §4.2's "one rule that makes the names honest" | **only** `Core.Primitives`. Zero `Language.*` / `Database.*`. |
+| `slnx` project set vs `release.yml` pack set | identical, 22 each |
+| `ScriptContribution` / `using static` string literals (the failure mode that survives a green build — bit us in P2a and P4a) | all 10 current; grepped with `--exclude-dir=obj`, since `grep -h` drops the path and silently defeats an `obj/` filter |
+| `build/Build.cs` `ResolveProject` | `./build.sh Build --project ClrKernel.Language.Sql` resolves and builds |
+| `.nuke/build.schema.json` | regenerates from `Build.cs`; the stale `ClrKernel.Http` example fixed at source |
+| Tests on every target framework | 295 passed / 8 skipped / 303 total on net8.0, net9.0 **and** net10.0 |
+| `dotnet format --verify-no-changes` | clean |
+| Build warnings | 0 |
+| RPC harnesses | server 10/10, lsp 10/10 |
+| Extension | `tsc` clean |
+| `Directory.Build.props` | **untouched at 0.8.0** (D12 — the bump is the user's) |
+
+**State for whoever bumps the version.** The tree is at `0.8.0` with **two open live gates** — P4b
+(the SQL fluent rebase, checklist §6a) and P6 (shared Entra auth, §11a). Neither is discharged by
+any local run, and `CLRKERNEL_TEST_REQUIRE_LIVE=1` now makes a forgotten backend fail instead of
+skip. Do not tag until those are ticked.
 
 ---
 

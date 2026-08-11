@@ -118,7 +118,7 @@
         },
         "Project": {
           "type": "string",
-          "description": "Limit Build/Restore to a single project by name, e.g. --project ClrKernel.Http (searches src/ then test/). Omit for the whole solution"
+          "description": "Limit Build/Restore to a single project by name, e.g. --project ClrKernel.Language.Http (searches src/ then test/). Omit for the whole solution"
         }
       }
     },
