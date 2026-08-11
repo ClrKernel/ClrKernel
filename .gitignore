@@ -351,3 +351,6 @@ editors/vscode/*.vsix
 
 # Nuke build scratch (keep parameters.json + build.schema.json tracked)
 .nuke/temp/
+
+# local AI assistant context
+CLAUDE.md
