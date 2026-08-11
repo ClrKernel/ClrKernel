@@ -49,10 +49,10 @@ pg.Query("select * from public.orders limit 100").Results()
 var db = Odbc.FromDsn("MyWarehouse", user: "svc", secretRef: "odbc:warehouse");
 ```
 
-## JDBC / OpenEdge (experimental)
+## JDBC (experimental)
 
 `ClrKernel.Database.Provider.Jdbc` runs Java JDBC drivers inside .NET via IKVM. It's experimental
-and currently Windows-centric; you supply the JDBC driver assembly. The JDBC bridge
+and currently Windows-centric; you supply the JDBC driver. The JDBC bridge
 doesn't support command parameters — use parameter-less SQL.
 
 ```csharp
@@ -61,15 +61,16 @@ using ClrKernel.Database.Provider.Jdbc;
 ```
 
 ```csharp
-var oe = OpenEdge.Connect("host", "sports2000", "user", "openedge:app",
-    driverAssemblyPath: "OpenEdge.JdbcDriver.dll");
-oe.Query("select CustNum, Name from public.Customer").Results()
+// From an IKVM-compiled driver assembly:
+var db = Jdbc.Connect("jdbc:postgresql://host:5432/app", "org.postgresql.Driver",
+    driverAssemblyPath: "postgresql.dll", user: "app", secretRef: "jdbc:app");
+db.Query("select id, name from public.customer").Results()
 ```
 
 ```csharp
-// Any JDBC driver:
-var db = Jdbc.Connect("jdbc:postgresql://host:5432/app", "org.postgresql.Driver",
-    driverAssemblyPath: "postgresql.dll", user: "app", secretRef: "jdbc:app");
+// Or straight from the vendor's jar, no ikvmc step:
+var fromJar = Jdbc.ConnectJar("jdbc:postgresql://host:5432/app", "org.postgresql.Driver",
+    driverJarPath: @"C:\drivers\postgresql.jar", user: "app", secretRef: "jdbc:app");
 ```
 
 ## Config-file connections

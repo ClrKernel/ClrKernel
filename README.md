@@ -174,9 +174,9 @@ var db = Odbc.FromConnectionString("Driver={PostgreSQL Unicode};Server=host;Data
 db.Query("select * from public.orders").Results<Order>();
 ```
 
-`ClrKernel.Database.Provider.Jdbc` (experimental) runs Java JDBC drivers via IKVM, including an
-`OpenEdge` helper — you supply the driver assembly; validate on Windows before
-relying on it.
+`ClrKernel.Database.Provider.Jdbc` (experimental) runs Java JDBC drivers via IKVM — you
+supply the driver, as a jar or IKVM-compiled to an assembly; validate on Windows
+before relying on it.
 
 **Config-file connections.** Keep connection settings out of notebooks in a
 `connections.json` (searched up the folder tree; `$type` selects the provider,

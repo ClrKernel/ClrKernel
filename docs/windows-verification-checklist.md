@@ -157,20 +157,19 @@ Config file:
 
 - [ ] Create a `connections.json` in/above the notebook folder with an `Oracle` (and/or `Odbc`) entry using a `{ "secret": "oracle:erp" }` password ref.
 - [ ] `Oracle.FromConfig("erp")` / `Odbc.FromConfig(...)` connects; confirm the file is **found up the folder tree** and the **secret resolves from Credential Manager / env var** (no plaintext password in the file).
-### JDBC / OpenEdge — **experimental, from source only** ⊞
+### JDBC — **experimental** ⊞
 
-Not in the published NuGet packages (excluded from `ClrKernel.slnx` and the release
-pack because IKVM is Windows-x64-centric). Test it by packing the project locally.
-Needs the **DataDirect OpenEdge JDBC driver** you supply (from your OpenEdge install,
-e.g. `%DLC%\java\openedge.jar`).
+Since P2b (D6) this **is** in `ClrKernel.slnx` and the release pack, so it compiles in CI and
+ships — but compiling is all that has ever been verified: no JDBC driver is exercised on Linux or
+macOS. You supply the driver for whatever database you're testing, as a vendor jar or
+IKVM-compiled to an assembly.
 
-- [ ] Pack the provider from a repo checkout on Windows:
-      `dotnet pack src\ClrKernel.Database.Provider.Jdbc\ClrKernel.Database.Provider.Jdbc.csproj -c Release -o artifacts\pkg`
-      → produces `ClrKernel.Database.Provider.Jdbc.<version>.nupkg` (version matches the other packages, e.g. 0.8.0). IKVM restores automatically.
-- [ ] In a notebook, add the local feed and reference it:
-      `#i "nuget:<repo>\artifacts\pkg"` then `#r "nuget: ClrKernel.Database.Provider.Jdbc, <version>"` → resolves, and IKVM + `ClrKernel.Database` come with it.
-- [ ] **Jar path (easiest):** `Jdbc.ConnectJar("jdbc:datadirect:openedge://host:port;databaseName=<db>", OpenEdge.JdbcDriverClass, driverJarPath: @"<...>\openedge.jar", user: "<u>", secretRef: "openedge:<ref>")` → `.Query("select * from PUB.<table>").Results()` renders the grid.
-- [ ] **Compiled-assembly path (alt):** `ikvmc openedge.jar -out:OpenEdge.JdbcDriver.dll`, then `OpenEdge.Connect("<host>","<db>","<u>","openedge:<ref>", driverAssemblyPath:@"<...>\OpenEdge.JdbcDriver.dll")`.
+- [ ] `#r "nuget: ClrKernel.Database.Provider.Jdbc"` resolves from the published feed, and IKVM +
+      `ClrKernel.Database` come with it. *(To test a build that isn't published yet, pack locally:
+      `dotnet pack src\ClrKernel.Database.Provider.Jdbc\ClrKernel.Database.Provider.Jdbc.csproj -c Release -o artifacts\pkg`,
+      then `#i "nuget:<repo>\artifacts\pkg"`.)*
+- [ ] **Jar path (easiest):** `Jdbc.ConnectJar("<jdbc-url>", "<driver.class.Name>", driverJarPath: @"<...>\driver.jar", user: "<u>", secretRef: "jdbc:<ref>")` → `.Query("select ...").Results()` renders the grid.
+- [ ] **Compiled-assembly path (alt):** `ikvmc driver.jar -out:Driver.dll`, then `Jdbc.Connect("<jdbc-url>", "<driver.class.Name>", driverAssemblyPath: @"<...>\Driver.dll", user: "<u>", secretRef: "jdbc:<ref>")`.
 - [ ] Confirm the **secret** resolves from Windows Credential Manager / `CLRKERNEL_SECRET_*` (same store as the other providers).
 - [ ] Confirm the two known limits: **parameterless SQL only** (the JDBC bridge ignores command parameters), and it only works on **Windows x64** (IKVM `win-x64`).
 - [ ] If it works, note it — this is the first real validation, and the gate for adding JDBC to `ClrKernel.slnx` + the release pack to publish it.
@@ -270,7 +269,7 @@ from. They need real resources and cannot be faked locally:
 | 6 | Sql C# API | SQL | | |
 | 7 | ETL (bulk/merge/pipeline) | SQL | | |
 | 8 | Oracle / ODBC / config | Oracle/ODBC | | |
-| 8b | JDBC / OpenEdge (from source) | OpenEdge | | |
+| 8b | JDBC (experimental) | any JDBC driver | | |
 | 9 | DAX + SSAS | SSAS | | |
 | 10 | DAX + Fabric model | Fabric | | |
 | 11 | Fabric Warehouse writes | Fabric | | |

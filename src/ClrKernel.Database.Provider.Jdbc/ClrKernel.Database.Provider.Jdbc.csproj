@@ -2,8 +2,8 @@
   <!--
     EXPERIMENTAL / UNTESTED. This provider runs Java JDBC drivers inside .NET via IKVM.
     It needs IKVM (Windows-centric: IkvmConfiguration resolves IKVM.Home from a win-x64
-    NuGet path) and a JDBC driver assembly you supply (e.g. the DataDirect OpenEdge
-    driver).
+    NuGet path) and a JDBC driver you supply, either as a jar or IKVM-compiled to an
+    assembly.
 
     As of the package-taxonomy refactor (HANDOFF-17, P2b) it IS part of ClrKernel.slnx
     and the release pack, so it compiles in CI and can't silently rot against the shared
@@ -13,13 +13,13 @@
   <PropertyGroup>
     <RootNamespace>ClrKernel.Database.Provider.Jdbc</RootNamespace>
     <PackageId>ClrKernel.Database.Provider.Jdbc</PackageId>
-    <Description>EXPERIMENTAL JDBC database provider for ClrKernel: run Java JDBC drivers inside .NET (via IKVM) and query them with the same fluent API as the other providers. Requires IKVM (currently Windows-centric) and a JDBC driver assembly you supply. Includes an OpenEdge helper (DataDirect driver). Opt-in and unverified — validate on Windows with your driver before relying on it.</Description>
+    <Description>EXPERIMENTAL JDBC database provider for ClrKernel: run Java JDBC drivers inside .NET (via IKVM) and query them with the same fluent API as the other providers. Requires IKVM (currently Windows-centric) and a JDBC driver you supply. Opt-in and unverified — validate on Windows with your driver before relying on it.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>Jupyter,Notebook,Kernel,JDBC,OpenEdge,IKVM,Database,dotnet,CLR</PackageTags>
+    <PackageTags>Jupyter,Notebook,Kernel,JDBC,IKVM,Database,dotnet,CLR</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>logo-64x64.png</PackageIcon>
   </PropertyGroup>
