@@ -156,8 +156,6 @@ public sealed class LspServer {
     private ClrKernel.Language.Dax.SsasSession Cubes =>
         _engine.Languages.Get<ClrKernel.Language.Dax.DaxCellLanguage>()?.Session;
 
-    private ClrKernel.Language.PowerShell.PowerShellSession PowerShell =>
-        _engine.Languages.Get<ClrKernel.Language.PowerShell.PowerShellCellLanguage>()?.Session;
 
     private void PublishDiagnostics(string uri) {
         if (Rpc == null || uri == null) {

@@ -31,7 +31,6 @@
     -->
     <ProjectReference Include="../ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
-    <ProjectReference Include="../ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets -->
