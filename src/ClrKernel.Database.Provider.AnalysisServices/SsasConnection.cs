@@ -25,15 +25,14 @@ public sealed partial class SsasConnection {
     public int RowLimit { get; set; } = 1000;
 
     private Adomd.AdomdConnection OpenAdomd() {
+        RejectEndpointThatNeedsEntra();
+
         var connection = new Adomd.AdomdConnection(_spec.BuildAdomdConnectionString());
+        var tokenNote = "no token attached";
         if (_spec.Auth == SsasAuthMode.AzureAd && _spec.TokenProvider != null) {
             // ADOMD takes an Entra token through AccessToken, exactly as AMO does in
             // OpenTomServer — same property, same Microsoft.AnalysisServices.AccessToken type.
-            //
-            // This used to append "Password=<token>" to the connection string instead. ADOMD does
-            // not read a bearer token from Password (there is no User ID for it to pair with), so
-            // it fell through to its own authenticator chain and failed with "Authentication
-            // failed for all authenticators" — a message that describes the symptom, not the cause.
+            // (It does not read a bearer token from the connection string's Password.)
             var token = _spec.TokenProvider();
             connection.AccessToken = new AMO.AccessToken(token.Token, token.ExpiresOn);
             // Long queries can outlive the token; ADOMD asks for a fresh one rather than dropping.
@@ -41,9 +40,71 @@ public sealed partial class SsasConnection {
                 var t = _spec.TokenProvider();
                 return new AMO.AccessToken(t.Token, t.ExpiresOn);
             };
+            tokenNote = $"token for audience {Audience(token.Token) ?? "(unreadable)"}, expires {token.ExpiresOn:u}";
         }
-        connection.Open();
+
+        try {
+            connection.Open();
+        } catch (Exception e) {
+            // ADOMD's "Authentication failed for all authenticators" names the symptom and hides
+            // every fact needed to act on it. Say which endpoint, which auth mode, and — when a
+            // token was sent — who it was issued for, so a wrong audience or a missing token is
+            // visible instead of inferred. The token itself is never included.
+            throw new InvalidOperationException(
+                $"Could not open '{_spec.Server}'" +
+                (string.IsNullOrEmpty(_spec.Database) ? string.Empty : $" catalog '{_spec.Database}'") +
+                $" using {_spec.Auth} auth ({tokenNote}). {e.Message}", e);
+        }
         return connection;
+    }
+
+    /// <summary>
+    /// Stops a cloud endpoint being opened with Integrated auth, which can never succeed.
+    /// </summary>
+    /// <remarks>
+    /// The connection string for a Fabric cube is identical whether or not a token is attached, so
+    /// this mistake used to surface only as ADOMD's "Authentication failed for all authenticators"
+    /// — indistinguishable from a token that was sent and rejected. It is reachable from the UI:
+    /// pasting a <c>powerbi://</c> URL into the on-prem "Server / host" prompt produces exactly
+    /// this spec.
+    /// </remarks>
+    private void RejectEndpointThatNeedsEntra() {
+        if (_spec.Auth != SsasAuthMode.Integrated || string.IsNullOrEmpty(_spec.Server)) {
+            return;
+        }
+        var server = _spec.Server.TrimStart();
+        var fabric = server.StartsWith("powerbi://", StringComparison.OrdinalIgnoreCase)
+                     || server.StartsWith("pbiazure://", StringComparison.OrdinalIgnoreCase);
+        var azureAs = server.StartsWith("asazure://", StringComparison.OrdinalIgnoreCase)
+                      || server.StartsWith("link://", StringComparison.OrdinalIgnoreCase);
+        if (!fabric && !azureAs) {
+            return;
+        }
+        throw new InvalidOperationException(
+            $"'{_spec.Server}' is a Microsoft Entra endpoint, but this connection is set to Integrated " +
+            "(Windows) auth, which it will always refuse. Reconnect with " +
+            (fabric
+                ? "#!dax-connect --fabric --workspace <workspace> --model <model>"
+                : "#!dax-connect --azure-as --server <server> --database <model>") +
+            " — or, from the cube button, pick the " + (fabric ? "Fabric / Power BI" : "Azure Analysis Services") +
+            " option rather than entering the URL as a server.");
+    }
+
+    /// <summary>The <c>aud</c> claim of a JWT — who the token was issued for. Never the token.</summary>
+    private static string Audience(string jwt) {
+        try {
+            var parts = jwt.Split('.');
+            if (parts.Length < 2) {
+                return null;
+            }
+            var payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + ((4 - (payload.Length % 4)) % 4), '=');
+            using var doc = System.Text.Json.JsonDocument.Parse(
+                System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+            return doc.RootElement.TryGetProperty("aud", out var aud) ? aud.GetString() : null;
+        } catch {
+            return null;
+        }
     }
 
     /// <summary>Runs a DAX (or DMV) query and returns the rows as dictionaries.</summary>
