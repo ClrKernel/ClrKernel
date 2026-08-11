@@ -92,8 +92,8 @@ public class DaxEngineRoutingTest {
         var dd = result as DisplayData;
         Assert.IsNotNull(dd);
         StringAssert.Contains((string)dd.Data["text/plain"], "analytics");
-        Assert.IsTrue(engine.Cubes.Cubes.TryGet("analytics", out _));
-        Assert.AreEqual("analytics", engine.Cubes.Cubes.DefaultName);
+        Assert.IsTrue(engine.Languages.Get<DaxCellLanguage>().Session.Cubes.TryGet("analytics", out _));
+        Assert.AreEqual("analytics", engine.Languages.Get<DaxCellLanguage>().Session.Cubes.DefaultName);
     }
 
     [TestMethod]

@@ -29,13 +29,7 @@
     <PackageReference Include="NuGet.Protocol" Version="7.6.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../ClrKernel.Language.Http/ClrKernel.Language.Http.csproj" />
-    <ProjectReference Include="../ClrKernel.Language.Mermaid/ClrKernel.Language.Mermaid.csproj" />
-    <ProjectReference Include="../ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
     <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
-    <ProjectReference Include="../ClrKernel.Sql/ClrKernel.Sql.csproj" />
-    <ProjectReference Include="../ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj" />
-    <ProjectReference Include="../ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->

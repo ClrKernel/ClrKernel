@@ -223,9 +223,9 @@ public class SqlEngineRoutingTest {
         var result = await engine.ExecuteAsync("#!sql-connect --name analytics --server dw --database reports");
         var dd = result as DisplayData;
         Assert.IsNotNull(dd, "#!sql-connect should return a confirmation");
-        Assert.IsTrue(engine.Sql.Connections.TryGet("analytics", out var spec));
+        Assert.IsTrue(engine.Languages.Get<SqlCellLanguage>().Session.Connections.TryGet("analytics", out var spec));
         Assert.AreEqual("dw", spec.Server);
-        Assert.AreEqual("analytics", engine.Sql.Connections.DefaultName);
+        Assert.AreEqual("analytics", engine.Languages.Get<SqlCellLanguage>().Session.Connections.DefaultName);
     }
 
     [TestMethod]

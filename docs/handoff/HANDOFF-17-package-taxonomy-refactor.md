@@ -339,7 +339,22 @@ Then: engine constructors in all **five** call sites (`ExecuteHandler`, `Noteboo
 `#!sql-connect` vs `#!sql`, `#!dax-connect` vs `#!dax` — asserting the longer selector wins.
 They must pass against today's if-chain first, so they are proving the seam, not describing it.
 
-**Verify the rule mechanically — across all four `Core.*` consumers, not just the engine.** The
+**§4.2 amendment (made in P3, as the phase text allows).** `Core.ExtensionServer` keeps
+`ProjectReference`s to `ClrKernel.Sql`, `ClrKernel.AnalysisServices` and
+`ClrKernel.Language.PowerShell` — **solely** for the 14 connection-management RPCs the VS Code
+extension calls (`clrkernel/sql/{listConnections,addConnection,storeSecret,removeConnection,
+setDefault,configStatus,loadConnectionsConfig,saveConnection}`, `clrkernel/dax/*`). Those are a UI
+wire contract typed against each session's own API; genericising them means inventing a connection
+abstraction, which belongs with `ClrKernel.DataEngineering` in P8, and would break the extension
+today. The exemption is scoped: **language *features* — completion, hover, signature help,
+diagnostics — must still dispatch through the registry.** Its boundary check:
+
+```bash
+grep -c "IsSql\|IsDax\|IsPowerShell\|BuildSqlContext\|SqlCompletion\|DaxCompletion" \
+  src/ClrKernel.Core.ExtensionServer/Lsp/LspServer.cs     # must be 0 after slice 4
+```
+
+**Verify the rule mechanically — across the other four `Core.*` consumers.** The
 pattern must include the not-yet-renamed `ClrKernel.Sql` / `ClrKernel.AnalysisServices`:
 
 ```bash
@@ -359,11 +374,14 @@ quietly leaving it.
 **Also update `CLAUDE.md`** in this phase: its "adding a cell language touches four places"
 section is replaced by "register an implementation of the cell-language contract".
 
-**Gate:** P2b gate + every magic exercised end-to-end (`#!http`, `#!mermaid`, `#!pwsh`,
-`#!sql-connect`, `#!sql`, `#!sql-bulk`, `#!sql-merge`, `#!sql-run`, `#!sql-deploy`, `#!dax-connect`,
-`#!dax`) + `python3 test/tools/lsp_harness.py <dll>` and `jupyter_completion_test.py` pass +
-headless smoke (`jupyter nbconvert` over `test/notebooks/smoke.ipynb`, and `smoke-fail.ipynb` must
-still exit non-zero).
+**Gate** (revised in P3 — the original was unsatisfiable off-Windows): P2b gate + **dispatch
+reaches the right handler for all eleven selectors** (`#!http`, `#!mermaid`, `#!pwsh`,
+`#!powershell`, `#!sql-connect`, `#!sql`, `#!sql-bulk`, `#!sql-merge`, `#!sql-run`, `#!sql-deploy`,
+`#!dax-connect`, `#!dax`), which `CellSelectorOrderingTest` asserts locally + both RPC harnesses
+pass + headless smoke (`jupyter nbconvert` over `test/notebooks/smoke.ipynb`, and `smoke-fail.ipynb`
+must still exit non-zero). **Live** execution of the SQL verbs needs a server — those are the 8
+skipped tests — so it stays deferred to `docs/windows-verification-checklist.md`. A green tick here
+does **not** mean verified against SQL Server.
 
 ### P4 — Split `ClrKernel.Sql` (+ fluent dedup)
 

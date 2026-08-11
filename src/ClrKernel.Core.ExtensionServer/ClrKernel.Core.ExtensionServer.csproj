@@ -21,6 +21,17 @@
     <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
     <ProjectReference Include="../ClrKernel.Core.LanguageServices/ClrKernel.Core.LanguageServices.csproj" />
     <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+    <!--
+      Documented exception to the Core.* -> Language.* layering rule (HANDOFF-17
+      section 4.2, amended in P3). Needed ONLY for the connection-management
+      RPCs the VS Code extension calls (clrkernel/sql/*, clrkernel/dax/*), which
+      are typed against the sessions' own APIs. Language *features* (completion,
+      hover, signature help, diagnostics) must keep going through the cell
+      language registry, never through these references.
+    -->
+    <ProjectReference Include="../ClrKernel.Sql/ClrKernel.Sql.csproj" />
+    <ProjectReference Include="../ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj" />
+    <ProjectReference Include="../ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets -->

@@ -23,7 +23,7 @@ using ScriptLogLevel = Dotnet.Script.DependencyModel.Logging.LogLevel;
 
 namespace ClrKernel.Core.Scripting;
 
-public class InteractiveScriptEngine {
+public class InteractiveScriptEngine : ICellExecutionContext {
     private ScriptState<object> _scriptState;
 
     private ScriptOptions _scriptOptions;
@@ -57,10 +57,24 @@ public class InteractiveScriptEngine {
     // Default using-static directives that expose the cell-callable helpers
     // (GetVariable, HTML, Display, ...). Always handed to language services as a
     // preamble so completion offers them even before the first cell has run.
-    internal static readonly string[] DefaultUsingStatics = {
+    private static readonly string[] _builtInUsingStatics = {
         "using static ClrKernel.Core.Scripting.Extensions;",
         "using static ClrKernel.Core.Primitives.DisplayDataEmitter;"
     };
+
+    // The built-ins plus whatever the registered languages contribute (e.g. the
+    // Sql package's `using static ClrKernel.Sql.SqlGlobals;`).
+    private readonly string[] _usingStatics;
+
+    private readonly CellLanguageSet _languages;
+
+    private readonly List<ScriptContribution> _contributions;
+
+    /// <summary>The using-static preamble handed to language services.</summary>
+    internal string[] DefaultUsingStatics => _usingStatics;
+
+    /// <summary>The cell languages this session dispatches to.</summary>
+    public CellLanguageSet Languages => _languages;
 
     public static string RefsFilePath { get; set; }
 
@@ -91,8 +105,30 @@ public class InteractiveScriptEngine {
             _submissions.ToArray(),
             string.Join("\n", DefaultUsingStatics));
 
-    public InteractiveScriptEngine(string currentDir, ILogger logger) {
+    public InteractiveScriptEngine(string currentDir, ILogger logger)
+        : this(currentDir, logger, null, CellLanguageRegistry.DefaultContributions) { }
+
+    /// <param name="languages">
+    /// Cell languages available to this session; null uses
+    /// <see cref="CellLanguageRegistry.Default"/>, set by the composition root.
+    /// </param>
+    /// <param name="extraContributions">
+    /// Script contributions from packages that are reachable from C# cells but
+    /// own no #! selector (e.g. the Fabric provider).
+    /// </param>
+    public InteractiveScriptEngine(
+        string currentDir,
+        ILogger logger,
+        CellLanguageRegistry languages,
+        IEnumerable<ScriptContribution> extraContributions) {
         Current = this;
+        _languages = (languages ?? CellLanguageRegistry.Default).CreateSet();
+        _contributions = _languages.ScriptContributions
+            .Concat(extraContributions ?? Enumerable.Empty<ScriptContribution>())
+            .ToList();
+        _usingStatics = _builtInUsingStatics
+            .Concat(_contributions.SelectMany(c => c.UsingStatics))
+            .ToArray();
         _currentDirectory = currentDir;
         _dependencyScratchDirectory = Path.Combine(Path.GetTempPath(), "clrkernel", "restore");
         Directory.CreateDirectory(_dependencyScratchDirectory);
@@ -134,32 +170,6 @@ public class InteractiveScriptEngine {
 
     private readonly NotebookImporter _importer = new();
 
-    // Lazily created on the first #!http cell; holds HTTP session state (file
-    // variables, named responses) so requests chain across cells like one
-    // growing .http file.
-    private ClrKernel.Language.Http.HttpSession _httpSession;
-
-    // A cell whose first non-blank line is the #!http selector runs as a
-    // .http document (VS Code REST Client syntax) instead of C#.
-    private static bool TryStripHttpSelector(string statement, out string body) {
-        body = null;
-        var normalized = statement.Replace("\r\n", "\n");
-        var lines = normalized.Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length) {
-            return false;
-        }
-        var selector = lines[index].Trim();
-        if (!selector.Equals("#!http", StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
-        return true;
-    }
-
     /// <summary>
     /// Executes a cell. Lines holding a #!import directive are handled by the
     /// kernel (loading the referenced .dib/.ipynb/.csx/.cs into this session's
@@ -171,262 +181,13 @@ public class InteractiveScriptEngine {
         NotebookImporter.TryParseRegister(line, out _, out _) ||
         NotebookImporter.TryParseDirective(line, out _, out _);
 
-    // Lazily created on the first #!pwsh cell (or completion query); hosts the
-    // persistent PowerShell runspace so state and completions share one session.
-    private ClrKernel.Language.PowerShell.PowerShellSession _powerShellSession;
-
-    /// <summary>The session's PowerShell host, created on demand.</summary>
-    public ClrKernel.Language.PowerShell.PowerShellSession PowerShell =>
-        _powerShellSession ??= new ClrKernel.Language.PowerShell.PowerShellSession();
-
-    private static readonly string[] _pwshSelectors = { "#!pwsh", "#!powershell" };
-
-    // Lazily created on the first #!sql / #!sql-connect cell; holds the named SQL
-    // connections and the OS-backed secret store for the session.
-    private ClrKernel.Sql.SqlSession _sqlSession;
-
-    /// <summary>The session's SQL connections/executor, created on demand.</summary>
-    public ClrKernel.Sql.SqlSession Sql =>
-        _sqlSession ??= new ClrKernel.Sql.SqlSession();
-
-    // Lazily created on the first #!dax / #!dax-connect cell; holds the named cube
-    // (Analysis Services / Fabric) connections for DAX cells.
-    private ClrKernel.AnalysisServices.SsasSession _ssasSession;
-
-    /// <summary>The session's cube (Analysis Services) connections, created on demand.</summary>
-    public ClrKernel.AnalysisServices.SsasSession Cubes =>
-        _ssasSession ??= new ClrKernel.AnalysisServices.SsasSession();
-
-    // A cell whose first non-blank line begins with #!dax-connect registers one or
-    // more named cube connections (one per #!dax-connect line).
-    private static bool TryStripDaxConnect(string statement, out System.Collections.Generic.List<string> connectLines) {
-        connectLines = null;
-        var lines = statement.Replace("\r\n", "\n").Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length ||
-            !lines[index].TrimStart().StartsWith("#!dax-connect", StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        connectLines = new System.Collections.Generic.List<string>();
-        foreach (var line in lines) {
-            if (line.TrimStart().StartsWith("#!dax-connect", StringComparison.OrdinalIgnoreCase)) {
-                connectLines.Add(line.Trim());
-            }
-        }
-        return connectLines.Count > 0;
-    }
-
-    // A cell whose first non-blank line begins with #!dax (but not #!dax-connect)
-    // runs DAX. Strips that selector line, capturing an inline --connections cube.
-    private static bool TryStripDaxSelector(string statement, out string body, out string inlineCube) {
-        body = null;
-        inlineCube = null;
-        var lines = statement.Replace("\r\n", "\n").Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length) {
-            return false;
-        }
-        var first = lines[index].TrimStart();
-        if (!first.StartsWith("#!dax", StringComparison.OrdinalIgnoreCase) ||
-            first.StartsWith("#!dax-connect", StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        inlineCube = ClrKernel.AnalysisServices.DaxDirectives.SelectorConnection(lines[index]);
-        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
-        return true;
-    }
-
-    // A cell whose first non-blank line begins with #!sql-connect registers one or
-    // more named connections (one per #!sql-connect line). Returns those lines.
-    private static bool TryStripSqlConnect(string statement, out System.Collections.Generic.List<string> connectLines) {
-        connectLines = null;
-        var lines = statement.Replace("\r\n", "\n").Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length ||
-            !lines[index].TrimStart().StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        connectLines = new System.Collections.Generic.List<string>();
-        foreach (var line in lines) {
-            if (line.TrimStart().StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
-                connectLines.Add(line.Trim());
-            }
-        }
-        return connectLines.Count > 0;
-    }
-
-    // A single-line magic cell: if the first non-blank line begins with the given
-    // selector, return that whole line (the directive) for the magic to parse.
-    private static bool TryStripFirstLineSelector(string statement, string selector, out string line) {
-        line = null;
-        var lines = statement.Replace("\r\n", "\n").Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length ||
-            !lines[index].TrimStart().StartsWith(selector, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        line = lines[index].Trim();
-        return true;
-    }
-
-    // A cell whose first non-blank line begins with #!sql (but not #!sql-connect)
-    // runs as SQL. Strips that selector line, capturing an inline --connections
-    // name so it can be re-expressed as a leading SQL comment for the executor.
-    private static bool TryStripSqlSelector(string statement, out string body, out string inlineConnection) {
-        body = null;
-        inlineConnection = null;
-        var lines = statement.Replace("\r\n", "\n").Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length) {
-            return false;
-        }
-        var first = lines[index].TrimStart();
-        if (!first.StartsWith("#!sql", StringComparison.OrdinalIgnoreCase) ||
-            first.StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        inlineConnection = ClrKernel.Sql.SqlDirectives.SelectorConnection(lines[index]);
-        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
-        return true;
-    }
-
-    // A cell whose first non-blank line is the given selector runs in that
-    // language instead of C#.
-    private static bool TryStripSelector(string statement, string selector, out string body) =>
-        TryStripSelector(statement, new[] { selector }, out body);
-
-    // A cell whose first non-blank line is one of these selectors runs in the
-    // named language rather than as C#.
-    private static bool TryStripSelector(string statement, string[] selectors, out string body) {
-        body = null;
-        var lines = statement.Replace("\r\n", "\n").Split('\n');
-        var index = 0;
-        while (index < lines.Length && lines[index].Trim().Length == 0) {
-            index++;
-        }
-        if (index >= lines.Length) {
-            return false;
-        }
-        var selector = lines[index].Trim();
-        if (!selectors.Any(s => selector.Equals(s, StringComparison.OrdinalIgnoreCase))) {
-            return false;
-        }
-        body = string.Join("\n", lines, index + 1, lines.Length - index - 1);
-        return true;
-    }
-
     public async Task<object> ExecuteAsync(string statement) {
-        // #!http cells run as .http documents (their response cards are emitted
-        // as display data); nothing flows back to the C# script state.
-        if (TryStripHttpSelector(statement, out var httpBody)) {
-            _httpSession ??= new ClrKernel.Language.Http.HttpSession(_currentDirectory);
-            await _httpSession.ExecuteAsync(httpBody);
-            return null;
-        }
-
-        // #!mermaid cells render a diagram (offline, self-contained) and return
-        // it as display data; nothing flows into the C# script state.
-        if (TryStripSelector(statement, "#!mermaid", out var mermaidBody)) {
-            return await Task.FromResult(ClrKernel.Language.Mermaid.MermaidRenderer.Render(mermaidBody));
-        }
-
-        // #!pwsh / #!powershell cells run in the PowerShell runspace and return
-        // their output as display data; nothing flows into the C# script state.
-        if (TryStripSelector(statement, _pwshSelectors, out var pwshBody)) {
-            return await Task.FromResult(PowerShell.Execute(pwshBody));
-        }
-
-        // #!sql-connect cells register named connections (no query runs); return a
-        // short confirmation listing what is now available.
-        if (TryStripSqlConnect(statement, out var connectLines)) {
-            var names = new System.Collections.Generic.List<string>();
-            var bound = new System.Collections.Generic.List<string>();
-            foreach (var line in connectLines) {
-                var directive = Sql.Connect(line);
-                names.Add(directive.Spec.Name);
-                // Bind a C# variable so #!csharp cells can use the connection directly,
-                // e.g. `dw.Query("...").Results()`. The variable is a SqlDatabase for the
-                // just-registered connection.
-                if (!string.IsNullOrEmpty(directive.Variable)) {
-                    await EnsureScriptStateAsync().ConfigureAwait(false);
-                    var binding = $"var {directive.Variable} = Sql.Database({CSharpStringLiteral(directive.Spec.Name)});";
-                    _scriptState = await _scriptState.ContinueWithAsync(binding, _scriptOptions).ConfigureAwait(false);
-                    _submissions.Add(binding);
-                    bound.Add(directive.Variable);
-                }
-            }
-            var label = names.Count == 1 ? $"Connected: {names[0]}" : $"Connected: {string.Join(", ", names)}";
-            if (bound.Count > 0) {
-                label += bound.Count == 1
-                    ? $" → C# variable `{bound[0]}`"
-                    : $" → C# variables {string.Join(", ", bound.ConvertAll(b => "`" + b + "`"))}";
-            }
-            return new ClrKernel.Core.Primitives.DisplayData($"{label} (default: {Sql.Connections.DefaultName})");
-        }
-
-        // #!sql-bulk copies rows from one connection into a table on another; the
-        // cell returns a summary (a progress bar streams during the copy).
-        if (TryStripFirstLineSelector(statement, "#!sql-bulk", out var bulkLine)) {
-            return await Task.FromResult(Sql.ExecuteBulk(bulkLine));
-        }
-
-        // #!sql-merge upserts a target from a source and returns per-action counts.
-        if (TryStripFirstLineSelector(statement, "#!sql-merge", out var mergeLine)) {
-            return await Task.FromResult(Sql.ExecuteMerge(mergeLine));
-        }
-
-        // #!sql-run executes the registered pipeline steps as a dependency DAG
-        // (independent steps run in parallel) with a live status board.
-        if (TryStripFirstLineSelector(statement, "#!sql-run", out var runLine)) {
-            return await Task.FromResult(Sql.ExecuteRun(runLine));
-        }
-
-        // #!sql-deploy applies a folder of .sql definitions idempotently.
-        if (TryStripFirstLineSelector(statement, "#!sql-deploy", out var deployLine)) {
-            return await Task.FromResult(Sql.ExecuteDeploy(deployLine));
-        }
-
-        // #!sql cells run T-SQL against a named (or default) connection; each result
-        // set is emitted as an interactive grid and the cell returns a run summary.
-        if (TryStripSqlSelector(statement, out var sqlBody, out var inlineConnection)) {
-            var cellText = string.IsNullOrEmpty(inlineConnection)
-                ? sqlBody
-                : "-- connections " + inlineConnection + "\n" + sqlBody;
-            return await Task.FromResult(Sql.Execute(cellText));
-        }
-
-        // #!dax-connect cells register named cube (Analysis Services / Fabric)
-        // connections; return a short confirmation.
-        if (TryStripDaxConnect(statement, out var daxConnectLines)) {
-            var names = new System.Collections.Generic.List<string>();
-            foreach (var line in daxConnectLines) {
-                names.Add(Cubes.Connect(line));
-            }
-            var summary = $"Connected cube(s): {string.Join(", ", names)} (default: {Cubes.Cubes.DefaultName})";
-            return await Task.FromResult(new ClrKernel.Core.Primitives.DisplayData(summary));
-        }
-
-        // #!dax cells run DAX against a named (or default) cube and return a grid.
-        if (TryStripDaxSelector(statement, out var daxBody, out var inlineCube)) {
-            var cellText = string.IsNullOrEmpty(inlineCube)
-                ? daxBody
-                : "-- connections " + inlineCube + "\n" + daxBody;
-            return await Task.FromResult(Cubes.Execute(cellText));
+        // A #! selector routes the cell to a registered language. The registry
+        // matches longest-selector-first, so #!sql-connect can never be swallowed
+        // by #!sql (see CellSelectorOrderingTest).
+        var match = _languages.Match(statement);
+        if (match != null) {
+            return await match.Language.ExecuteAsync(match.Cell, this).ConfigureAwait(false);
         }
 
         if (!statement.Split('\n').Any(IsImporterDirective)) {
@@ -464,6 +225,20 @@ public class InteractiveScriptEngine {
         await FlushAsync();
 
         return result;
+    }
+
+    /// <summary>The notebook's working directory (ICellExecutionContext).</summary>
+    public string WorkingDirectory => _currentDirectory;
+
+    /// <summary>
+    /// Runs a C# fragment in the session's script state and records it as a
+    /// submission (ICellExecutionContext), so language services replaying the
+    /// session see it. Used by #!sql-connect to bind a connection variable.
+    /// </summary>
+    public async Task RunScriptAsync(string code) {
+        await EnsureScriptStateAsync().ConfigureAwait(false);
+        _scriptState = await _scriptState.ContinueWithAsync(code, _scriptOptions).ConfigureAwait(false);
+        _submissions.Add(code);
     }
 
     private async Task<object> ExecuteCoreAsync(string statement) {
@@ -640,13 +415,12 @@ public class InteractiveScriptEngine {
                 Assembly.GetAssembly(typeof(System.Dynamic.ExpandoObject)),// System.Dynamic
                 this.GetType().Assembly, // ClrKernel.Core.Scripting (Extensions, GetVariable)
                 typeof(DisplayData).Assembly, // ClrKernel.Core.Primitives (display API)
-                typeof(ClrKernel.Language.Mermaid.MermaidRenderer).Assembly, // ClrKernel.Language.Mermaid (DisplayMermaid)
-                typeof(ClrKernel.Sql.SqlSession).Assembly, // ClrKernel.Sql (Sql.BulkCopy / Sql.Merge)
-                typeof(ClrKernel.AnalysisServices.Ssas).Assembly, // ClrKernel.AnalysisServices (Ssas.Connect)
-                typeof(ClrKernel.Database.Provider.Fabric.FabricConnection).Assembly // ClrKernel.Database.Provider.Fabric (Fabric.Connect / warehouse bulk-insert)
             };
 
-        options = options.AddReferences(references);
+        // Everything else comes from the registered languages and providers --
+        // which is why Core.Scripting references none of them.
+        options = options.AddReferences(references)
+            .AddReferences(_contributions.SelectMany(c => c.References).Distinct());
 
         return options;
     }
@@ -654,13 +428,10 @@ public class InteractiveScriptEngine {
     private ScriptOptions AddDefaultImports(ScriptOptions scriptOptions) {
         var workingDir = AppContext.BaseDirectory;
 
-        return scriptOptions.AddImports(new[] {
+        return scriptOptions
+            .AddImports(_contributions.SelectMany(c => c.Imports).Distinct())
+            .AddImports(new[] {
             "ClrKernel.Core.Primitives", // DisplayAs/DisplayedValue live updates
-            "ClrKernel.Language.Mermaid", // DisplayMermaid() helper
-            "ClrKernel.Sql", // SqlSession, MergeSpec (Sql.BulkCopy / Sql.Merge)
-            "ClrKernel.Sql.Etl", // BulkCopyOptions, MergeSpec, DataTableBuilder
-            "ClrKernel.AnalysisServices", // Ssas.Connect / ProcessPartitions (SSAS/Fabric)
-            "ClrKernel.Database.Provider.Fabric", // Fabric.Connect() → warehouse bulk-insert / reload-batch
             "System",
             "System.IO",
             "System.Collections",

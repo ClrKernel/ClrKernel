@@ -150,6 +150,17 @@ public sealed class LspServer {
 
     // Live T-SQL syntax checking: on every open/change of a sql document, parse
     // with ScriptDom and push diagnostics. No-op for other languages.
+    // Sessions come from the cell-language registry, not from engine properties:
+    // the engine no longer knows these types.
+    private ClrKernel.Sql.SqlSession Sql =>
+        _engine.Languages.Get<ClrKernel.Sql.SqlCellLanguage>()?.Session;
+
+    private ClrKernel.AnalysisServices.SsasSession Cubes =>
+        _engine.Languages.Get<ClrKernel.AnalysisServices.DaxCellLanguage>()?.Session;
+
+    private ClrKernel.Language.PowerShell.PowerShellSession PowerShell =>
+        _engine.Languages.Get<ClrKernel.Language.PowerShell.PowerShellCellLanguage>()?.Session;
+
     private void PublishSqlDiagnostics(string uri) {
         if (Rpc == null || uri == null) {
             return;
@@ -250,7 +261,7 @@ public sealed class LspServer {
         await _gate.WaitAsync().ConfigureAwait(false);
         ClrKernel.Language.PowerShell.PowerShellCompletion completion;
         try {
-            completion = await Task.Run(() => _engine.PowerShell.Complete(code, offset)).ConfigureAwait(false);
+            completion = await Task.Run(() => PowerShell.Complete(code, offset)).ConfigureAwait(false);
         } catch (Exception e) {
             _logger.LogWarning(e, "PowerShell completion failed");
             return new CompletionList();
@@ -320,7 +331,7 @@ public sealed class LspServer {
         await _gate.WaitAsync().ConfigureAwait(false);
         ClrKernel.Language.PowerShell.PowerShellHover hover;
         try {
-            hover = await Task.Run(() => _engine.PowerShell.Hover(code, offset)).ConfigureAwait(false);
+            hover = await Task.Run(() => PowerShell.Hover(code, offset)).ConfigureAwait(false);
         } catch (Exception e) {
             _logger.LogWarning(e, "PowerShell hover failed");
             return null;
@@ -345,7 +356,7 @@ public sealed class LspServer {
         await _gate.WaitAsync().ConfigureAwait(false);
         ClrKernel.Language.PowerShell.PowerShellSignatureHelp help;
         try {
-            help = await Task.Run(() => _engine.PowerShell.SignatureHelp(code, offset)).ConfigureAwait(false);
+            help = await Task.Run(() => PowerShell.SignatureHelp(code, offset)).ConfigureAwait(false);
         } catch (Exception e) {
             _logger.LogWarning(e, "PowerShell signature help failed");
             return null;
@@ -416,8 +427,8 @@ public sealed class LspServer {
     // Session-aware completion context: connection names + pipeline step names
     // (from registered steps and any -- step declared in open SQL cells).
     private ClrKernel.Sql.SqlCompletionContext BuildSqlContext() {
-        var connections = _engine.Sql.Connections.All.Select(c => c.Name).ToList();
-        var steps = new HashSet<string>(_engine.Sql.Pipeline.All.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        var connections = Sql.Connections.All.Select(c => c.Name).ToList();
+        var steps = new HashSet<string>(Sql.Pipeline.All.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
         foreach (var kv in _languages) {
             if (!kv.Value.Equals("sql", StringComparison.OrdinalIgnoreCase)) {
                 continue;
@@ -487,7 +498,7 @@ public sealed class LspServer {
         ClrKernel.AnalysisServices.DaxCompletion completion;
         try {
             var context = new ClrKernel.AnalysisServices.DaxCompletionContext {
-                CubeNames = _engine.Cubes.Cubes.Names.ToList(),
+                CubeNames = Cubes.Cubes.Names.ToList(),
             };
             completion = ClrKernel.AnalysisServices.DaxLanguage.Complete(code, offset, context);
         } catch (Exception e) {
@@ -551,7 +562,7 @@ public sealed class LspServer {
     /// <summary>Lists registered connections (secret-free) for the connection panel.</summary>
     [JsonRpcMethod("clrkernel/sql/listConnections")]
     public object SqlListConnections() {
-        var sql = _engine.Sql;
+        var sql = Sql;
         var items = new List<object>();
         foreach (var c in sql.Connections.All) {
             items.Add(new {
@@ -573,9 +584,9 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/addConnection", UseSingleObjectParameterDeserialization = true)]
     public object SqlAddConnection(SqlConnectParams p) {
         try {
-            var spec = _engine.Sql.Connect(p?.Directive ?? string.Empty).Spec;
+            var spec = Sql.Connect(p?.Directive ?? string.Empty).Spec;
             if (!string.IsNullOrEmpty(p?.Secret)) {
-                _engine.Sql.StoreSecret(spec.EffectiveSecretRef, p.Secret);
+                Sql.StoreSecret(spec.EffectiveSecretRef, p.Secret);
             }
             return new { ok = true, name = spec.Name, secretRef = spec.EffectiveSecretRef };
         } catch (Exception e) {
@@ -587,7 +598,7 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/storeSecret", UseSingleObjectParameterDeserialization = true)]
     public object SqlStoreSecret(SqlSecretParams p) {
         try {
-            var provider = _engine.Sql.StoreSecret(p?.SecretRef ?? string.Empty, p?.Secret ?? string.Empty);
+            var provider = Sql.StoreSecret(p?.SecretRef ?? string.Empty, p?.Secret ?? string.Empty);
             return new { ok = true, provider };
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
@@ -597,7 +608,7 @@ public sealed class LspServer {
     /// <summary>Removes a connection from the session registry.</summary>
     [JsonRpcMethod("clrkernel/sql/removeConnection", UseSingleObjectParameterDeserialization = true)]
     public object SqlRemoveConnection(SqlNameParams p) {
-        var removed = _engine.Sql.Connections.Remove(p?.Name ?? string.Empty);
+        var removed = Sql.Connections.Remove(p?.Name ?? string.Empty);
         return new { ok = removed };
     }
 
@@ -605,7 +616,7 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/setDefault", UseSingleObjectParameterDeserialization = true)]
     public object SqlSetDefault(SqlNameParams p) {
         try {
-            _engine.Sql.Connections.SetDefault(p?.Name ?? string.Empty);
+            Sql.Connections.SetDefault(p?.Name ?? string.Empty);
             return new { ok = true };
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
@@ -617,8 +628,8 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/configStatus", UseSingleObjectParameterDeserialization = true)]
     public object SqlConfigStatus(SqlConfigDirParams p) {
         try {
-            var path = _engine.Sql.FindConfigFile(NullIfBlank(p?.Directory));
-            var names = path != null ? _engine.Sql.ConfigConnectionNames(path) : System.Array.Empty<string>();
+            var path = Sql.FindConfigFile(NullIfBlank(p?.Directory));
+            var names = path != null ? Sql.ConfigConnectionNames(path) : System.Array.Empty<string>();
             return new { ok = true, found = path != null, path, names };
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
@@ -630,7 +641,7 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/loadConnectionsConfig", UseSingleObjectParameterDeserialization = true)]
     public object SqlLoadConnectionsConfig(SqlConfigDirParams p) {
         try {
-            var loaded = _engine.Sql.LoadFromConfig(NullIfBlank(p?.Directory));
+            var loaded = Sql.LoadFromConfig(NullIfBlank(p?.Directory));
             return new { ok = true, loaded };
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
@@ -641,7 +652,7 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/sql/saveConnection", UseSingleObjectParameterDeserialization = true)]
     public object SqlSaveConnection(SqlSaveConfigParams p) {
         try {
-            var path = _engine.Sql.SaveConnectionToConfig(p?.Name ?? string.Empty, p?.FilePath ?? string.Empty);
+            var path = Sql.SaveConnectionToConfig(p?.Name ?? string.Empty, p?.FilePath ?? string.Empty);
             return new { ok = true, path };
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
@@ -655,7 +666,7 @@ public sealed class LspServer {
     /// <summary>Lists registered cubes for the DAX connection panel.</summary>
     [JsonRpcMethod("clrkernel/dax/listConnections")]
     public object DaxListConnections() {
-        var cubes = _engine.Cubes.Cubes;
+        var cubes = Cubes.Cubes;
         var items = new List<object>();
         foreach (var (name, spec) in cubes.All) {
             items.Add(new {
@@ -674,7 +685,7 @@ public sealed class LspServer {
     [JsonRpcMethod("clrkernel/dax/addConnection", UseSingleObjectParameterDeserialization = true)]
     public object DaxAddConnection(SqlConnectParams p) {
         try {
-            var name = _engine.Cubes.Connect(p?.Directive ?? string.Empty);
+            var name = Cubes.Connect(p?.Directive ?? string.Empty);
             return new { ok = true, name };
         } catch (Exception e) {
             return new { ok = false, error = e.Message };
@@ -684,7 +695,7 @@ public sealed class LspServer {
     /// <summary>Removes a cube from the session.</summary>
     [JsonRpcMethod("clrkernel/dax/removeConnection", UseSingleObjectParameterDeserialization = true)]
     public object DaxRemoveConnection(SqlNameParams p) {
-        var removed = _engine.Cubes.Cubes.Remove(p?.Name ?? string.Empty);
+        var removed = Cubes.Cubes.Remove(p?.Name ?? string.Empty);
         return new { ok = removed };
     }
 
