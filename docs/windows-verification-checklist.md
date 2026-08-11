@@ -203,6 +203,23 @@ Credential construction and token acquisition moved out of both providers into
 paths below have not been executed since the move**. The two providers' credential chains were
 deliberately left different — that is the thing to confirm, not to "fix".
 
+**Run the automated half first — it needs only `az login`, no Azure resources, and writes nothing.**
+Acquiring a token is an authentication call, not a resource operation.
+
+```
+az login
+export CLRKERNEL_TEST_ENTRA=1 CLRKERNEL_TEST_REQUIRE_LIVE=1
+dotnet test test/ClrKernel.Database.UnitTest/ClrKernel.Database.UnitTest.csproj \
+  -f net8.0 --filter FullyQualifiedName~EntraLiveTest
+```
+
+- [ ] All three `EntraLiveTest` cases pass — both chains acquire a token, and they resolve to the
+      **same** identity. The test prints the account each chain landed on; confirm it is the one you
+      expect. (A tenant that won't issue for `database.windows.net` can be pointed elsewhere with
+      `CLRKERNEL_TEST_ENTRA_SCOPE`.)
+
+The rest need real resources and cannot be faked locally:
+
 - [ ] `Fabric.Connect()` → sign-in behaves as it did before: non-interactive `DefaultAzureCredential` first, browser prompt only if that yields nothing.
 - [ ] `AnalysisServices.ConnectFabric("<W>","<M>")` → acquires a token and connects (scope `https://analysis.windows.net/powerbi/api/.default`).
 - [ ] `AnalysisServices.ConnectAzureAnalysisServices("<server>","<db>")` against Azure AS → connects (scope `https://*.asazure.windows.net/.default`).
