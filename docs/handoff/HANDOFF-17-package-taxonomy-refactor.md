@@ -86,6 +86,9 @@ Established by inspection on 2026-08-10. Re-verify if resuming much later.
   pack). Every rename must edit that list; every new project must be added to it.
 - `release.yml` **fails the build if the git tag doesn't match `<Version>` in
   `Directory.Build.props`** (currently `0.8.0`).
+- **Baseline moved from 267 to 275 total in P3 slice 1**: `CellSelectorOrderingTest` adds 8
+  passing tests (selector precedence for every prefix pair). Skips stay at 8. Compare later
+  phases against **267 passed / 8 skipped / 275 total**.
 - **CI gates on formatting before build**: `dotnet format ClrKernel.slnx --verify-no-changes`. A
   phase that renames namespaces without a format pass fails CI, not the phase.
 - **P0 found `main` already format-dirty** and therefore CI-red before this refactor started:
