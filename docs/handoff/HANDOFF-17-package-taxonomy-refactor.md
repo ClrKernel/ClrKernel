@@ -207,6 +207,33 @@ Judgement call recorded: **connection identity is a provider concern** (spec, re
 mapping, auth mode live in `Provider.SqlServer`); **the cell session is a language concern**
 (`SqlSession` lives in `Language.Sql` and holds a registry owned by the provider).
 
+**Namespace mapping (D2), verified against the tree after P3.** `ClrKernel.Sql` holds four
+namespaces and they do **not** split along the same line as the files:
+
+| Today | Goes to |
+| --- | --- |
+| `ClrKernel.Sql` (20 files) | `ClrKernel.Language.Sql`, except the connection/fluent files → `ClrKernel.Database.Provider.SqlServer` |
+| `ClrKernel.Sql.Etl` (6 files) | `SqlEtlDirectives` → `Language.Sql`; `BulkCopy`, `MergeBuilder`, `DataTableBuilder`, `CountingDataReader`, `SqlIdentifier` → `Provider.SqlServer` |
+| `ClrKernel.Sql.Deploy` (4 files) | `CreateOrAlter`, `GoBatchSplitter`, `DeployBoard` → `Provider.SqlServer`; `DeployRunner` stays in `Language.Sql` until P8 lifts its generic pass-retry loop into `DataEngineering` |
+| `ClrKernel.Sql.Pipeline` (4 files) | stays in `Language.Sql` until P8 |
+
+Also move the two files P3 added: `SqlCellLanguage.cs` (with `SqlGlobals`) and
+`SqlCellLanguageServices.cs` → `Language.Sql`.
+
+**The runtime-only failure mode in this phase.** `SqlCellLanguage.ScriptContribution` imports the
+namespace strings `"ClrKernel.Sql"` and `"ClrKernel.Sql.Etl"`, and `SqlGlobals` is reached through
+`"using static ClrKernel.Sql.SqlGlobals;"`. All three are **string literals** — stale ones compile
+clean and fail only when a cell runs (the P2a lesson). The cell-facing types they carry are
+`MergeSpec`, `BulkCopyOptions` and `BulkCopyResult`, which land in `Provider.SqlServer`, so the
+contribution must import **both** new namespaces. `FluentSqlTest` and `SqlEtlTest` execute cells
+through the engine and are what catches this.
+
+**Tripwire (from P3).** Re-pointing the registration should be one edit in
+`src/ClrKernel/CellLanguages.cs` plus the `using` in the test fixture — a registration change, not
+a contract change. If `ICellLanguage` or `ICellLanguageServices` has to change to make the split
+work, stop and record why: that means the seam was shaped wrong, and bending it here hides the
+problem instead of fixing it.
+
 **Check before starting P4:** `SqlSession.Etl.cs`'s `OpenConnection` returns a
 `Microsoft.Data.SqlClient.SqlConnection`, which would give `Language.Sql` a direct SqlClient
 dependency. Decide whether the facade can return the shared `Database`/`DbConnection` type
