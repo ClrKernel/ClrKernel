@@ -4,6 +4,7 @@ using System.Data;
 using System.Linq;
 using ClrKernel.Core.Primitives;
 using Adomd = Microsoft.AnalysisServices.AdomdClient;
+using AMO = Microsoft.AnalysisServices;
 
 namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>
@@ -24,16 +25,23 @@ public sealed partial class SsasConnection {
     public int RowLimit { get; set; } = 1000;
 
     private Adomd.AdomdConnection OpenAdomd() {
-        var connectionString = _spec.BuildAdomdConnectionString();
+        var connection = new Adomd.AdomdConnection(_spec.BuildAdomdConnectionString());
         if (_spec.Auth == SsasAuthMode.AzureAd && _spec.TokenProvider != null) {
-            // ADOMD.NET takes an Entra access token as the connection-string password.
+            // ADOMD takes an Entra token through AccessToken, exactly as AMO does in
+            // OpenTomServer — same property, same Microsoft.AnalysisServices.AccessToken type.
+            //
+            // This used to append "Password=<token>" to the connection string instead. ADOMD does
+            // not read a bearer token from Password (there is no User ID for it to pair with), so
+            // it fell through to its own authenticator chain and failed with "Authentication
+            // failed for all authenticators" — a message that describes the symptom, not the cause.
             var token = _spec.TokenProvider();
-            if (!connectionString.EndsWith(";", StringComparison.Ordinal)) {
-                connectionString += ";";
-            }
-            connectionString += "Password=" + token.Token + ";";
+            connection.AccessToken = new AMO.AccessToken(token.Token, token.ExpiresOn);
+            // Long queries can outlive the token; ADOMD asks for a fresh one rather than dropping.
+            connection.OnAccessTokenExpired = _ => {
+                var t = _spec.TokenProvider();
+                return new AMO.AccessToken(t.Token, t.ExpiresOn);
+            };
         }
-        var connection = new Adomd.AdomdConnection(connectionString);
         connection.Open();
         return connection;
     }
