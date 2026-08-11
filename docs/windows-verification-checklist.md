@@ -196,7 +196,7 @@ e.g. `%DLC%\java\openedge.jar`).
 - [ ] `wh.ReloadBatch(requests, factory, maxParallelism: N)` deletes + reloads segments across tables in parallel; `results.DisplayTable()` summarizes.
 - [ ] *(optional)* Service principal path: `Fabric.ClientSecret(tenantId, clientId, secret)` connects headlessly.
 
-### 11a. P6 gate — shared Entra auth ⚠ **first run of moved sign-in code**
+### 11a. P6 gate — shared Entra auth ✅ **credential half discharged 2026-08-11**
 
 Credential construction and token acquisition moved out of both providers into
 `ClrKernel.Database.Entra` (HANDOFF-17 §5, P6). No CI test signs in to a tenant, so **the Entra
@@ -213,12 +213,17 @@ dotnet test test/ClrKernel.Database.UnitTest/ClrKernel.Database.UnitTest.csproj 
   -f net8.0 --filter FullyQualifiedName~EntraLiveTest
 ```
 
-- [ ] All three `EntraLiveTest` cases pass — both chains acquire a token, and they resolve to the
-      **same** identity. The test prints the account each chain landed on; confirm it is the one you
-      expect. (A tenant that won't issue for `database.windows.net` can be pointed elsewhere with
-      `CLRKERNEL_TEST_ENTRA_SCOPE`.)
+- [x] All three `EntraLiveTest` cases pass — both chains acquire a token and resolve to the **same**
+      identity (3/3 green, 2026-08-11). A tenant that won't issue for `database.windows.net` can be
+      pointed elsewhere with `CLRKERNEL_TEST_ENTRA_SCOPE`.
+- [x] The three scope strings are byte-identical to their pre-P6 values, and each call site still
+      passes the right one — Fabric warehouse → `SqlDatabase`, Azure AS → `AzureAnalysisServices`,
+      `ConnectFabric` → `PowerBi`. Checked against `git show d647712^`, not by eye.
 
-The rest need real resources and cannot be faked locally:
+**What that leaves.** Token acquisition through both chains is proven, and the scopes and their
+routing are proven. The remaining items exercise the endpoint connections — AMO/ADOMD and the
+warehouse's `AccessTokenCallback` — which P6 did **not** change except in where the token comes
+from. They need real resources and cannot be faked locally:
 
 - [ ] `Fabric.Connect()` → sign-in behaves as it did before: non-interactive `DefaultAzureCredential` first, browser prompt only if that yields nothing.
 - [ ] `AnalysisServices.ConnectFabric("<W>","<M>")` → acquires a token and connects (scope `https://analysis.windows.net/powerbi/api/.default`).

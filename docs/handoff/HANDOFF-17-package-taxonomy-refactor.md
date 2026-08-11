@@ -44,7 +44,7 @@ accepted.
 | P4a | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (move only) | DONE |
 | P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | DONE — live gate discharged 2026-08-11 |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | DONE |
-| P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
+| P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — credential half verified; endpoint items need a tenant |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | DONE |
 | P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | DONE — Fabric/Oracle targets outstanding |
 | P9 | Split the test project three ways | DONE |
@@ -573,11 +573,24 @@ Both providers keep their own `Azure.Identity` `PackageReference`: they still us
 types (`TokenCredential`, `AccessToken`) in their public signatures, and `Azure.Identity` is what
 supplies it.
 
-**Gate:** P5 gate met — 276 passed / 8 skipped / 284 total, 0 warnings, format clean, extension
-compiles, both RPC harnesses 10/10. But `SsasTest`/`DaxTest` never touch Entra, so green here means
-"still compiles and the non-Entra paths work", **not** that sign-in was verified. The Entra rows are
-in `docs/windows-verification-checklist.md` §11a, including an identity check — success alone does
-not prove the probe order is unchanged.
+**Gate: credential half discharged 2026-08-11; endpoint half needs a tenant.**
+
+`EntraLiveTest` (3/3 green, opt-in via `CLRKERNEL_TEST_ENTRA`) proves a token is acquired through
+**both** chains and that they resolve to the **same** identity. That is the check the P6 risk
+actually needed: the chains were deliberately left different, and had they been wrongly unified the
+symptom would be a working connection under the wrong account — never an error, so no amount of
+"did it connect?" would have caught it. It needs only `az login`; acquiring a token authenticates
+and writes nothing, so no Azure resource is involved.
+
+Also verified, against `git show d647712^` rather than by eye: all three scope strings are
+byte-identical to their pre-P6 values, and each call site still passes the right one (Fabric
+warehouse → `SqlDatabase`, Azure AS → `AzureAnalysisServices`, `ConnectFabric` → `PowerBi`).
+
+**What is not verified**, and is recorded as such rather than quietly counted as done: connecting to
+a real semantic model, Azure AS instance, or Fabric warehouse (checklist §11a, remaining items).
+Those exercise AMO/ADOMD and the warehouse's `AccessTokenCallback` — code P6 did **not** change
+except in where the token comes from, which is the part now proven. The residual risk is small and
+specific; it is not zero.
 
 ### P7 — Entry-type renames + docs/sample sweep (DONE)
 
