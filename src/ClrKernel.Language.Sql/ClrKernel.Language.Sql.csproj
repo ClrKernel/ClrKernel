@@ -30,7 +30,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Core.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Language.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Database.UnitTest" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->

@@ -36,7 +36,6 @@ class ClrKernelBuild : NukeBuild {
     readonly bool Apply;
 
     AbsolutePath SolutionFile => RootDirectory / "ClrKernel.slnx";
-    AbsolutePath TestProject => RootDirectory / "test" / "ClrKernel.UnitTest" / "ClrKernel.UnitTest.csproj";
     AbsolutePath ExtensionDirectory => RootDirectory / "editors" / "vscode";
 
     // The build/restore target: a single --project if given, else the solution.
@@ -85,8 +84,11 @@ class ClrKernelBuild : NukeBuild {
         .Description("Run unit tests (all, or a subset with --filter <expr>).")
         .DependsOn(Build)
         .Executes(() => {
+            // The suite is three projects since P9 (Core / Language / Database), so Test runs the
+            // whole solution instead of a fixed test project. --project still narrows to one, and
+            // --filter behaves exactly as it did when there was a single test assembly.
             DotNetTest(s => {
-                s = s.SetProjectFile(TestProject)
+                s = s.SetProjectFile(string.IsNullOrEmpty(Project) ? SolutionFile : TargetFile)
                     .SetConfiguration(Configuration)
                     .EnableNoRestore();
                 if (!string.IsNullOrEmpty(Filter)) {

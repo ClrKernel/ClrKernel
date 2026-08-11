@@ -19,7 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Core.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Language.UnitTest" />
+    <InternalsVisibleTo Include="ClrKernel.Database.UnitTest" />
     <InternalsVisibleTo Include="ClrKernel.Database.Provider.SqlServer" />
     <InternalsVisibleTo Include="ClrKernel.Database.Provider.Oracle" />
     <InternalsVisibleTo Include="ClrKernel.Database.Provider.Odbc" />

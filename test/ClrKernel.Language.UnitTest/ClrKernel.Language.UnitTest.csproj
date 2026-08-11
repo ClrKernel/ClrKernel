@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>ClrKernel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ClrKernel.Core.Scripting\ClrKernel.Core.Scripting.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Core.Primitives\ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Language.Http\ClrKernel.Language.Http.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Language.Mermaid\ClrKernel.Language.Mermaid.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Language.PowerShell\ClrKernel.Language.PowerShell.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Language.Sql\ClrKernel.Language.Sql.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Language.Dax\ClrKernel.Language.Dax.csproj" />
+  </ItemGroup>
+
+</Project>

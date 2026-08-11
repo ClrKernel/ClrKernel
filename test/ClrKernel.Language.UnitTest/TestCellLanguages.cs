@@ -10,10 +10,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace ClrKernel.UnitTest;
 
 /// <summary>
-/// Test-run composition root. Engines built as <c>new InteractiveScriptEngine(dir,
-/// logger)</c> take <see cref="CellLanguageRegistry.Default"/>, so the languages
-/// have to be registered once before any test constructs one — the same job
-/// <c>Program.Main</c> does for the real kernel.
+/// Test-run composition root for the cell-language suite — the same job <c>Program.Main</c>
+/// does for the real kernel, so selector dispatch is exercised against the real set.
+/// <para>
+/// <see cref="CellLanguageRegistry.Default"/> is <c>Empty</c> until something registers, so an
+/// assembly that skips this still runs C# cells — it just has no <c>#!</c> languages. That is why
+/// <c>ClrKernel.Core.UnitTest</c> has no registration and no <c>Language.*</c> reference at all.
+/// </para>
 /// </summary>
 [TestClass]
 public static class TestCellLanguages {
@@ -26,12 +29,5 @@ public static class TestCellLanguages {
             () => new SqlCellLanguage(),
             () => new DaxCellLanguage(),
         });
-        // Mirrors Program.Main: providers with no #! selector still contribute
-        // to the C# scripting session.
-        CellLanguageRegistry.DefaultContributions = new[] {
-            new ScriptContribution(
-                references: new[] { typeof(ClrKernel.Database.Provider.Fabric.FabricConnection).Assembly },
-                imports: new[] { "ClrKernel.Database.Provider.Fabric" }),
-        };
     }
 }

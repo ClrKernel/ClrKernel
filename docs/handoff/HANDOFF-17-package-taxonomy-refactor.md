@@ -47,7 +47,7 @@ accepted.
 | P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | DONE |
 | P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | DONE — Fabric/Oracle targets outstanding |
-| P9 | Split the test project three ways | TODO — **the only phase left** |
+| P9 | Split the test project three ways | DONE |
 | P10 | Final verification sweep | DONE (run before P9 — see §5) |
 
 Status values: `TODO` → `IN PROGRESS` → `DONE`. The commit that ticks a row to `DONE` **is** that
@@ -672,13 +672,40 @@ clean, extension compiles, both RPC harnesses 10/10. `#!sql-run` / `#!sql-deploy
 server is **deferred to the Windows checklist** — the pipeline and deploy code moved namespace but
 not a line of logic, so the risk is a wiring mistake the tests would catch, not a behaviour change.
 
-### P9 — Test project split
+### P9 — Test project split (DONE)
 
-Per §4.5. Update `build/Build.cs` — `TestProject` becomes a list and the `Test` target iterates;
-`--filter` still applies to each. Update every `InternalsVisibleTo` that names `ClrKernel.UnitTest`.
+`ClrKernel.UnitTest` → `ClrKernel.Core.UnitTest` (68 tests), `ClrKernel.Language.UnitTest` (109),
+`ClrKernel.Database.UnitTest` (118 + the 8 gated skips). **295 / 8 / 303 before and after** — the
+count is the check that nothing was dropped, and it was run per-project and solution-wide.
 
-**Gate:** P8 gate + the sum of the three projects' test counts equals the P0 baseline. Any
-difference must be explained in this document, not absorbed.
+**Split at class granularity, not file.** §4.5 said "by test method"; classes turned out to be the
+natural unit — every one is cohesive, and no class straddled. Six files' names lied about their
+contents and were divided:
+
+| File | Went to |
+| --- | --- |
+| `SqlTest.cs` | `SqlSecretTest`/`SqlConnectionSpecTest` → Database; directives, syntax, routing → Language |
+| `SqlEtlTest.cs` | `SqlIdentifier`/`DataTableBuilder`/`MergeBuilder` → Database; directives, routing → Language; **`ProgressBarTest` → Core** (it tests `Core.Primitives`, and had been sitting in the SQL ETL file) |
+| `SqlPhase2bTest.cs` | pipeline + deploy + `GoBatchSplitter`/`CreateOrAlter` → Database; step directives, completion → Language |
+| `ConnectionConfigWriteTest.cs` | config mapping → Database; `SqlBulkCreateDirectiveTest` → Language |
+| `DaxTest.cs` | `DaxRegistryTest` → Database (it is the cube registry); the rest → Language |
+| `FluentSqlTest.cs` | whole file → Database |
+
+**`Core.UnitTest` references no `Language.*` package at all.** That is possible because
+`CellLanguageRegistry.Default` is `Empty` until something registers — an assembly that never
+registers still runs C# cells, it just has no `#!` languages. The tier boundary is real there, not
+cosmetic.
+
+**The registration is per-assembly and deliberately not shared.** A `test/Shared` linked-file
+approach was tried first and rejected: it forced `Database.UnitTest` to reference
+Http/Mermaid/PowerShell purely to satisfy a shared registration it didn't need. Each assembly now
+registers only what it drives — Language registers all five, Database registers Sql + Dax (several
+provider tests run `SqlServer.Connection(...)` / `AnalysisServices.Connect(...)` inside a real
+`#!csharp` cell) plus the Fabric contribution. They are not duplicates; they are different sets.
+
+`InternalsVisibleTo` fanned out from one entry to three in each of the nine packages that had one.
+`build/Build.cs` no longer names a test project — `Test` runs the solution, so `--filter` behaves as
+before and CI (`dotnet test ClrKernel.slnx`) needed no change.
 
 ### P10 — Final verification sweep (DONE, run before P9)
 
