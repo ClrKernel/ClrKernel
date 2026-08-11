@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/ClrKernel.Core/ClrKernel.Core.csproj" />
+  <Project Path="src/ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
   <Project Path="src/ClrKernel.Http/ClrKernel.Http.csproj" />
   <Project Path="src/ClrKernel.Mermaid/ClrKernel.Mermaid.csproj" />
   <Project Path="src/ClrKernel.PowerShell/ClrKernel.PowerShell.csproj" />

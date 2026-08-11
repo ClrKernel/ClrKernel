@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace ClrKernel.Data.Secrets;
+namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// Resolves secrets from environment variables — the standard way to inject
 /// credentials into headless / CI runs without an OS keychain and without

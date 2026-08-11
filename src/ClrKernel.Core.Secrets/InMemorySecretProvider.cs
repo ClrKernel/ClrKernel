@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 
-namespace ClrKernel.Data.Secrets;
+namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// A process-local secret provider. Used as the write target in unit tests and
 /// as an optional in-memory cache in front of a slower store (see

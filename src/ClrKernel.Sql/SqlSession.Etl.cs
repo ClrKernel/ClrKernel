@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Linq;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 using ClrKernel.Primitives;
 using ClrKernel.Sql.Etl;
 using Microsoft.Data.SqlClient;

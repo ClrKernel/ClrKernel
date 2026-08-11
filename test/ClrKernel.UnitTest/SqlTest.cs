@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using ClrKernel.Core;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 using ClrKernel.Primitives;
 using ClrKernel.Sql;
 using Microsoft.Data.SqlClient;

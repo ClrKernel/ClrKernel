@@ -1,6 +1,6 @@
 using System;
 
-namespace ClrKernel.Data.Secrets;
+namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// A source of named secrets (SQL passwords, tokens). Kept deliberately small
 /// so an enterprise PAM / password service — HashiCorp Vault, Azure Key Vault,

@@ -37,7 +37,7 @@ accepted.
 | Phase | Scope | Status |
 | --- | --- | --- |
 | P0 | Baseline capture + guardrails | DONE |
-| P1 | Extract `ClrKernel.Core.Secrets` | TODO |
+| P1 | Extract `ClrKernel.Core.Secrets` | DONE |
 | P2a | Rename the `Core.*` group | TODO |
 | P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | TODO |
 | P3 | Cell-language registration seam in `Core.Scripting` | TODO |
@@ -490,7 +490,7 @@ Not affected (verified): `src/ClrKernel/kernel-spec/*`, `scripts/install-dev-ker
 | # | Risk | Mitigation |
 | --- | --- | --- |
 | R1 | **Selector ordering regression in P3.** The if-chain's order is correctness-bearing; a registry can lose it silently and `#!sql-connect` starts matching `#!sql`. | Explicit ordering in the registry + a unit test per prefix pair (`sql-connect`/`sql`, `dax-connect`/`dax`) asserting the longer selector wins. Write the test **before** the seam. |
-| R2 | **Jdbc breaks Linux CI** once it enters the solution (D6) — IKVM is Windows-centric by its own csproj comment. | Build it locally in P2b before committing. If ubuntu CI fails, revert it out of `slnx`, keep the rename, and amend D6 here. |
+| R2 | **Jdbc breaks Linux CI** once it enters the solution (D6) — IKVM is Windows-centric by its own csproj comment. | Partly de-risked in P1: `dotnet build src/ClrKernel.Data.Jdbc -c Release` is clean (0 warnings, 0 errors) on macOS/arm64 with SDK 10.0.106, so IKVM at least restores and compiles off-Windows. **ubuntu CI is still unverified.** If it fails there, revert it out of `slnx`, keep the rename, and amend D6 here. |
 | R3 | **P4 mixes a move with a behavior refactor** (D7). | Sub-commits; SQL fluent + ETL tests green at each; no other work in the phase. |
 | R4 | **Clean break (D1) strands existing notebooks.** | Accepted. P7 sweeps every in-repo `#r` line; old packages get deprecated on nuget.org by hand, outside this plan. |
 | R5 | **Samples are not compiled by CI**, so entry-type renames (D8) can rot silently. | P7 gate runs each sample's first cell; P10 repeats it from a clean tree. |

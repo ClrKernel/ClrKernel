@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ClrKernel.Data.Secrets;
+namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// Windows Credential Manager (generic credentials) via advapi32. The secret
 /// is stored as a UTF-16 blob under target name

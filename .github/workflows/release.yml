@@ -61,6 +61,7 @@ jobs:
         run: |
           dotnet pack src/ClrKernel/ClrKernel.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Core/ClrKernel.Core.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Jupyter/ClrKernel.Jupyter.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.LanguageServices/ClrKernel.LanguageServices.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Server/ClrKernel.Server.csproj -c Release --no-build -o artifacts/pkg

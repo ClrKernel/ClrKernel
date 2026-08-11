@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 using ClrKernel.Primitives;
 using Microsoft.Data.SqlClient;
 

@@ -1,5 +1,5 @@
 using System;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 using OracleClient = Oracle.ManagedDataAccess.Client;
 
 namespace ClrKernel.Data.Oracle;

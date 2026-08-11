@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace ClrKernel.Data.Secrets;
+namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// Picks the right OS-native credential store for the current platform:
 /// macOS Keychain, Windows Credential Manager, or the Linux Secret Service

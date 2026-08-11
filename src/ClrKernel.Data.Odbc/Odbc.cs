@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Odbc;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 
 namespace ClrKernel.Data.Odbc;
 

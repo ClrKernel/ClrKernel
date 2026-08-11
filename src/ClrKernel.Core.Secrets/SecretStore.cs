@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ClrKernel.Data.Secrets;
+namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// The secret resolver used by SQL connections. Composes an ordered chain of
 /// <see cref="ISecretProvider"/>s and resolves a key against them in turn.

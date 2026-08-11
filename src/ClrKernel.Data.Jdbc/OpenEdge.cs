@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 
 namespace ClrKernel.Data.Jdbc;
 

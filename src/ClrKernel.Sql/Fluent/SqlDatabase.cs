@@ -1,7 +1,7 @@
 using System;
 using System.Data;
+using ClrKernel.Core.Secrets;
 using ClrKernel.Data;
-using ClrKernel.Data.Secrets;
 using Microsoft.Data.SqlClient;
 
 namespace ClrKernel.Sql;

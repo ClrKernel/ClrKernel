@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using ClrKernel.Data.Secrets;
+using ClrKernel.Core.Secrets;
 
 namespace ClrKernel.Data;
 
