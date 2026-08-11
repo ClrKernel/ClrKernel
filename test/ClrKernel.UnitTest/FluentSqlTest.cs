@@ -298,9 +298,7 @@ public class FluentSqlIntegrationTest {
 
     [TestInitialize]
     public void RequireServer() {
-        if (string.IsNullOrWhiteSpace(ConnectionString)) {
-            Assert.Inconclusive("Set CLRKERNEL_TEST_SQL to run fluent SQL integration tests.");
-        }
+        LiveTestGate.Require(ConnectionString, "CLRKERNEL_TEST_SQL", "fluent SQL integration tests");
     }
 
     public record Order(int Id, string Customer, decimal Total);

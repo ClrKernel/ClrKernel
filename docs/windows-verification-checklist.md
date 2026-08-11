@@ -97,7 +97,11 @@ Directives & errors:
 executed since the rebase** — every item is a first run of changed code, not a regression check.
 Fastest route is the gated suite; the manual items catch what it doesn't assert.
 
-- [ ] `$env:CLRKERNEL_TEST_SQL = "<connection string>"; dotnet test ClrKernel.slnx --filter FullyQualifiedName~FluentSqlIntegrationTest` → passes (these are `Inconclusive` without the variable, so confirm they actually **ran**).
+- [ ] Set **both** variables, so a forgotten connection string fails loudly instead of skipping:
+      `$env:CLRKERNEL_TEST_REQUIRE_LIVE = "1"; $env:CLRKERNEL_TEST_SQL = "<connection string>"`
+      then `dotnet test ClrKernel.slnx --filter FullyQualifiedName~FluentSqlIntegrationTest` → passes.
+      Without `CLRKERNEL_TEST_REQUIRE_LIVE` these tests report success having executed nothing;
+      with it, a missing backend is a **failure**. Confirm the run shows passes, not skips.
 - [ ] `.Query(...).OpenReader()` still hands back a `SqlDataReader` — e.g. `var r = db.Query("select 1").OpenReader(); r.GetType().Name` → `SqlDataReader`, not `SqlDataReader`'s base.
 - [ ] `.Table("dbo.X").Count()` on a table returns the right number (this now goes through an override; the base's `count(*)` would also work, so check the **value**, not just that it runs).
 - [ ] `db.DefaultCommandTimeout = 1;` then `.Scalar<int>("waitfor delay '00:00:05'; select 1")` → **times out**. Pre-P4b this property was silently ignored by `Execute`/`Scalar`; if it still is, the rebase didn't take.

@@ -25,9 +25,7 @@ public class SqlIntegrationTest {
 
     [TestInitialize]
     public void RequireServer() {
-        if (string.IsNullOrWhiteSpace(ConnectionString)) {
-            Assert.Inconclusive("Set CLRKERNEL_TEST_SQL to run SQL integration tests.");
-        }
+        LiveTestGate.Require(ConnectionString, "CLRKERNEL_TEST_SQL", "SQL integration tests");
     }
 
     private static void Exec(SqlSession session, string sql) {
