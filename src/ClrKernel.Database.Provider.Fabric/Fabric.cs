@@ -4,6 +4,7 @@ using System.Linq;
 using Azure.Core;
 using Azure.Identity;
 using Azure.Storage.Files.DataLake;
+using ClrKernel.Database.Entra;
 using Microsoft.Fabric.Api;
 
 namespace ClrKernel.Database.Provider.Fabric;
@@ -20,32 +21,17 @@ namespace ClrKernel.Database.Provider.Fabric;
 public static class Fabric {
     /// <summary>
     /// Connects using an interactive/default Entra credential chain
-    /// (<see cref="DefaultAzureCredential"/> plus interactive browser fallback),
-    /// suitable for a developer running a notebook locally.
+    /// (<see cref="EntraAuth.DefaultThenInteractiveBrowser"/> — <see cref="DefaultAzureCredential"/>
+    /// non-interactive, then an explicit browser sign-in), suitable for a developer running a
+    /// notebook locally.
     /// </summary>
-    public static FabricConnection Connect() {
-        var cred = new ChainedTokenCredential(
-            new DefaultAzureCredential(includeInteractiveCredentials: false),
-            new InteractiveBrowserCredential());
-        return WithCredential(cred);
-    }
+    /// <remarks>Analysis Services deliberately uses a <em>different</em> chain for the same
+    /// job; see the note on <see cref="EntraAuth.DefaultWithInteractiveFallback"/>.</remarks>
+    public static FabricConnection Connect() => WithCredential(EntraAuth.DefaultThenInteractiveBrowser());
 
     /// <summary>Connects with an Entra service principal (client secret).</summary>
-    public static FabricConnection ClientSecret(string tenantId, string clientId, string clientSecret) {
-        if (string.IsNullOrWhiteSpace(tenantId)) {
-            throw new ArgumentException("tenantId is required.", nameof(tenantId));
-        }
-
-        if (string.IsNullOrWhiteSpace(clientId)) {
-            throw new ArgumentException("clientId is required.", nameof(clientId));
-        }
-
-        if (string.IsNullOrWhiteSpace(clientSecret)) {
-            throw new ArgumentException("clientSecret is required.", nameof(clientSecret));
-        }
-
-        return WithCredential(new ClientSecretCredential(tenantId, clientId, clientSecret));
-    }
+    public static FabricConnection ClientSecret(string tenantId, string clientId, string clientSecret) =>
+        WithCredential(EntraAuth.ClientSecret(tenantId, clientId, clientSecret));
 
     /// <summary>Connects with a caller-supplied Azure <see cref="TokenCredential"/>.</summary>
     public static FabricConnection WithCredential(TokenCredential credential) {

@@ -3,7 +3,7 @@ using System.Data;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Azure.Core;
+using ClrKernel.Database.Entra;
 using Microsoft.Data.SqlClient;
 
 namespace ClrKernel.Database.Provider.Fabric;
@@ -23,8 +23,6 @@ public sealed class BulkInsertResult {
 /// and loading it with <c>OPENROWSET</c>.
 /// </summary>
 public sealed partial class FabricWarehouse {
-    private const string _sqlScope = "https://database.windows.net/.default";
-
     internal FabricWorkspace Workspace { get; }
     public Guid Id { get; }
     public string Name { get; }
@@ -67,7 +65,7 @@ public sealed partial class FabricWarehouse {
         var cred = Workspace.Connection.Credential;
         var conn = new SqlConnection(builder.ConnectionString) {
             AccessTokenCallback = async (_, ct) => {
-                var token = await cred.GetTokenAsync(new TokenRequestContext(new[] { _sqlScope }), ct).ConfigureAwait(false);
+                var token = await EntraAuth.TokenAsync(cred, EntraScopes.SqlDatabase, ct).ConfigureAwait(false);
                 return new SqlAuthenticationToken(token.Token, token.ExpiresOn);
             },
         };

@@ -8,6 +8,7 @@
   <Project Path="src/ClrKernel.Core.LanguageServices/ClrKernel.Core.LanguageServices.csproj" />
   <Project Path="src/ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
   <Project Path="src/ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
+  <Project Path="src/ClrKernel.Database.Entra/ClrKernel.Database.Entra.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.AnalysisServices/ClrKernel.Database.Provider.AnalysisServices.csproj" />
   <Project Path="src/ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />

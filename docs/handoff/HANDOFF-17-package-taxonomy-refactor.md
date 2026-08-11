@@ -4,7 +4,7 @@
 > stopped and resumed. Before doing anything, read **§0 Resume protocol** and the
 > **§1 Progress board** — the board is the single source of truth for where the work is.
 
-Restructures the 17 projects into a 21-project taxonomy with three tiers — `ClrKernel.Core.*`
+Restructures the 17 projects into a 22-project taxonomy with three tiers — `ClrKernel.Core.*`
 (implementation), `ClrKernel.Language.*` (cell languages), `ClrKernel.Database*` (data access) —
 plus a new provider-agnostic `ClrKernel.DataEngineering`. Package IDs, assembly names, root
 namespaces, and notebook-facing entry types all change. This is a **breaking change** for
@@ -44,7 +44,7 @@ accepted.
 | P4a | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (move only) | DONE |
 | P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | CODE DONE — live gate OPEN |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | DONE |
-| P6 | Extract shared Entra auth into `ClrKernel.Database` | TODO |
+| P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | TODO |
 | P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | TODO |
 | P9 | Split the test project three ways | TODO |
@@ -64,7 +64,7 @@ is the record. Add a `— <sha>` suffix only when back-filling a row after the f
 | D2 | **Namespaces = package names.** `ClrKernel.Core` → `ClrKernel.Core.Scripting`, `ClrKernel.Data` → `ClrKernel.Database`, etc. | Every `namespace`/`using` in `src/`, `test/`, and samples changes. |
 | D3 | **`ClrKernel.DataEngineering` is abstractions, not implementations.** It holds the step/DAG handling and a table-action model — Insert; Delete (optional where); Truncate; Merge from source (optional where); Truncate+Insert from source; Delete (optional where)+Insert from source. Each provider implements the actions its own way (SQL Server bulk copy, Fabric Parquet+delete/insert, Oracle bulk load). | Providers depend on DataEngineering, not the reverse. No SqlClient/Fabric/Oracle types in DataEngineering. |
 | D4 | **Add the registration seam now.** `Core.Scripting` must stop referencing `Language.*`. | The engine's selector chain and the LSP language surface both move behind contracts; the CLI becomes the composition root. See P3. |
-| D5 | **Fabric split by workload, shared Entra auth in `ClrKernel.Database`.** `Provider.AnalysisServices` keeps semantic-model work (incl. `ConnectFabric`); `Provider.Fabric` keeps warehouse/OneLake work; both consume shared auth. | New auth abstraction in `ClrKernel.Database` (P6). |
+| D5 | **Fabric split by workload, shared Entra auth.** `Provider.AnalysisServices` keeps semantic-model work (incl. `ConnectFabric`); `Provider.Fabric` keeps warehouse/OneLake work; both consume shared auth. **Amended in P6 (user decision): the shared auth lives in a new `ClrKernel.Database.Entra` package, not in `ClrKernel.Database`.** `ClrKernel.Database` has zero `PackageReference`s, and putting `Azure.Identity` there would have pushed it transitively into `Provider.Oracle`, `Provider.Odbc`, `Provider.Jdbc`, `Provider.SqlServer` and `Language.Sql` — none of which do Entra, and three of which are opt-in `#r "nuget: …"` packages where download weight is user-visible. | New package: **22 projects**, one more `slnx` and `release.yml` entry. `ClrKernel.Database` stays dependency-free. |
 | D6 | **Jdbc is renamed *and* added to `ClrKernel.slnx`.** | It compiles in CI for the first time. IKVM restore/build on ubuntu is **unverified** — see risk R2. |
 | D7 | **Collapse the fluent duplication during the split.** `SqlDatabase`/`SqlQuery`/`SqlTable` rebase onto `ClrKernel.Database`'s `DataSource`/`DataSourceQuery`/`DataSourceTable` (see D13) while they move. **Landed in P4b**; the original mitigation ("the SQL fluent tests run at each") was hollow — those tests are `Inconclusive` without a server — so P4b carries an explicit live gate instead. | Unseals `DataSourceQuery`/`DataSourceTable` and adds `virtual` to seven members of a shipped package. Deletes `SqlDatabaseTransaction`, so `db.Transaction()` returns `DataSourceTransaction` and its owner property is `.DataSource`. Three behaviour changes adopted from the shared base — see P4b. |
 | D8 | **Entry types renamed:** `Sql` → `SqlServer`, `Ssas` → `AnalysisServices`. `Fabric`, `Oracle`, `Odbc`, `Jdbc` already match and stay. | Every sample cell body, README snippet, and the C# variable binding emitted by `#!sql-connect` changes. |
@@ -535,17 +535,41 @@ resolves, but `ClrKernel.UnitTest` and `ClrKernel.Language.Dax` would bind `Anal
 Decide the same way before starting P7 — either the entry type gets a different name, or every
 sibling-namespace reference gets fully qualified.
 
-### P6 — Shared Entra auth into `ClrKernel.Database`
+### P6 — Shared Entra auth into `ClrKernel.Database.Entra` (DONE, live gate open)
 
-Both `Provider.AnalysisServices` (`ConnectFabric`, Azure AS) and `Provider.Fabric` (warehouse,
-OneLake) do Entra sign-in via `Azure.Identity`. Extract the common credential/token acquisition
-into `ClrKernel.Database`; both providers consume it (D5).
+New package `ClrKernel.Database.Entra` holds `EntraScopes` (the four scope strings) and
+`EntraAuth` (credential factories + token acquisition). `Provider.AnalysisServices` and
+`Provider.Fabric` reference it; nothing else does. See D5 for why it is not in `ClrKernel.Database`.
 
-Keep `ConnectFabric` in `Provider.AnalysisServices` — it is an auth/endpoint variant of the same
-AMO/ADOMD code path, not a warehouse operation.
+**The two credential chains were deliberately left different.** They were not the same before:
 
-**Gate:** P5 gate. Entra paths need a live tenant, so runtime verification is deferred to
-`docs/windows-verification-checklist.md` — add rows for both providers there in this phase.
+| | chain |
+| --- | --- |
+| `Ssas` (Azure AS, Fabric semantic models) | `DefaultAzureCredential(includeInteractiveCredentials: true)` |
+| `Fabric` (warehouse, OneLake) | `ChainedTokenCredential(DefaultAzureCredential(false), InteractiveBrowserCredential())` |
+
+They are close enough to look like duplication and are not. Merging them changes the
+credential-probe order for at least one provider, and that failure mode is a *working* connection
+under the wrong identity, or an unexpected browser prompt — never a compile error, and not
+reachable by any offline test. So `EntraAuth` exposes them as two named factories,
+`DefaultWithInteractiveFallback()` and `DefaultThenInteractiveBrowser()`, each constructing exactly
+what its provider constructed before, with a remark on each pointing at the other. **Unifying them
+is a separate change that needs a live tenant.** P6 as landed has zero behaviour delta by
+construction.
+
+**SQL Server is deliberately out of scope.** It does Entra through
+`SqlAuthenticationMethod.ActiveDirectory*` inside the connection string and never touches
+`TokenCredential` or `Azure.Identity` — it shares nothing with this code path.
+
+Both providers keep their own `Azure.Identity` `PackageReference`: they still use `Azure.Core`
+types (`TokenCredential`, `AccessToken`) in their public signatures, and `Azure.Identity` is what
+supplies it.
+
+**Gate:** P5 gate met — 276 passed / 8 skipped / 284 total, 0 warnings, format clean, extension
+compiles, both RPC harnesses 10/10. But `SsasTest`/`DaxTest` never touch Entra, so green here means
+"still compiles and the non-Entra paths work", **not** that sign-in was verified. The Entra rows are
+in `docs/windows-verification-checklist.md` §11a, including an identity check — success alone does
+not prove the probe order is unchanged.
 
 ### P7 — Entry-type renames + docs/sample sweep
 
@@ -613,7 +637,7 @@ Easy to miss; check on **every** rename phase.
 - [ ] Relative `ProjectReference` paths (`../ClrKernel.X/…`) in **every** referencing csproj
 - [ ] `InternalsVisibleTo` — by **assembly name**; `ClrKernel.Data` has five entries
 - [ ] `ClrKernel.slnx` project list
-- [ ] `.github/workflows/release.yml` — the hand-written `dotnet pack` list (16 → 21 entries)
+- [ ] `.github/workflows/release.yml` — the hand-written `dotnet pack` list (16 → 22 entries)
 - [ ] `build/Build.cs` — `ResolveProject` (flat layout, D10) and `TestProject` (P9)
 - [ ] `.nuke/build.schema.json` — parameter description mentions `ClrKernel.Http` (cosmetic)
 - [ ] `namespace` and `using` across `src/` and `test/`

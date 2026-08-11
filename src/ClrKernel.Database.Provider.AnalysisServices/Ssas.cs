@@ -1,5 +1,5 @@
 using Azure.Core;
-using Azure.Identity;
+using ClrKernel.Database.Entra;
 
 namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>Refresh/process kinds (maps to the Tabular Object Model's RefreshType).</summary>
@@ -46,8 +46,7 @@ public static class Ssas {
     /// <summary>Connects to Azure Analysis Services with Microsoft Entra auth.</summary>
     public static SsasConnection ConnectAzureAnalysisServices(
         string server, string database, TokenCredential credential = null, string scope = null) {
-        return AzureAd(server, database, credential,
-            scope ?? "https://*.asazure.windows.net/.default");
+        return AzureAd(server, database, credential, scope ?? EntraScopes.AzureAnalysisServices);
     }
 
     /// <summary>Connects to a Microsoft Fabric / Power BI semantic model via its
@@ -56,18 +55,16 @@ public static class Ssas {
     public static SsasConnection ConnectFabric(
         string workspace, string model, TokenCredential credential = null) {
         var server = "powerbi://api.powerbi.com/v1.0/myorg/" + workspace;
-        return AzureAd(server, model, credential,
-            "https://analysis.windows.net/powerbi/api/.default");
+        return AzureAd(server, model, credential, EntraScopes.PowerBi);
     }
 
     private static SsasConnection AzureAd(string server, string database, TokenCredential credential, string scope) {
-        var cred = credential ?? new DefaultAzureCredential(includeInteractiveCredentials: true);
-        var context = new TokenRequestContext(new[] { scope });
+        var cred = credential ?? EntraAuth.DefaultWithInteractiveFallback();
         return new SsasConnection(new SsasConnectionSpec {
             Server = server,
             Database = database,
             Auth = SsasAuthMode.AzureAd,
-            TokenProvider = () => cred.GetToken(context, default),
+            TokenProvider = () => EntraAuth.Token(cred, scope),
         });
     }
 

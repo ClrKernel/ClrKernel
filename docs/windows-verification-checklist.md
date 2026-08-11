@@ -169,6 +169,20 @@ e.g. `%DLC%\java\openedge.jar`).
 - [ ] `wh.ReloadBatch(requests, factory, maxParallelism: N)` deletes + reloads segments across tables in parallel; `results.DisplayTable()` summarizes.
 - [ ] *(optional)* Service principal path: `Fabric.ClientSecret(tenantId, clientId, secret)` connects headlessly.
 
+### 11a. P6 gate — shared Entra auth ⚠ **first run of moved sign-in code**
+
+Credential construction and token acquisition moved out of both providers into
+`ClrKernel.Database.Entra` (HANDOFF-17 §5, P6). No CI test signs in to a tenant, so **the Entra
+paths below have not been executed since the move**. The two providers' credential chains were
+deliberately left different — that is the thing to confirm, not to "fix".
+
+- [ ] `Fabric.Connect()` → sign-in behaves as it did before: non-interactive `DefaultAzureCredential` first, browser prompt only if that yields nothing.
+- [ ] `Ssas.ConnectFabric("<W>","<M>")` → acquires a token and connects (scope `https://analysis.windows.net/powerbi/api/.default`).
+- [ ] `Ssas.ConnectAzureAnalysisServices("<server>","<db>")` against Azure AS → connects (scope `https://*.asazure.windows.net/.default`).
+- [ ] A Fabric Warehouse query/`BulkInsert` still authenticates — this is the `https://database.windows.net/.default` scope, now read from `EntraScopes.SqlDatabase`.
+- [ ] `Fabric.ClientSecret(tenantId, clientId, secret)` still rejects blank arguments with `ArgumentException` naming the offending one, and connects with valid ones.
+- [ ] **Identity check, not just success:** confirm the account each provider signs in as is the same one as before the move. A changed credential-probe order surfaces as a *working* connection under the wrong identity, not as an error.
+
 ## 12. Other cell languages
 
 - [ ] **HTTP**: a ` ```http ` cell with a GET → rich response card (status, timing, collapsible headers, pretty JSON). A second `###` request using `{{var}}` and a chained `{{login.response.body.$.token}}` resolves.

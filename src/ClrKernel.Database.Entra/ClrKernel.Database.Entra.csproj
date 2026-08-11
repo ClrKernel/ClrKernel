@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Database.Entra</RootNamespace>
+    <PackageId>ClrKernel.Database.Entra</PackageId>
+    <Description>Shared Microsoft Entra (Azure AD) sign-in for ClrKernel's data providers: credential chains for interactive notebook use and for service principals, access-token acquisition, and the scopes for Azure Analysis Services, Fabric / Power BI and Azure SQL. Consumed by ClrKernel.Database.Provider.AnalysisServices and ClrKernel.Database.Provider.Fabric. Kept out of ClrKernel.Database so providers that authenticate another way — SQL Server, Oracle, ODBC, JDBC — don't inherit Azure.Identity.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,Entra,AzureAD,Authentication,Fabric,PowerBI,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.13.1" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>
