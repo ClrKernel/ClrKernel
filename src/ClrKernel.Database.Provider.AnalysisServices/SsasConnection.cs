@@ -40,7 +40,7 @@ public sealed partial class SsasConnection {
                 var t = _spec.TokenProvider();
                 return new AMO.AccessToken(t.Token, t.ExpiresOn);
             };
-            tokenNote = $"token for audience {Audience(token.Token) ?? "(unreadable)"}, expires {token.ExpiresOn:u}";
+            tokenNote = $"token for audience {Claim(token.Token, "aud") ?? "(unreadable)"}, issued to app {Claim(token.Token, "appid") ?? "(unknown)"}, expires {token.ExpiresOn:u}";
         }
 
         try {
@@ -90,8 +90,13 @@ public sealed partial class SsasConnection {
             " option rather than entering the URL as a server.");
     }
 
-    /// <summary>The <c>aud</c> claim of a JWT — who the token was issued for. Never the token.</summary>
-    private static string Audience(string jwt) {
+    /// <summary>
+    /// One claim from a JWT's payload. Used for <c>aud</c> (which service the token is for) and
+    /// <c>appid</c> (which application obtained it) — Power BI's XMLA endpoint refuses tokens from
+    /// applications it doesn't recognise, and that rejection is indistinguishable from every other
+    /// auth failure without this. Reads the payload only; never the signature, never the token.
+    /// </summary>
+    private static string Claim(string jwt, string name) {
         try {
             var parts = jwt.Split('.');
             if (parts.Length < 2) {
@@ -101,7 +106,7 @@ public sealed partial class SsasConnection {
             payload = payload.PadRight(payload.Length + ((4 - (payload.Length % 4)) % 4), '=');
             using var doc = System.Text.Json.JsonDocument.Parse(
                 System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
-            return doc.RootElement.TryGetProperty("aud", out var aud) ? aud.GetString() : null;
+            return doc.RootElement.TryGetProperty(name, out var value) ? value.GetString() : null;
         } catch {
             return null;
         }
