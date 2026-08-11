@@ -150,8 +150,8 @@ public sealed class LspServer {
     // with ScriptDom and push diagnostics. No-op for other languages.
     // Sessions come from the cell-language registry, not from engine properties:
     // the engine no longer knows these types.
-    private ClrKernel.Sql.SqlSession Sql =>
-        _engine.Languages.Get<ClrKernel.Sql.SqlCellLanguage>()?.Session;
+    private ClrKernel.Language.Sql.SqlSession Sql =>
+        _engine.Languages.Get<ClrKernel.Language.Sql.SqlCellLanguage>()?.Session;
 
     private ClrKernel.AnalysisServices.SsasSession Cubes =>
         _engine.Languages.Get<ClrKernel.AnalysisServices.DaxCellLanguage>()?.Session;

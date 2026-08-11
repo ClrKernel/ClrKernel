@@ -2,8 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using ClrKernel.Database;
-using ClrKernel.Sql;
-using ClrKernel.Sql.Etl;
+using ClrKernel.Database.Provider.SqlServer;
+using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;

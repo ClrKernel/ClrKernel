@@ -4,7 +4,7 @@ using ClrKernel.Core.Scripting;
 using ClrKernel.Language.Http;
 using ClrKernel.Language.Mermaid;
 using ClrKernel.Language.PowerShell;
-using ClrKernel.Sql;
+using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;

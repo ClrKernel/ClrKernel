@@ -2,7 +2,7 @@
   <PropertyGroup>
     <RootNamespace>ClrKernel.Database</RootNamespace>
     <PackageId>ClrKernel.Database</PackageId>
-    <Description>Provider-agnostic data access for ClrKernel: an ergonomic C# query API (connect → Query(sql).Results()/.Results&lt;T&gt;() → interactive grid + dynamic rows), a secret-free connection/secret store (OS credential managers, env-var fallback), and JSON config-file connection definitions. The shared core beneath ClrKernel.Sql and the ClrKernel.Database.* database providers (Oracle, ODBC, JDBC).</Description>
+    <Description>Provider-agnostic data access for ClrKernel: an ergonomic C# query API (connect → Query(sql).Results()/.Results&lt;T&gt;() → interactive grid + dynamic rows), a secret-free connection/secret store (OS credential managers, env-var fallback), and JSON config-file connection definitions. The shared core beneath ClrKernel.Database.Provider.SqlServer and the ClrKernel.Database.* database providers (Oracle, ODBC, JDBC).</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ClrKernel.UnitTest" />
-    <InternalsVisibleTo Include="ClrKernel.Sql" />
+    <InternalsVisibleTo Include="ClrKernel.Database.Provider.SqlServer" />
     <InternalsVisibleTo Include="ClrKernel.Database.Provider.Oracle" />
     <InternalsVisibleTo Include="ClrKernel.Database.Provider.Odbc" />
     <InternalsVisibleTo Include="ClrKernel.Database.Provider.Jdbc" />

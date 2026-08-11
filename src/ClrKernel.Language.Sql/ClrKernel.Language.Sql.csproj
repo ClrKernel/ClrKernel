@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Language.Sql</RootNamespace>
+    <PackageId>ClrKernel.Language.Sql</PackageId>
+    <Description>SQL cells for ClrKernel: run T-SQL against one or more Microsoft SQL Server connections from a notebook, with results rendered as an interactive grid. Connections are named and secrets are kept out of committed files — passwords resolve from the OS credential store (macOS Keychain, Windows Credential Manager, Linux libsecret) or a pluggable secret provider. Drives the `#!sql` cell language across the Jupyter kernel, the JSON-RPC server, and the headless runner; connection and bulk-load mechanics live in ClrKernel.Database.Provider.SqlServer.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,SQL,SqlServer,TSQL,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The #!sql cell talks to SQL Server directly (result-set rendering and the
+         msg/level/line error detail), and TSqlSyntax parses T-SQL with ScriptDom.
+         Both are SQL-Server-specific by design — see HANDOFF-17 §4.3. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="170.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.SqlServer/ClrKernel.Database.Provider.SqlServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.UnitTest" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

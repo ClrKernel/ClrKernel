@@ -5,7 +5,7 @@ using ClrKernel.Database.Provider.Fabric;
 using ClrKernel.Language.Http;
 using ClrKernel.Language.Mermaid;
 using ClrKernel.Language.PowerShell;
-using ClrKernel.Sql;
+using ClrKernel.Language.Sql;
 
 namespace ClrKernel;
 

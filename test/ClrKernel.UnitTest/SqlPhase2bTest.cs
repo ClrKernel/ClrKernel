@@ -5,9 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ClrKernel.Sql;
-using ClrKernel.Sql.Deploy;
-using ClrKernel.Sql.Pipeline;
+using ClrKernel.Database.Provider.SqlServer;
+using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;

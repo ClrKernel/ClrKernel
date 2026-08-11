@@ -6,8 +6,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
-using ClrKernel.Sql;
-using ClrKernel.Sql.Etl;
+using ClrKernel.Database.Provider.SqlServer;
+using ClrKernel.Language.Sql;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

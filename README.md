@@ -248,7 +248,7 @@ var wh = Fabric.Connect()                       // interactive / default Entra s
     .Warehouse("SalesDW")
     .WithStaging("Lakehouse_Staging");          // a lakehouse in the same workspace
 
-// Bulk-insert any IDataReader (e.g. a SQL Server query via ClrKernel.Sql):
+// Bulk-insert any IDataReader (e.g. a SQL Server query via ClrKernel.Language.Sql):
 using var conn = Sql.OpenConnection("analytics");
 using var cmd = new SqlCommand("SELECT * FROM dbo.Orders", conn);
 using var reader = cmd.ExecuteReader();

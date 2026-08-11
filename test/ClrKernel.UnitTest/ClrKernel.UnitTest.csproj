@@ -25,7 +25,8 @@
     <ProjectReference Include="..\..\src\ClrKernel.Language.Mermaid\ClrKernel.Language.Mermaid.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Language.PowerShell\ClrKernel.Language.PowerShell.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database\ClrKernel.Database.csproj" />
-    <ProjectReference Include="..\..\src\ClrKernel.Sql\ClrKernel.Sql.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Language.Sql\ClrKernel.Language.Sql.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.SqlServer\ClrKernel.Database.Provider.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Oracle\ClrKernel.Database.Provider.Oracle.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Odbc\ClrKernel.Database.Provider.Odbc.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.AnalysisServices\ClrKernel.AnalysisServices.csproj" />

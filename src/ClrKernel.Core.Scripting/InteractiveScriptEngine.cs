@@ -63,7 +63,7 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     };
 
     // The built-ins plus whatever the registered languages contribute (e.g. the
-    // Sql package's `using static ClrKernel.Sql.SqlGlobals;`).
+    // Sql package's `using static ClrKernel.Language.Sql.SqlGlobals;`).
     private readonly string[] _usingStatics;
 
     private readonly CellLanguageSet _languages;

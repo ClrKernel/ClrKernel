@@ -41,7 +41,8 @@ accepted.
 | P2a | Rename the `Core.*` group | DONE |
 | P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | DONE |
 | P3 | Cell-language registration seam in `Core.Scripting` | DONE |
-| P4 | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (incl. fluent dedup) | TODO |
+| P4a | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (move only) | DONE |
+| P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | TODO — needs live SQL |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | TODO |
 | P6 | Extract shared Entra auth into `ClrKernel.Database` | TODO |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | TODO |
@@ -234,11 +235,31 @@ a contract change. If `ICellLanguage` or `ICellLanguageServices` has to change t
 work, stop and record why: that means the seam was shaped wrong, and bending it here hides the
 problem instead of fixing it.
 
-**Check before starting P4:** `SqlSession.Etl.cs`'s `OpenConnection` returns a
-`Microsoft.Data.SqlClient.SqlConnection`, which would give `Language.Sql` a direct SqlClient
-dependency. Decide whether the facade can return the shared `Database`/`DbConnection` type
-instead. If it can't, record here that `Language.Sql` **intentionally** references SqlClient, so
-nobody later files it as a layering bug.
+**Resolved (P4a): `Language.Sql` intentionally references SqlClient.** The pre-P4 check framed
+this as `SqlSession.Etl.cs`'s `OpenConnection` return type, but it is broader — `SqlSession.Execute`
+itself opens a `SqlConnection`, reads a `SqlDataReader`, and catches `SqlException` to build the
+msg/level/line error detail (HANDOFF-10), and `TSqlSyntax` parses with ScriptDom. `#!sql` is a
+T-SQL cell language, not a generic SQL one; making it provider-neutral is a redesign, not a
+taxonomy move. Both `PackageReference`s stay in `ClrKernel.Language.Sql.csproj` with a comment
+pointing here, so nobody later files it as a layering bug.
+
+**Amendments made during P4a** (both forced by the compiler, not by preference):
+
+- **`SqlCellException.cs` moved to `Provider.SqlServer`**, not `Language.Sql` as §4.3 listed.
+  `Fluent/SqlDatabase.cs` throws it when a secret can't be resolved, and language→provider is the
+  only legal direction. The language half still throws it freely.
+- **`Deploy/DeployBoard.cs` stayed in `Language.Sql`**, not `Provider.SqlServer` as §4.3 listed.
+  It renders `DeployState`/`DeployFileResult`, which are declared in `DeployRunner.cs` — and
+  `DeployRunner` stays language-side until P8. It is the deploy run's presentation, so it belongs
+  with the run; this also matches `PipelineBoard`. Only `CreateOrAlter` and `GoBatchSplitter` (pure
+  T-SQL text manipulation) went to the provider.
+
+**Namespaces were flattened, not preserved.** Both new packages use a single namespace —
+`ClrKernel.Language.Sql` and `ClrKernel.Database.Provider.SqlServer` — dropping the old `.Etl`,
+`.Deploy` and `.Pipeline` sub-namespaces. This is D2 applied literally, and it halves the number of
+namespace string literals the script contribution has to get right. One fallout: `SqlSession`'s
+`Pipeline` property and the `Pipeline` type now share a namespace, resolved by the C# color-color
+rule (`Pipeline.Pipeline` qualification removed).
 
 ### 4.4 File-level split of `ClrKernel.AnalysisServices` (P5)
 
@@ -412,23 +433,65 @@ must still exit non-zero). **Live** execution of the SQL verbs needs a server �
 skipped tests — so it stays deferred to `docs/windows-verification-checklist.md`. A green tick here
 does **not** mean verified against SQL Server.
 
-### P4 — Split `ClrKernel.Sql` (+ fluent dedup)
+### P4 — Split `ClrKernel.Sql`
 
-The largest phase. Land it as sub-commits, each building:
+**Split into P4a and P4b during execution**, because the original single gate could not tell them
+apart. The three `FluentSqlTest` methods that exercise the code D7 rewrites — `Query_results_…`,
+`Table_bulkcopy_create_if_missing_and_exists`, `Transaction_rolls_back_on_dispose` — all gate on
+`CLRKERNEL_TEST_SQL` and go `Assert.Inconclusive` without a server. So "`FluentSqlTest` green" is
+satisfiable without executing a single line of rebased fluent code, and a combined phase would
+leave a later live failure ambiguous between the move and the rebase. Separating them keeps P4a
+fully verifiable offline.
 
-1. Create `Database.Provider.SqlServer`; move the provider-half files (§4.3) with namespaces
-   updated. `Language.Sql` (the renamed remainder) references it.
-2. Rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `ClrKernel.Database`'s
-   `DataSource`/`DataSourceQuery`/`DataSourceTable` (D7, renamed by D13). Keep the SqlClient-specific surface —
-   `SqlConnection` typing, bulk copy, the connection registry — as SQL-Server additions on top of
-   the shared base. `FluentSqlTest` and `MultiProviderTest` must both stay green; this is the one
-   place in the plan where behavior can actually change.
-3. Re-point the P3 registration at `Language.Sql` — a registration edit and a composition-root
-   edit, **not** a change to the contract. If the contract has to change here, stop and record why.
-4. Update `release.yml` (one entry becomes two) and `slnx`.
+#### P4a — the move (DONE)
 
-**Gate:** P3 gate + `FluentSqlTest`, `SqlTest`, `SqlEtlTest`, `SqlPhase2bTest`, `MultiProviderTest`
-all green, and `./build.sh Test` count matches baseline.
+1. Create `Database.Provider.SqlServer`; move the provider-half files (§4.3, as amended there) with
+   namespaces flattened. `Language.Sql` (the renamed remainder) references it.
+2. Re-point the P3 registration at `Language.Sql` — a registration edit and a composition-root
+   edit, **not** a change to the contract.
+3. Update `release.yml` (one entry becomes two) and `slnx`.
+
+**Tripwire held.** The registration re-point was exactly what P3 predicted: one `using` in
+`src/ClrKernel/CellLanguages.cs`, one in `test/ClrKernel.UnitTest/TestCellLanguages.cs`, and two
+qualified type names in `LspServer.cs`. `ICellLanguage` and `ICellLanguageServices` were not
+touched.
+
+**Gate (met):** P3 gate + 272 passed / 8 skipped / 280 total (baseline), `dotnet format` clean,
+extension compiles, server harness 10/10, lsp harness 10/10.
+
+The script contribution is the part that only fails at run time, and it *is* covered offline:
+`FluentSqlTest.Sql_connection_is_usable_from_a_csharp_cell` and
+`Engine_binds_variable_usable_from_a_csharp_cell` both execute a C# cell that calls through
+`SqlGlobals` into a `SqlDatabase` — a type that now lives in the other assembly. If either the
+`references` array or an `imports` string were stale, those throw `CompilationErrorException`
+before touching a network.
+
+#### P4b — the fluent dedup (D7)
+
+Rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `ClrKernel.Database`'s
+`DataSource`/`DataSourceQuery`/`DataSourceTable` (renamed by D13), keeping the SqlClient-specific
+surface — `SqlConnection` typing, bulk copy, the connection registry — as SQL-Server additions on
+top of the shared base. This is the one place in the plan where behavior can actually change.
+
+Frictions to expect, all confirmed by reading the current types rather than guessed:
+
+- `DataSource.CreateCommand` and `EffectiveTimeout` are `internal`, and after the rebase `SqlQuery`
+  calls them **from another assembly**. `ClrKernel.Database` already carries an `InternalsVisibleTo`
+  for the SQL package (retargeted to `ClrKernel.Database.Provider.SqlServer` in P4a), so this works
+  — but it is load-bearing, not incidental.
+- `DataSourceQuery` and `DataSourceTable` are `sealed` with `internal` constructors; inheriting
+  requires unsealing them and making the constructors `protected`.
+- `DataSourceTransaction` is `sealed` and typed on `DbConnection`/`DbTransaction`, so
+  `SqlDatabaseTransaction` either stays duplicated or that type unseals too.
+- Covariant overrides (`SqlDatabase.Open()` returning `SqlConnection`, `SqlQuery.OpenReader()`
+  returning `SqlDataReader`) are the right tool over `new`-hiding, but they need the base members
+  marked `virtual`.
+- Unsealing public types in the shipped `ClrKernel.Database` package is itself a public-API change.
+
+**Gate:** P4a gate **plus live verification** — this phase cannot be certified green off-Windows.
+Run the `CLRKERNEL_TEST_SQL` suite (`FluentSqlIntegrationTest`, `MultiProviderTest`) against a real
+server, and record the result in `docs/windows-verification-checklist.md`. A local
+272/8/280 does **not** discharge this gate.
 
 ### P5 — Split `ClrKernel.AnalysisServices`
 
@@ -532,10 +595,15 @@ Easy to miss; check on **every** rename phase.
 - [ ] **Namespace strings the compiler never sees.** `InteractiveScriptEngine.DefaultUsingStatics`
       and the script `ScriptOptions` imports list hold namespaces as *string literals*
       (`"using static ClrKernel.Core.Scripting.Extensions;"`, `"ClrKernel.Core.Primitives"`,
-      `"ClrKernel.Sql"`, `"ClrKernel.Sql.Etl"`, `"ClrKernel.AnalysisServices"`,
-      `"ClrKernel.Fabric"`, `"ClrKernel.Mermaid"`). A stale one **builds clean** and fails only
-      when a cell runs. P2a hit this. `grep -rn '"ClrKernel\.' --include="*.cs" src` after every
-      rename, and rely on `./build.sh Test` (the scripting tests execute real cells) to catch it.
+      `"ClrKernel.Language.Sql"`, `"ClrKernel.Database.Provider.SqlServer"`,
+      `"ClrKernel.AnalysisServices"`, `"ClrKernel.Database.Provider.Fabric"`). A stale one
+      **builds clean** and fails only when a cell runs. P2a hit this. `grep -rn '"ClrKernel\.'
+      --include="*.cs" src` after every rename, and rely on `./build.sh Test` (the scripting tests
+      execute real cells) to catch it.
+      **The `references:` array is a second, separate trap** (found in P4a): a `ScriptContribution`
+      carries assemblies *and* namespaces, and once a package splits, one `typeof(X).Assembly` no
+      longer covers every type the imports name. Roslyn needs one metadata reference per assembly,
+      so an import string can be perfectly correct and still fail to resolve.
 
 **Shell gotcha, learned the hard way in P2b:** the default shell here is **zsh**, which does
 **not** word-split unquoted parameter expansions. `for x in $PAIRS` and `perl … $FILES` iterate
@@ -563,7 +631,7 @@ Not affected (verified): `src/ClrKernel/kernel-spec/*`, `scripts/install-dev-ker
 | --- | --- | --- |
 | R1 | **Selector ordering regression in P3.** The if-chain's order is correctness-bearing; a registry can lose it silently and `#!sql-connect` starts matching `#!sql`. | Explicit ordering in the registry + a unit test per prefix pair (`sql-connect`/`sql`, `dax-connect`/`dax`) asserting the longer selector wins. Write the test **before** the seam. |
 | R2 | **Jdbc breaks Linux CI** now that it is in the solution (D6, landed in P2b) — IKVM is Windows-centric by its own csproj comment. | Partly de-risked in P1: `dotnet build src/ClrKernel.Data.Jdbc -c Release` is clean (0 warnings, 0 errors) on macOS/arm64 with SDK 10.0.106, so IKVM at least restores and compiles off-Windows. **ubuntu CI is still unverified.** If it fails there, revert it out of `slnx`, keep the rename, and amend D6 here. |
-| R3 | **P4 mixes a move with a behavior refactor** (D7). | Sub-commits; SQL fluent + ETL tests green at each; no other work in the phase. |
+| R3 | **P4 mixes a move with a behavior refactor** (D7). | **Resolved by splitting the phase** (P4a move / P4b rebase). The original mitigation — "SQL fluent + ETL tests green at each" — was hollow: the fluent tests that cover the rebased code are `Assert.Inconclusive` without `CLRKERNEL_TEST_SQL`. P4b now carries a live-verification gate instead. |
 | R4 | **Clean break (D1) strands existing notebooks.** | Accepted. P7 sweeps every in-repo `#r` line; old packages get deprecated on nuget.org by hand, outside this plan. |
 | R5 | **Samples are not compiled by CI**, so entry-type renames (D8) can rot silently. | P7 gate runs each sample's first cell; P10 repeats it from a clean tree. |
 | R6 | **Half-applied taxonomy on `main`** (D9). | Every phase commit is independently green; no tagging until D12. |

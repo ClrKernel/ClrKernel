@@ -4,8 +4,8 @@ using System.Data;
 using System.Linq;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Database;
-using ClrKernel.Sql;
-using ClrKernel.Sql.Etl;
+using ClrKernel.Database.Provider.SqlServer;
+using ClrKernel.Language.Sql;
 using Microsoft.Data.SqlClient;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -178,8 +178,9 @@ public class FluentSqlEngineTest {
     public async System.Threading.Tasks.Task Sql_connection_is_usable_from_a_csharp_cell() {
         var engine = new ClrKernel.Core.Scripting.InteractiveScriptEngine(
             System.IO.Directory.GetCurrentDirectory(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        // Exercises the full path: Sql helper -> Connection(...) -> SqlDatabase, with
-        // ClrKernel.Sql imported so the fluent types resolve in a cell.
+        // Exercises the full path: Sql helper -> Connection(...) -> SqlDatabase. The
+        // language and provider packages are separate assemblies, so this also proves
+        // the cell's script contribution imports both.
         var result = await engine.ExecuteAsync("#!csharp\nSql.Connection(\"Server01.yourdomain.local\", \"AdventureWorksDW2025\").Name");
         var text = result is DisplayData d && d.Data.TryGetValue("text/plain", out var t) ? t?.ToString() : result?.ToString();
         StringAssert.Contains(text, "Server01.yourdomain.local/AdventureWorksDW2025");

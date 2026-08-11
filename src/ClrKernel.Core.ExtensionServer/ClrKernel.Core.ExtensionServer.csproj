@@ -29,7 +29,7 @@
       hover, signature help, diagnostics) must keep going through the cell
       language registry, never through these references.
     -->
-    <ProjectReference Include="../ClrKernel.Sql/ClrKernel.Sql.csproj" />
+    <ProjectReference Include="../ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="../ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj" />
     <ProjectReference Include="../ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
   </ItemGroup>
