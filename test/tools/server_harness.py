@@ -76,7 +76,7 @@ results = []
 
 # 1. initialize
 r = response_for(request("initialize"))
-results.append(("initialize", r["result"]["name"] == "ClrKernel.Server"))
+results.append(("initialize", r["result"]["name"] == "ClrKernel.Core.ExtensionServer"))
 
 # 2. define state in cell 1
 r = response_for(request("execute", {"cellId": "c1", "code": "var x = 21;"}))

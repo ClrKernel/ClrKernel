@@ -157,7 +157,7 @@ The server's log (including anything it writes to stderr) is in the
 The extension spawns `clrkernel lsp` — a Language Server over stdio — and talks
 to it with a single connection that carries both cell execution and the language
 features (completion, hover, signature help). Because execution and IntelliSense
-share one process and one `ClrKernel.Core` engine, completions reflect exactly
+share one process and one `ClrKernel.Core.Scripting` engine, completions reflect exactly
 what you've run. One server runs per VS Code window; REPL state is shared across
 notebooks in that window, like a Jupyter kernel session.
 

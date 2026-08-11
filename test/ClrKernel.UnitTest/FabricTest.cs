@@ -3,7 +3,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ClrKernel.Core;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Fabric;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -136,7 +136,7 @@ public class FabricEngineWiringTest {
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
         // Bare "Fabric" resolves to the imported helper type (no ClrKernel.Fabric prefix needed).
         var result = await engine.ExecuteAsync("#!csharp\nnameof(Fabric)");
-        var text = result is ClrKernel.Primitives.DisplayData d && d.Data.TryGetValue("text/plain", out var t)
+        var text = result is ClrKernel.Core.Primitives.DisplayData d && d.Data.TryGetValue("text/plain", out var t)
             ? t?.ToString()
             : result?.ToString();
         StringAssert.Contains(text, "Fabric");

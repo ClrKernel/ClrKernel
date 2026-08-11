@@ -26,9 +26,9 @@
   </ItemGroup>
   <ItemGroup>
     <!-- The three execution modes. Core + Primitives arrive transitively. -->
-    <ProjectReference Include="../ClrKernel.Jupyter/ClrKernel.Jupyter.csproj" />
-    <ProjectReference Include="../ClrKernel.Server/ClrKernel.Server.csproj" />
-    <ProjectReference Include="../ClrKernel.Runner/ClrKernel.Runner.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.JupyterKernel/ClrKernel.Core.JupyterKernel.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.ExtensionServer/ClrKernel.Core.ExtensionServer.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
   </ItemGroup>
   <!-- this will include the kernel spec in the nuget pkg, reference properly -->
   <ItemGroup>

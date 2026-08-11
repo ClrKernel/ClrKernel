@@ -1,4 +1,4 @@
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 
 namespace ClrKernel.Mermaid;
 /// <summary>

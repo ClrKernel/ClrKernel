@@ -60,13 +60,13 @@ jobs:
       - name: Pack
         run: |
           dotnet pack src/ClrKernel/ClrKernel.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.Core/ClrKernel.Core.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.Jupyter/ClrKernel.Jupyter.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.LanguageServices/ClrKernel.LanguageServices.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.Server/ClrKernel.Server.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.Runner/ClrKernel.Runner.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.Primitives/ClrKernel.Primitives.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.JupyterKernel/ClrKernel.Core.JupyterKernel.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.LanguageServices/ClrKernel.Core.LanguageServices.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.ExtensionServer/ClrKernel.Core.ExtensionServer.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Http/ClrKernel.Http.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Mermaid/ClrKernel.Mermaid.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.PowerShell/ClrKernel.PowerShell.csproj -c Release --no-build -o artifacts/pkg

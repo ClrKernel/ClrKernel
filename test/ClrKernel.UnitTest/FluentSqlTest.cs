@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Data;
-using ClrKernel.Primitives;
 using ClrKernel.Sql;
 using ClrKernel.Sql.Etl;
 using Microsoft.Data.SqlClient;
@@ -176,7 +176,7 @@ public class FluentSqlFactoryTest {
 public class FluentSqlEngineTest {
     [TestMethod]
     public async System.Threading.Tasks.Task Sql_connection_is_usable_from_a_csharp_cell() {
-        var engine = new ClrKernel.Core.InteractiveScriptEngine(
+        var engine = new ClrKernel.Core.Scripting.InteractiveScriptEngine(
             System.IO.Directory.GetCurrentDirectory(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         // Exercises the full path: Sql helper -> Connection(...) -> SqlDatabase, with
         // ClrKernel.Sql imported so the fluent types resolve in a cell.
@@ -215,7 +215,7 @@ public class SqlConnectVariableTest {
 
     [TestMethod]
     public async System.Threading.Tasks.Task Engine_binds_variable_usable_from_a_csharp_cell() {
-        var engine = new ClrKernel.Core.InteractiveScriptEngine(
+        var engine = new ClrKernel.Core.Scripting.InteractiveScriptEngine(
             System.IO.Directory.GetCurrentDirectory(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         // Registers the connection AND binds `dw` (a SqlDatabase) — no server contact.
         await engine.ExecuteAsync("#!sql-connect --name analytics --var dw --server s --database d --default");

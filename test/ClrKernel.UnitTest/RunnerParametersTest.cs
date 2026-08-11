@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using ClrKernel.Runner;
+using ClrKernel.Core.Runner;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;

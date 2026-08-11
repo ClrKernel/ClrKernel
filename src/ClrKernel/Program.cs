@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
-using ClrKernel.Jupyter;
-using ClrKernel.Runner;
-using ClrKernel.Server;
+using ClrKernel.Core.ExtensionServer;
+using ClrKernel.Core.JupyterKernel;
+using ClrKernel.Core.Runner;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel;

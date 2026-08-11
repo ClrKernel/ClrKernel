@@ -1,16 +1,16 @@
 <Solution>
-  <Project Path="src/ClrKernel.Core/ClrKernel.Core.csproj" />
+  <Project Path="src/ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
   <Project Path="src/ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
   <Project Path="src/ClrKernel.Http/ClrKernel.Http.csproj" />
   <Project Path="src/ClrKernel.Mermaid/ClrKernel.Mermaid.csproj" />
   <Project Path="src/ClrKernel.PowerShell/ClrKernel.PowerShell.csproj" />
-  <Project Path="src/ClrKernel.Jupyter/ClrKernel.Jupyter.csproj" />
-  <Project Path="src/ClrKernel.LanguageServices/ClrKernel.LanguageServices.csproj" />
-  <Project Path="src/ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
-  <Project Path="src/ClrKernel.Runner/ClrKernel.Runner.csproj" />
+  <Project Path="src/ClrKernel.Core.JupyterKernel/ClrKernel.Core.JupyterKernel.csproj" />
+  <Project Path="src/ClrKernel.Core.LanguageServices/ClrKernel.Core.LanguageServices.csproj" />
+  <Project Path="src/ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+  <Project Path="src/ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
   <Project Path="src/ClrKernel.AnalysisServices/ClrKernel.AnalysisServices.csproj" />
   <Project Path="src/ClrKernel.Fabric/ClrKernel.Fabric.csproj" />
-  <Project Path="src/ClrKernel.Server/ClrKernel.Server.csproj" />
+  <Project Path="src/ClrKernel.Core.ExtensionServer/ClrKernel.Core.ExtensionServer.csproj" />
   <Project Path="src/ClrKernel.Data/ClrKernel.Data.csproj" />
   <Project Path="src/ClrKernel.Data.Oracle/ClrKernel.Data.Oracle.csproj" />
   <Project Path="src/ClrKernel.Data.Odbc/ClrKernel.Data.Odbc.csproj" />

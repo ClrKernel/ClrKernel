@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 
 namespace ClrKernel.Http;
 

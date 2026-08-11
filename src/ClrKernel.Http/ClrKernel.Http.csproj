@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../ClrKernel.Primitives/ClrKernel.Primitives.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
   </ItemGroup>
 
   <!-- nuget.org gallery assets: README rendered on the package page, icon in listings -->

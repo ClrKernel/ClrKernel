@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 using Adomd = Microsoft.AnalysisServices.AdomdClient;
 
 namespace ClrKernel.AnalysisServices;

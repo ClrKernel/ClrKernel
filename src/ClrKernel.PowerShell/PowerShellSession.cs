@@ -5,7 +5,7 @@ using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
 using System.Text;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 using SMA = System.Management.Automation;
 
 namespace ClrKernel.PowerShell;

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Data;
-using ClrKernel.Primitives;
 using Microsoft.Data.Sqlite;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

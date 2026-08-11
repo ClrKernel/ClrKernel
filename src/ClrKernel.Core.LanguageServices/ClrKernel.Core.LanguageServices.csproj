@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Core.LanguageServices</RootNamespace>
+    <PackageId>ClrKernel.Core.LanguageServices</PackageId>
+    <Description>C# script language services for ClrKernel: Roslyn-powered completion, hover (quick info), and signature help that reflect a live notebook session — prior-cell symbols, #r "nuget:" types, and imports. Editor-neutral; drives the ClrKernel LSP server and Jupyter complete_request/inspect_request.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>C#,CSharp,dotnet,Roslyn,Completion,IntelliSense,LSP,Notebook</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Completion / QuickInfo services live in the Features assemblies. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
+  </ItemGroup>
+
+  <!-- nuget.org gallery assets -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

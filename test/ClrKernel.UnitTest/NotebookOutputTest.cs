@@ -2,8 +2,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using ClrKernel.Core;
-using ClrKernel.Runner;
+using ClrKernel.Core.Runner;
+using ClrKernel.Core.Scripting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

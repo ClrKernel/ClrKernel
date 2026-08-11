@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
-using ClrKernel.Primitives;
 using Microsoft.Data.SqlClient;
 
 namespace ClrKernel.Sql;

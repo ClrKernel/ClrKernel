@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ClrKernel.Core\ClrKernel.Core.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Core.Scripting\ClrKernel.Core.Scripting.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Http\ClrKernel.Http.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Mermaid\ClrKernel.Mermaid.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.PowerShell\ClrKernel.PowerShell.csproj" />
@@ -30,9 +30,9 @@
     <ProjectReference Include="..\..\src\ClrKernel.Data.Odbc\ClrKernel.Data.Odbc.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.AnalysisServices\ClrKernel.AnalysisServices.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Fabric\ClrKernel.Fabric.csproj" />
-    <ProjectReference Include="..\..\src\ClrKernel.Primitives\ClrKernel.Primitives.csproj" />
-    <ProjectReference Include="..\..\src\ClrKernel.Runner\ClrKernel.Runner.csproj" />
-    <ProjectReference Include="..\..\src\ClrKernel.LanguageServices\ClrKernel.LanguageServices.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Core.Primitives\ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Core.Runner\ClrKernel.Core.Runner.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Core.LanguageServices\ClrKernel.Core.LanguageServices.csproj" />
   </ItemGroup>
 
 </Project>

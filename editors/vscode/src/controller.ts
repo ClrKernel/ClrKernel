@@ -5,7 +5,7 @@ import { DisplayNotification, ServerClient } from './serverClient';
 import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 
 /**
- * NotebookController that executes C# cells through ClrKernel.Server. One
+ * NotebookController that executes C# cells through ClrKernel.Core.ExtensionServer. One
  * server process per VS Code window; REPL state is shared across notebooks in
  * that window (matching how a Jupyter kernel session behaves).
  */

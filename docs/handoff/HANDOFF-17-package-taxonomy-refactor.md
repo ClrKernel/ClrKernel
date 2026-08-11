@@ -38,7 +38,7 @@ accepted.
 | --- | --- | --- |
 | P0 | Baseline capture + guardrails | DONE |
 | P1 | Extract `ClrKernel.Core.Secrets` | DONE |
-| P2a | Rename the `Core.*` group | TODO |
+| P2a | Rename the `Core.*` group | DONE |
 | P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | TODO |
 | P3 | Cell-language registration seam in `Core.Scripting` | TODO |
 | P4 | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (incl. fluent dedup) | TODO |
@@ -478,6 +478,19 @@ Easy to miss; check on **every** rename phase.
       and its "adding a cell language touches four places" section are all invalidated by
       P2b–P7 and P3. Update it in the same phase that invalidates it.
 - [ ] `./build.sh Format` after every namespace rewrite (CI gates on it)
+- [ ] **Namespace strings the compiler never sees.** `InteractiveScriptEngine.DefaultUsingStatics`
+      and the script `ScriptOptions` imports list hold namespaces as *string literals*
+      (`"using static ClrKernel.Core.Scripting.Extensions;"`, `"ClrKernel.Core.Primitives"`,
+      `"ClrKernel.Sql"`, `"ClrKernel.Sql.Etl"`, `"ClrKernel.AnalysisServices"`,
+      `"ClrKernel.Fabric"`, `"ClrKernel.Mermaid"`). A stale one **builds clean** and fails only
+      when a cell runs. P2a hit this. `grep -rn '"ClrKernel\.' --include="*.cs" src` after every
+      rename, and rely on `./build.sh Test` (the scripting tests execute real cells) to catch it.
+
+**Residual-check gotcha, learned in P2a:** a `grep -rn OLD … | grep -v NEW` sweep filters on the
+whole output line, **including the file path** — and after a rename the path itself contains the
+new name, so real hits inside renamed folders are silently swallowed. Use `grep -rohE` (matched
+text only) for the residual check, and always exclude `/obj/` and `/bin/`, whose stale generated
+sources still carry the old names until `./build.sh Clean`.
 
 Not affected (verified): `src/ClrKernel/kernel-spec/*`, `scripts/install-dev-kernel.sh`,
 `scripts/install-local-tool.sh`, and the packages' README/icon asset paths — all keyed to

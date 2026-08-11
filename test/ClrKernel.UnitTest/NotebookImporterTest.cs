@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ClrKernel.Core;
+using ClrKernel.Core.Scripting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel;

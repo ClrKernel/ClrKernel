@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 using AMO = Microsoft.AnalysisServices;
 using Tabular = Microsoft.AnalysisServices.Tabular;
 

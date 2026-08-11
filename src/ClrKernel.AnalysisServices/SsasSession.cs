@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 
 namespace ClrKernel.AnalysisServices;
 /// <summary>

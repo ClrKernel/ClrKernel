@@ -1,9 +1,9 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using ClrKernel.Core;
+using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
-using ClrKernel.Primitives;
 using ClrKernel.Sql;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;

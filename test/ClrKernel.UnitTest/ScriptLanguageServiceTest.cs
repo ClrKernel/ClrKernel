@@ -1,7 +1,7 @@
 using System.Linq;
 using System.Threading.Tasks;
-using ClrKernel.Core;
-using ClrKernel.LanguageServices;
+using ClrKernel.Core.LanguageServices;
+using ClrKernel.Core.Scripting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

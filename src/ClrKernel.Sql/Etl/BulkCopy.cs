@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
 using Microsoft.Data.SqlClient;
 
 namespace ClrKernel.Sql.Etl;

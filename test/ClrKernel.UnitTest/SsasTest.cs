@@ -2,8 +2,8 @@ using System.Data;
 using System.IO;
 using System.Threading.Tasks;
 using ClrKernel.AnalysisServices;
-using ClrKernel.Core;
-using ClrKernel.Primitives;
+using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
