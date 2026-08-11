@@ -1,6 +1,9 @@
 using System;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using Azure.Core;
+using Azure.Identity;
 using ClrKernel.Database.Entra;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -22,6 +25,9 @@ namespace ClrKernel.UnitTest;
 /// </summary>
 [TestClass]
 public class EntraLiveTest {
+    /// <summary>Caps every token call. A credential that decides to prompt cannot hang the run.</summary>
+    private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(30);
+
     public TestContext TestContext { get; set; }
 
     private static string OptIn => Environment.GetEnvironmentVariable("CLRKERNEL_TEST_ENTRA");
@@ -31,8 +37,40 @@ public class EntraLiveTest {
         Environment.GetEnvironmentVariable("CLRKERNEL_TEST_ENTRA_SCOPE") ?? EntraScopes.SqlDatabase;
 
     [TestInitialize]
-    public void RequireTenant() =>
+    public void RequireTenant() {
         LiveTestGate.Require(OptIn, "CLRKERNEL_TEST_ENTRA", "the Entra sign-in tests (run az login first)");
+        RequireSilentCredential();
+    }
+
+    /// <summary>
+    /// Requires a token to be obtainable <b>silently</b> before running anything.
+    /// <para>
+    /// Both chains under test end in an interactive credential — that is the point of them — so
+    /// without this a run with no valid <c>az login</c> pops a browser window and blocks until a
+    /// human deals with it. Unacceptable in CI, and worse on a developer machine where the opt-in
+    /// was left set from an earlier session.
+    /// </para>
+    /// <para>
+    /// Checking <see cref="AzureCliCredential"/> against the same scope the tests use also makes
+    /// the tests themselves non-interactive: <c>DefaultAzureCredential</c> tries the CLI before its
+    /// interactive fallback, so once the CLI is known to work for this scope, neither chain can
+    /// reach its browser link.
+    /// </para>
+    /// </summary>
+    private static void RequireSilentCredential() {
+        try {
+            using var cts = new CancellationTokenSource(_timeout);
+            new AzureCliCredential().GetToken(new TokenRequestContext(new[] { Scope }), cts.Token);
+        } catch (Exception e) {
+            var message =
+                $"No silent Entra token for '{Scope}' ({e.GetType().Name}). Run 'az login' first. " +
+                "Skipping rather than letting the credential chain open a browser and wait.";
+            if (LiveTestGate.LiveRunRequired) {
+                Assert.Fail(message + " CLRKERNEL_TEST_REQUIRE_LIVE is set, so this was meant to reach a tenant.");
+            }
+            Assert.Inconclusive(message);
+        }
+    }
 
     [TestMethod]
     public void Analysis_Services_chain_acquires_a_token() =>
@@ -46,8 +84,8 @@ public class EntraLiveTest {
     public void Both_chains_resolve_the_same_identity_on_this_machine() {
         // Both should land on AzureCliCredential here, so a mismatch means one chain is probing
         // somewhere the other isn't — the P6 risk, and the thing that never surfaces as an error.
-        var ssas = Identify(EntraAuth.Token(EntraAuth.DefaultWithInteractiveFallback(), Scope).Token);
-        var fabric = Identify(EntraAuth.Token(EntraAuth.DefaultThenInteractiveBrowser(), Scope).Token);
+        var ssas = Identify(Token(EntraAuth.DefaultWithInteractiveFallback()).Token);
+        var fabric = Identify(Token(EntraAuth.DefaultThenInteractiveBrowser()).Token);
 
         TestContext.WriteLine($"Analysis Services chain → {ssas}");
         TestContext.WriteLine($"Fabric chain            → {fabric}");
@@ -55,10 +93,15 @@ public class EntraLiveTest {
             "the two chains resolved different identities; confirm which one is the account you expect");
     }
 
-    private void AcquireAndReport(string label, Azure.Core.TokenCredential credential) {
-        Azure.Core.AccessToken token;
+    private static AccessToken Token(TokenCredential credential) {
+        using var cts = new CancellationTokenSource(_timeout);
+        return EntraAuth.Token(credential, Scope, cts.Token);
+    }
+
+    private void AcquireAndReport(string label, TokenCredential credential) {
+        AccessToken token;
         try {
-            token = EntraAuth.Token(credential, Scope);
+            token = Token(credential);
         } catch (Exception e) {
             throw new AssertFailedException(
                 $"The {label} chain could not get a token for '{Scope}'. If this is a tenant/resource " +
