@@ -488,10 +488,28 @@ Frictions to expect, all confirmed by reading the current types rather than gues
   marked `virtual`.
 - Unsealing public types in the shipped `ClrKernel.Database` package is itself a public-API change.
 
+**What the local suite does and does not cover here.** `MultiProviderTest` drives `DataSource`,
+`DataSourceQuery`, `DataSourceTable` and `DataSourceTransaction` end-to-end over SQLite in-memory —
+no skip markers, it runs everywhere. So **changes to the shared base are locally covered**:
+unsealing, adding `virtual`, and widening constructor access all get exercised. What is *not*
+covered is every SQL-Server-specific override — `Open()` returning `SqlConnection`,
+`OpenReader()` returning `SqlDataReader`, `BulkCopyFrom`, `Exists`, `Truncate`, `count_big` — because
+`FluentSqlIntegrationTest` gates on `CLRKERNEL_TEST_SQL` and goes `Assert.Inconclusive` without it.
+The plan originally listed `MultiProviderTest` as a D7 gate as though it closed that hole; it does
+not, and the two halves should be judged separately.
+
 **Gate:** P4a gate **plus live verification** — this phase cannot be certified green off-Windows.
-Run the `CLRKERNEL_TEST_SQL` suite (`FluentSqlIntegrationTest`, `MultiProviderTest`) against a real
-server, and record the result in `docs/windows-verification-checklist.md`. A local
-272/8/280 does **not** discharge this gate.
+Run the `CLRKERNEL_TEST_SQL` suite against a real server and record the result in
+`docs/windows-verification-checklist.md`. A local 272/8/280 does **not** discharge this gate.
+
+**Worth re-deciding before starting, not just executing.** D7 was chosen before the shape of the
+shared types was known. Cashing it in means unsealing `DataSourceQuery`/`DataSourceTable`
+(and probably `DataSourceTransaction`) in the shipped `ClrKernel.Database` package, promoting
+`internal` constructors to `protected`, marking base members `virtual`, and relying on covariant
+overrides — public-API surface added in order to delete roughly 120 lines of duplicated but working
+code, in the one place in the plan where runtime behavior can move, with the SQL Server half
+unverifiable off-Windows. Deferring D7 until the P4a tree has been exercised on Windows costs
+nothing: nothing in P5–P10 depends on the fluent types being unified.
 
 ### P5 — Split `ClrKernel.AnalysisServices`
 
