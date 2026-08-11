@@ -90,24 +90,33 @@ Directives & errors:
 - [ ] `.Table("stg.X").BulkCopyFrom(query, createIfMissing: true)` creates + loads; re-run is idempotent as expected.
 - [ ] `.Transaction()` — commit path persists; dispose-without-commit rolls back.
 
-### 6a. P4b gate — the fluent rebase onto `DataSource` ⚠ **required before P4b counts as done**
+### 6a. P4b gate — the fluent rebase onto `DataSource` ✅ **DISCHARGED 2026-08-11**
 
-`SqlDatabase`/`SqlQuery`/`SqlTable` now derive from the shared `DataSource` family
-(HANDOFF-17 §5, P4b). No test in CI opens a SQL Server connection, so **nothing below has been
-executed since the rebase** — every item is a first run of changed code, not a regression check.
-Fastest route is the gated suite; the manual items catch what it doesn't assert.
+`SqlDatabase`/`SqlQuery`/`SqlTable` derive from the shared `DataSource` family (HANDOFF-17 §5, P4b).
+This section was written when nothing had executed the rebased code. It has since been **closed by
+automation** — every item below is now asserted by `FluentSqlIntegrationTest`, which ran green
+(10/10, 0 skipped) against a live SQL Server:
 
-- [ ] Set **both** variables, so a forgotten connection string fails loudly instead of skipping:
-      `$env:CLRKERNEL_TEST_REQUIRE_LIVE = "1"; $env:CLRKERNEL_TEST_SQL = "<connection string>"`
-      then `dotnet test ClrKernel.slnx --filter FullyQualifiedName~FluentSqlIntegrationTest` → passes.
-      Without `CLRKERNEL_TEST_REQUIRE_LIVE` these tests report success having executed nothing;
-      with it, a missing backend is a **failure**. Confirm the run shows passes, not skips.
-- [ ] `.Query(...).OpenReader()` still hands back a `SqlDataReader` — e.g. `var r = db.Query("select 1").OpenReader(); r.GetType().Name` → `SqlDataReader`, not `SqlDataReader`'s base.
-- [ ] `.Table("dbo.X").Count()` on a table returns the right number (this now goes through an override; the base's `count(*)` would also work, so check the **value**, not just that it runs).
-- [ ] `db.DefaultCommandTimeout = 1;` then `.Scalar<int>("waitfor delay '00:00:05'; select 1")` → **times out**. Pre-P4b this property was silently ignored by `Execute`/`Scalar`; if it still is, the rebase didn't take.
-- [ ] `using (var tx = db.Transaction()) { tx.Query("select ...", null, limit: 2); }` → the grid shows **2** rows. The old SQL-specific transaction accepted `limit` and dropped it.
-- [ ] `db.Transaction()` returns `DataSourceTransaction` — any notebook that named `SqlDatabaseTransaction` explicitly, or used `tx.Database`, needs `tx.DataSource` instead. **Breaking change**; check the samples.
-- [ ] A connection whose secret is missing throws the friendly `SqlCellException` (not a raw `SecretNotFoundException`) on **first use**, not when the handle is built.
+- [x] The gated suite runs and passes, not skips:
+      `CLRKERNEL_TEST_REQUIRE_LIVE=1 CLRKERNEL_TEST_SQL='…' dotnet test test/ClrKernel.Database.UnitTest/ClrKernel.Database.UnitTest.csproj -f net8.0 --filter FullyQualifiedName~Integration`
+- [x] `OpenReader()` returns a `SqlDataReader` — `Table_bulkcopy_create_if_missing_and_exists` runs
+      the `(SqlDataReader)base.OpenReader()` cast; an invalid cast would throw.
+- [x] `Count()` returns the right number through the `count_big` override (asserted `== 2`).
+- [x] `DefaultCommandTimeout` is honoured by `Execute`/`Scalar` —
+      `DefaultCommandTimeout_is_honoured_by_Scalar` sets 1s, waits 5s, requires `SqlException` −2.
+- [x] A transaction's `Query(…, limit)` is honoured — `Transaction_query_honours_its_row_limit`.
+- [x] `Transaction()` returns `DataSourceTransaction` (compile-time, plus the rollback test).
+- [x] A missing secret throws `SqlCellException` on first use, not at construction — covered offline
+      by `FluentSqlInheritanceTest`.
+
+**Pin these two, they are the ones that discriminate.** `DefaultCommandTimeout` and the transaction
+`limit` were bugs in the SQL-specific code the rebase deleted, so on pre-rebase code they pass by
+doing the wrong thing. If they ever start passing *without* a server, or stop being run, this gate
+has gone hollow again — which is what `CLRKERNEL_TEST_REQUIRE_LIVE` exists to prevent.
+
+**Run a single target framework.** These tests use fixed table names (`dbo.FluentOrders`,
+`dbo.ClrTarget`, …) with no per-run suffix, so a multi-TFM run executes them three times in
+parallel against one database and they collide. Use `-f net8.0`.
 
 ## 7. ETL — bulk / merge / pipeline / deploy — **(SQL)**  *(optional but recommended)*
 

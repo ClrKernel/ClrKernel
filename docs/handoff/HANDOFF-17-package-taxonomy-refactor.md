@@ -42,7 +42,7 @@ accepted.
 | P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | DONE |
 | P3 | Cell-language registration seam in `Core.Scripting` | DONE |
 | P4a | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (move only) | DONE |
-| P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | CODE DONE — live gate OPEN |
+| P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | DONE — live gate discharged 2026-08-11 |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | DONE |
 | P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | DONE |
@@ -505,12 +505,19 @@ stays SQL-typed through `Query`/`Table`/`Table().Query()`; virtual dispatch surv
 unresolvable secret throws `SqlCellException` from `Open()` rather than at construction.
 `MultiProviderTest` covers the modified base over SQLite.
 
-**Gate: still OPEN.** No local test opens a SQL Server connection, so none of
-`Open()`→`SqlConnection`, `OpenReader()`→`SqlDataReader`, `BulkCopyFrom`, `Exists`, `Truncate` or
-`count_big` has been executed since the rebase. Run the `CLRKERNEL_TEST_SQL` suite
-(`FluentSqlIntegrationTest`) against a real server and record it in
-`docs/windows-verification-checklist.md` before treating P4b as finished. Local 276/8/284 does
-**not** discharge this.
+**Gate: DISCHARGED 2026-08-11.** `FluentSqlIntegrationTest` ran green against a live SQL Server —
+10 tests, 0 skipped, 0 failed — covering `Open()`→`SqlConnection`, `OpenReader()`→`SqlDataReader`,
+`BulkCopyFrom`, `Count()` via `count_big`, and the transaction path.
+
+Two of those ten were **added during verification**, because the original suite could not
+distinguish a working rebase from a broken one. `DefaultCommandTimeout` and the transaction's
+`limit` were bugs in the deleted SQL-specific code, so on pre-rebase code they pass by doing the
+wrong thing — meaning the rest of the suite would have gone green either way. Asserting them is what
+actually closed this gate; checklist §6a records both and says why they must keep running.
+
+Verification also surfaced a trap worth keeping: these tests use **fixed table names**, so a
+multi-TFM run executes them three times in parallel against one database and they collide on
+`CREATE`/`DROP`. Run the live suite with `-f net8.0`.
 
 ### P5 — Split `ClrKernel.AnalysisServices` (DONE)
 
@@ -799,7 +806,7 @@ Not affected (verified): `src/ClrKernel/kernel-spec/*`, `scripts/install-dev-ker
 | --- | --- | --- |
 | R1 | **Selector ordering regression in P3.** The if-chain's order is correctness-bearing; a registry can lose it silently and `#!sql-connect` starts matching `#!sql`. | Explicit ordering in the registry + a unit test per prefix pair (`sql-connect`/`sql`, `dax-connect`/`dax`) asserting the longer selector wins. Write the test **before** the seam. |
 | R2 | **Jdbc breaks Linux CI** now that it is in the solution (D6, landed in P2b) — IKVM is Windows-centric by its own csproj comment. | Partly de-risked in P1: `dotnet build src/ClrKernel.Data.Jdbc -c Release` is clean (0 warnings, 0 errors) on macOS/arm64 with SDK 10.0.106, so IKVM at least restores and compiles off-Windows. **ubuntu CI is still unverified.** If it fails there, revert it out of `slnx`, keep the rename, and amend D6 here. |
-| R3 | **P4 mixes a move with a behavior refactor** (D7). | **Resolved by splitting the phase** (P4a move / P4b rebase). The original mitigation — "SQL fluent + ETL tests green at each" — was hollow: the fluent tests that cover the rebased code are `Assert.Inconclusive` without `CLRKERNEL_TEST_SQL`. P4b now carries a live-verification gate instead. |
+| R3 | **P4 mixes a move with a behavior refactor** (D7). | **Closed 2026-08-11.** Split into P4a (move) / P4b (rebase); the original mitigation — "SQL fluent + ETL tests green at each" — was hollow, since those tests go `Assert.Inconclusive` without `CLRKERNEL_TEST_SQL`. P4b's live gate ran green (10/10) against a real server, including two tests added during verification specifically because the suite could not otherwise tell a working rebase from a broken one. |
 | R4 | **Clean break (D1) strands existing notebooks.** | Accepted. P7 sweeps every in-repo `#r` line; old packages get deprecated on nuget.org by hand, outside this plan. |
 | R5 | **Samples are not compiled by CI**, so entry-type renames (D8) can rot silently. | P7 gate runs each sample's first cell; P10 repeats it from a clean tree. |
 | R6 | **Half-applied taxonomy on `main`** (D9). | Every phase commit is independently green; no tagging until D12. |
