@@ -153,6 +153,7 @@ Established by inspection on 2026-08-10. Re-verify if resuming much later.
 | `ClrKernel.Language.Sql` | `ClrKernel.Sql` (language half) | Magics, directive parsing, T-SQL syntax check, completions, cell session. |
 | `ClrKernel.Language.Dax` | `ClrKernel.AnalysisServices` (DAX half) | `DaxLanguage.cs`, `DaxDirectives.cs`, the DAX cell session. |
 | `ClrKernel.Database` | `ClrKernel.Data` minus `Secrets/` | Fluent base + `connections.json` config + shared Entra auth (P6). |
+| `ClrKernel.Database.Entra` | **new** (P6) | Shared Microsoft Entra credential chains, token acquisition and scopes. Referenced only by `Provider.AnalysisServices` and `Provider.Fabric` — see D5. |
 | `ClrKernel.DataEngineering` | **new** | Table-action model + step/DAG orchestration. Abstractions only (D3). |
 | `ClrKernel.Database.Provider.SqlServer` | `ClrKernel.Sql` (provider half) | Fluent SQL Server, connection spec/registry/config, bulk copy, MERGE, T-SQL deploy. |
 | `ClrKernel.Database.Provider.Fabric` | `ClrKernel.Fabric` | Warehouse writes, OneLake Parquet staging, reload batch. |
