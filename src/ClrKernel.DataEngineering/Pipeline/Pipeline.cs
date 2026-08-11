@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ClrKernel.Language.Sql;
+namespace ClrKernel.DataEngineering;
 /// <summary>Thrown when the step graph is invalid (missing dep or a cycle).</summary>
 public sealed class PipelineGraphException : Exception {
     public PipelineGraphException(string message) : base(message) { }

@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\src\ClrKernel.Language.Dax\ClrKernel.Language.Dax.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.AnalysisServices\ClrKernel.Database.Provider.AnalysisServices.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Entra\ClrKernel.Database.Entra.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.DataEngineering\ClrKernel.DataEngineering.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Fabric\ClrKernel.Database.Provider.Fabric.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Core.Primitives\ClrKernel.Core.Primitives.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Core.Runner\ClrKernel.Core.Runner.csproj" />

@@ -1,23 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using ClrKernel.Database.Provider.SqlServer;
 
-namespace ClrKernel.Language.Sql;
-
-public sealed class DeployOptions {
-    public string Path { get; set; }
-    public bool Recurse { get; set; }
-    public bool DryRun { get; set; }
-
-    /// <summary>Disable the CREATE → CREATE OR ALTER rewrite (deploy files as-is).</summary>
-    public bool NoAlter { get; set; }
-}
+namespace ClrKernel.DataEngineering;
 
 public enum DeployState { Planned, Deployed, Failed }
 
-/// <summary>One .sql file's batches, ready to deploy.</summary>
+/// <summary>One file's units of work, ready to deploy.</summary>
+/// <remarks>What a "batch" is belongs to the provider — for SQL Server it is a <c>GO</c>-separated
+/// T-SQL batch. This type only knows they run in order and any of them may throw.</remarks>
 public sealed class DeployFile {
     public DeployFile(string path, string name, IReadOnlyList<string> batches) {
         Path = path;
@@ -48,44 +39,19 @@ public sealed class DeployResult {
 }
 
 /// <summary>
-/// Deploys a folder of .sql definition files idempotently. Files run in
-/// filename order (so numeric prefixes like <c>01_tables.sql</c> work), and
-/// files that fail because a referenced object isn't there yet are retried in
-/// later passes until no more progress is made — resolving cross-file
-/// dependencies without parsing references. With <c>CREATE OR ALTER</c>
-/// (default), re-running is safe. The batch executor is injected so planning and
-/// the multi-pass logic are unit-tested without a database.
+/// Deploys planned files idempotently, retrying failures across passes: a file that fails because
+/// something it references doesn't exist yet is retried in a later pass, until a pass makes no
+/// progress. That resolves cross-file dependencies without parsing references.
+/// <para>
+/// Provider-agnostic by construction — the batch executor is injected, so this knows nothing about
+/// SQL, connections or files. Reading a folder and splitting it into batches is the provider's job
+/// (for SQL Server, <c>ClrKernel.Language.Sql.SqlDeployPlan</c>).
+/// </para>
 /// </summary>
 public static class DeployRunner {
-    /// <summary>Reads and prepares the .sql files under the folder (no execution).</summary>
-    public static IReadOnlyList<DeployFile> Plan(DeployOptions options) {
-        if (options == null || string.IsNullOrWhiteSpace(options.Path)) {
-            throw new ArgumentException("Deploy requires a --path folder.");
-        }
-        if (!Directory.Exists(options.Path)) {
-            throw new DirectoryNotFoundException($"Deploy path not found: {options.Path}");
-        }
-        var search = options.Recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var files = Directory.GetFiles(options.Path, "*.sql", search)
-            .OrderBy(p => RelativeName(options.Path, p), StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var result = new List<DeployFile>();
-        foreach (var path in files) {
-            var text = File.ReadAllText(path);
-            var batches = GoBatchSplitter.Split(text)
-                .Select(b => options.NoAlter ? b : CreateOrAlter.Transform(b))
-                .ToList();
-            if (batches.Count > 0) {
-                result.Add(new DeployFile(path, RelativeName(options.Path, path), batches));
-            }
-        }
-        return result;
-    }
-
     /// <summary>
-    /// Deploys the planned files, retrying failures across passes. The executor
-    /// runs a single batch and throws on error.
+    /// Deploys the planned files, retrying failures across passes. The executor runs a single
+    /// batch and throws on error.
     /// </summary>
     public static DeployResult Run(
         IReadOnlyList<DeployFile> files,
@@ -140,10 +106,5 @@ public static class DeployRunner {
             Batches = f.Batches.Count,
         }).ToList();
         return new DeployResult(list) { Success = true };
-    }
-
-    private static string RelativeName(string root, string path) {
-        var rel = path.Substring(root.Length).TrimStart('/', '\\');
-        return rel.Replace('\\', '/');
     }
 }

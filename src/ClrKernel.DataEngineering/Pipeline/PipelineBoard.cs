@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text;
 
-namespace ClrKernel.Language.Sql;
+namespace ClrKernel.DataEngineering;
 /// <summary>Renders a pipeline run's step states as a self-contained HTML board.</summary>
 public static class PipelineBoard {
     public static string Render(IReadOnlyList<StepStatus> steps) {

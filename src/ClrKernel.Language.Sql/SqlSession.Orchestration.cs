@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Database.Provider.SqlServer;
+using ClrKernel.DataEngineering;
 
 namespace ClrKernel.Language.Sql;
 
@@ -107,7 +108,7 @@ public sealed partial class SqlSession {
 
     /// <summary>Deploys a folder of .sql definitions idempotently.</summary>
     public DeployResult Deploy(string connectionName, DeployOptions options, Action<IReadOnlyList<DeployFileResult>> onProgress = null) {
-        var files = DeployRunner.Plan(options);
+        var files = SqlDeployPlan.Plan(options);
         if (options.DryRun) {
             return DeployRunner.DryRun(files);
         }

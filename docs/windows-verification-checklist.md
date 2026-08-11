@@ -117,6 +117,20 @@ Fastest route is the gated suite; the manual items catch what it doesn't assert.
 - [ ] Cells annotated `-- step name` / `-- needs a, b` + `#!sql-run` execute as a **DAG** (independent steps parallel; a failed step skips downstream; status board updates). `-- needs` autocompletes step names from other cells.
 - [ ] `#!sql-deploy --path <folder-of-.sql>` applies idempotently (re-run = no-op / CREATE OR ALTER).
 
+### 7a. P8 — pipeline and deploy after the DataEngineering move
+
+The step/DAG and multi-pass deploy code moved to `ClrKernel.DataEngineering` unchanged (namespace
+only). The unit tests cover the logic; what they can't cover is that the magics still wire to it.
+
+- [ ] `#!sql-run` still renders the live status board and the DAG still runs in dependency order.
+- [ ] A failing step still skips its downstream steps and leaves independent branches running.
+- [ ] `#!sql-deploy` still retries across passes (a file referencing an object defined in a later
+      file still lands) and `--dry-run` still lists without executing.
+- [ ] *(new, optional)* The table-action model from C#: build a
+      `TableAction.TruncateInsert("dbo.T", TableSource.Query("src", "select ..."))` and run it
+      through `new SqlServerTableTarget(registry)` → rows land, and the result's `Strategy` reads
+      `TRUNCATE + SqlBulkCopy`. This is the only path in P8 that is genuinely new code.
+
 ## 8. Other providers — **(Oracle/ODBC)**
 
 Oracle:

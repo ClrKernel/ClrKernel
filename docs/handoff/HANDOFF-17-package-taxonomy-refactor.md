@@ -46,7 +46,7 @@ accepted.
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | DONE |
 | P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | DONE |
-| P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | TODO |
+| P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | DONE — Fabric/Oracle targets outstanding |
 | P9 | Split the test project three ways | TODO |
 | P10 | Final verification sweep | TODO |
 
@@ -620,29 +620,57 @@ which also makes the sample consistent with the no-passwords-in-notebooks invari
 10/10. `editors/vscode/CHANGELOG.md` gains three breaking-change entries under `[Unreleased]`;
 history entries untouched.
 
-### P8 — `ClrKernel.DataEngineering`
+### P8 — `ClrKernel.DataEngineering` (DONE, with follow-up listed)
 
-New project. Abstractions only (D3):
+**Landed in two halves.** The moves first (compiler-verified), then the new model.
 
-- **Table actions** as data structures + a provider-implemented contract: `Insert`;
-  `Delete(optional where)`; `Truncate`; `Merge(from source, optional where)`;
-  `TruncateInsert(from source)`; `DeleteInsert(optional where, from source)`.
-- **Step/DAG handling** moved from `ClrKernel.Sql/Pipeline/*` and made provider-agnostic (the
-  runner currently assumes T-SQL execution — that dependency inverts into the provider).
-- The generic pass-retry deploy loop lifts out of `Deploy/DeployRunner.cs`; `CREATE OR ALTER`
-  rewriting and `GO` batch splitting stay in `Provider.SqlServer`.
+**Moved, unchanged:** `Pipeline`, `PipelineStep`, `PipelineRunner`, `StepState`/`StepOutcome`/
+`StepStatus`/`PipelineResult`, `PipelineGraphException`. These turned out to be provider-agnostic
+already — `PipelineRunner` takes its executor as `Func<PipelineStep, StepOutcome>`, so the "runner
+assumes T-SQL execution" worry in the original plan text was wrong. Nothing had to invert.
 
-Then: `Provider.SqlServer` implements the actions with `SqlBulkCopy` + `MERGE`; `Provider.Fabric`
-with Parquet staging + delete/insert; `Provider.Oracle` with its own bulk path. Oracle/Odbc/Jdbc
-implementations can be stubs that throw `NotSupportedException` **only if** each stub is listed
-here as remaining work.
+`DeployRunner` **split by what is actually generic**: the multi-pass retry loop, `DeployFile`,
+`DeployState`, `DeployFileResult`, `DeployResult` and `DryRun` moved; finding `.sql` files,
+splitting on `GO` and rewriting `CREATE` → `CREATE OR ALTER` stayed behind as
+`ClrKernel.Language.Sql.SqlDeployPlan`. Two types with distinct names rather than one name in two
+namespaces, because `SqlSession.Orchestration` imports both.
 
-**Open design item (decide at the start of this phase):** whether `#!sql-run`'s status board
-(`PipelineBoard`, `DeployBoard`) is provider-agnostic UI that belongs in `DataEngineering`, or
-stays with the language. It renders through `Core.Primitives`, so either works.
+**Open design item — decided: the boards move.** `PipelineBoard` and `DeployBoard` render
+`StepStatus` and `DeployFileResult`, which are now DataEngineering's types. Leaving them in
+`Language.Sql` would have made a language package the renderer for another package's data. They go
+with the types they render, and `DataEngineering` references `Core.Primitives` for that (its only
+reference — no database driver, per D3).
 
-**Gate:** P7 gate + `SqlPhase2bTest` (pipeline) green + `#!sql-run` and `#!sql-deploy` exercised
-against a live SQL Server per the Windows checklist, or explicitly deferred there.
+**The table-action model** (`TableAction.cs`): `TableActionKind` with the six shapes, `TableAction`
+built through factory methods so an action can't exist in a form its kind disallows (no source on a
+`Truncate`, no `Merge` without key columns), `TableSource` (a query or table on a named connection,
+or in-memory rows), `TableActionResult`, and `ITableActionTarget` for providers to implement.
+It is data end to end, so it is fully unit tested offline.
+
+**One provider implemented: SQL Server.** `SqlServerTableTarget` is a *mapping* layer over the
+bulk-copy and MERGE code the `#!sql-bulk` / `#!sql-merge` magics already use — deliberately not a
+second implementation of the mechanics, which would drift. The translation half is split out as the
+pure `SqlServerTableActions` so it is testable without a server, and that is where the tests are.
+
+Two judgement calls worth keeping:
+
+- An unscoped `DeleteInsert` stays a `DELETE`, not "optimised" into a `TRUNCATE`. They differ in
+  logging, identity reseed and trigger firing; swapping them silently would be a behaviour change
+  the caller did not ask for. A test pins this.
+- A `Merge` whose source is in-memory rows, or lives on a different connection, throws
+  `NotSupportedException` naming the workaround (stage it, then merge). SQL Server's MERGE reads
+  its source on the server; inventing an untested staging path here was the wrong trade.
+
+**Remaining work, explicitly:** `Provider.Fabric` and `Provider.Oracle` have **no**
+`ITableActionTarget` implementation yet — no stubs either, deliberately: a stub that throws is
+indistinguishable from a bug at the call site, and nothing consumes the interface generically yet.
+Fabric's would be Parquet staging + delete/insert (its `ReloadBatch` is already this shape);
+Oracle's would be its direct-path load.
+
+**Gate:** P7 gate + `SqlPhase2bTest` green (292 passed / 8 skipped / 300 total), 0 warnings, format
+clean, extension compiles, both RPC harnesses 10/10. `#!sql-run` / `#!sql-deploy` against a live
+server is **deferred to the Windows checklist** — the pipeline and deploy code moved namespace but
+not a line of logic, so the risk is a wiring mistake the tests would catch, not a behaviour change.
 
 ### P9 — Test project split
 

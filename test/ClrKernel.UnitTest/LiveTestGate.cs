@@ -18,11 +18,11 @@ namespace ClrKernel.UnitTest;
 /// </para>
 /// </summary>
 internal static class LiveTestGate {
-    private const string RequireVar = "CLRKERNEL_TEST_REQUIRE_LIVE";
+    private const string _requireVar = "CLRKERNEL_TEST_REQUIRE_LIVE";
 
     /// <summary>True when the caller has declared this run is a verification run.</summary>
     internal static bool LiveRunRequired =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RequireVar));
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(_requireVar));
 
     /// <summary>
     /// Skips (or, on a verification run, fails) when <paramref name="value"/> is not configured.
@@ -37,7 +37,7 @@ internal static class LiveTestGate {
 
         var message = $"Set {variable} to run {what}.";
         if (LiveRunRequired) {
-            Assert.Fail($"{message} {RequireVar} is set, so this run was expected to reach a real " +
+            Assert.Fail($"{message} {_requireVar} is set, so this run was expected to reach a real " +
                         "backend — skipping would report success without verifying anything.");
         }
         Assert.Inconclusive(message);

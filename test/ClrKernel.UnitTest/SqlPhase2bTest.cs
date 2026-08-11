@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Database.Provider.SqlServer;
+using ClrKernel.DataEngineering;
 using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -150,7 +151,7 @@ public class DeployRunnerTest {
         try {
             File.WriteAllText(Path.Combine(dir, "02_view.sql"), "CREATE VIEW dbo.V AS SELECT 1");
             File.WriteAllText(Path.Combine(dir, "01_proc.sql"), "CREATE PROCEDURE dbo.P AS SELECT 1\nGO\nSELECT 2");
-            var files = DeployRunner.Plan(new DeployOptions { Path = dir });
+            var files = SqlDeployPlan.Plan(new DeployOptions { Path = dir });
             Assert.AreEqual(2, files.Count);
             Assert.AreEqual("01_proc.sql", files[0].Name);
             Assert.AreEqual(2, files[0].Batches.Count);

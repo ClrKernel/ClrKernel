@@ -1,4 +1,3 @@
-using Azure.Core;
 using Azure.Identity;
 using ClrKernel.Database.Entra;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

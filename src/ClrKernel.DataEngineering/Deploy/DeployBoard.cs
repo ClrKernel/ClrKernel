@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text;
 
-namespace ClrKernel.Language.Sql;
+namespace ClrKernel.DataEngineering;
 /// <summary>Renders a deployment's per-file state as self-contained HTML.</summary>
 public static class DeployBoard {
     public static string Render(IReadOnlyList<DeployFileResult> files, bool dryRun) {

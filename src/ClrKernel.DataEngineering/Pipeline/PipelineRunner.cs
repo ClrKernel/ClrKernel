@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace ClrKernel.Language.Sql;
+namespace ClrKernel.DataEngineering;
 /// <summary>
 /// Executes a set of pipeline steps honoring their dependencies: steps whose
 /// dependencies are all complete run concurrently up to a parallelism cap, and

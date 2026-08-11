@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ClrKernel.Language.Sql;
+namespace ClrKernel.DataEngineering;
 /// <summary>The lifecycle state of a step during a pipeline run.</summary>
 public enum StepState {
     Pending,
