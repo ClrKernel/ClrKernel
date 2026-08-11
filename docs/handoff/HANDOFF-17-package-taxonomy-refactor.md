@@ -42,7 +42,7 @@ accepted.
 | P2b | Rename `Language.*` (Http/Mermaid/PowerShell) + `Database*` providers; Jdbc into the solution | DONE |
 | P3 | Cell-language registration seam in `Core.Scripting` | DONE |
 | P4a | Split `ClrKernel.Sql` → `Language.Sql` + `Database.Provider.SqlServer` (move only) | DONE |
-| P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | TODO — needs live SQL |
+| P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | CODE DONE — live gate OPEN |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | TODO |
 | P6 | Extract shared Entra auth into `ClrKernel.Database` | TODO |
 | P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | TODO |
@@ -66,7 +66,7 @@ is the record. Add a `— <sha>` suffix only when back-filling a row after the f
 | D4 | **Add the registration seam now.** `Core.Scripting` must stop referencing `Language.*`. | The engine's selector chain and the LSP language surface both move behind contracts; the CLI becomes the composition root. See P3. |
 | D5 | **Fabric split by workload, shared Entra auth in `ClrKernel.Database`.** `Provider.AnalysisServices` keeps semantic-model work (incl. `ConnectFabric`); `Provider.Fabric` keeps warehouse/OneLake work; both consume shared auth. | New auth abstraction in `ClrKernel.Database` (P6). |
 | D6 | **Jdbc is renamed *and* added to `ClrKernel.slnx`.** | It compiles in CI for the first time. IKVM restore/build on ubuntu is **unverified** — see risk R2. |
-| D7 | **Collapse the fluent duplication during the split.** `SqlDatabase`/`SqlQuery`/`SqlTable` rebase onto `ClrKernel.Database`'s `DataSource`/`DataSourceQuery`/`DataSourceTable` (see D13) while they move. | P4 mixes a move with a behavior-bearing refactor. Mitigation: sub-commits, and the SQL fluent tests run at each. |
+| D7 | **Collapse the fluent duplication during the split.** `SqlDatabase`/`SqlQuery`/`SqlTable` rebase onto `ClrKernel.Database`'s `DataSource`/`DataSourceQuery`/`DataSourceTable` (see D13) while they move. **Landed in P4b**; the original mitigation ("the SQL fluent tests run at each") was hollow — those tests are `Inconclusive` without a server — so P4b carries an explicit live gate instead. | Unseals `DataSourceQuery`/`DataSourceTable` and adds `virtual` to seven members of a shipped package. Deletes `SqlDatabaseTransaction`, so `db.Transaction()` returns `DataSourceTransaction` and its owner property is `.DataSource`. Three behaviour changes adopted from the shared base — see P4b. |
 | D8 | **Entry types renamed:** `Sql` → `SqlServer`, `Ssas` → `AnalysisServices`. `Fabric`, `Oracle`, `Odbc`, `Jdbc` already match and stay. | Every sample cell body, README snippet, and the C# variable binding emitted by `#!sql-connect` changes. |
 | D9 | **Phased commits on `main`.** No AI/assistant attribution in commit messages. `CLAUDE.md` is gitignored. | Done: `.gitignore` entry added. |
 | D10 | **Flat layout** — `src/<PackageName>/<PackageName>.csproj`. | Keeps `Build.cs`'s `ResolveProject` and `./build.sh --project <name>` working unchanged. |
@@ -466,50 +466,50 @@ The script contribution is the part that only fails at run time, and it *is* cov
 `references` array or an `imports` string were stale, those throw `CompilationErrorException`
 before touching a network.
 
-#### P4b — the fluent dedup (D7)
+#### P4b — the fluent dedup (D7) — code landed, live gate still open
 
-Rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `ClrKernel.Database`'s
-`DataSource`/`DataSourceQuery`/`DataSourceTable` (renamed by D13), keeping the SqlClient-specific
-surface — `SqlConnection` typing, bulk copy, the connection registry — as SQL-Server additions on
-top of the shared base. This is the one place in the plan where behavior can actually change.
+`SqlDatabase : DataSource`, `SqlQuery : DataSourceQuery`, `SqlTable : DataSourceTable`, with the
+SQL-Server-specific surface kept as additions on top. `SqlDatabaseTransaction` was **deleted**, not
+rebased — it was a line-for-line copy of `DataSourceTransaction` differing only in `SqlConnection`
+vs `DbConnection` typing that nothing consumed. `db.Transaction()` now returns
+`DataSourceTransaction`; the owner property on it is `.DataSource`, not `.Database`.
 
-Frictions to expect, all confirmed by reading the current types rather than guessed:
+**Changes to `ClrKernel.Database` (a shipped package's public API):**
 
-- `DataSource.CreateCommand` and `EffectiveTimeout` are `internal`, and after the rebase `SqlQuery`
-  calls them **from another assembly**. `ClrKernel.Database` already carries an `InternalsVisibleTo`
-  for the SQL package (retargeted to `ClrKernel.Database.Provider.SqlServer` in P4a), so this works
-  — but it is load-bearing, not incidental.
-- `DataSourceQuery` and `DataSourceTable` are `sealed` with `internal` constructors; inheriting
-  requires unsealing them and making the constructors `protected`.
-- `DataSourceTransaction` is `sealed` and typed on `DbConnection`/`DbTransaction`, so
-  `SqlDatabaseTransaction` either stays duplicated or that type unseals too.
-- Covariant overrides (`SqlDatabase.Open()` returning `SqlConnection`, `SqlQuery.OpenReader()`
-  returning `SqlDataReader`) are the right tool over `new`-hiding, but they need the base members
-  marked `virtual`.
-- Unsealing public types in the shipped `ClrKernel.Database` package is itself a public-API change.
+- `DataSourceQuery` and `DataSourceTable` unsealed. `DataSourceTransaction` stayed sealed — nothing
+  needed to derive from it once the SQL copy was deleted.
+- `virtual` added to `DataSource.Name`, `.Open()`, `.Query()`, `.Table()`, `DataSourceQuery.OpenReader()`,
+  `DataSourceTable.Query()` and `.Count()`. Nothing else — `Execute`, `Scalar`, `Transaction`,
+  `Results` and `Insert<T>` all route through the virtual members, so they are shared unchanged.
+- Constructors stayed `internal`; `ClrKernel.Database` already grants `InternalsVisibleTo` to the
+  SQL provider (retargeted in P4a), so derived types reach them without promoting to `protected`.
+  That IVT is load-bearing now, not incidental.
 
-**What the local suite does and does not cover here.** `MultiProviderTest` drives `DataSource`,
-`DataSourceQuery`, `DataSourceTable` and `DataSourceTransaction` end-to-end over SQLite in-memory —
-no skip markers, it runs everywhere. So **changes to the shared base are locally covered**:
-unsealing, adding `virtual`, and widening constructor access all get exercised. What is *not*
-covered is every SQL-Server-specific override — `Open()` returning `SqlConnection`,
-`OpenReader()` returning `SqlDataReader`, `BulkCopyFrom`, `Exists`, `Truncate`, `count_big` — because
-`FluentSqlIntegrationTest` gates on `CLRKERNEL_TEST_SQL` and goes `Assert.Inconclusive` without it.
-The plan originally listed `MultiProviderTest` as a D7 gate as though it closed that hole; it does
-not, and the two halves should be judged separately.
+**Three deliberate behaviour changes**, all adopting the shared implementation over the SQL copy:
 
-**Gate:** P4a gate **plus live verification** — this phase cannot be certified green off-Windows.
-Run the `CLRKERNEL_TEST_SQL` suite against a real server and record the result in
-`docs/windows-verification-checklist.md`. A local 272/8/280 does **not** discharge this gate.
+1. `SqlDatabase.Execute`/`Scalar` now honour `DefaultCommandTimeout`. The old SQL versions passed
+   `null` and silently ignored the property they documented. No effect unless it is set.
+2. `Transaction().Query(sql, parameters, limit)` now honours `limit`. The old
+   `SqlDatabaseTransaction.Query` accepted the parameter and dropped it.
+3. The connection string — and therefore the secret — is resolved inside the connection factory, on
+   `Open()`, instead of in `SqlDatabase.Open()`'s body. Same timing (construction still never touches
+   the credential store), same `SqlCellException` wrapping; `FluentSqlInheritanceTest` pins it.
 
-**Worth re-deciding before starting, not just executing.** D7 was chosen before the shape of the
-shared types was known. Cashing it in means unsealing `DataSourceQuery`/`DataSourceTable`
-(and probably `DataSourceTransaction`) in the shipped `ClrKernel.Database` package, promoting
-`internal` constructors to `protected`, marking base members `virtual`, and relying on covariant
-overrides — public-API surface added in order to delete roughly 120 lines of duplicated but working
-code, in the one place in the plan where runtime behavior can move, with the SQL Server half
-unverifiable off-Windows. Deferring D7 until the P4a tree has been exercised on Windows costs
-nothing: nothing in P5–P10 depends on the fluent types being unified.
+`SqlDatabase.Name` is an **override reading the spec**, not the base's constructor-captured string.
+`SqlConnectionSpec.Name` has a setter, so capturing it would have been a silent behaviour change.
+
+**What was verified locally** (`FluentSqlInheritanceTest`, 4 new tests, no server): the fluent chain
+stays SQL-typed through `Query`/`Table`/`Table().Query()`; virtual dispatch survives an upcast to
+`DataSource` (a `new`-hiding implementation would fail this); `Name` tracks a renamed spec; and an
+unresolvable secret throws `SqlCellException` from `Open()` rather than at construction.
+`MultiProviderTest` covers the modified base over SQLite.
+
+**Gate: still OPEN.** No local test opens a SQL Server connection, so none of
+`Open()`→`SqlConnection`, `OpenReader()`→`SqlDataReader`, `BulkCopyFrom`, `Exists`, `Truncate` or
+`count_big` has been executed since the rebase. Run the `CLRKERNEL_TEST_SQL` suite
+(`FluentSqlIntegrationTest`) against a real server and record it in
+`docs/windows-verification-checklist.md` before treating P4b as finished. Local 276/8/284 does
+**not** discharge this.
 
 ### P5 — Split `ClrKernel.AnalysisServices`
 

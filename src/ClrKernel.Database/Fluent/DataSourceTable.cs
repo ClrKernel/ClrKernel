@@ -13,7 +13,7 @@ namespace ClrKernel.Database;
 /// parameterized batch <see cref="Insert{T}"/> (provider-agnostic — SQL Server's
 /// bulk copy lives on the SQL-specific table type).
 /// </summary>
-public sealed class DataSourceTable {
+public class DataSourceTable {
     internal DataSourceTable(DataSource database, string name) {
         DataSource = database ?? throw new ArgumentNullException(nameof(database));
         Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("table is required.", nameof(name)) : name;
@@ -26,13 +26,13 @@ public sealed class DataSourceTable {
     public string Name { get; }
 
     /// <summary>A <c>select * from &lt;table&gt;</c> query.</summary>
-    public DataSourceQuery Query() => DataSource.Query($"select * from {Name}");
+    public virtual DataSourceQuery Query() => DataSource.Query($"select * from {Name}");
 
     /// <summary>Reads all rows (interactive grid + enumerable).</summary>
     public DataResults Results(int limit = 1000) => Query().Results(limit);
 
     /// <summary>The row count.</summary>
-    public long Count() => DataSource.Scalar<long>($"select count(*) from {Name}");
+    public virtual long Count() => DataSource.Scalar<long>($"select count(*) from {Name}");
 
     /// <summary>
     /// Inserts rows with parameterized <c>INSERT</c> statements, batched. Columns come

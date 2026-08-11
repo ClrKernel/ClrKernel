@@ -14,6 +14,14 @@ namespace ClrKernel.Database;
 /// </code>
 /// Each call opens and closes its own connection unless run inside
 /// <see cref="Transaction"/>.
+/// <para>
+/// A provider may derive from this to add engine-specific surface — see
+/// <c>ClrKernel.Database.Provider.SqlServer.SqlDatabase</c>, which narrows
+/// <see cref="Open"/>, <see cref="Query"/> and <see cref="Table"/> to SqlClient types
+/// via covariant overrides. The members below are <c>virtual</c> for that reason; the
+/// non-virtual ones (<see cref="Execute"/>, <see cref="Scalar{T}"/>,
+/// <see cref="Transaction"/>) are shared as-is because they route through the virtual ones.
+/// </para>
 /// </summary>
 public class DataSource {
     private readonly Func<DbConnection> _connectionFactory;
@@ -24,23 +32,23 @@ public class DataSource {
     }
 
     /// <summary>A descriptive name for the connection (e.g. <c>host/service</c>).</summary>
-    public string Name { get; }
+    public virtual string Name { get; }
 
     /// <summary>Default command timeout (seconds) applied when a call doesn't set one.</summary>
     public int? DefaultCommandTimeout { get; set; }
 
     /// <summary>Opens a live connection (caller owns/disposes it).</summary>
-    public DbConnection Open() {
+    public virtual DbConnection Open() {
         var connection = _connectionFactory();
         connection.Open();
         return connection;
     }
 
     /// <summary>A lazy query; call <c>.Results()</c> / <c>.Results&lt;T&gt;()</c> to run it.</summary>
-    public DataSourceQuery Query(string sql, object parameters = null) => new DataSourceQuery(this, sql, parameters);
+    public virtual DataSourceQuery Query(string sql, object parameters = null) => new DataSourceQuery(this, sql, parameters);
 
     /// <summary>A reference to a table (query source and generic insert target).</summary>
-    public DataSourceTable Table(string name) => new DataSourceTable(this, name);
+    public virtual DataSourceTable Table(string name) => new DataSourceTable(this, name);
 
     /// <summary>Runs a non-query statement and returns rows affected.</summary>
     public int Execute(string sql, object parameters = null) {

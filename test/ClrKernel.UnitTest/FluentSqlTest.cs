@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Secrets;
 using ClrKernel.Database;
 using ClrKernel.Database.Provider.SqlServer;
 using ClrKernel.Language.Sql;
@@ -169,6 +170,67 @@ public class FluentSqlFactoryTest {
     [TestMethod]
     public void AzureConnection_uses_entra_default() {
         Assert.AreEqual(SqlAuthMode.AzureAdDefault, new SqlSession().AzureConnection("srv", "db").Spec.Auth);
+    }
+}
+
+/// <summary>
+/// The D7 rebase (P4b): <c>SqlDatabase</c>/<c>SqlQuery</c>/<c>SqlTable</c> now derive from
+/// <c>DataSource</c>/<c>DataSourceQuery</c>/<c>DataSourceTable</c>. Everything here runs
+/// without a server — building a handle and walking the fluent chain never opens a
+/// connection — so it covers the wiring that would otherwise only be provable on Windows:
+/// that the covariant overrides are reached, and that secret resolution still happens at
+/// open time rather than at construction.
+/// </summary>
+[TestClass]
+public class FluentSqlInheritanceTest {
+    private static SqlDatabase Handle() => new SqlSession().Connection("srv", "db");
+
+    [TestMethod]
+    public void Fluent_chain_stays_sql_typed_through_the_base_class() {
+        var db = Handle();
+        Assert.IsInstanceOfType(db, typeof(DataSource), "SqlDatabase should be a DataSource");
+
+        // Each hop must reach the SQL override, not the base implementation — that is what
+        // keeps SqlDataReader/SqlBulkCopy reachable from a plain Query(...)/Table(...) call.
+        SqlQuery query = db.Query("select 1");
+        SqlTable table = db.Table("dbo.Orders");
+        SqlQuery fromTable = table.Query();
+
+        Assert.AreEqual("select 1", query.Sql);
+        Assert.AreEqual("select * from dbo.Orders", fromTable.Sql);
+        Assert.AreSame(db, table.Database);
+        Assert.AreSame(db, table.DataSource, "the base's DataSource and the SQL Database are one object");
+    }
+
+    [TestMethod]
+    public void Virtual_dispatch_survives_an_upcast_to_the_base() {
+        // A `new`-hiding implementation would silently hand back the base types here.
+        DataSource upcast = Handle();
+        Assert.IsInstanceOfType(upcast.Query("select 1"), typeof(SqlQuery));
+        Assert.IsInstanceOfType(upcast.Table("dbo.Orders"), typeof(SqlTable));
+        Assert.IsInstanceOfType(upcast.Table("dbo.Orders").Query(), typeof(SqlQuery));
+    }
+
+    [TestMethod]
+    public void Name_tracks_the_spec_rather_than_being_captured_at_construction() {
+        var db = Handle();
+        Assert.AreEqual("srv/db", db.Name);
+        db.Spec.Name = "renamed";
+        Assert.AreEqual("renamed", db.Name,
+            "Name is an override reading the spec — the base captures its name in the constructor");
+    }
+
+    [TestMethod]
+    public void Secret_is_resolved_when_opening_not_when_the_handle_is_built() {
+        // Constructing must not touch the credential store...
+        var db = new SqlSession().Connection("srv", "db", "svc", "sql:does-not-exist");
+        Assert.AreEqual("srv/db", db.Name);
+
+        // ...but opening must, and must still surface as SqlCellException rather than the
+        // raw SecretNotFoundException. This runs entirely inside the connection factory,
+        // before any network contact.
+        var e = Assert.ThrowsExactly<SqlCellException>(() => db.Open());
+        Assert.IsInstanceOfType(e.InnerException, typeof(SecretNotFoundException));
     }
 }
 

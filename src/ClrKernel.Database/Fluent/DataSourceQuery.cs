@@ -11,7 +11,7 @@ namespace ClrKernel.Database;
 /// grid), <see cref="Results{T}"/> (typed objects), or <see cref="OpenReader"/> (a
 /// streaming reader).
 /// </summary>
-public sealed class DataSourceQuery {
+public class DataSourceQuery {
     private readonly DataSource _database;
     private readonly object _parameters;
 
@@ -28,7 +28,7 @@ public sealed class DataSourceQuery {
     public int? CommandTimeout { get; set; }
 
     /// <summary>Opens a streaming reader on its own connection (closed when disposed).</summary>
-    public DbDataReader OpenReader() {
+    public virtual DbDataReader OpenReader() {
         var connection = _database.Open();
         try {
             var command = DataSource.CreateCommand(

@@ -7,33 +7,28 @@ namespace ClrKernel.Database.Provider.SqlServer;
 
 /// <summary>
 /// A reference to a table on a <see cref="SqlDatabase"/>. Reads as a query source
-/// (<see cref="Query"/> / <see cref="Results"/>) and writes as a bulk-copy target
-/// (<see cref="BulkCopyFrom(SqlQuery, BulkCopyOptions, bool)"/> and overloads).
+/// (<see cref="Query"/> / <see cref="DataSourceTable.Results"/>) and writes as a
+/// bulk-copy target (<see cref="BulkCopyFrom(SqlQuery, BulkCopyOptions, bool)"/> and
+/// overloads). The provider-agnostic batch <see cref="DataSourceTable.Insert{T}"/> is
+/// inherited and still available when a bulk copy would be overkill.
 /// </summary>
-public sealed class SqlTable {
-    internal SqlTable(SqlDatabase database, string name) {
-        Database = database ?? throw new ArgumentNullException(nameof(database));
-        Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("table is required.", nameof(name)) : name;
-    }
+public sealed class SqlTable : DataSourceTable {
+    internal SqlTable(SqlDatabase database, string name) : base(database, name) { }
 
     /// <summary>The owning database.</summary>
-    public SqlDatabase Database { get; }
+    public SqlDatabase Database => (SqlDatabase)DataSource;
 
-    /// <summary>The table name (optionally schema-qualified, e.g. <c>dbo.Orders</c>).</summary>
-    public string Name { get; }
+    /// <summary>A <c>select * from &lt;table&gt;</c> query.</summary>
+    public override SqlQuery Query() => Database.Query($"select * from {Name}");
+
+    /// <summary>The row count.</summary>
+    /// <remarks><c>count_big</c> rather than the base's <c>count</c>: SQL Server's
+    /// <c>count(*)</c> is a 32-bit int and overflows past 2^31 rows.</remarks>
+    public override long Count() => Database.Scalar<long>($"select count_big(*) from {Name}");
 
     /// <summary>True if the table exists.</summary>
     public bool Exists() =>
         Database.Scalar<bool>("select convert(bit, iif(object_id(@tableName) is not null, 1, 0))", new { tableName = Name });
-
-    /// <summary>The row count.</summary>
-    public long Count() => Database.Scalar<long>($"select count_big(*) from {Name}");
-
-    /// <summary>A <c>select * from &lt;table&gt;</c> query.</summary>
-    public SqlQuery Query() => Database.Query($"select * from {Name}");
-
-    /// <summary>Reads all rows (interactive grid + enumerable).</summary>
-    public DataResults Results(int limit = 1000) => Query().Results(limit);
 
     /// <summary>Truncates the table.</summary>
     public int Truncate() => Database.Execute($"truncate table {Name}");
