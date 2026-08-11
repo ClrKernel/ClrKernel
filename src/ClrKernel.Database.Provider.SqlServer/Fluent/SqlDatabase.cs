@@ -7,12 +7,12 @@ namespace ClrKernel.Database.Provider.SqlServer;
 
 /// <summary>
 /// A fluent handle to a SQL Server database — the entry point for the ergonomic
-/// query API. Create one with <c>Sql.Connection(server, database)</c> and chain
+/// query API. Create one with <c>SqlServer.Connection(server, database)</c> and chain
 /// <see cref="Query(string, object)"/>, <see cref="Table(string)"/>,
 /// <see cref="DataSource.Execute(string, object)"/>, or
 /// <see cref="DataSource.Scalar{T}(string, object)"/>:
 /// <code>
-/// var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");
+/// var dw = SqlServer.Connection("database.example.com", "AdventureWorksDW2025");
 /// var orders = dw.Query("select * from dbo.Orders").Results();   // grid + rows
 /// </code>
 /// Each call opens and closes its own connection unless run inside

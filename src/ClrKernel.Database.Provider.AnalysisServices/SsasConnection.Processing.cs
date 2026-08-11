@@ -43,7 +43,7 @@ public sealed partial class SsasConnection {
     public DisplayData ProcessModel(SsasRefresh refresh = SsasRefresh.Full) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
-        model.RequestRefresh(Ssas.ToTabular(refresh));
+        model.RequestRefresh(AnalysisServices.ToTabular(refresh));
         return Save(model, $"Process model ({refresh})", MaxParallelism);
     }
 
@@ -51,7 +51,7 @@ public sealed partial class SsasConnection {
     public DisplayData ProcessTables(IEnumerable<string> tableNames, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
-        var rt = Ssas.ToTabular(refresh);
+        var rt = AnalysisServices.ToTabular(refresh);
         var missing = new List<string>();
         foreach (var name in tableNames) {
             var table = model.Tables.Find(name);
@@ -74,7 +74,7 @@ public sealed partial class SsasConnection {
     public DisplayData ProcessPartitions(IEnumerable<PartitionDefinition> partitions, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
-        RequestPartitionRefresh(model, partitions, Ssas.ToTabular(refresh));
+        RequestPartitionRefresh(model, partitions, AnalysisServices.ToTabular(refresh));
         return Save(model, $"Process partitions ({refresh})", maxParallelism > 0 ? maxParallelism : MaxParallelism);
     }
 

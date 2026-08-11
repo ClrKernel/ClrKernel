@@ -3,23 +3,26 @@
 The `ClrKernel.Database.Provider.AnalysisServices` helper lets C# cells work with Tabular models —
 on-premises SQL Server Analysis Services, Azure Analysis Services, or Microsoft
 Fabric / Power BI semantic models. Query with DAX, read metadata, and process
-(refresh) the model. It's available in every C# cell as `Ssas`.
+(refresh) the model. It's available in every C# cell as `AnalysisServices`.
 
 ## Connect
 
 ```csharp
 // On-prem SSAS with Windows Integrated auth (the default):
-var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
+var cube = AnalysisServices.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 
-// SSAS with a username/password:
-var cube2 = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025", "svc_reporting", password);
+// SSAS with a username/password. Read the password from the secret store rather
+// than typing it into the notebook — this resolves from the OS credential manager
+// (or CLRKERNEL_SECRET_SSAS_REPORTING) and returns null if it isn't set yet.
+new ClrKernel.Core.Secrets.SecretStore().TryResolve("ssas:reporting", out var password);
+var cube2 = AnalysisServices.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025", "svc_reporting", password);
 
 // A Microsoft Fabric / Power BI semantic model (Entra auth via az login / managed identity):
-var model = Ssas.ConnectFabric("Analytics Workspace", "Sales Model");
+var model = AnalysisServices.ConnectFabric("Analytics Workspace", "Sales Model");
 
 // Azure Analysis Services, or a fully custom connection string:
-var aas  = Ssas.ConnectAzureAnalysisServices("asazure://westus.asazure.windows.net/myserver", "Model");
-var raw  = Ssas.FromConnectionString("Provider=MSOLAP;Data Source=...;Catalog=...;");
+var aas  = AnalysisServices.ConnectAzureAnalysisServices("asazure://westus.asazure.windows.net/myserver", "Model");
+var raw  = AnalysisServices.FromConnectionString("Provider=MSOLAP;Data Source=...;Catalog=...;");
 ```
 
 ## Query with DAX
@@ -89,7 +92,7 @@ cube.RemovePartition("Sales", "2019");
 
 ```csharp
 // 1) stage keys in SQL, 2) ensure this year's partition exists, 3) process it.
-var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
+var cube = AnalysisServices.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 cube.EnsurePartition("Sales", "2026", "AdventureWorksDW2025", "SELECT * FROM fact.Sales WHERE Year = 2026");
 cube.ProcessPartitions(new[] { ("Sales", "2026") });
 cube.Recalculate();

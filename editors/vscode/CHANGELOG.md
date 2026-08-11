@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.5.0] - 2026-08-11
+
+- **BREAKING — packages renamed.** The kernel's NuGet packages were reorganised into
+  three tiers: `ClrKernel.Core.*` (engine and hosts), `ClrKernel.Language.*` (cell
+  languages), and `ClrKernel.Database*` (data access). Notably `ClrKernel.Sql` split
+  into `ClrKernel.Language.Sql` + `ClrKernel.Database.Provider.SqlServer`,
+  `ClrKernel.AnalysisServices` split into `ClrKernel.Language.Dax` +
+  `ClrKernel.Database.Provider.AnalysisServices`, and `ClrKernel.Data.*` became
+  `ClrKernel.Database.Provider.*`. Any notebook with an `#r "nuget: ClrKernel.…"`
+  line for an opt-in provider (Oracle, ODBC, JDBC, Fabric) needs that line updated.
+  The old package IDs are not forwarded.
+- **BREAKING — the C# entry points were renamed** to match their packages:
+  `Sql` → `SqlServer` and `Ssas` → `AnalysisServices`. So `Sql.Connection(...)`
+  becomes `SqlServer.Connection(...)`, `Sql.BulkCopy(...)` becomes
+  `SqlServer.BulkCopy(...)`, and `Ssas.Connect(...)` becomes
+  `AnalysisServices.Connect(...)`. There is no compatibility alias — an old notebook
+  fails with `CS0103: The name 'Sql' does not exist in the current context`, which
+  names exactly what to change. `Fabric`, `Oracle`, `Odbc` and `Jdbc` are unchanged.
+  The variable that `#!sql-connect --var` binds is unaffected; only the global's name
+  changed.
+- **BREAKING — `.Transaction()` on a SQL database** now returns the shared
+  `DataSourceTransaction` rather than `SqlDatabaseTransaction`, and its owning-database
+  property is `.DataSource` rather than `.Database`. Code using only `tx.Execute` /
+  `tx.Query` / `tx.Commit` / `tx.Rollback` is unaffected. Two long-standing bugs are
+  fixed as a result: `DefaultCommandTimeout` is now honoured by `Execute`/`Scalar`, and
+  the `limit` argument to a transaction's `Query` is no longer ignored.
+- **Fixed: duplicate completions and false "syntax error" squiggles in C# cells.**
+  C# cells now use a dedicated language id (shown as **C#** with the C# icon) instead
+  of `csharp`, so other C# tooling (C# Dev Kit / the Roslyn language server) no longer
+  attaches to notebook cells — which had been adding a second set of completion entries
+  and flagging valid script-mode trailing expressions (e.g. a bare `x`) as errors.
+  Highlighting is unchanged (it uses the embedded C# grammar) and files still serialize
+  as ` ```csharp `.
+- **Save & auto-load connections.** After adding a connection with the button you
+  can save it to a `connections.json` (it shows a file found nearby, or lets you
+  choose one) — passwords stay in the OS credential store, only a reference is
+  written. Saved `SqlServer` entries load automatically in later sessions, so a
+  connection you saved is available again without re-adding it.
+- **`#!sql-bulk --create`.** The bulk magic can now create the destination table
+  from the source schema when it doesn't already exist (the same create-from-schema
+  the C# `.Table(name).BulkCopyFrom(query, createIfMissing: true)` uses).
+- Results grid: closed the gap between each column header and its filter box, and
+  the column names and their border now stay pinned instead of scrolling away.
+
 ## [0.4.1] - 2026-08-11
 
 Compatibility guard. No new features — this release exists so that the next

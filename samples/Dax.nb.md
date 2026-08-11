@@ -47,10 +47,10 @@ EVALUATE ROW("Total", [Total Sales])
 
 ## From C#
 
-The same models are reachable from C# cells via `Ssas` (ad-hoc, outside the
+The same models are reachable from C# cells via `AnalysisServices` (ad-hoc, outside the
 `#!dax` cube registry):
 
 ```csharp
-var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
+var cube = AnalysisServices.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 cube.Query("EVALUATE VALUES('Product'[Category])");
 ```

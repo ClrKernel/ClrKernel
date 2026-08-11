@@ -69,7 +69,7 @@ variable name yourself, or `--no-var` to skip the binding entirely:
 #!sql-connect --name my-dw --server sql-warehouse --database reports --var dw
 ```
 
-Either way `Sql.Database("<name>")` still resolves the connection by name.
+Either way `SqlServer.Database("<name>")` still resolves the connection by name.
 
 ## Query
 

@@ -9,7 +9,7 @@ namespace ClrKernel.Database.Provider.AnalysisServices;
 /// <summary>
 /// A live handle to an Analysis Services (Tabular) model: DAX/DMV queries via
 /// ADOMD.NET and metadata reads, plus processing/partition management (in the
-/// partial in SsasConnection.Processing.cs). Created via <see cref="Ssas"/>.
+/// partial in SsasConnection.Processing.cs). Created via <see cref="AnalysisServices"/>.
 /// </summary>
 public sealed partial class SsasConnection {
     private readonly SsasConnectionSpec _spec;

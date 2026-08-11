@@ -1,7 +1,7 @@
 # Querying other databases (Oracle, ODBC, JDBC)
 
 ClrKernel's fluent query API works the same across database engines. The SQL Server
-support ships in the kernel (`Sql.Connection(...)`); other engines come as opt-in
+support ships in the kernel (`SqlServer.Connection(...)`); other engines come as opt-in
 provider packages that return the **same** `Database` type — so
 `Query(sql).Results()` (interactive grid + dynamic rows), typed `.Results<T>()`,
 `.Table()`, and `.Transaction()` behave identically everywhere.

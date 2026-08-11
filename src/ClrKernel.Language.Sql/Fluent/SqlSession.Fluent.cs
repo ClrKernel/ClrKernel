@@ -4,11 +4,11 @@ using ClrKernel.Database.Provider.SqlServer;
 namespace ClrKernel.Language.Sql;
 
 /// <summary>
-/// Fluent, ad-hoc connection factory on the session (exposed as <c>Sql</c>): build
+/// Fluent, ad-hoc connection factory on the session (exposed as <c>SqlServer</c>): build
 /// a <see cref="SqlDatabase"/> inline without registering a named <c>#!sql-connect</c>
 /// connection first.
 /// <code>
-/// var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");   // Integrated Security
+/// var dw = SqlServer.Connection("database.example.com", "AdventureWorksDW2025");   // Integrated Security
 /// var orders = dw.Query("select * from dbo.Orders").Results();
 /// </code>
 /// </summary>

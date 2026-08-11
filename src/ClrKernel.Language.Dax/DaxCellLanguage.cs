@@ -10,7 +10,7 @@ namespace ClrKernel.Language.Dax;
 /// <summary>
 /// DAX cell magics: <c>#!dax-connect</c> registers named cubes (on-prem SSAS,
 /// Azure AS, or a Fabric / Power BI semantic model) and <c>#!dax</c> queries one.
-/// Both share the session's cube registry with the C# <c>Ssas</c> API.
+/// Both share the session's cube registry with the C# <c>AnalysisServices</c> API.
 /// </summary>
 public sealed class DaxCellLanguage : ICellLanguage {
     private readonly SsasSession _session = new SsasSession();
@@ -26,14 +26,14 @@ public sealed class DaxCellLanguage : ICellLanguage {
 
     private ICellLanguageServices _services;
 
-    // Only the provider is cell-facing — `Ssas` and everything it returns. Nothing in
+    // Only the provider is cell-facing — `AnalysisServices` and everything it returns. Nothing in
     // Language.Dax is called from a C# cell, so this names one assembly and one
     // namespace. Both are resolved when a cell compiles, so a stale string here builds
-    // clean and fails only at run time; SsasTest executes `Ssas.Connect(...)` in a cell
+    // clean and fails only at run time; SsasTest executes `AnalysisServices.Connect(...)` in a cell
     // and is what catches it.
     public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
-        references: new[] { typeof(Ssas).Assembly },
-        imports: new[] { "ClrKernel.Database.Provider.AnalysisServices" });   // Ssas.Connect / ProcessPartitions
+        references: new[] { typeof(AnalysisServices).Assembly },
+        imports: new[] { "ClrKernel.Database.Provider.AnalysisServices" });   // AnalysisServices.Connect / ProcessPartitions
 
     public Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) {
         if (string.Equals(cell.Selector, "#!dax-connect", StringComparison.OrdinalIgnoreCase)) {

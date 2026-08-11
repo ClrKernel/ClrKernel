@@ -1,6 +1,6 @@
 # Querying SQL from C# cells
 
-ClrKernel's `Sql` helper gives C# cells an ergonomic, ad-hoc query API — connect,
+ClrKernel's `SqlServer` helper gives C# cells an ergonomic, ad-hoc query API — connect,
 query, and get results without registering a named `#!sql-connect` connection
 first. Results render as the same interactive grid the `#!sql` cells use, and are
 also enumerable as dynamic rows, so one object works both when displayed and in
@@ -8,29 +8,29 @@ code.
 
 ## Connect
 
-`Sql.Connection(server, database)` opens an ad-hoc connection. Auth is Integrated
+`SqlServer.Connection(server, database)` opens an ad-hoc connection. Auth is Integrated
 Security by default (Windows Integrated on Windows, Microsoft Entra "Default" on
 macOS/Linux):
 
 ```csharp
-var dw = Sql.Connection("database.example.com", "AdventureWorksDW2025");
+var dw = SqlServer.Connection("database.example.com", "AdventureWorksDW2025");
 ```
 
 Other ways to connect:
 
 ```csharp
 // SQL login — password from the secret store (never inline):
-var app = Sql.Connection("sql01", "AppDb", "svc_reader", "sql:app-reader");
+var app = SqlServer.Connection("sql01", "AppDb", "svc_reader", "sql:app-reader");
 
 // Microsoft Entra (Azure AD):
-var azure = Sql.AzureConnection("myserver.database.windows.net", "Sales");
+var azure = SqlServer.AzureConnection("myserver.database.windows.net", "Sales");
 
 // Reuse a connection already defined with #!sql-connect:
-var reused = Sql.Database("analytics");
+var reused = SqlServer.Database("analytics");
 // (a #!sql-connect --name analytics cell also binds `analytics` for you directly)
 
 // Full connection string (escape hatch):
-var raw = Sql.ConnectionString("Server=...;Database=...;Trusted_Connection=True;");
+var raw = SqlServer.ConnectionString("Server=...;Database=...;Trusted_Connection=True;");
 ```
 
 ## Query → grid + rows
@@ -122,7 +122,7 @@ using (var tx = dw.Transaction()) {
 
 - **Relationship to `#!sql` cells.** This is the C# counterpart to the `#!sql`
   cell language; both render the same interactive grid. Use `#!sql` for SQL-first
-  cells, `Sql.Connection(...)` when you're already in C# and want rows as objects.
+  cells, `SqlServer.Connection(...)` when you're already in C# and want rows as objects.
 - **Secrets.** Passwords are never inline — a SQL login reads its password from
   the OS secret store under the `secretRef` you pass (or `CLRKERNEL_SECRET_<REF>`
   for headless runs).

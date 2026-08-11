@@ -84,6 +84,6 @@ Preview without executing:
 The same operations are available in `#!csharp` cells:
 
 ```csharp
-var deploy = Sql.Deploy("warehouse", new DeployOptions { Path = "./database/definitions", Recurse = true });
+var deploy = SqlServer.Deploy("warehouse", new DeployOptions { Path = "./database/definitions", Recurse = true });
 deploy   // e.g. "5 definition file(s) deployed."
 ```

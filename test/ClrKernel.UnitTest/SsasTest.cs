@@ -14,8 +14,8 @@ public class SsasCSharpCellTest {
     [TestMethod]
     public async Task Ssas_is_usable_from_a_csharp_cell() {
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
-        // Ssas is imported into C# cells; Connect builds a spec without touching a server.
-        var result = await engine.ExecuteAsync("Ssas.Connect(\"DataWarehouseServer01.yourdomain.local\", \"AdventureWorksDW2025\").Spec.Describe()");
+        // AnalysisServices is imported into C# cells; Connect builds a spec without touching a server.
+        var result = await engine.ExecuteAsync("AnalysisServices.Connect(\"DataWarehouseServer01.yourdomain.local\", \"AdventureWorksDW2025\").Spec.Describe()");
         var dd = result as DisplayData;
         Assert.IsNotNull(dd, "a C# cell should return display data");
         StringAssert.Contains((string)dd.Data["text/plain"], "DataWarehouseServer01.yourdomain.local/AdventureWorksDW2025");
@@ -71,13 +71,13 @@ public class SsasConnectionStringTest {
 public class SsasFactoryTest {
     [TestMethod]
     public void Connect_defaults_to_integrated_and_switches_on_user() {
-        Assert.AreEqual(SsasAuthMode.Integrated, Ssas.Connect("s", "d").Spec.Auth);
-        Assert.AreEqual(SsasAuthMode.UserPassword, Ssas.Connect("s", "d", "u", "p").Spec.Auth);
+        Assert.AreEqual(SsasAuthMode.Integrated, AnalysisServices.Connect("s", "d").Spec.Auth);
+        Assert.AreEqual(SsasAuthMode.UserPassword, AnalysisServices.Connect("s", "d", "u", "p").Spec.Auth);
     }
 
     [TestMethod]
     public void ConnectFabric_builds_powerbi_endpoint() {
-        var cube = Ssas.ConnectFabric("Analytics WS", "Sales Model");
+        var cube = AnalysisServices.ConnectFabric("Analytics WS", "Sales Model");
         Assert.AreEqual(SsasAuthMode.AzureAd, cube.Spec.Auth);
         Assert.AreEqual("powerbi://api.powerbi.com/v1.0/myorg/Analytics WS", cube.Spec.Server);
         Assert.AreEqual("Sales Model", cube.Spec.Database);
@@ -86,7 +86,7 @@ public class SsasFactoryTest {
 
     [TestMethod]
     public void FromConnectionString_uses_connection_string_mode() {
-        var cube = Ssas.FromConnectionString("Data Source=x;");
+        var cube = AnalysisServices.FromConnectionString("Data Source=x;");
         Assert.AreEqual(SsasAuthMode.ConnectionString, cube.Spec.Auth);
     }
 }

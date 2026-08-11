@@ -39,14 +39,14 @@ three lives.
   **per-column value picker** (▾ funnel: search + checkboxes of distinct values),
   a one-click **Clear**, and an **Analyze** panel of per-column stats. All filters
   combine.
-- **Query databases from C#** — an ergonomic `Sql` API (`Sql.Connection(...)
+- **Query databases from C#** — an ergonomic `SqlServer` API (`SqlServer.Connection(...)
   .Query(sql).Results()`) returns rows that both render as the grid and enumerate
   as dynamic or typed objects; plus bulk-copy, MERGE, and transactions. Opt-in
   provider packages (`ClrKernel.Database.Provider.Oracle`, `ClrKernel.Database.Provider.Odbc`) give the same
   experience against Oracle and ODBC sources.
 - **DAX & Analysis Services** — set a cell to **DAX** (or a ` ```dax ` fence) to
   query SSAS / Azure AS / Fabric semantic models, with a cube **connection button**
-  (add / edit cube). From C# the `Ssas` and `Fabric` helpers query with DAX, read
+  (add / edit cube). From C# the `AnalysisServices` and `Fabric` helpers query with DAX, read
   model metadata, process partitions, and bulk-load Fabric Warehouse tables.
 - **Shared libraries** — `#!import "lib.dib"` / `#!lib` with `--register`
   prefixes and run-once semantics; imports `.dib`, `.ipynb`, `.md`, and `.csx`
@@ -137,7 +137,7 @@ analytics.Query("select * from dbo.Orders where Total > @t", new { t = 1000 }).R
 
 **DAX** cells work the same way with a cube connection button (Add / Edit cube),
 targeting SSAS, Azure Analysis Services, or a Fabric / Power BI semantic model.
-For the full data story — the fluent `Sql` API, other providers (Oracle, ODBC),
+For the full data story — the fluent `SqlServer` API, other providers (Oracle, ODBC),
 ETL (bulk copy / MERGE / pipelines), Analysis Services, and Fabric Warehouse
 writes — see the [ClrKernel README](https://github.com/ClrKernel/ClrKernel#use)
 and the `samples/` folder (`Sql.nb.md`, `SqlQuery.nb.md`, `Dax.nb.md`, and more).

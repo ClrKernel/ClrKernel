@@ -18,12 +18,24 @@ public enum SsasRefresh {
 /// on-prem SSAS, Azure Analysis Services, or a Microsoft Fabric / Power BI
 /// semantic model, then query with DAX, read metadata, and process the model.
 /// <code>
-/// var cube = Ssas.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
+/// var cube = AnalysisServices.Connect("DataWarehouseServer01.yourdomain.local", "AdventureWorksDW2025");
 /// cube.Query("EVALUATE TOPN(100, 'Sales')");
 /// cube.ProcessPartitions(new[] { ("Sales", "2026") });
 /// </code>
+/// <para>
+/// Renamed from <c>Ssas</c> in 0.9 (D8); there is no alias, so an older notebook gets CS0103.
+/// </para>
+/// <para>
+/// <b>This type's name matches the last segment of its own namespace</b>, which is fine for
+/// every caller that exists — verified for <c>Language.Dax</c>, <c>ClrKernel.UnitTest</c>, this
+/// namespace itself, and notebook cells (a script has no enclosing namespace). It is <b>not</b>
+/// fine from a sibling under <c>ClrKernel.Database.Provider</c> — e.g. <c>…Provider.Fabric</c> —
+/// where the simple name binds to the namespace and fails CS0234. A future provider needing this
+/// type must qualify it as <c>Provider.AnalysisServices.AnalysisServices</c> or alias it with
+/// <c>using</c>. See HANDOFF-17 §5, P7.
+/// </para>
 /// </summary>
-public static class Ssas {
+public static class AnalysisServices {
     /// <summary>Connects to SSAS. With no user, uses Windows Integrated auth;
     /// with a user/password, uses basic auth.</summary>
     public static SsasConnection Connect(string server, string database, string user = null, string password = null) {

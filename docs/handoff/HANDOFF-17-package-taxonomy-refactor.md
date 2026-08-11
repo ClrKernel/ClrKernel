@@ -45,7 +45,7 @@ accepted.
 | P4b | Fluent dedup: rebase `SqlDatabase`/`SqlQuery`/`SqlTable` onto `DataSource*` (D7) | CODE DONE — live gate OPEN |
 | P5 | Split `ClrKernel.AnalysisServices` → `Language.Dax` + `Database.Provider.AnalysisServices` | DONE |
 | P6 | Extract shared Entra auth into `ClrKernel.Database.Entra` (new package, D5 amended) | DONE — live gate OPEN |
-| P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | TODO |
+| P7 | Entry-type renames (`Sql`→`SqlServer`, `Ssas`→`AnalysisServices`) + samples/README/extension sweep | DONE |
 | P8 | New `ClrKernel.DataEngineering` (table actions + step DAG) | TODO |
 | P9 | Split the test project three ways | TODO |
 | P10 | Final verification sweep | TODO |
@@ -572,18 +572,53 @@ compiles, both RPC harnesses 10/10. But `SsasTest`/`DaxTest` never touch Entra, 
 in `docs/windows-verification-checklist.md` §11a, including an identity check — success alone does
 not prove the probe order is unchanged.
 
-### P7 — Entry-type renames + docs/sample sweep
+### P7 — Entry-type renames + docs/sample sweep (DONE)
 
-- `Sql` → `SqlServer`, `Ssas` → `AnalysisServices` (D8).
-- Update the **generated** binding text in `InteractiveScriptEngine`'s post-connect hook
-  (`var {x} = Sql.Database(...)` → `SqlServer.Database(...)`) and the engine's default-usings list.
-- Sweep, in this order: `samples/*.nb.md` (both `#r "nuget:"` lines and cell bodies), `README.md`,
-  `editors/vscode/README.md`, `docs/windows-verification-checklist.md`,
-  `editors/vscode/src/{sqlConnections,daxConnections}.ts` if they emit directive or code text.
-- `editors/vscode/CHANGELOG.md` — add a breaking-change entry; do **not** rewrite history entries.
+Both renames landed, clean break, no alias (user decision).
 
-**Gate:** P6 gate + `./build.sh Extension` + every `samples/*.nb.md` opens and its first cell runs
-under `clrkernel run` or the dev kernel.
+**The D8 collision I warned about in P5 was overstated — measured, not reasoned.** A type named
+after the last segment of its own namespace was probed against the real compiler and the real
+engine in five contexts:
+
+| Caller | `AnalysisServices.Connect(…)` |
+| --- | --- |
+| inside `…Provider.AnalysisServices` | ✅ compiles |
+| sibling under `ClrKernel.Database.Provider` (e.g. `…Provider.Fabric`) | ❌ CS0234 — binds to the namespace |
+| `ClrKernel.Language.Dax` (the actual caller) | ✅ compiles |
+| `ClrKernel.UnitTest` | ✅ compiles |
+| a notebook cell (Roslyn script — no enclosing namespace) | ✅ works |
+
+Only namespaces nested *under* `ClrKernel.Database.Provider` collide, and no caller lives there.
+D13's case was different: the type `Database` sat in `ClrKernel.Database`, which **is** an enclosing
+namespace of `ClrKernel.UnitTest` and `ClrKernel.Language.Sql`. The constraint that remains is
+recorded as a doc comment on the type: a future provider under `…Provider.*` must qualify or alias
+it. The `SqlServer` global was probed the same way and resolves in cells.
+
+**Renaming was surgical, not a blanket replace.** `Ssas` and `Sql` are both prefixes of types that
+keep their names — `SsasConnection`, `SsasSession`, `SsasAuthMode`, `SqlSession`, `SqlDatabase`,
+and `DataSourceQuery.Sql`/`SqlQuery.Sql` (the query *text* property, nothing to do with the global).
+`\bSsas\b` was safe because every bare occurrence was the entry type; `Sql` was not, and was done
+by enumerated site. In docs, `Sql\.(?=[A-Z])` kept the sample filename `Sql.nb.md` intact.
+
+**Gate — revised, because the original was not satisfiable off-Windows.** It asked that every
+`samples/*.nb.md` run. Most samples need a live backend, so instead:
+
+- The three backend-free samples (`MermaidDiagrams`, `PowerShell`, `HttpRequests`) run end-to-end,
+  exit 0.
+- Every other sample was executed and checked for **name-resolution** failures only
+  (`CS0103`/`CS0246`/`CS0234`) — all clean. They now fail where they should: at connect.
+  `AnalysisServices.nb.md` fails with `NotSupportedException: … only on Windows systems` from
+  ADOMD's integrated-auth path, which is the documented ⊞ case.
+- `FluentSqlTest` and `SsasTest` execute `SqlServer.Connection(…)` and `AnalysisServices.Connect(…)`
+  in real cells, so both new globals are proven to resolve at script-compile time.
+
+**Pre-existing defect fixed in passing:** `samples/AnalysisServices.nb.md` passed an undefined
+`password` variable — `CS0103` at `HEAD`, before this phase. It now reads the secret from the store,
+which also makes the sample consistent with the no-passwords-in-notebooks invariant.
+
+276 passed / 8 skipped / 284 total, 0 warnings, format clean, extension compiles, both RPC harnesses
+10/10. `editors/vscode/CHANGELOG.md` gains three breaking-change entries under `[Unreleased]`;
+history entries untouched.
 
 ### P8 — `ClrKernel.DataEngineering`
 

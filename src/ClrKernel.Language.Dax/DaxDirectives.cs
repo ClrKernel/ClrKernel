@@ -73,22 +73,22 @@ public static class DaxDirectives {
 
         SsasConnectionSpec spec;
         if (!string.IsNullOrWhiteSpace(connectionString)) {
-            spec = Ssas.FromConnectionString(connectionString).Spec;
+            spec = AnalysisServices.FromConnectionString(connectionString).Spec;
         } else if (fabric || (!string.IsNullOrWhiteSpace(workspace) && !string.IsNullOrWhiteSpace(model))) {
             if (string.IsNullOrWhiteSpace(workspace) || string.IsNullOrWhiteSpace(model)) {
                 throw new FormatException("#!dax-connect --fabric requires --workspace and --model.");
             }
-            spec = Ssas.ConnectFabric(workspace, model).Spec;
+            spec = AnalysisServices.ConnectFabric(workspace, model).Spec;
         } else if (azureAs || auth == "aad" || auth == "entra") {
             RequireServer(server);
-            spec = Ssas.ConnectAzureAnalysisServices(server, database).Spec;
+            spec = AnalysisServices.ConnectAzureAnalysisServices(server, database).Spec;
         } else if (!string.IsNullOrWhiteSpace(user) || auth == "sql" || auth == "user") {
             RequireServer(server);
             var password = string.IsNullOrWhiteSpace(secret) ? null : ResolveSecret(secret);
-            spec = Ssas.Connect(server, database, user, password).Spec;
+            spec = AnalysisServices.Connect(server, database, user, password).Spec;
         } else {
             RequireServer(server);
-            spec = Ssas.Connect(server, database).Spec;
+            spec = AnalysisServices.Connect(server, database).Spec;
         }
 
         return new DaxConnectDirective(name, spec, isDefault);

@@ -77,12 +77,12 @@ Directives & errors:
 
 - [ ] Two `#!sql-connect` lines with one `--default`; a cell with `-- connections <name>` targets the named one; a cell with no comment uses the default.
 - [ ] **Variable binding**: `#!sql-connect --name analytics ...` then in a **C#** cell `analytics.Query("select 1 as n").Results()` works (auto-bound variable).
-- [ ] `--var dw` binds `dw`; `--name my-dw` (not identifier-safe) with no `--var` binds nothing but `Sql.Database("my-dw")` still resolves; `--no-var` skips binding.
+- [ ] `--var dw` binds `dw`; `--name my-dw` (not identifier-safe) with no `--var` binds nothing but `SqlServer.Database("my-dw")` still resolves; `--no-var` skips binding.
 - [ ] Bad SQL (`SELCT 1`) → **live syntax check** underlines it; running a runtime error (e.g. `SELECT 1/0`) surfaces the **server message with number/severity/line**, not a bare .NET stack trace.
 
 ## 6. Query databases from C# (Sql API) — **(SQL)**
 
-- [ ] `Sql.Connection("<server>","<db>")` (Integrated) → `.Query("select ...").Results()` renders the grid.
+- [ ] `SqlServer.Connection("<server>","<db>")` (Integrated) → `.Query("select ...").Results()` renders the grid.
 - [ ] Same result object enumerates: `foreach (var r in results) ...` and `results[0]["Col"]` work.
 - [ ] `.Results<T>()` maps to a `record`; a typed property reads correctly.
 - [ ] Parameters: `.Query("... where X = @x", new { x = ... })` binds.
@@ -153,12 +153,12 @@ e.g. `%DLC%\java\openedge.jar`).
 - [ ] Set a cell to **DAX**; the cube **Select connection** button appears.
 - [ ] **Add cube…** → point at your SSAS/Azure AS instance + database. **Edit cube…** works from the dropdown.
 - [ ] `EVALUATE TOPN(100, ...)` → results in the grid; DAX keywords/functions autocomplete.
-- [ ] From C#: `Ssas.Connect("<ssas>","<db>")` → `cube.Query("EVALUATE ...")` grid; `cube.Tables().DisplayTable()` shows model metadata.
+- [ ] From C#: `AnalysisServices.Connect("<ssas>","<db>")` → `cube.Query("EVALUATE ...")` grid; `cube.Tables().DisplayTable()` shows model metadata.
 - [ ] **⊞** `cube.ProcessPartitions(...)` / `cube.Recalculate()` against on-prem SSAS with Integrated auth (this is generally a Windows-only path) — a partition refreshes.
 
 ## 10. DAX + Fabric / Power BI semantic model — **(Fabric)**
 
-- [ ] `#!dax-connect --fabric --workspace "<W>" --model "<M>"` (or `Ssas.ConnectFabric("<W>","<M>")`) triggers **Entra** sign-in and connects.
+- [ ] `#!dax-connect --fabric --workspace "<W>" --model "<M>"` (or `AnalysisServices.ConnectFabric("<W>","<M>")`) triggers **Entra** sign-in and connects.
 - [ ] A DAX `EVALUATE` against the semantic model returns rows in the grid.
 
 ## 11. Fabric Warehouse writes — **(Fabric)**
@@ -177,8 +177,8 @@ paths below have not been executed since the move**. The two providers' credenti
 deliberately left different — that is the thing to confirm, not to "fix".
 
 - [ ] `Fabric.Connect()` → sign-in behaves as it did before: non-interactive `DefaultAzureCredential` first, browser prompt only if that yields nothing.
-- [ ] `Ssas.ConnectFabric("<W>","<M>")` → acquires a token and connects (scope `https://analysis.windows.net/powerbi/api/.default`).
-- [ ] `Ssas.ConnectAzureAnalysisServices("<server>","<db>")` against Azure AS → connects (scope `https://*.asazure.windows.net/.default`).
+- [ ] `AnalysisServices.ConnectFabric("<W>","<M>")` → acquires a token and connects (scope `https://analysis.windows.net/powerbi/api/.default`).
+- [ ] `AnalysisServices.ConnectAzureAnalysisServices("<server>","<db>")` against Azure AS → connects (scope `https://*.asazure.windows.net/.default`).
 - [ ] A Fabric Warehouse query/`BulkInsert` still authenticates — this is the `https://database.windows.net/.default` scope, now read from `EntraScopes.SqlDatabase`.
 - [ ] `Fabric.ClientSecret(tenantId, clientId, secret)` still rejects blank arguments with `ArgumentException` naming the offending one, and connects with valid ones.
 - [ ] **Identity check, not just success:** confirm the account each provider signs in as is the same one as before the move. A changed credential-probe order surfaces as a *working* connection under the wrong identity, not as an error.

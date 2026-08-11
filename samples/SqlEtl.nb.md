@@ -39,7 +39,7 @@ the source. Returns inserted / updated / deleted counts.
 ## Bulk copy from in-memory data (C# API)
 
 Any collection — POCOs, anonymous types, dictionaries, or scalar arrays — can be
-bulk-loaded. `Sql` is the session's connection/ETL handle in C# cells.
+bulk-loaded. `SqlServer` is the session's connection/ETL handle in C# cells.
 
 ```csharp
 var rows = Enumerable.Range(1, 50_000).Select(i => new {
@@ -48,7 +48,7 @@ var rows = Enumerable.Range(1, 50_000).Select(i => new {
     Amount = i * 1.5m,
 });
 
-var result = Sql.BulkCopy("warehouse", "dbo.Items", rows,
+var result = SqlServer.BulkCopy("warehouse", "dbo.Items", rows,
     new BulkCopyOptions { BatchSize = 10_000, TruncateFirst = true });
 
 result   // "50,000 rows → dbo.Items (… ms)"
@@ -57,7 +57,7 @@ result   // "50,000 rows → dbo.Items (… ms)"
 ## Programmatic MERGE (C# API)
 
 ```csharp
-var merge = Sql.Merge("warehouse", new MergeSpec {
+var merge = SqlServer.Merge("warehouse", new MergeSpec {
     Target = "dbo.Customers",
     Source = "stg.Customers",
     KeyColumns = new[] { "Id" },
@@ -73,10 +73,10 @@ Read a reader from one connection and stream it straight into another — no
 buffering, exact row count reported:
 
 ```csharp
-using var src = Sql.OpenConnection("analytics");
+using var src = SqlServer.OpenConnection("analytics");
 using var cmd = src.CreateCommand();
 cmd.CommandText = "SELECT * FROM dbo.BigTable";
 using var reader = cmd.ExecuteReader();
 
-Sql.BulkCopy("warehouse", "dbo.BigTable", reader);
+SqlServer.BulkCopy("warehouse", "dbo.BigTable", reader);
 ```

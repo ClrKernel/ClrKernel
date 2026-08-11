@@ -47,7 +47,7 @@ target table is created from the reader's schema (UTF-8 `varchar`, `datetime2` â
 never `nvarchar`) if it doesn't already exist.
 
 ```csharp
-using var conn = Sql.OpenConnection("analytics");
+using var conn = SqlServer.OpenConnection("analytics");
 using var cmd = new Microsoft.Data.SqlClient.SqlCommand("SELECT * FROM dbo.Orders", conn);
 using var reader = cmd.ExecuteReader();
 
@@ -79,7 +79,7 @@ var requests = new[] {
 var results = wh.ReloadBatch(
     requests,
     req => {
-        var c = Sql.OpenConnection("analytics");
+        var c = SqlServer.OpenConnection("analytics");
         var q = new Microsoft.Data.SqlClient.SqlCommand(
             $"SELECT * FROM {req.TableName} WHERE {req.SegmentFilter}", c);
         return q.ExecuteReader(CommandBehavior.CloseConnection);

@@ -89,13 +89,13 @@ so a saved connection resolves without re-adding it (and the same file feeds the
 
 #### Querying from C#
 
-C# cells get an ergonomic query API on `Sql` — no `#!sql-connect` needed for
-ad-hoc work. `Sql.Connection(server, database)` opens a connection (Integrated
+C# cells get an ergonomic query API on `SqlServer` — no `#!sql-connect` needed for
+ad-hoc work. `SqlServer.Connection(server, database)` opens a connection (Integrated
 Security by default), and `.Query(sql).Results()` returns rows that **render as
 the interactive grid and are enumerable as dynamic rows** in the same object:
 
 ```csharp
-var dw = Sql.Connection("dw.db.local", "datawarehouse");
+var dw = SqlServer.Connection("dw.db.local", "datawarehouse");
 
 var orders = dw.Query("select * from dbo.Orders").Results();  // grid when shown…
 foreach (var o in orders) Console.WriteLine($"{o.OrderId}: {o.Total}");  // …rows in code
@@ -113,9 +113,9 @@ dw.Table("stg.Orders").BulkCopyFrom(dw.Query("select * from dbo.Orders"), create
 record Order(int OrderId, string Customer, decimal Total);
 ```
 
-For a SQL login use `Sql.Connection(server, db, user, "sql:secretRef")` (password
-from the secret store); `Sql.AzureConnection(...)` for Entra, or
-`Sql.Database("analytics")` to reuse a registered `#!sql-connect` connection. See
+For a SQL login use `SqlServer.Connection(server, db, user, "sql:secretRef")` (password
+from the secret store); `SqlServer.AzureConnection(...)` for Entra, or
+`SqlServer.Database("analytics")` to reuse a registered `#!sql-connect` connection. See
 [samples/SqlQuery.nb.md](samples/SqlQuery.nb.md).
 
 #### Bulk copy & MERGE (ETL)
@@ -134,9 +134,9 @@ Add `--create` to `#!sql-bulk` to create the destination table from the source
 schema when it doesn't already exist (the same create-from-schema the C#
 `.Table(name).BulkCopyFrom(query, createIfMissing: true)` uses).
 
-From C# cells, `Sql` bulk-loads any collection (POCOs, dictionaries, scalar
-arrays) and runs MERGEs — `Sql.BulkCopy("warehouse", "dbo.Items", rows)`,
-`Sql.Merge("warehouse", new MergeSpec { Target = "dbo.Customers", Source =
+From C# cells, `SqlServer` bulk-loads any collection (POCOs, dictionaries, scalar
+arrays) and runs MERGEs — `SqlServer.BulkCopy("warehouse", "dbo.Items", rows)`,
+`SqlServer.Merge("warehouse", new MergeSpec { Target = "dbo.Customers", Source =
 "stg.Customers", KeyColumns = new[] { "Id" } })`. See
 [samples/SqlEtl.nb.md](samples/SqlEtl.nb.md).
 
@@ -200,18 +200,18 @@ as `#!sql` cells). See [samples/MultiProvider.nb.md](samples/MultiProvider.nb.md
 ### Analysis Services (SSAS / Fabric)
 
 C# cells can drive Tabular models — on-prem SQL Server Analysis Services, Azure
-Analysis Services, or Microsoft Fabric / Power BI semantic models — via the `Ssas`
+Analysis Services, or Microsoft Fabric / Power BI semantic models — via the `AnalysisServices`
 helper: query with DAX, read table/partition metadata, and process the model.
 
 ```csharp
-var cube = Ssas.Connect("ssas.db.local", "DataWarehouse");   // Integrated auth
+var cube = AnalysisServices.Connect("ssas.db.local", "DataWarehouse");   // Integrated auth
 cube.Query("EVALUATE TOPN(100, 'Sales')");                   // DAX → interactive grid
 cube.Tables().DisplayTable();                                // model metadata
 cube.ProcessPartitions(new[] { ("Sales", "2026") });         // refresh a partition
 cube.Recalculate();
 ```
 
-`Ssas.ConnectFabric("Workspace", "Model")` connects to a Fabric/Power BI semantic
+`AnalysisServices.ConnectFabric("Workspace", "Model")` connects to a Fabric/Power BI semantic
 model with Entra auth. On-prem SSAS + Integrated auth + processing generally run
 on Windows (e.g. SQL Server Agent). See
 [samples/AnalysisServices.nb.md](samples/AnalysisServices.nb.md).
@@ -249,7 +249,7 @@ var wh = Fabric.Connect()                       // interactive / default Entra s
     .WithStaging("Lakehouse_Staging");          // a lakehouse in the same workspace
 
 // Bulk-insert any IDataReader (e.g. a SQL Server query via ClrKernel.Language.Sql):
-using var conn = Sql.OpenConnection("analytics");
+using var conn = SqlServer.OpenConnection("analytics");
 using var cmd = new SqlCommand("SELECT * FROM dbo.Orders", conn);
 using var reader = cmd.ExecuteReader();
 wh.BulkInsert(reader, "dbo.Orders", createIfMissing: true);
@@ -266,7 +266,7 @@ var requests = new[] {
 var results = wh.ReloadBatch(
     requests,
     req => {
-        var c = Sql.OpenConnection("analytics");
+        var c = SqlServer.OpenConnection("analytics");
         var q = new SqlCommand($"SELECT * FROM {req.TableName} WHERE {req.SegmentFilter}", c);
         return q.ExecuteReader(CommandBehavior.CloseConnection); // reader owns/closes the connection
     },
