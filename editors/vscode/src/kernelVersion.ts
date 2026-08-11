@@ -9,13 +9,13 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.8.*';
+export const SUPPORTED_KERNEL_RANGE = '0.9.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.8.x';
+export const SUPPORTED_KERNEL_LABEL = '0.9.x';
 
 const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 8;
+const SUPPORTED_MINOR = 9;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
 
