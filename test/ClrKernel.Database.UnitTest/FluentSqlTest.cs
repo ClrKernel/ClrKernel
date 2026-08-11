@@ -303,6 +303,44 @@ public class FluentSqlIntegrationTest {
 
     public record Order(int Id, string Customer, decimal Total);
 
+    // ---- The two P4b behaviour changes ----------------------------------------
+    // Both were bugs in the SQL-specific implementations the D7 rebase deleted, so on
+    // pre-rebase code these pass silently by doing the wrong thing. They are the reason
+    // "it behaves as it did before" is the failure signal for this phase, not the success
+    // one — which makes them worth asserting rather than eyeballing.
+
+    [TestMethod]
+    public void DefaultCommandTimeout_is_honoured_by_Scalar() {
+        var db = Db();
+        db.DefaultCommandTimeout = 1;
+
+        // Pre-rebase, SqlDatabase.Scalar passed a null timeout and ignored the property it
+        // documented: the 5s wait would finish inside the 30s default and return 1.
+        var e = Assert.ThrowsExactly<SqlException>(() => db.Scalar<int>("waitfor delay \'00:00:05\'; select 1"));
+        Assert.AreEqual(-2, e.Number, "expected a command timeout (SqlClient reports -2), not another server error");
+    }
+
+    [TestMethod]
+    public void Transaction_query_honours_its_row_limit() {
+        var db = Db();
+        db.Execute("IF OBJECT_ID(\'dbo.FluentTxLimit\') IS NOT NULL DROP TABLE dbo.FluentTxLimit;");
+        db.Execute("CREATE TABLE dbo.FluentTxLimit (Name NVARCHAR(20));");
+        db.Execute("INSERT INTO dbo.FluentTxLimit VALUES (\'alpha\'),(\'beta\'),(\'gamma\');");
+
+        using var tx = db.Transaction();
+        var results = tx.Query("select Name from dbo.FluentTxLimit order by Name", null, limit: 2);
+
+        // limit caps the rendered grid, not the data — every row stays enumerable.
+        Assert.AreEqual(3, results.Count, "all rows remain available regardless of the preview limit");
+
+        var html = (string)results.Data["text/html"];
+        StringAssert.Contains(html, "alpha");
+        StringAssert.Contains(html, "beta");
+        Assert.IsFalse(html.Contains("gamma"),
+            "the third row is past the limit; pre-rebase the SQL transaction accepted this argument and dropped it");
+    }
+
+
     [TestMethod]
     public void Query_results_grid_rows_typed_and_parameters() {
         var db = Db();
