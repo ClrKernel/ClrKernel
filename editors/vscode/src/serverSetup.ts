@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { SUPPORTED_KERNEL_RANGE } from './kernelVersion';
 
 // The server now ships inside the ClrKernel CLI tool: `clrkernel serve`.
 const TOOL_PACKAGE = 'ClrKernel';
@@ -66,7 +67,7 @@ export async function offerServerInstall(log: Logger): Promise<string | undefine
 
     const pick = await vscode.window.showInformationMessage(
         'ClrKernel is not installed. Install it as a global .NET tool now?',
-        { modal: true, detail: `Runs: dotnet tool install --global ${TOOL_PACKAGE}` },
+        { modal: true, detail: `Runs: dotnet tool install --global ${TOOL_PACKAGE} --version ${SUPPORTED_KERNEL_RANGE}` },
         'Install',
     );
     if (pick !== 'Install') {
@@ -76,9 +77,20 @@ export async function offerServerInstall(log: Logger): Promise<string | undefine
     const ok = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'Installing ClrKernel…', cancellable: false },
         async () => {
-            let result = await run('dotnet', ['tool', 'install', '--global', TOOL_PACKAGE], log);
+            // Pinned to the kernel line this extension speaks. Unpinned, this used to install
+            // (or, on the already-installed path, `update` to) whatever was newest on NuGet —
+            // which would silently move a working setup onto a kernel this build can't talk to.
+            const version = ['--version', SUPPORTED_KERNEL_RANGE];
+            let result = await run('dotnet', ['tool', 'install', '--global', TOOL_PACKAGE, ...version], log);
             if (result.code !== 0 && /already installed/i.test(result.output)) {
-                result = await run('dotnet', ['tool', 'update', '--global', TOOL_PACKAGE], log);
+                // Repair forward within the supported line only. If the user already has a newer
+                // kernel this is a downgrade and dotnet will refuse — which is fine: we leave
+                // their install alone and the version check at handshake explains the mismatch.
+                result = await run('dotnet', ['tool', 'update', '--global', TOOL_PACKAGE, ...version], log);
+                if (result.code !== 0) {
+                    log('leaving the installed ClrKernel as it is; see the version notice for details');
+                    return true;
+                }
             }
             return result.code === 0;
         },

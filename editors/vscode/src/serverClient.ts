@@ -30,6 +30,7 @@ export interface ExecuteResult {
  */
 export class ServerClient {
     private client: LanguageClient | undefined;
+    private reportedKernelVersion: string | undefined;
     private displayHandler?: (note: DisplayNotification) => void;
     private updateHandler?: (note: DisplayNotification) => void;
 
@@ -62,6 +63,12 @@ export class ServerClient {
         this.client = new LanguageClient('clrkernel', 'ClrKernel', serverOptions, clientOptions);
         await this.client.start();
 
+        // The server reports its assembly version in the initialize response; the caller
+        // compares it against what this extension was built for.
+        const info = this.client.initializeResult?.serverInfo;
+        this.reportedKernelVersion = info?.version;
+        this.output.appendLine(`server reports ${info?.name ?? 'ClrKernel'} ${info?.version ?? '(no version)'}`);
+
         this.client.onNotification('clrkernel/display', (note: DisplayNotification) => this.displayHandler?.(note));
         this.client.onNotification('clrkernel/updateDisplay', (note: DisplayNotification) => this.updateHandler?.(note));
         this.output.appendLine('language server connected');
@@ -69,6 +76,11 @@ export class ServerClient {
 
     get running(): boolean {
         return this.client?.state === State.Running;
+    }
+
+    /** The kernel version from the initialize handshake, or undefined if it reported none. */
+    get kernelVersion(): string | undefined {
+        return this.reportedKernelVersion;
     }
 
     onDisplay(handler: (note: DisplayNotification) => void): void {

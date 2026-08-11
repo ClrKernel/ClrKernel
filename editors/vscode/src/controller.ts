@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
 import { DisplayNotification, ServerClient } from './serverClient';
 import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 
@@ -11,6 +12,8 @@ import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 export class ClrKernelController {
     private readonly controller: vscode.NotebookController;
     private readonly output: vscode.OutputChannel;
+    // One version notice per window; a restart is what re-arms it.
+    private warnedKernelVersion = false;
     private client: ServerClient | undefined;
 
     // Routing tables for streaming output.
@@ -74,7 +77,31 @@ export class ClrKernelController {
         client.onDisplay((note) => this.onDisplay(note, false));
         client.onUpdateDisplay((note) => this.onDisplay(note, true));
         this.client = client;
+        this.warnOnKernelMismatch(client);
         return client;
+    }
+
+    /**
+     * Tells the user once per session when the installed kernel isn't the line this extension
+     * speaks. Not fatal — cells still execute; it's the connection UI that stops working — so
+     * this warns rather than refusing to start.
+     */
+    private warnOnKernelMismatch(client: ServerClient): void {
+        if (this.warnedKernelVersion) {
+            return;
+        }
+        const version = client.kernelVersion;
+        const warning = kernelVersionWarning(compareKernelVersion(version), version);
+        if (!warning) {
+            return;
+        }
+        this.warnedKernelVersion = true;
+        this.output.appendLine(warning);
+        void vscode.window.showWarningMessage(warning, 'Show Output').then((pick) => {
+            if (pick === 'Show Output') {
+                this.output.show(true);
+            }
+        });
     }
 
     private reportStartError(error: unknown): void {

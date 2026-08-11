@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.1] - 2026-08-11
+
+Compatibility guard. No new features — this release exists so that the next
+kernel, which changes the private `clrkernel/*` RPC surface, cannot silently
+break an installed setup.
+
+- **The extension no longer moves your kernel off the version it speaks.** Installing
+  now pins `--version 0.8.*`. Previously, an install onto a machine that already had
+  the tool fell back to a bare `dotnet tool update --global ClrKernel`, which pulls
+  whatever is newest — so publishing a newer kernel could have upgraded working
+  setups into an incompatible pair without anyone asking for it.
+- **A mismatched kernel now says so.** The version reported in the language-server
+  handshake is checked against what this build supports, and a mismatch shows one
+  warning naming the version found and the command to get back. Cells still run —
+  execution is unaffected — but the SQL and DAX connection buttons need a matching
+  pair, so the notice explains that rather than leaving them mysteriously dead.
+
 ## [0.4.0] - 2026-08-09
 
 Data notebooks — SQL, DAX, and multi-database querying with an interactive
