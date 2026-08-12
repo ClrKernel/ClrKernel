@@ -1,7 +1,7 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
   "version": "0.5.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
@@ -148,12 +148,12 @@
       },
       {
         "command": "clrkernel.sql.addConnection",
-        "title": "SQL: Add Connection…",
+        "title": "SQL: Add Connection\u2026",
         "category": "ClrKernel"
       },
       {
         "command": "clrkernel.sql.editConnection",
-        "title": "SQL: Edit Connection…",
+        "title": "SQL: Edit Connection\u2026",
         "category": "ClrKernel"
       },
       {
@@ -163,13 +163,20 @@
       },
       {
         "command": "clrkernel.dax.addConnection",
-        "title": "DAX: Add Cube…",
+        "title": "DAX: Add Cube\u2026",
         "category": "ClrKernel"
       },
       {
         "command": "clrkernel.dax.editConnection",
-        "title": "DAX: Edit Cube…",
+        "title": "DAX: Edit Cube\u2026",
         "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.restartKernel",
+        "title": "Restart Kernel",
+        "shortTitle": "Restart",
+        "category": "ClrKernel",
+        "icon": "$(debug-restart)"
       }
     ],
     "menus": {
@@ -177,6 +184,13 @@
         {
           "command": "clrkernel.newNotebook",
           "group": "notebook"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "clrkernel.restartKernel",
+          "when": "notebookType == clrkernel-markdown",
+          "group": "navigation/execute@5"
         }
       ]
     }
@@ -186,7 +200,9 @@
     "watch": "tsc -w -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "changelog": "node scripts/changelog.js"
+    "changelog": "node scripts/changelog.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -194,7 +210,8 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
   },
   "icon": "images/icon.png",
   "keywords": [
