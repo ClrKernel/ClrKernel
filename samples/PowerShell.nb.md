@@ -29,10 +29,39 @@ Get-Command Get-Date, Get-Location |
   Select-Object Name, CommandType
 ```
 
+```powershell
+# Colored output using modern PSStyle
+Write-Output "$($PSStyle.Foreground.Green)Success:$($PSStyle.Reset) File uploaded."
+Write-Output "$($PSStyle.Foreground.Red)Error:$($PSStyle.Reset) Connection failed."
+```
+
+```powershell
+# Green text (\e[32m) and Reset (\e[0m)
+Write-Output "`e[32mThis text is green`e[0m"
+
+# Red text (\e[31m)
+Write-Output "`e[31mThis text is red`e[0m"
+Write-Output "`e[01;32mBob@example.com`e[00m:`e[01;34mC:/bash`e[00m"
+
+echo "console.log('\x1b[32m%s\x1b[0m', 'Hello World');" | bun run -
+```
+
 ## Mixing languages
 
 C# and PowerShell cells share the same notebook — use whichever fits the step.
 
 ```csharp
 Console.WriteLine("C# and PowerShell, one notebook.");
+```
+
+```csharp
+var x = 10;
+```
+
+```csharp
+x
+```
+
+```csharp
+x.Display(); // semicolon stops displayed value from showing this should show 10 with (i) int type like
 ```

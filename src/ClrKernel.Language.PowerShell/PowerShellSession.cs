@@ -30,8 +30,31 @@ public sealed class PowerShellSession : IDisposable {
                 // open; Import-Module still pulls anything else on demand.
                 _runspace = RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
                 _runspace.Open();
+                EnableAnsiOutput(_runspace);
             }
             return _runspace;
+        }
+    }
+
+    /// <summary>
+    /// Makes PowerShell colour its own output.
+    /// </summary>
+    /// <remarks>
+    /// <c>$PSStyle.OutputRendering</c> defaults to <c>Host</c>, meaning "emit escape sequences only
+    /// if the host is a console that can show them". A hosted runspace is not, so every table,
+    /// list and formatted view came through with the colour silently dropped — not stripped later,
+    /// never produced. <c>Ansi</c> makes it always emit, which is what a notebook wants: the cell
+    /// renders the escapes as HTML, and the plain-text view strips them again.
+    /// <para>Best effort — <c>$PSStyle</c> arrived in PowerShell 7.2.</para>
+    /// </remarks>
+    private static void EnableAnsiOutput(Runspace runspace) {
+        try {
+            using var ps = SMA.PowerShell.Create();
+            ps.Runspace = runspace;
+            ps.AddScript("if ($null -ne $PSStyle) { $PSStyle.OutputRendering = 'Ansi' }");
+            ps.Invoke();
+        } catch (RuntimeException) {
+            // An older PowerShell simply stays monochrome.
         }
     }
 
@@ -59,9 +82,21 @@ public sealed class PowerShellSession : IDisposable {
 
             // Write-Host / Write-Information appear on the Information stream.
             foreach (var record in ps.Streams.Information) {
-                var text = record?.MessageData?.ToString();
-                if (!string.IsNullOrEmpty(text)) {
-                    sb.AppendLine(text);
+                // Write-Host carries its colours as properties on a HostInformationMessage rather
+                // than as escape sequences — a console host applies them itself. Turning them back
+                // into ANSI is what keeps `Write-Host -ForegroundColor Red` red in a notebook.
+                // (A -BackgroundColor with no foreground never arrives: PowerShell delivers the
+                // record with both colours null in that case, so there is nothing to apply.)
+                if (record?.MessageData is HostInformationMessage host) {
+                    var text = host.Message;
+                    if (!string.IsNullOrEmpty(text)) {
+                        sb.AppendLine(Colourize(text, host.ForegroundColor, host.BackgroundColor));
+                    }
+                    continue;
+                }
+                var plain = record?.MessageData?.ToString();
+                if (!string.IsNullOrEmpty(plain)) {
+                    sb.AppendLine(plain);
                 }
             }
 
@@ -70,14 +105,19 @@ public sealed class PowerShellSession : IDisposable {
                 sb.Append(formatted).Append('\n');
             }
 
+            // The console colours these; we format them ourselves, so we colour them ourselves.
             foreach (var warning in ps.Streams.Warning) {
-                sb.Append("WARNING: ").Append(warning.Message).Append('\n');
+                sb.Append(Colourize("WARNING: " + warning.Message, ConsoleColor.Yellow, null)).Append('\n');
             }
             foreach (var error in ps.Streams.Error) {
-                sb.Append(FormatError(error)).Append('\n');
+                sb.Append(Colourize(FormatError(error), ConsoleColor.Red, null)).Append('\n');
             }
 
-            return new DisplayData(sb.ToString().TrimEnd('\r', '\n'));
+            var console = sb.ToString().TrimEnd('\r', '\n');
+            // PowerShell colours its own output, so the raw text is full of ESC[…m sequences.
+            // Plain text keeps them out of the way for Jupyter and headless runs; the HTML view
+            // renders them, which is what a notebook shows.
+            return new DisplayData(AnsiRenderer.Strip(console), AnsiRenderer.ToHtml(console));
         }
     }
 
@@ -340,6 +380,48 @@ public sealed class PowerShellSession : IDisposable {
             sb.Append(s?.ToString());
         }
         return sb.ToString().TrimEnd('\r', '\n');
+    }
+
+    /// <summary>Wraps text in the ANSI codes for the given console colours.</summary>
+    private static string Colourize(string text, ConsoleColor? foreground, ConsoleColor? background) {
+        if (string.IsNullOrEmpty(text) || (foreground == null && background == null)) {
+            return text;
+        }
+        var codes = new StringBuilder();
+        if (foreground != null) {
+            codes.Append(AnsiCode(foreground.Value, background: false));
+        }
+        if (background != null) {
+            if (codes.Length > 0) {
+                codes.Append(';');
+            }
+            codes.Append(AnsiCode(background.Value, background: true));
+        }
+        return "\u001b[" + codes + "m" + text + "\u001b[0m";
+    }
+
+    // ConsoleColor's order is not the ANSI order, so this is a lookup rather than arithmetic.
+    private static int AnsiCode(ConsoleColor colour, bool background) {
+        var code = colour switch {
+            ConsoleColor.Black => 30,
+            ConsoleColor.DarkBlue => 34,
+            ConsoleColor.DarkGreen => 32,
+            ConsoleColor.DarkCyan => 36,
+            ConsoleColor.DarkRed => 31,
+            ConsoleColor.DarkMagenta => 35,
+            ConsoleColor.DarkYellow => 33,
+            ConsoleColor.Gray => 37,
+            ConsoleColor.DarkGray => 90,
+            ConsoleColor.Blue => 94,
+            ConsoleColor.Green => 92,
+            ConsoleColor.Cyan => 96,
+            ConsoleColor.Red => 91,
+            ConsoleColor.Magenta => 95,
+            ConsoleColor.Yellow => 93,
+            ConsoleColor.White => 97,
+            _ => 39,
+        };
+        return background ? code + 10 : code;
     }
 
     private static string FormatError(ErrorRecord error) {
