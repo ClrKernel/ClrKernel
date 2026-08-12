@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
 import { DisplayNotification, ServerClient } from './serverClient';
+import { SingleFlight } from './singleFlight';
 import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 
 /**
@@ -15,6 +16,8 @@ export class ClrKernelController {
     // One version notice per window; a restart is what re-arms it.
     private warnedKernelVersion = false;
     private client: ServerClient | undefined;
+    // One server per window, even when several notebooks ask at once — see SingleFlight.
+    private readonly starting = new SingleFlight<ServerClient>();
 
     // Routing tables for streaming output.
     private readonly activeExecutions = new Map<string, vscode.NotebookCellExecution>();
@@ -40,6 +43,15 @@ export class ClrKernelController {
     private executionOrder = 0;
 
     private async ensureClient(notebook: vscode.NotebookDocument): Promise<ServerClient> {
+        if (this.client?.running) {
+            return this.client;
+        }
+        // Restoring a window opens every notebook at once, and a cell run can race the connection
+        // button. Without this each of them starts its own server and all but the last are leaked.
+        return this.starting.run(() => this.startForNotebook(notebook));
+    }
+
+    private async startForNotebook(notebook: vscode.NotebookDocument): Promise<ServerClient> {
         if (this.client?.running) {
             return this.client;
         }
@@ -253,6 +265,36 @@ export class ClrKernelController {
             this.output.appendLine(
                 'connections.json auto-load skipped: ' + (error instanceof Error ? error.message : String(error)));
         }
+    }
+
+    /**
+     * Stops the server and drops the session, so the next run starts a fresh one.
+     *
+     * A REPL keeps every variable, open connection and PowerShell runspace from every cell that
+     * has run in this window, which is exactly what you want until it isn't — a wedged connection,
+     * a variable you'd rather forget, a module you want reloaded. There is no way to reach that
+     * from the notebook UI otherwise; the process only ends when the window closes.
+     *
+     * Deliberately does not start a replacement. The next cell run does that, which keeps restart
+     * cheap for someone who is closing up rather than carrying on.
+     */
+    async restart(): Promise<void> {
+        const client = this.client;
+        this.client = undefined;
+        // Session-scoped state goes with the session: connection config is auto-loaded once per
+        // notebook, and a stale entry here would skip the reload against the new process.
+        this.loadedConfigNotebooks.clear();
+        this.displayOutputs.clear();
+        this.warnedKernelVersion = false;
+
+        if (client) {
+            try {
+                await client.dispose();
+            } catch (e) {
+                this.output.appendLine('error stopping the kernel: ' + String(e));
+            }
+        }
+        this.output.appendLine('kernel stopped; the next cell run starts a fresh one');
     }
 
     dispose(): void {
