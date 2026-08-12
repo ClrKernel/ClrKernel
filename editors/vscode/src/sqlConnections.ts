@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ClrKernelController } from './controller';
+import { buildSqlConnectDirective } from './directives';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
@@ -312,7 +313,7 @@ export class SqlConnectionUi {
             }
         }
 
-        const directive = buildConnectDirective({
+        const directive = buildSqlConnectDirective({
             name,
             server,
             database: database.trim(),
@@ -472,36 +473,6 @@ async function applyConnection(cell: vscode.NotebookCell, name: string): Promise
         edit.insert(doc.uri, new vscode.Position(0, 0), selectorLine + '\n');
     }
     await vscode.workspace.applyEdit(edit);
-}
-
-function buildConnectDirective(opts: {
-    name: string;
-    server: string;
-    database?: string;
-    auth: string;
-    user?: string;
-    encrypt?: boolean;
-    trustCert?: boolean;
-}): string {
-    const parts = ['#!sql-connect', '--name', quote(opts.name), '--server', quote(opts.server)];
-    if (opts.database) {
-        parts.push('--database', quote(opts.database));
-    }
-    parts.push('--auth', opts.auth);
-    if (opts.user) {
-        parts.push('--user', quote(opts.user));
-    }
-    if (opts.encrypt === false) {
-        parts.push('--encrypt', 'false');
-    }
-    if (opts.trustCert) {
-        parts.push('--trust-cert');
-    }
-    return parts.join(' ');
-}
-
-function quote(value: string): string {
-    return /\s|"/.test(value) ? '"' + value.replace(/"/g, '') + '"' : value;
 }
 
 function errorText(e: unknown): string {

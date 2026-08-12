@@ -81,10 +81,13 @@ public class ConnectionCatalogTest {
     [TestMethod]
     public void Config_file_support_is_a_capability_the_host_type_checks_for() {
         var engine = NewEngine();
-        // SQL keeps connections in connections.json; DAX has no such concept yet. The host asks
-        // the type rather than reading a flag, so DAX simply isn't offered the config methods.
+        // Both keep connections in connections.json, told apart by $type. DAX gained this after
+        // the seam existed and the host needed no change to start offering it — the point of
+        // splitting IConfigBackedConnections out rather than making it a flag.
         Assert.IsInstanceOfType(engine.Languages.ById("sql").Connections, typeof(IConfigBackedConnections));
-        Assert.IsNotInstanceOfType(engine.Languages.ById("dax").Connections, typeof(IConfigBackedConnections));
+        Assert.IsInstanceOfType(engine.Languages.ById("dax").Connections, typeof(IConfigBackedConnections));
+        // A language that connects to nothing still has no catalog at all.
+        Assert.IsNull(engine.Languages.ById("http")?.Connections);
     }
 
     [TestMethod]

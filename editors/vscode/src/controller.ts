@@ -245,9 +245,10 @@ export class ClrKernelController {
     }
 
     /**
-     * Registers any SqlServer entries from a connections.json at/above the notebook's
-     * folder into the session, once per notebook, so saved connections resolve when a
-     * cell runs — without the user re-adding them. Best-effort: never blocks execution.
+     * Registers saved connections from a connections.json at/above the notebook's folder
+     * into the session, once per notebook, so they resolve when a cell runs without the
+     * user re-adding them. Both kinds are loaded — SqlServer and AnalysisServices entries
+     * live in the same file, told apart by $type. Best-effort: never blocks execution.
      */
     async ensureConnectionsConfigLoaded(notebook: vscode.NotebookDocument): Promise<void> {
         const key = notebook.uri.toString();
@@ -258,7 +259,10 @@ export class ClrKernelController {
         try {
             const client = await this.ensureClient(notebook);
             const directory = path.dirname(notebook.uri.fsPath);
-            await client.request('clrkernel/connections/loadConfig', { languageId: 'sql', directory });
+            // Each language takes only its own $type; a language with nothing saved is a no-op.
+            for (const languageId of ['sql', 'dax']) {
+                await client.request('clrkernel/connections/loadConfig', { languageId, directory });
+            }
         } catch (error) {
             // A missing/unreadable config or an unstarted server must not block the run.
             this.loadedConfigNotebooks.delete(key); // allow a later retry

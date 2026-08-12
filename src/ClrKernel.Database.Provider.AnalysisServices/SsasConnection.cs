@@ -25,8 +25,6 @@ public sealed partial class SsasConnection {
     public int RowLimit { get; set; } = 1000;
 
     private Adomd.AdomdConnection OpenAdomd() {
-        RejectEndpointThatNeedsEntra();
-
         var connection = new Adomd.AdomdConnection(_spec.BuildAdomdConnectionString());
         var tokenNote = "no token attached";
         if (_spec.Auth == SsasAuthMode.AzureAd && _spec.TokenProvider != null) {
@@ -56,38 +54,6 @@ public sealed partial class SsasConnection {
                 $" using {_spec.Auth} auth ({tokenNote}). {e.Message}", e);
         }
         return connection;
-    }
-
-    /// <summary>
-    /// Stops a cloud endpoint being opened with Integrated auth, which can never succeed.
-    /// </summary>
-    /// <remarks>
-    /// The connection string for a Fabric cube is identical whether or not a token is attached, so
-    /// this mistake used to surface only as ADOMD's "Authentication failed for all authenticators"
-    /// — indistinguishable from a token that was sent and rejected. It is reachable from the UI:
-    /// pasting a <c>powerbi://</c> URL into the on-prem "Server / host" prompt produces exactly
-    /// this spec.
-    /// </remarks>
-    private void RejectEndpointThatNeedsEntra() {
-        if (_spec.Auth != SsasAuthMode.Integrated || string.IsNullOrEmpty(_spec.Server)) {
-            return;
-        }
-        var server = _spec.Server.TrimStart();
-        var fabric = server.StartsWith("powerbi://", StringComparison.OrdinalIgnoreCase)
-                     || server.StartsWith("pbiazure://", StringComparison.OrdinalIgnoreCase);
-        var azureAs = server.StartsWith("asazure://", StringComparison.OrdinalIgnoreCase)
-                      || server.StartsWith("link://", StringComparison.OrdinalIgnoreCase);
-        if (!fabric && !azureAs) {
-            return;
-        }
-        throw new InvalidOperationException(
-            $"'{_spec.Server}' is a Microsoft Entra endpoint, but this connection is set to Integrated " +
-            "(Windows) auth, which it will always refuse. Reconnect with " +
-            (fabric
-                ? "#!dax-connect --fabric --workspace <workspace> --model <model>"
-                : "#!dax-connect --azure-as --server <server> --database <model>") +
-            " — or, from the cube button, pick the " + (fabric ? "Fabric / Power BI" : "Azure Analysis Services") +
-            " option rather than entering the URL as a server.");
     }
 
     /// <summary>
