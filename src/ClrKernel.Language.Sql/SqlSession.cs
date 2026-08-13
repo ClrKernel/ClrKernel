@@ -109,7 +109,7 @@ public sealed partial class SqlSession {
             } catch {
                 fieldType = typeof(string);
             }
-            types[i] = InteractiveTable.KindOf(fieldType);
+            types[i] = DisplayTable.KindOf(fieldType);
         }
 
         var rows = new List<IReadOnlyList<string>>();
@@ -121,14 +121,13 @@ public sealed partial class SqlSession {
             }
             var row = new string[fieldCount];
             for (var i = 0; i < fieldCount; i++) {
-                row[i] = InteractiveTable.CellText(reader.GetValue(i));
+                row[i] = DisplayTable.CellText(reader.GetValue(i));
             }
             rows.Add(row);
         }
 
-        var html = InteractiveTable.Render(columns, rows, types, total);
-        var text = $"[{total} row(s), {fieldCount} column(s)]";
-        DisplayDataEmitter.Emit(new DisplayData(text, html));
+        // The concept, not a render: the registered formatters draw the grid.
+        DisplayDataEmitter.Emit(DisplayDataPackager.Pack(new DisplayTable(null, columns, rows, types, total)));
         return total;
     }
 
@@ -143,16 +142,7 @@ public sealed partial class SqlSession {
             }
         }
         parts.Add($"{ms} ms");
-        var text = $"{spec.Name}: {string.Join(" • ", parts)}";
-
-        var html =
-            "<div style=\"font:12px/1.5 -apple-system,Segoe UI,sans-serif;color:#57606a;" +
-            "padding:2px 0\">" +
-            $"<span style=\"display:inline-block;padding:1px 6px;border-radius:10px;" +
-            $"background:#ddf4ff;color:#0969da;margin-right:6px\">{Encode(spec.Name)}</span>" +
-            Encode(string.Join(" • ", parts)) + "</div>";
-
-        return new DisplayData(text, html);
+        return DisplayDataPackager.Pack(new DisplayBadge(spec.Name, string.Join(" • ", parts)));
     }
 
     private static string FormatSqlError(SqlConnectionSpec spec, SqlException e) {
@@ -174,6 +164,4 @@ public sealed partial class SqlSession {
         return sb.ToString();
     }
 
-    private static string Encode(string s) =>
-        System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
 }

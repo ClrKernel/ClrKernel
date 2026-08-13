@@ -81,6 +81,15 @@ public class HtmlFormattersTest {
     }
 
     [TestMethod]
+    public void ABadgeRendersAsAPill() {
+        var info = new DisplayBadge("fcst", "12 ms").ToHtml().Html;
+        StringAssert.Contains(info, "border-radius:10px");
+        StringAssert.Contains(info, "#0969da", "default tone is the informational blue");
+        var success = new DisplayBadge("MERGE t", "done", DisplayBadge.Success).ToHtml().Html;
+        StringAssert.Contains(success, "#1a7f37", "success tone is green");
+    }
+
+    [TestMethod]
     public void RegisterDefaultsIsIdempotent() {
         var first = HtmlFormatters.RegisterDefaults();
         var second = HtmlFormatters.RegisterDefaults();

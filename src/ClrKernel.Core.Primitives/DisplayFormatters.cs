@@ -23,6 +23,7 @@ public static class DisplayFormatters {
         // ctor guarantees they precede (and so lose to) every external registration.
         Register<DisplayObject, DisplayText>(o => new DisplayText(o.Value?.ToString() ?? ""));
         Register<DisplayConsoleText, DisplayText>(c => new DisplayText(c.ConsoleOutput ?? ""));
+        Register<DisplayBadge, DisplayText>(b => new DisplayText(b.Label + ": " + b.Text));
     }
 
     public static DisplayHtml ToHtml(this IDisplayValue value) => Format<DisplayHtml>(value);

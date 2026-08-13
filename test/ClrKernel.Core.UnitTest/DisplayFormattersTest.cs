@@ -64,6 +64,12 @@ public class DisplayFormattersTest {
     }
 
     [TestMethod]
+    public void ABadgeFallsBackToLabelColonText() {
+        Assert.AreEqual("fcst: 2 result sets • 12 ms",
+            new DisplayBadge("fcst", "2 result sets • 12 ms").ToText().Text);
+    }
+
+    [TestMethod]
     public void TheBuiltInFallbackTurnsAnyObjectIntoText() {
         Assert.AreEqual("42", new DisplayObject(42).ToText().Text);
         Assert.AreEqual("", new DisplayObject(null).ToText().Text);

@@ -17,10 +17,10 @@ namespace ClrKernel.Core.Primitives;
 /// and dark themes.
 /// </summary>
 public static class InteractiveTable {
-    /// <summary>Column kinds the grid understands for sorting and stats.</summary>
-    public const string Number = "number";
-    public const string Date = "date";
-    public const string Text = "string";
+    /// <summary>Column kinds the grid understands (aliases of the DisplayTable concept's).</summary>
+    public const string Number = DisplayTable.Number;
+    public const string Date = DisplayTable.Date;
+    public const string Text = DisplayTable.Text;
 
     /// <summary>
     /// Renders the grid. <paramref name="columns"/> are header labels;
@@ -274,38 +274,10 @@ buildHeader();buildFilterRow();syncSticky();body();
     /// <see cref="Date"/>, or <see cref="Text"/>). Nullable&lt;T&gt; is unwrapped.
     /// Unknown types fall back to text.
     /// </summary>
-    public static string KindOf(Type type) {
-        if (type == null) {
-            return Text;
-        }
-        var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying != null) {
-            type = underlying;
-        }
-        if (type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort)
-            || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)
-            || type == typeof(float) || type == typeof(double) || type == typeof(decimal)) {
-            return Number;
-        }
-        if (type == typeof(DateTime) || type == typeof(DateTimeOffset)) {
-            return Date;
-        }
-        return Text;
-    }
+    public static string KindOf(Type type) => DisplayTable.KindOf(type);
 
     /// <summary>Formats a cell value to its display string (null stays null).</summary>
-    public static string CellText(object value) {
-        if (value == null || value is DBNull) {
-            return null;
-        }
-        if (value is string s) {
-            return s;
-        }
-        if (value is IFormattable formattable) {
-            return formattable.ToString(null, CultureInfo.InvariantCulture);
-        }
-        return value.ToString();
-    }
+    public static string CellText(object value) => DisplayTable.CellText(value);
 
     /// <summary>Convenience: HTML-encode a string (shared with callers).</summary>
     internal static string Encode(string value) => WebUtility.HtmlEncode(value ?? string.Empty);

@@ -46,6 +46,9 @@ public static class HtmlFormatters {
 
                 DisplayFormatters.Register<DisplayProgress, DisplayHtml>(p =>
                     new DisplayHtml(ProgressHtml.Render(p))),
+
+                DisplayFormatters.Register<DisplayBadge, DisplayHtml>(b =>
+                    new DisplayHtml(BadgeHtml(b))),
             };
             return _registered;
         }
@@ -62,6 +65,17 @@ public static class HtmlFormatters {
             }
             _registered = null;
         }
+    }
+
+    private static string BadgeHtml(DisplayBadge badge) {
+        var pill = badge.Tone == DisplayBadge.Success
+            ? "background:#dafbe1;color:#1a7f37"
+            : "background:#ddf4ff;color:#0969da";
+        return
+            "<div style=\"font:12px/1.5 -apple-system,Segoe UI,sans-serif;color:#57606a;padding:2px 0\">" +
+            $"<span style=\"display:inline-block;padding:1px 6px;border-radius:10px;{pill};margin-right:6px\">" +
+            System.Net.WebUtility.HtmlEncode(badge.Label ?? "") + "</span>" +
+            System.Net.WebUtility.HtmlEncode(badge.Text ?? "") + "</div>";
     }
 
     private const int _textRowLimit = 50;
