@@ -35,7 +35,6 @@ public static class DisplayValues {
     public static DisplayCell DisplayHtml(this object value) => NewCell().Update(value, typeof(DisplayHtml));
     public static DisplayCell DisplayText(this object value) => NewCell().Update(value, typeof(DisplayText));
     public static DisplayCell DisplayMarkdown(this object value) => NewCell().Update(value, typeof(DisplayMarkdown));
-    public static DisplayCell DisplayProgress(this object value) => NewCell().Update(value, typeof(DisplayProgress));
     public static DisplayCell DisplayBytes(this object value, string mimeType) => NewCell().Update(value, typeof(DisplayBytes), mimeType);
 
     public static DisplayCell UpdateTable(this DisplayCell cell, object value) => cell.Update(value, typeof(DisplayTable));
@@ -43,6 +42,5 @@ public static class DisplayValues {
     public static DisplayCell UpdateHtml(this DisplayCell cell, object value) => cell.Update(value, typeof(DisplayHtml));
     public static DisplayCell UpdateText(this DisplayCell cell, object value) => cell.Update(value, typeof(DisplayText));
     public static DisplayCell UpdateMarkdown(this DisplayCell cell, object value) => cell.Update(value, typeof(DisplayMarkdown));
-    public static DisplayCell UpdateProgress(this DisplayCell cell, object value) => cell.Update(value, typeof(DisplayProgress));
     public static DisplayCell UpdateBytes(this DisplayCell cell, object value, string mimeType) => cell.Update(value, typeof(DisplayBytes), mimeType);
 }

@@ -96,10 +96,6 @@ public record DisplayMarkdown(string Markdown) : IDisplayValue {
     public object Value => Markdown;
 }
 
-public record DisplayProgress(string Label, string Status, decimal Completed, decimal Total) : IDisplayValue {
-    public object Value => this;
-}
-
 /// <summary>Binary content — images, pdfs, anything addressed by MIME type.</summary>
 public record DisplayBytes(byte[] Bytes, string MimeType) : IDisplayValue {
     public object Value => Bytes;
