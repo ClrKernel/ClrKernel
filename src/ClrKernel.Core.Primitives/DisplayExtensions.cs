@@ -40,13 +40,8 @@ namespace ClrKernel.Core.Primitives {
             return new DisplayedValue(displayId, mimeType, d => update?.Invoke(d));
         }
 
-        /// <summary>
-        /// Displays a value (ToString form) and returns an updatable handle.
-        /// Mirrors .NET Interactive's object.Display() for migrated notebooks.
-        /// </summary>
-        public static DisplayedValue Display(this object value, string mimeType = "text/plain") {
-            return (value?.ToString() ?? "").DisplayAs(mimeType);
-        }
+        // object.Display() lives in DisplayValues now, routed through the
+        // DisplayFormatters registry rather than ToString into one MIME type.
 
         /// <summary>
         /// Renders an ADO.NET data reader (e.g. a <c>Microsoft.Data.SqlClient</c>
