@@ -101,11 +101,11 @@ public sealed partial class SsasConnection {
         using var command = connection.CreateCommand();
         command.CommandText = dax;
         using var reader = command.ExecuteReader();
-        var (html, total) = RenderGrid(reader);
-        return new DisplayData($"[{total} row(s)]", html);
+        // The concept, not a render: the registered formatters draw the grid.
+        return DisplayDataPackager.Pack(ToDisplayTable(reader));
     }
 
-    private (string html, int total) RenderGrid(IDataReader reader) {
+    private DisplayTable ToDisplayTable(IDataReader reader) {
         var fieldCount = reader.FieldCount;
         var columns = new string[fieldCount];
         var types = new string[fieldCount];
@@ -113,7 +113,7 @@ public sealed partial class SsasConnection {
             columns[i] = CleanColumn(reader.GetName(i));
             Type fieldType;
             try { fieldType = reader.GetFieldType(i); } catch { fieldType = typeof(string); }
-            types[i] = InteractiveTable.KindOf(fieldType);
+            types[i] = DisplayTable.KindOf(fieldType);
         }
         var rows = new List<IReadOnlyList<string>>();
         var total = 0;
@@ -124,11 +124,11 @@ public sealed partial class SsasConnection {
             }
             var row = new string[fieldCount];
             for (var i = 0; i < fieldCount; i++) {
-                row[i] = InteractiveTable.CellText(reader.GetValue(i));
+                row[i] = DisplayTable.CellText(reader.GetValue(i));
             }
             rows.Add(row);
         }
-        return (InteractiveTable.Render(columns, rows, types, total), total);
+        return new DisplayTable(null, columns, rows, types, total);
     }
 
     // DAX/DMV columns often come back as "[Table[Column]]" or "[Measure]" — strip

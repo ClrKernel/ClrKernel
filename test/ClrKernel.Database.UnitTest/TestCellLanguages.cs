@@ -22,6 +22,9 @@ namespace ClrKernel.UnitTest;
 public static class TestCellLanguages {
     [AssemblyInitialize]
     public static void Register(TestContext context) {
+        // Providers emit display concepts; without the render registrations their
+        // output has no text/html at all, so the suite mirrors this too.
+        ClrKernel.Formatting.Html.HtmlFormatters.RegisterDefaults();
         CellLanguageRegistry.Default = new CellLanguageRegistry(new Func<ICellLanguage>[] {
             () => new SqlCellLanguage(),
             () => new DaxCellLanguage(),

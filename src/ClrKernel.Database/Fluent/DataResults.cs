@@ -21,8 +21,13 @@ public sealed class DataResults : DisplayData, IEnumerable<object> {
 
     public DataResults(DataTable table, int limit = 1000) {
         Table = table ?? throw new ArgumentNullException(nameof(table));
+        // Shape the concept here (no rendering); the registered formatters draw
+        // the grid. The short row count stays as the plain-text form.
+        var packed = DisplayDataPackager.Pack(ToDisplayTable(table, limit));
+        foreach (var pair in packed.Data) {
+            Data[pair.Key] = pair.Value;
+        }
         Data["text/plain"] = $"{table.Rows.Count:N0} row{(table.Rows.Count == 1 ? string.Empty : "s")}";
-        Data["text/html"] = RenderGrid(table, limit);
     }
 
     /// <summary>Number of rows.</summary>
@@ -45,12 +50,12 @@ public sealed class DataResults : DisplayData, IEnumerable<object> {
     /// <summary>Maps the rows to <typeparamref name="T"/> (record, class, or scalar).</summary>
     public IReadOnlyList<T> As<T>() => ObjectMapper.Map<T>(Table);
 
-    private static string RenderGrid(DataTable table, int limit) {
+    private static DisplayTable ToDisplayTable(DataTable table, int limit) {
         var columns = new string[table.Columns.Count];
         var types = new string[table.Columns.Count];
         for (var i = 0; i < table.Columns.Count; i++) {
             columns[i] = table.Columns[i].ColumnName;
-            types[i] = InteractiveTable.KindOf(table.Columns[i].DataType);
+            types[i] = DisplayTable.KindOf(table.Columns[i].DataType);
         }
 
         var rows = new List<IReadOnlyList<string>>();
@@ -59,12 +64,12 @@ public sealed class DataResults : DisplayData, IEnumerable<object> {
             var dataRow = table.Rows[r];
             var cells = new string[table.Columns.Count];
             for (var c = 0; c < table.Columns.Count; c++) {
-                cells[c] = InteractiveTable.CellText(dataRow[c]);
+                cells[c] = DisplayTable.CellText(dataRow[c]);
             }
             rows.Add(cells);
         }
 
-        return InteractiveTable.Render(columns, rows, types, table.Rows.Count);
+        return new DisplayTable(table, columns, rows, types, table.Rows.Count);
     }
 
     /// <summary>A DataRow surfaced as <c>dynamic</c>: member access and indexing by column.</summary>
