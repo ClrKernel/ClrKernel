@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ClrKernel.Core.Scripting\ClrKernel.Core.Scripting.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Core.Primitives\ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Formatting.Html\ClrKernel.Formatting.Html.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Core.Runner\ClrKernel.Core.Runner.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Core.LanguageServices\ClrKernel.Core.LanguageServices.csproj" />
   </ItemGroup>

@@ -125,6 +125,9 @@ public class DisplayDataPackagerTest {
 
     [TestMethod]
     public void WithoutAnHtmlFormatterOnlyTextIsPackaged() {
+        // Test-class ordering isn't contractual: make sure the plugin's defaults
+        // (registered by HtmlFormattersTest) are gone regardless of who ran first.
+        Formatting.Html.HtmlFormatters.UnregisterDefaults();
         var data = DisplayDataPackager.Pack(new DisplayObject(42));
         Assert.AreEqual("42", data.Data["text/plain"]);
         Assert.IsFalse(data.Data.ContainsKey("text/html"));

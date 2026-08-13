@@ -31,6 +31,7 @@
     <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
     <!-- Composition root: the CLI is what registers the cell languages, so it
          references every one of them (nothing else does). -->
+    <ProjectReference Include="../ClrKernel.Formatting.Html/ClrKernel.Formatting.Html.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Http/ClrKernel.Language.Http.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Mermaid/ClrKernel.Language.Mermaid.csproj" />
     <ProjectReference Include="../ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
