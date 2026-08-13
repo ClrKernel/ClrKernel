@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- Records on netstandard2.0: the compiler supports them anywhere, it only
+         needs IsExternalInit (shimmed in Compat/IsExternalInit.cs). -->
+    <LangVersion>latest</LangVersion>
     <PackageId>ClrKernel.Core.Primitives</PackageId>
     <Description>Jupyter messaging primitives for ClrKernel (a .NET Jupyter kernel): display-data types and emitters for producing rich MIME output from notebook cells.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
