@@ -127,3 +127,57 @@ PowerShell returns `DisplayConsoleText`, HTTP composes concepts, Mermaid may kee
 
 Each phase is an individual commit on the branch; the suite (`./build.sh Test`) and
 `dotnet format --verify-no-changes` are green at every commit from P1 on.
+
+## Dependency layering, as built
+
+The successor to HANDOFF-17 §4.2, derived from the actual `ProjectReference` entries
+(23 projects, four tiers). Arrows point at dependencies; a project sits above
+everything it references.
+
+```
+LEAF (reference nothing)
+  Core.Primitives ── display concepts + DisplayFormatters registry (NO HTML)
+  Core.Secrets                     Database.Entra
+
+  Core.Scripting ────► Core.Primitives        (engine + language contracts)
+  Formatting.Html ───► Core.Primitives        (every default render; referenced ONLY by the CLI)
+  DataEngineering ───► Core.Primitives
+  Database ──────────► Core.Secrets, Core.Primitives
+
+  Core.LanguageServices ─► Core.Scripting
+
+DATA PROVIDERS
+  Provider.SqlServer ────────► Database, DataEngineering, Core.Secrets, Core.Primitives
+  Provider.AnalysisServices ─► Database, Database.Entra, Core.Primitives
+  Provider.Fabric ───────────► Database.Entra, Core.Primitives      (no Database ref)
+  Provider.{Oracle, Odbc, Jdbc} ─► Database                         (opt-in via #r nuget:)
+
+CELL LANGUAGES (contracts from Core.Scripting; emit concepts, never render)
+  Language.Sql ──► Core.Scripting, Provider.SqlServer, Database, DataEngineering, Core.Primitives
+  Language.Dax ──► Core.Scripting, Provider.AnalysisServices, Database, Core.Primitives
+  Language.{Http, Mermaid, PowerShell} ──► Core.Scripting, Core.Primitives
+
+HOSTS
+  Core.{JupyterKernel, ExtensionServer} ─► Core.Scripting, Core.LanguageServices, Core.Primitives
+  Core.Runner ───────────────────────────► Core.Scripting, Core.Primitives
+
+COMPOSITION ROOT
+  ClrKernel (CLI) ─► the three hosts + Formatting.Html
+                     + Language.{Http, Mermaid, PowerShell, Sql, Dax} + Provider.Fabric
+                     Program.Main registers every cell language AND every default render.
+```
+
+The rules that keep the shape honest (enforce by reading csproj, not by intent):
+
+- `Core.Scripting` references **zero** `Language.*` / `Database.*` / `Formatting.*` projects —
+  languages arrive through `CellLanguageRegistry`, renders through `DisplayFormatters`.
+- `Core.Primitives` references **nothing** and contains **no HTML** — concepts and the
+  registry only.
+- `Formatting.Html` is referenced **only by the CLI** (and the test suites' mirrors).
+  Languages and providers must not reference it: they emit `IDisplayValue` concepts and
+  stay renderer-agnostic. If a new package needs a bespoke visual, it ships a concept and
+  registers its own formatter — it never reaches into `Formatting.Html`.
+- The language/provider split is load-bearing: `Language.Sql` owns the cell session,
+  `Provider.SqlServer` owns connections/bulk-copy/MERGE; same shape for `Language.Dax` vs
+  `Provider.AnalysisServices`. `Provider.Fabric` deliberately skips `Database` — it is a
+  warehouse writer over Entra, not a `DataSource`.
