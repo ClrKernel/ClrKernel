@@ -128,6 +128,29 @@ PowerShell returns `DisplayConsoleText`, HTTP composes concepts, Mermaid may kee
 Each phase is an individual commit on the branch; the suite (`./build.sh Test`) and
 `dotnet format --verify-no-changes` are green at every commit from P1 on.
 
+## The cleanup round (review notes, all applied)
+
+- **One display channel.** `DisplayCell.Update` only raises
+  `DisplayValues.OnCellDisplayed/OnCellUpdated`. No captured delegates anywhere: each host
+  listens once, bundles via `MimeBundler`, and routes by `DisplayId` (its own map of
+  display-id → parent request / notebook cell), which is how background updates keep
+  reaching the originating output. `DisplayDataEmitter` is gone.
+- **`DisplayData` and the bundler live in `Core.Scripting`** (`MimeBundler`, was
+  `DisplayDataPackager`) — it is the wire bundle transports serialize, not a concept.
+  Anything below `Core.Scripting` (`Database*`) physically cannot construct one.
+- **`DisplayedValue` and `DisplayExtensions` are deleted**; `DisplayCell` +
+  `DisplayValues` are the whole handle API. `TableExtractor` moved to
+  `Formatting.Html` and is registered by the package.
+- **`DataResults` and the HTTP response card are self-registering concepts** — a
+  package that owns a bespoke shape registers its own concept→concept /
+  concept→render formatters in its static ctor. `SsasConnection` returns
+  `DisplayTable`/`DisplayText`; the engine bundles any `IDisplayValue` a language returns.
+- **`ProgressBar` folded into `DisplayProgress`**: one stateful concept with
+  `Show`/`Report`/`SetTotal`/`Done` that re-displays itself through its cell.
+- **`connections.local.json`** (and `clrkernel.connections.local.json`) overlays the
+  shared file: nearest directory with any candidate wins; base loads first, local
+  overrides by name. Personal dev servers stay out of git.
+
 ## Dependency layering, as built
 
 The successor to HANDOFF-17 §4.2, derived from the actual `ProjectReference` entries
