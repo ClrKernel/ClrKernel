@@ -29,6 +29,9 @@ public static class Fabric {
     /// job; see the note on <see cref="EntraAuth.DefaultWithInteractiveFallback"/>.</remarks>
     public static FabricConnection Connect() => WithCredential(EntraAuth.DefaultThenInteractiveBrowser());
 
+    public static FabricConnection InteractiveSigninConnection() =>
+        new FabricConnection(new Azure.Identity.DefaultAzureCredential(true));
+
     /// <summary>Connects with an Entra service principal (client secret).</summary>
     public static FabricConnection ClientSecret(string tenantId, string clientId, string clientSecret) =>
         WithCredential(EntraAuth.ClientSecret(tenantId, clientId, clientSecret));

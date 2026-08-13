@@ -143,7 +143,8 @@ public class InteractiveTableTest {
             }
         }
 
-        var html = CaptureHtml(() => Numbers().DisplayTable(limit: 5));
+        // A non-default limit is the extractor's parameter now.
+        var html = CaptureHtml(() => TableExtractor.Extract(Numbers(), 5).Display());
         StringAssert.Contains(html, "\"shown\":5");
         StringAssert.Contains(html, "\"total\":-1");   // unknown-but-more sentinel
     }

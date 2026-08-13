@@ -31,9 +31,13 @@ public static class DisplayDataPackager {
         if (DisplayFormatters.TryFormat<DisplayHtml>(value, out var html)) {
             data.Data["text/html"] = html.Html ?? "";
         }
-        data.Data["text/plain"] = DisplayFormatters.TryFormat<DisplayText>(value, out var text)
-            ? text.Text ?? ""
-            : value.Value?.ToString() ?? "";
+        if (DisplayFormatters.TryFormat<DisplayText>(value, out var text)) {
+            data.Data["text/plain"] = text.Text ?? "";
+        } else if (!(value is DisplayHtml)) {
+            // ToString is a fair plain-text stand-in for anything except raw HTML,
+            // where it would put markup into text/plain.
+            data.Data["text/plain"] = value.Value?.ToString() ?? "";
+        }
         return data;
     }
 }

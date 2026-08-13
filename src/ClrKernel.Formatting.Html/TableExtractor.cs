@@ -4,15 +4,15 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Reflection;
-namespace ClrKernel.Core.Primitives;
+using ClrKernel.Core.Primitives;
+namespace ClrKernel.Formatting.Html;
 
 /// <summary>
 /// Shapes an arbitrary value into the <see cref="DisplayTable"/> concept: data readers
 /// and DataTables by schema, dictionary rows by key union, sequences by the element
 /// type's public properties (scalars get a single Value column), and any other object
 /// as a one-row table of its properties. <c>TotalRows = -1</c> means the source was
-/// truncated at the limit with the remainder uncounted ("first N+"). This is
-/// concept-shaping, not rendering, which is why it lives in Primitives.
+/// truncated at the limit with the remainder uncounted ("first N+").
 /// </summary>
 public static class TableExtractor {
     private const int _limit = 1000;

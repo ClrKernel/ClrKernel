@@ -30,6 +30,7 @@ public static class DisplayValues {
     public static DisplayCell Display(this object value, Type preferredDisplayType = null, string preferredMimeType = null) =>
         NewCell().Update(value, preferredDisplayType, preferredMimeType);
 
+    public static DisplayCell DisplayTable(this object value) => NewCell().Update(value, typeof(DisplayTable));
     public static DisplayCell DisplayConsole(this object value) => NewCell().Update(value, typeof(DisplayConsoleText));
     public static DisplayCell DisplayHtml(this object value) => NewCell().Update(value, typeof(DisplayHtml));
     public static DisplayCell DisplayText(this object value) => NewCell().Update(value, typeof(DisplayText));

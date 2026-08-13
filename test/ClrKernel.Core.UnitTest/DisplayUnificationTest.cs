@@ -36,15 +36,18 @@ public class DisplayUnificationTest {
     }
 
     [TestMethod]
-    public async Task A_trailing_DisplayAs_handle_is_also_suppressed() {
+    public async Task A_trailing_DisplayHtml_handle_is_also_suppressed() {
         var displays = new List<DisplayData>();
         try {
             DisplayDataEmitter.DisplayDataHandler = displays.Add;
             var engine = NewEngine();
-            var result = await engine.ExecuteAsync("\"<b>x</b>\".DisplayAs(\"text/html\")");
+            var result = await engine.ExecuteAsync("\"<b>x</b>\".DisplayHtml()");
 
-            Assert.IsNull(result, "the legacy DisplayedValue handle must be suppressed too");
+            Assert.IsNull(result, "a DisplayCell handle must be suppressed whatever created it");
             Assert.AreEqual(1, displays.Count);
+            Assert.AreEqual("<b>x</b>", displays[0].Data["text/html"]);
+            Assert.IsFalse(displays[0].Data.ContainsKey("text/plain"),
+                "raw HTML must not leak into text/plain");
         } finally {
             DisplayDataEmitter.DisplayDataHandler = null;
         }

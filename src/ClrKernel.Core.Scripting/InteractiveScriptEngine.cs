@@ -264,7 +264,7 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         // A display handle is a structure whose content is already on screen —
         // formatting it would print the handle after the value (the old
         // trailing-Display() bug).
-        if (value is DisplayCell || value is DisplayedValue) {
+        if (value is DisplayCell) {
             return null;
         }
 
