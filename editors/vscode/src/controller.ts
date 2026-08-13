@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
+import { toOutputItemData } from './outputItems';
 import { DisplayNotification, ServerClient } from './serverClient';
 import { SingleFlight } from './singleFlight';
 import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
@@ -309,13 +310,8 @@ export class ClrKernelController {
 }
 
 function toOutputItems(data: Record<string, unknown>): vscode.NotebookCellOutputItem[] {
-    const items: vscode.NotebookCellOutputItem[] = [];
-    for (const [mime, value] of Object.entries(data ?? {})) {
-        const text = typeof value === 'string' ? value : JSON.stringify(value);
-        items.push(vscode.NotebookCellOutputItem.text(text, mime));
-    }
-    if (items.length === 0) {
-        items.push(vscode.NotebookCellOutputItem.text('', 'text/plain'));
-    }
-    return items;
+    return toOutputItemData(data).map(item =>
+        item.bytes
+            ? new vscode.NotebookCellOutputItem(item.bytes, item.mime)
+            : vscode.NotebookCellOutputItem.text(item.text ?? '', item.mime));
 }
