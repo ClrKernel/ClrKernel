@@ -256,16 +256,23 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             return null;
         }
 
-        var displayData = _scriptState.ReturnValue as DisplayData;
-
-        if (displayData != null) {
+        var value = _scriptState.ReturnValue;
+        if (value is DisplayData displayData) {
             return displayData;
         }
 
-        // Rich default rendering: sequences become HTML tables, objects a
-        // property table, anonymous types a clean { x = 10 }, all with a
-        // type-hint badge — instead of Roslyn's CSharpObjectFormatter output.
-        return ResultFormatter.Format(_scriptState.ReturnValue);
+        // A display handle is a structure whose content is already on screen —
+        // formatting it would print the handle after the value (the old
+        // trailing-Display() bug).
+        if (value is DisplayCell || value is DisplayedValue) {
+            return null;
+        }
+
+        // Rich default rendering through the formatter registry — the same path
+        // Display(value) takes, so a trailing value and Display() render
+        // identically (sequences as tables, objects as property tables, a
+        // type-hint badge; see ClrKernel.Formatting.Html).
+        return DisplayDataPackager.Pack(value as IDisplayValue ?? new DisplayObject(value));
     }
 
     public object Execute(string statement) {
