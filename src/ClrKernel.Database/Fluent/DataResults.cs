@@ -9,25 +9,33 @@ using ClrKernel.Core.Primitives;
 namespace ClrKernel.Database;
 
 /// <summary>
-/// Materialized query results. As a cell value it renders as the same interactive
-/// grid <c>DisplayTable()</c> produces (it is a <see cref="DisplayData"/>); in code
-/// it enumerates as dynamic rows — <c>foreach (var r in results) Console.WriteLine(r.OrderId)</c>
+/// Materialized query results. As a cell value it is a display concept
+/// (<see cref="IDisplayValue"/>): this class registers its own conversion to
+/// <see cref="DisplayTable"/>, so the registered renderers draw it as the
+/// interactive grid while a plain-text host shows the row count. In code it
+/// enumerates as dynamic rows — <c>foreach (var r in results) Console.WriteLine(r.OrderId)</c>
 /// or <c>results[0]["OrderId"]</c>. The full <see cref="DataTable"/> is available via
 /// <see cref="Table"/>.
 /// </summary>
-public sealed class DataResults : DisplayData, IEnumerable<object> {
+public sealed class DataResults : IDisplayValue, IEnumerable<object> {
+    static DataResults() {
+        // Concept-to-concept conversions (no rendering): how these results become
+        // tabular data, and their short text form.
+        DisplayFormatters.Register<DataResults, DisplayTable>(r => r.ToDisplayTable(r.Table, r._limit));
+        DisplayFormatters.Register<DataResults, DisplayText>(r => new DisplayText(
+            $"{r.Count:N0} row{(r.Count == 1 ? string.Empty : "s")}"));
+    }
+
+    private readonly int _limit;
+
     /// <summary>The underlying data (all rows, regardless of the grid preview limit).</summary>
     public DataTable Table { get; }
 
+    object IDisplayValue.Value => Table;
+
     public DataResults(DataTable table, int limit = 1000) {
         Table = table ?? throw new ArgumentNullException(nameof(table));
-        // Shape the concept here (no rendering); the registered formatters draw
-        // the grid. The short row count stays as the plain-text form.
-        var packed = DisplayDataPackager.Pack(ToDisplayTable(table, limit));
-        foreach (var pair in packed.Data) {
-            Data[pair.Key] = pair.Value;
-        }
-        Data["text/plain"] = $"{table.Rows.Count:N0} row{(table.Rows.Count == 1 ? string.Empty : "s")}";
+        _limit = limit;
     }
 
     /// <summary>Number of rows.</summary>
@@ -50,7 +58,7 @@ public sealed class DataResults : DisplayData, IEnumerable<object> {
     /// <summary>Maps the rows to <typeparamref name="T"/> (record, class, or scalar).</summary>
     public IReadOnlyList<T> As<T>() => ObjectMapper.Map<T>(Table);
 
-    private static DisplayTable ToDisplayTable(DataTable table, int limit) {
+    private DisplayTable ToDisplayTable(DataTable table, int limit) {
         var columns = new string[table.Columns.Count];
         var types = new string[table.Columns.Count];
         for (var i = 0; i < table.Columns.Count; i++) {

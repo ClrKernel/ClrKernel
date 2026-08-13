@@ -49,8 +49,8 @@ public class NotebookServer {
                 _ = Rpc?.NotifyWithParameterObjectAsync(method, new { cellId, data = data.Data, transient = data.Transient });
             }
 
-            DisplayDataEmitter.DisplayDataHandler = data => Notify("display", data);
-            DisplayDataEmitter.UpdateDisplayDataHandler = data => Notify("updateDisplay", data);
+            EnsureDisplayHooked();
+            _currentCellId = cellId;
 
             object result = null;
             using (var consoleProxy = new ConsoleProxy(line => Notify("display", new DisplayData(line)))) {
@@ -79,11 +79,48 @@ public class NotebookServer {
                 },
             };
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = null;
-            DisplayDataEmitter.UpdateDisplayDataHandler = null;
+            _currentCellId = null;
             _executionLock.Release();
         }
     }
+
+    // The single display channel: display cells raise DisplayValues events; this
+    // host bundles the concept and routes to the notebook cell that created the
+    // display — remembered per display_id, so updates from background work reach
+    // the right output after the cell has finished.
+    private string _currentCellId;
+    private bool _displayHooked;
+    private readonly Dictionary<string, string> _displayCells = new();
+
+    private void EnsureDisplayHooked() {
+        if (_displayHooked) {
+            return;
+        }
+        _displayHooked = true;
+        DisplayValues.OnCellDisplayed += cell => {
+            var cellId = _currentCellId;
+            if (cellId == null) {
+                return;
+            }
+            lock (_displayCells) {
+                _displayCells[cell.DisplayId] = cellId;
+            }
+            NotifyDisplay("display", cellId, MimeBundler.Bundle(cell));
+        };
+        DisplayValues.OnCellUpdated += cell => {
+            string cellId;
+            lock (_displayCells) {
+                _displayCells.TryGetValue(cell.DisplayId, out cellId);
+            }
+            cellId ??= _currentCellId;
+            if (cellId != null) {
+                NotifyDisplay("updateDisplay", cellId, MimeBundler.Bundle(cell));
+            }
+        };
+    }
+
+    private void NotifyDisplay(string method, string cellId, DisplayData data) =>
+        _ = Rpc?.NotifyWithParameterObjectAsync(method, new { cellId, data = data.Data, transient = data.Transient });
 
     [JsonRpcMethod("shutdown")]
     public void Shutdown() {

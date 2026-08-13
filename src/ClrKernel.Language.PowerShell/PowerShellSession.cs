@@ -6,6 +6,7 @@ using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
 using System.Text;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using SMA = System.Management.Automation;
 
 namespace ClrKernel.Language.PowerShell;
@@ -117,7 +118,7 @@ public sealed class PowerShellSession : IDisposable {
             // PowerShell colours its own output, so the raw text is full of ESC[…m sequences.
             // Emit it as the console-text concept: the registered formatters render the
             // escapes as HTML and strip them from text/plain — this language renders nothing.
-            return DisplayDataPackager.Pack(new DisplayConsoleText(console));
+            return MimeBundler.Bundle(new DisplayConsoleText(console));
         }
     }
 

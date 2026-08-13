@@ -6,12 +6,11 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using ClrKernel.Core.Primitives;
 
 namespace ClrKernel.Formatting.Html;
 /// <summary>
-/// Turns a bare cell result into a rich <see cref="DisplayData"/> (text/html
-/// with a text/plain fallback) so notebook output reads well without calling
+/// Turns a bare cell result into a rich HTML render (with a plain-text
+/// counterpart) so notebook output reads well without calling
 /// the Display helpers: sequences render as HTML tables, objects without a
 /// meaningful ToString render as property tables, and everything carries a
 /// small type-hint badge (hover for the full type name, click to expand
@@ -21,11 +20,9 @@ namespace ClrKernel.Formatting.Html;
 public static class ResultFormatter {
     private const int _rowLimit = 100;
 
-    public static DisplayData Format(object value) {
+    public static (string Html, string Text) Render(object value) {
         if (value is null) {
-            var nullData = new DisplayData("null");
-            nullData.Data["text/html"] = "<span>null</span>";
-            return nullData;
+            return ("<span>null</span>", "null");
         }
 
         var type = value.GetType();
@@ -49,10 +46,7 @@ public static class ResultFormatter {
             valueHtml = RenderObject(value, type, out plain);
         }
 
-        var dd = new DisplayData();
-        dd.Data["text/html"] = Wrap(type, extra, valueHtml);
-        dd.Data["text/plain"] = plain ?? string.Empty;
-        return dd;
+        return (Wrap(type, extra, valueHtml), plain ?? string.Empty);
     }
 
     // --- value renderers ---------------------------------------------------

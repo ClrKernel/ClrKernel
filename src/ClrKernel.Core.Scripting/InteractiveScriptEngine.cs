@@ -59,7 +59,6 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     // preamble so completion offers them even before the first cell has run.
     private static readonly string[] _builtInUsingStatics = {
         "using static ClrKernel.Core.Scripting.Extensions;",
-        "using static ClrKernel.Core.Primitives.DisplayDataEmitter;"
     };
 
     // The built-ins plus whatever the registered languages contribute (e.g. the
@@ -187,7 +186,10 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         // by #!sql (see CellSelectorOrderingTest).
         var match = _languages.Match(statement);
         if (match != null) {
-            return await match.Language.ExecuteAsync(match.Cell, this).ConfigureAwait(false);
+            var languageResult = await match.Language.ExecuteAsync(match.Cell, this).ConfigureAwait(false);
+            // Languages and providers return display concepts; the wire bundle is
+            // built here so they never touch a MIME type.
+            return languageResult is IDisplayValue concept ? MimeBundler.Bundle(concept) : languageResult;
         }
 
         if (!statement.Split('\n').Any(IsImporterDirective)) {
@@ -272,7 +274,7 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         // Display(value) takes, so a trailing value and Display() render
         // identically (sequences as tables, objects as property tables, a
         // type-hint badge; see ClrKernel.Formatting.Html).
-        return DisplayDataPackager.Pack(value as IDisplayValue ?? new DisplayObject(value));
+        return MimeBundler.Bundle(value as IDisplayValue ?? new DisplayObject(value));
     }
 
     public object Execute(string statement) {

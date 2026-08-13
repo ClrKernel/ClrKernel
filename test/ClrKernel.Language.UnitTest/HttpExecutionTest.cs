@@ -119,8 +119,8 @@ public class HttpExecutionTest {
     [TestMethod]
     public async Task Session_chains_token_from_one_request_to_the_next() {
         var emitted = new List<DisplayData>();
-        var previous = DisplayDataEmitter.DisplayDataHandler;
-        DisplayDataEmitter.DisplayDataHandler = d => emitted.Add(d);
+        void OnCell(DisplayCell cell) => emitted.Add(MimeBundler.Bundle(cell));
+        DisplayValues.OnCellDisplayed += OnCell;
         try {
             var session = new HttpSession(Directory.GetCurrentDirectory());
             var cell =
@@ -136,7 +136,7 @@ public class HttpExecutionTest {
             Assert.AreEqual(200, last.StatusCode, "chained auth should succeed");
             StringAssert.Contains(last.BodyText, "\"ok\":true");
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previous;
+            DisplayValues.OnCellDisplayed -= OnCell;
         }
     }
 
@@ -145,8 +145,8 @@ public class HttpExecutionTest {
     [TestMethod]
     public async Task Engine_routes_http_selector_cell_to_http_session() {
         var emitted = new List<DisplayData>();
-        var previous = DisplayDataEmitter.DisplayDataHandler;
-        DisplayDataEmitter.DisplayDataHandler = d => emitted.Add(d);
+        void OnCell(DisplayCell cell) => emitted.Add(MimeBundler.Bundle(cell));
+        DisplayValues.OnCellDisplayed += OnCell;
         try {
             var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
             var result = await engine.ExecuteAsync("#!http\nGET " + _base + "json\n");
@@ -155,7 +155,7 @@ public class HttpExecutionTest {
             Assert.AreEqual(1, emitted.Count);
             StringAssert.Contains((string)emitted[0].Data["text/html"], "ck-2xx");
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previous;
+            DisplayValues.OnCellDisplayed -= OnCell;
         }
     }
 

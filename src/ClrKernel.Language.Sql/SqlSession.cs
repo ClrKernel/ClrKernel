@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Data.SqlClient;
@@ -10,10 +11,10 @@ using Microsoft.Data.SqlClient;
 namespace ClrKernel.Language.Sql;
 /// <summary>
 /// Holds the SQL connections for a notebook session and runs <c>#!sql</c>
-/// cells. Query result sets render as interactive grids (via
-/// <see cref="DisplayExtensions.DisplayTable(System.Data.IDataReader, int)"/>);
-/// the cell's own return value is a short run summary. Passwords are resolved
-/// from the <see cref="SecretStore"/> at execution time and never persisted.
+/// cells. Query result sets are displayed as <see cref="DisplayTable"/> concepts
+/// (drawn as the interactive grid by the registered formatters); the cell's own
+/// return value is a short run summary. Passwords are resolved from the
+/// <see cref="SecretStore"/> at execution time and never persisted.
 /// </summary>
 public sealed partial class SqlSession {
     private readonly SqlConnectionRegistry _registry = new SqlConnectionRegistry();
@@ -141,8 +142,8 @@ public sealed partial class SqlSession {
             rows.Add(row);
         }
 
-        // The concept, not a render: the registered formatters draw the grid.
-        DisplayDataEmitter.Emit(DisplayDataPackager.Pack(new DisplayTable(null, columns, rows, types, total)));
+        // The concept, not a render: display it and the listening host draws the grid.
+        new DisplayTable(null, columns, rows, types, total).Display();
         return total;
     }
 
@@ -157,7 +158,7 @@ public sealed partial class SqlSession {
             }
         }
         parts.Add($"{ms} ms");
-        return DisplayDataPackager.Pack(new DisplayBadge(spec.Name, string.Join(" • ", parts)));
+        return MimeBundler.Bundle(new DisplayBadge(spec.Name, string.Join(" • ", parts)));
     }
 
     private static string FormatSqlError(SqlConnectionSpec spec, SqlException e) {

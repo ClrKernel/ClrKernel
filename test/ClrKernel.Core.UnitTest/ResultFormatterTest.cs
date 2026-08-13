@@ -6,8 +6,8 @@ namespace ClrKernel.UnitTest;
 [TestClass]
 public class ResultFormatterTest {
     private static (string html, string plain) Format(object value) {
-        var dd = ResultFormatter.Format(value);
-        return ((string)dd.Data["text/html"], (string)dd.Data["text/plain"]);
+        var (html, text) = ResultFormatter.Render(value);
+        return (html, text);
     }
 
     [TestMethod]

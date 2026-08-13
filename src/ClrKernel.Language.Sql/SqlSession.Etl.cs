@@ -4,6 +4,7 @@ using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Data.SqlClient;
@@ -124,7 +125,7 @@ public sealed partial class SqlSession {
     public DisplayData ExecuteMerge(string directiveLine) {
         var d = SqlEtlDirectives.ParseMerge(directiveLine);
         var result = Merge(d.Connection, d.Spec);
-        return DisplayDataPackager.Pack(new DisplayBadge(
+        return MimeBundler.Bundle(new DisplayBadge(
             "MERGE " + d.Spec.Target,
             $"inserted {result.Inserted:N0} · updated {result.Updated:N0} · deleted {result.Deleted:N0} · {result.ElapsedMs:N0} ms",
             DisplayBadge.Success));

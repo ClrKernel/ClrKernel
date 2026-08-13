@@ -1,7 +1,6 @@
 using System.Data;
 using System.IO;
 using System.Threading.Tasks;
-using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.AnalysisServices;
 using Microsoft.Extensions.Logging.Abstractions;

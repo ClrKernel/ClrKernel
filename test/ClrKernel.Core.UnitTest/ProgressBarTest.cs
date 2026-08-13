@@ -18,11 +18,11 @@ public class ProgressBarTest {
     [TestMethod]
     public void Renders_percentage_on_report() {
         string last = null;
-        var prevDisplay = DisplayDataEmitter.DisplayDataHandler;
-        var prevUpdate = DisplayDataEmitter.UpdateDisplayDataHandler;
+        void OnCell(ClrKernel.Core.Primitives.DisplayCell cell) =>
+            last = (string)ClrKernel.Core.Scripting.MimeBundler.Bundle(cell).Data["text/html"];
+        ClrKernel.Core.Primitives.DisplayValues.OnCellDisplayed += OnCell;
+        ClrKernel.Core.Primitives.DisplayValues.OnCellUpdated += OnCell;
         try {
-            DisplayDataEmitter.DisplayDataHandler = d => last = (string)d.Data["text/html"];
-            DisplayDataEmitter.UpdateDisplayDataHandler = d => last = (string)d.Data["text/html"];
             var bar = new ProgressBar("Loading", 100);
             bar.Report(50);
             StringAssert.Contains(last, "50");
@@ -30,8 +30,8 @@ public class ProgressBarTest {
             bar.Done(100);
             StringAssert.Contains(last, "done");
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = prevDisplay;
-            DisplayDataEmitter.UpdateDisplayDataHandler = prevUpdate;
+            ClrKernel.Core.Primitives.DisplayValues.OnCellDisplayed -= OnCell;
+            ClrKernel.Core.Primitives.DisplayValues.OnCellUpdated -= OnCell;
         }
     }
 }

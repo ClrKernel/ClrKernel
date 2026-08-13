@@ -1,19 +1,29 @@
 using System;
+using ClrKernel.Core.Primitives;
 
-namespace ClrKernel.Core.Primitives;
+namespace ClrKernel.Core.Scripting;
 
 /// <summary>
-/// Packages a display concept into the <see cref="DisplayData"/> MIME bundle the
-/// transports publish. This decides which MIME types to ask the
-/// <see cref="DisplayFormatters"/> registry for — it renders nothing itself.
+/// Bundles a display concept into the <see cref="DisplayData"/> MIME bundle the
+/// transports publish (the Jupyter display_data shape). This decides which MIME
+/// types to ask the <see cref="DisplayFormatters"/> registry for — it renders
+/// nothing itself. Hosts call it from their <see cref="DisplayValues"/> event
+/// listeners; the engine calls it for trailing cell values.
 /// </summary>
-public static class DisplayDataPackager {
-    public static DisplayData Pack(IDisplayValue value) {
+public static class MimeBundler {
+    /// <summary>Bundles a cell's current value, stamping its display_id so the
+    /// frontend can replace the output in place on updates.</summary>
+    public static DisplayData Bundle(DisplayCell cell) {
+        var data = Bundle(cell.Value);
+        data.Transient["display_id"] = cell.DisplayId;
+        return data;
+    }
+
+    public static DisplayData Bundle(IDisplayValue value) {
         var data = new DisplayData();
         value = DisplayFormatters.Resolve(value);
 
-        // An explicit MIME preference publishes the raw value verbatim under that type
-        // (the historical Display("...", mime) / DisplayAs behaviour).
+        // An explicit MIME preference publishes the raw value verbatim under that type.
         if (value is DisplayObject raw && !string.IsNullOrEmpty(raw.PreferredMimeType)) {
             data.Data[raw.PreferredMimeType] = raw.Value?.ToString() ?? "";
             return data;

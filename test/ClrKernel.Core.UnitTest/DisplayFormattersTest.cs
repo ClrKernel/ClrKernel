@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel;
@@ -110,23 +111,23 @@ public class DisplayFormattersTest {
 }
 
 [TestClass]
-public class DisplayDataPackagerTest {
+public class MimeBundlerTest {
     [TestMethod]
     public void BytesArePackagedAsBase64UnderTheirMimeType() {
-        var data = DisplayDataPackager.Pack(new DisplayBytes(new byte[] { 1, 2, 3 }, "image/png"));
+        var data = MimeBundler.Bundle(new DisplayBytes(new byte[] { 1, 2, 3 }, "image/png"));
         Assert.AreEqual(Convert.ToBase64String(new byte[] { 1, 2, 3 }), data.Data["image/png"]);
         Assert.IsFalse(data.Data.ContainsKey("text/plain"), "binary output carries no text form");
     }
 
     [TestMethod]
     public void AnExplicitMimePreferencePublishesVerbatim() {
-        var data = DisplayDataPackager.Pack(new DisplayObject("<svg/>", null, "image/svg+xml"));
+        var data = MimeBundler.Bundle(new DisplayObject("<svg/>", null, "image/svg+xml"));
         Assert.AreEqual("<svg/>", data.Data["image/svg+xml"]);
     }
 
     [TestMethod]
     public void MarkdownKeepsItsOwnMimeTypeAlongsideThePlainFallback() {
-        var data = DisplayDataPackager.Pack(new DisplayMarkdown("# hi"));
+        var data = MimeBundler.Bundle(new DisplayMarkdown("# hi"));
         Assert.AreEqual("# hi", data.Data["text/markdown"]);
         Assert.AreEqual("# hi", data.Data["text/plain"]);
     }
@@ -136,7 +137,7 @@ public class DisplayDataPackagerTest {
         // Test-class ordering isn't contractual: make sure the plugin's defaults
         // (registered by HtmlFormattersTest) are gone regardless of who ran first.
         Formatting.Html.HtmlFormatters.UnregisterDefaults();
-        var data = DisplayDataPackager.Pack(new DisplayObject(42));
+        var data = MimeBundler.Bundle(new DisplayObject(42));
         Assert.AreEqual("42", data.Data["text/plain"]);
         Assert.IsFalse(data.Data.ContainsKey("text/html"));
     }
@@ -146,7 +147,7 @@ public class DisplayDataPackagerTest {
         var rich = DisplayFormatters.Register<DisplayObject, DisplayHtml>(
             o => new DisplayHtml("<i>" + o.Value + "</i>"));
         try {
-            var data = DisplayDataPackager.Pack(new DisplayObject(42));
+            var data = MimeBundler.Bundle(new DisplayObject(42));
             Assert.AreEqual("<i>42</i>", data.Data["text/html"]);
             Assert.AreEqual("42", data.Data["text/plain"]);
         } finally {
@@ -157,86 +158,65 @@ public class DisplayDataPackagerTest {
 
 [TestClass]
 public class DisplayCellTest {
-    [TestMethod]
-    public void FirstDisplayEmitsThenUpdatesRouteToTheUpdateHandler() {
-        var displays = new List<DisplayData>();
-        var updates = new List<DisplayData>();
-        var displayedEvents = 0;
-        var updatedEvents = 0;
-        Action<DisplayCell> onDisplayed = _ => displayedEvents++;
-        Action<DisplayCell> onUpdated = _ => updatedEvents++;
-        DisplayValues.OnCellDisplayed += onDisplayed;
-        DisplayValues.OnCellUpdated += onUpdated;
-        try {
-            DisplayDataEmitter.DisplayDataHandler = displays.Add;
-            DisplayDataEmitter.UpdateDisplayDataHandler = updates.Add;
+    // The single display channel: cells raise events; a listener (here, the
+    // test standing in for a host) bundles and routes by DisplayId.
+    private readonly List<DisplayData> _displays = new();
+    private readonly List<DisplayData> _updates = new();
+    private Action<DisplayCell> _onDisplayed;
+    private Action<DisplayCell> _onUpdated;
 
-            var cell = "hello".Display();
+    [TestInitialize]
+    public void Subscribe() {
+        _onDisplayed = cell => _displays.Add(MimeBundler.Bundle(cell));
+        _onUpdated = cell => _updates.Add(MimeBundler.Bundle(cell));
+        DisplayValues.OnCellDisplayed += _onDisplayed;
+        DisplayValues.OnCellUpdated += _onUpdated;
+    }
 
-            Assert.AreEqual(1, displays.Count);
-            Assert.AreEqual(0, updates.Count, "the very first display must not be an update");
-            Assert.AreEqual("hello", displays[0].Data["text/plain"]);
-            Assert.AreEqual(cell.DisplayId, displays[0].Transient["display_id"]);
-            Assert.AreEqual(1, displayedEvents);
-            Assert.AreEqual(0, updatedEvents);
-
-            cell.Update("again");
-
-            Assert.AreEqual(1, displays.Count, "updates must not emit new display_data");
-            Assert.AreEqual(1, updates.Count);
-            Assert.AreEqual("again", updates[0].Data["text/plain"]);
-            Assert.AreEqual(cell.DisplayId, updates[0].Transient["display_id"]);
-            Assert.AreEqual(1, updatedEvents);
-        } finally {
-            DisplayValues.OnCellDisplayed -= onDisplayed;
-            DisplayValues.OnCellUpdated -= onUpdated;
-            DisplayDataEmitter.DisplayDataHandler = null;
-            DisplayDataEmitter.UpdateDisplayDataHandler = null;
-        }
+    [TestCleanup]
+    public void Unsubscribe() {
+        DisplayValues.OnCellDisplayed -= _onDisplayed;
+        DisplayValues.OnCellUpdated -= _onUpdated;
     }
 
     [TestMethod]
-    public void HandlersAreCapturedAtCreationForBackgroundUpdates() {
-        var updates = new List<DisplayData>();
-        try {
-            DisplayDataEmitter.DisplayDataHandler = _ => { };
-            DisplayDataEmitter.UpdateDisplayDataHandler = updates.Add;
-            var cell = "x".Display();
+    public void FirstDisplayRaisesDisplayedThenUpdatesRaiseUpdated() {
+        var cell = "hello".Display();
 
-            DisplayDataEmitter.DisplayDataHandler = null;
-            DisplayDataEmitter.UpdateDisplayDataHandler = null;
+        Assert.AreEqual(1, _displays.Count);
+        Assert.AreEqual(0, _updates.Count, "the very first display must not be an update");
+        Assert.AreEqual("hello", _displays[0].Data["text/plain"]);
+        Assert.AreEqual(cell.DisplayId, _displays[0].Transient["display_id"]);
 
-            cell.Update("from background");
-            Assert.AreEqual(1, updates.Count);
-            Assert.AreEqual("from background", updates[0].Data["text/plain"]);
-        } finally {
-            DisplayDataEmitter.DisplayDataHandler = null;
-            DisplayDataEmitter.UpdateDisplayDataHandler = null;
-        }
+        cell.Update("again");
+
+        Assert.AreEqual(1, _displays.Count, "updates must not raise a second display");
+        Assert.AreEqual(1, _updates.Count);
+        Assert.AreEqual("again", _updates[0].Data["text/plain"]);
+        Assert.AreEqual(cell.DisplayId, _updates[0].Transient["display_id"]);
+    }
+
+    [TestMethod]
+    public void BackgroundUpdatesReachListenersByDisplayId() {
+        // The cell captures nothing: a listener subscribed at any time routes a
+        // late update to the right output purely by the cell's DisplayId.
+        var cell = "x".Display();
+        cell.Update("from background");
+        Assert.AreEqual(1, _updates.Count);
+        Assert.AreEqual(cell.DisplayId, _updates[0].Transient["display_id"]);
+        Assert.AreEqual("from background", _updates[0].Data["text/plain"]);
     }
 
     [TestMethod]
     public void DisplayHtmlTreatsTheValueAsHtml() {
-        var displays = new List<DisplayData>();
-        try {
-            DisplayDataEmitter.DisplayDataHandler = displays.Add;
-            "<b>bold</b>".DisplayHtml();
-            Assert.AreEqual("<b>bold</b>", displays[0].Data["text/html"]);
-        } finally {
-            DisplayDataEmitter.DisplayDataHandler = null;
-        }
+        "<b>bold</b>".DisplayHtml();
+        Assert.AreEqual("<b>bold</b>", _displays[0].Data["text/html"]);
     }
 
     [TestMethod]
     public void AConceptValuePassesStraightThroughToTheCell() {
-        var displays = new List<DisplayData>();
-        try {
-            DisplayDataEmitter.DisplayDataHandler = displays.Add;
-            var cell = new DisplayMarkdown("# title").Display();
-            Assert.IsInstanceOfType(cell.Value, typeof(DisplayMarkdown));
-            Assert.AreEqual("# title", displays[0].Data["text/markdown"]);
-        } finally {
-            DisplayDataEmitter.DisplayDataHandler = null;
-        }
+        var cell = new DisplayMarkdown("# title").Display();
+        Assert.IsInstanceOfType(cell.Value, typeof(DisplayMarkdown));
+        Assert.AreEqual("# title", _displays[0].Data["text/markdown"]);
     }
 }

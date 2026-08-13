@@ -55,11 +55,10 @@ public static class NotebookRunner {
         var parametersCell = FindParametersCell(blocks);
         var injectIndex = parametersCell.HasValue ? parametersCell.Value + 1 : 0;
 
-        // Route display output (Display/HTML helpers, DisplayedValue updates) to stdout.
-        var previousDisplay = DisplayDataEmitter.DisplayDataHandler;
-        var previousUpdate = DisplayDataEmitter.UpdateDisplayDataHandler;
-        DisplayDataEmitter.DisplayDataHandler = PrintDisplay;
-        DisplayDataEmitter.UpdateDisplayDataHandler = PrintDisplay;
+        // Route display output (Display/HTML helpers, DisplayCell updates) to stdout.
+        void OnCell(DisplayCell cell) => PrintDisplay(MimeBundler.Bundle(cell));
+        DisplayValues.OnCellDisplayed += OnCell;
+        DisplayValues.OnCellUpdated += OnCell;
 
         var engine = new InteractiveScriptEngine(workingDir, logger);
 
@@ -83,8 +82,8 @@ public static class NotebookRunner {
             logger.LogError(e, "Notebook execution failed.");
             return 1;
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previousDisplay;
-            DisplayDataEmitter.UpdateDisplayDataHandler = previousUpdate;
+            DisplayValues.OnCellDisplayed -= OnCell;
+            DisplayValues.OnCellUpdated -= OnCell;
         }
     }
 
@@ -124,8 +123,11 @@ public static class NotebookRunner {
         var outputCells = new List<JsonObject>();
         var realStdout = Console.Out;
         var engine = new InteractiveScriptEngine(workingDir, logger);
-        var previousDisplay = DisplayDataEmitter.DisplayDataHandler;
-        var previousUpdate = DisplayDataEmitter.UpdateDisplayDataHandler;
+        // Rebound per cell below; one subscription routes to the current cell's list.
+        Action<DisplayData> onDisplayData = null;
+        void OnCell(DisplayCell cell) => onDisplayData?.Invoke(MimeBundler.Bundle(cell));
+        DisplayValues.OnCellDisplayed += OnCell;
+        DisplayValues.OnCellUpdated += OnCell;
         var execCount = 0;
         var exitCode = 0;
         var index = 0;
@@ -143,15 +145,13 @@ public static class NotebookRunner {
                 var displays = new List<JsonObject>();
                 var stdout = new StringBuilder();
 
-                void OnDisplay(DisplayData d) {
+                onDisplayData = d => {
                     if (d?.Data == null) {
                         return;
                     }
                     displays.Add(IpynbWriter.DisplayDataOutput(d.Data));
                     EchoDisplay(d, realStdout);
-                }
-                DisplayDataEmitter.DisplayDataHandler = OnDisplay;
-                DisplayDataEmitter.UpdateDisplayDataHandler = OnDisplay;
+                };
 
                 object result = null;
                 Exception error = null;
@@ -190,8 +190,8 @@ public static class NotebookRunner {
                 }
             }
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previousDisplay;
-            DisplayDataEmitter.UpdateDisplayDataHandler = previousUpdate;
+            DisplayValues.OnCellDisplayed -= OnCell;
+            DisplayValues.OnCellUpdated -= OnCell;
         }
 
         // Any cells after a failure are written unexecuted, as papermill does.

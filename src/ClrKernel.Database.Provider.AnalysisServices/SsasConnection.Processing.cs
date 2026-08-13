@@ -32,7 +32,7 @@ public sealed partial class SsasConnection {
     }
 
     /// <summary>Recalculates the whole model (RefreshType.Calculate).</summary>
-    public DisplayData Recalculate() {
+    public DisplayText Recalculate() {
         using var server = OpenTomServer();
         var model = OpenModel(server);
         model.RequestRefresh(Tabular.RefreshType.Calculate);
@@ -40,7 +40,7 @@ public sealed partial class SsasConnection {
     }
 
     /// <summary>Processes the entire model (default: a full refresh).</summary>
-    public DisplayData ProcessModel(SsasRefresh refresh = SsasRefresh.Full) {
+    public DisplayText ProcessModel(SsasRefresh refresh = SsasRefresh.Full) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
         model.RequestRefresh(AnalysisServices.ToTabular(refresh));
@@ -48,7 +48,7 @@ public sealed partial class SsasConnection {
     }
 
     /// <summary>Processes one or more tables.</summary>
-    public DisplayData ProcessTables(IEnumerable<string> tableNames, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) {
+    public DisplayText ProcessTables(IEnumerable<string> tableNames, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
         var rt = AnalysisServices.ToTabular(refresh);
@@ -68,10 +68,10 @@ public sealed partial class SsasConnection {
     }
 
     /// <summary>Processes tables by name (params overload).</summary>
-    public DisplayData ProcessTables(params string[] tableNames) => ProcessTables(tableNames, SsasRefresh.Full);
+    public DisplayText ProcessTables(params string[] tableNames) => ProcessTables(tableNames, SsasRefresh.Full);
 
     /// <summary>Processes a set of partitions (with optional per-partition query overrides).</summary>
-    public DisplayData ProcessPartitions(IEnumerable<PartitionDefinition> partitions, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) {
+    public DisplayText ProcessPartitions(IEnumerable<PartitionDefinition> partitions, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
         RequestPartitionRefresh(model, partitions, AnalysisServices.ToTabular(refresh));
@@ -79,7 +79,7 @@ public sealed partial class SsasConnection {
     }
 
     /// <summary>Processes partitions given as (table, partition) tuples.</summary>
-    public DisplayData ProcessPartitions(IEnumerable<(string TableName, string PartitionName)> partitions, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) =>
+    public DisplayText ProcessPartitions(IEnumerable<(string TableName, string PartitionName)> partitions, SsasRefresh refresh = SsasRefresh.Full, int maxParallelism = 0) =>
         ProcessPartitions(partitions.Select(p => (PartitionDefinition)p), refresh, maxParallelism);
 
     private static void RequestPartitionRefresh(Tabular.Model model, IEnumerable<IPartition> partitions, Tabular.RefreshType refreshType) {
@@ -130,11 +130,11 @@ public sealed partial class SsasConnection {
     // --- Partition management ---------------------------------------------
 
     /// <summary>Adds a partition if missing, or updates its query if changed.</summary>
-    public DisplayData EnsurePartition(string tableName, string partitionName, string dataSourceName, string query, bool autoRecalc = true) =>
+    public DisplayText EnsurePartition(string tableName, string partitionName, string dataSourceName, string query, bool autoRecalc = true) =>
         EnsurePartitions(new[] { new PartitionDefinition(tableName, partitionName, dataSourceName, query) }, autoRecalc);
 
     /// <summary>Adds/updates a set of partitions.</summary>
-    public DisplayData EnsurePartitions(IEnumerable<PartitionDefinition> partitions, bool autoRecalc = true) {
+    public DisplayText EnsurePartitions(IEnumerable<PartitionDefinition> partitions, bool autoRecalc = true) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
 
@@ -165,15 +165,15 @@ public sealed partial class SsasConnection {
         if (needsRecalc && autoRecalc) {
             model.RequestRefresh(Tabular.RefreshType.Calculate);
         }
-        return shouldSave ? Save(model, "Ensure partitions", 0) : new DisplayData("Ensure partitions: no changes.");
+        return shouldSave ? Save(model, "Ensure partitions", 0) : new DisplayText("Ensure partitions: no changes.");
     }
 
     /// <summary>Removes a partition if present.</summary>
-    public DisplayData RemovePartition(string tableName, string partitionName, bool autoRecalc = true) =>
+    public DisplayText RemovePartition(string tableName, string partitionName, bool autoRecalc = true) =>
         RemovePartitions(new[] { new PartitionDefinition(tableName, partitionName) }, autoRecalc);
 
     /// <summary>Removes a set of partitions.</summary>
-    public DisplayData RemovePartitions(IEnumerable<PartitionDefinition> partitions, bool autoRecalc = true) {
+    public DisplayText RemovePartitions(IEnumerable<PartitionDefinition> partitions, bool autoRecalc = true) {
         using var server = OpenTomServer();
         var model = OpenModel(server);
         var shouldSave = false;
@@ -190,7 +190,7 @@ public sealed partial class SsasConnection {
         if (autoRecalc) {
             model.RequestRefresh(Tabular.RefreshType.Calculate);
         }
-        return shouldSave ? Save(model, "Remove partitions", 0) : new DisplayData("Remove partitions: no changes.");
+        return shouldSave ? Save(model, "Remove partitions", 0) : new DisplayText("Remove partitions: no changes.");
     }
 
     private static Tabular.PartitionSource BuildPartitionSource(Tabular.DataSource dataSource, string query) => dataSource switch {
@@ -208,7 +208,7 @@ public sealed partial class SsasConnection {
 
     private static string Normalize(string query) => query.Replace("\r\n", "\n").Replace("\t", " ");
 
-    private DisplayData Save(Tabular.Model model, string operation, int maxParallelism) {
+    private DisplayText Save(Tabular.Model model, string operation, int maxParallelism) {
         var result = maxParallelism > 0
             ? model.SaveChanges(new Tabular.SaveOptions { MaxParallelism = maxParallelism })
             : model.SaveChanges();
@@ -216,7 +216,7 @@ public sealed partial class SsasConnection {
         if (errors != null) {
             throw new Exception($"SSAS {operation} reported errors: {errors}");
         }
-        return new DisplayData($"{operation} complete on {_spec.Describe()}.");
+        return new DisplayText($"{operation} complete on {_spec.Describe()}.");
     }
 
     private static string DescribeErrors(Tabular.ModelOperationResult result) {

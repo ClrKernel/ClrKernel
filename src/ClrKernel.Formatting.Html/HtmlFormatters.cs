@@ -23,12 +23,10 @@ public static class HtmlFormatters {
             _registered = new[] {
                 // Arbitrary objects: the rich render (property tables, sequences,
                 // type badge) that trailing cell values have always had.
-                // ResultFormatter still lives in Primitives until every caller is
-                // off it; its implementation moves here at the end of HANDOFF-18.
                 DisplayFormatters.Register<DisplayObject, DisplayText>(o =>
-                    new DisplayText((string)ResultFormatter.Format(o.Value).Data["text/plain"])),
+                    new DisplayText(ResultFormatter.Render(o.Value).Text)),
                 DisplayFormatters.Register<DisplayObject, DisplayHtml>(o =>
-                    new DisplayHtml((string)ResultFormatter.Format(o.Value).Data["text/html"])),
+                    new DisplayHtml(ResultFormatter.Render(o.Value).Html)),
                 DisplayFormatters.Register<DisplayObject, DisplayTable>(TableExtractor.Extract),
 
                 DisplayFormatters.Register<DisplayConsoleText, DisplayText>(c =>

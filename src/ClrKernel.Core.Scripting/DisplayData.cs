@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ClrKernel.Core.Primitives;
+namespace ClrKernel.Core.Scripting;
 /// <summary>
 /// This type of message is used to bring back data that
 /// should be displayed (text, html, svg, etc.) in the frontends.
@@ -27,8 +27,8 @@ public class DisplayData {
 
     /// <summary>
     /// A plain-text bundle (status lines, short summaries). Anything richer is a
-    /// display concept (<see cref="IDisplayValue"/>) packaged by
-    /// <see cref="DisplayDataPackager"/> through the formatter registry — there is
+    /// display concept (<see cref="ClrKernel.Core.Primitives.IDisplayValue"/>) bundled by
+    /// <see cref="MimeBundler"/> through the formatter registry — there is
     /// deliberately no (text, html) constructor anymore.
     /// </summary>
     public DisplayData(string text)

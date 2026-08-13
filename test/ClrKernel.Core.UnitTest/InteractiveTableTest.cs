@@ -16,18 +16,18 @@ public class InteractiveTableTest {
     [ClassCleanup]
     public static void UnregisterPlugin() => HtmlFormatters.UnregisterDefaults();
 
-    // Captures the html a DisplayTable overload emitted (it publishes a
-    // display_data message; we intercept the emitter to read it back).
+    // Captures the html a DisplayTable overload displayed (cells raise the
+    // DisplayValues events; the test listens like a host would).
     private static string CaptureHtml(Action display) {
-        DisplayData captured = null;
-        var previous = DisplayDataEmitter.DisplayDataHandler;
-        DisplayDataEmitter.DisplayDataHandler = d => captured = d;
+        ClrKernel.Core.Scripting.DisplayData captured = null;
+        void OnCell(DisplayCell cell) => captured = ClrKernel.Core.Scripting.MimeBundler.Bundle(cell);
+        DisplayValues.OnCellDisplayed += OnCell;
         try {
             display();
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previous;
+            DisplayValues.OnCellDisplayed -= OnCell;
         }
-        Assert.IsNotNull(captured, "no display_data was emitted");
+        Assert.IsNotNull(captured, "nothing was displayed");
         return (string)captured.Data["text/html"];
     }
 

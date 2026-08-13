@@ -48,12 +48,12 @@ public class MermaidTest {
     [TestMethod]
     public void DisplayMermaid_helper_emits_html_display_data() {
         DisplayData captured = null;
-        var previous = DisplayDataEmitter.DisplayDataHandler;
-        DisplayDataEmitter.DisplayDataHandler = d => captured = d;
+        void OnCell(DisplayCell cell) => captured = MimeBundler.Bundle(cell);
+        DisplayValues.OnCellDisplayed += OnCell;
         try {
             "sequenceDiagram\n  A->>B: hi".DisplayMermaid();
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previous;
+            DisplayValues.OnCellDisplayed -= OnCell;
         }
         Assert.IsNotNull(captured);
         StringAssert.Contains((string)captured.Data["text/html"], "clrkernel-mermaid");

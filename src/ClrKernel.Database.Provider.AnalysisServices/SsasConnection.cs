@@ -95,14 +95,14 @@ public sealed partial class SsasConnection {
         return rows;
     }
 
-    /// <summary>Runs a DAX query and returns an interactive result grid.</summary>
-    public DisplayData Query(string dax) {
+    /// <summary>Runs a DAX query and returns the tabular display concept (drawn
+    /// as the interactive grid by the registered formatters).</summary>
+    public DisplayTable Query(string dax) {
         using var connection = OpenAdomd();
         using var command = connection.CreateCommand();
         command.CommandText = dax;
         using var reader = command.ExecuteReader();
-        // The concept, not a render: the registered formatters draw the grid.
-        return DisplayDataPackager.Pack(ToDisplayTable(reader));
+        return ToDisplayTable(reader);
     }
 
     private DisplayTable ToDisplayTable(IDataReader reader) {

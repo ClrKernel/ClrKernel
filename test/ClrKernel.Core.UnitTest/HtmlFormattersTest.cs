@@ -31,10 +31,10 @@ public class HtmlFormattersTest {
         // The unification this whole refactor exists for: Display(x) and a bare
         // trailing x produce the same HTML.
         var value = new { Name = "x", Count = 3 };
-        var displayed = DisplayDataPackager.Pack(new DisplayObject(value));
-        var trailing = ResultFormatter.Format(value);
-        Assert.AreEqual(trailing.Data["text/html"], displayed.Data["text/html"]);
-        Assert.AreEqual(trailing.Data["text/plain"], displayed.Data["text/plain"]);
+        var displayed = ClrKernel.Core.Scripting.MimeBundler.Bundle(new DisplayObject(value));
+        var (html, text) = ResultFormatter.Render(value);
+        Assert.AreEqual(html, displayed.Data["text/html"]);
+        Assert.AreEqual(text, displayed.Data["text/plain"]);
     }
 
     [TestMethod]
@@ -75,14 +75,14 @@ public class HtmlFormattersTest {
     [TestMethod]
     public void PreferringTableRoutesAnObjectThroughTheExtractor() {
         var rows = new[] { new { Id = 1, Name = "Ada" }, new { Id = 2, Name = "Bo" } };
-        var data = DisplayDataPackager.Pack(new DisplayObject(rows, typeof(DisplayTable)));
+        var data = ClrKernel.Core.Scripting.MimeBundler.Bundle(new DisplayObject(rows, typeof(DisplayTable)));
         StringAssert.Contains((string)data.Data["text/html"], "clrkernel-table",
             "DisplayTable preference must produce the grid, not the plain result render");
     }
 
     [TestMethod]
     public void DisplayingNullStillRendersBothMimeTypes() {
-        var data = DisplayDataPackager.Pack(new DisplayObject(null));
+        var data = ClrKernel.Core.Scripting.MimeBundler.Bundle(new DisplayObject(null));
         Assert.AreEqual("null", data.Data["text/plain"]);
         StringAssert.Contains((string)data.Data["text/html"], "null");
     }

@@ -17,11 +17,40 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
     private InteractiveScriptEngine _scriptEngine;
     private ILogger _logger;
 
+    // Display routing: each display cell remembers the request that created it, so
+    // updates from background work (timers, progress loops) keep publishing against
+    // the originating cell's output after the request has completed.
+    private Message<T> _currentRequest;
+    private readonly Dictionary<string, Message<T>> _displayParents = new Dictionary<string, Message<T>>();
+
     public ExecuteHandler(MessageSender ioPub, MessageSender shell, ILoggerFactory loggerFactory) {
         this._ioPub = ioPub;
         this._shell = shell;
         this._scriptEngine = new InteractiveScriptEngine(AppContext.BaseDirectory, loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
         this._logger = loggerFactory.CreateLogger(nameof(ExecuteHandler<T>));
+
+        // The single display channel: cells raise DisplayValues events; this host
+        // bundles the concept and routes by display_id.
+        DisplayValues.OnCellDisplayed += cell => {
+            var parent = _currentRequest;
+            if (parent == null) {
+                return;
+            }
+            lock (_displayParents) {
+                _displayParents[cell.DisplayId] = parent;
+            }
+            _ioPub.Send(parent, MimeBundler.Bundle(cell), MessageType.DisplayData);
+        };
+        DisplayValues.OnCellUpdated += cell => {
+            Message<T> parent;
+            lock (_displayParents) {
+                _displayParents.TryGetValue(cell.DisplayId, out parent);
+            }
+            parent ??= _currentRequest;
+            if (parent != null) {
+                _ioPub.Send(parent, MimeBundler.Bundle(cell), MessageType.UpdateDisplayData);
+            }
+        };
     }
 
     private ConsoleProxy CreateConsoleProxy(Action<DisplayData> displayDataHandler) {
@@ -46,16 +75,9 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
         object result = null;
         ExecuteReply executeReply = null;
         try {
-            var displayDataHandler = new Action<DisplayData>((data) => {
-                _ioPub.Send(message, data, MessageType.DisplayData);
-            });
+            _currentRequest = message;
 
-            DisplayDataEmitter.DisplayDataHandler = displayDataHandler;
-            DisplayDataEmitter.UpdateDisplayDataHandler = (data) => {
-                _ioPub.Send(message, data, MessageType.UpdateDisplayData);
-            };
-
-            using (var consoleProxy = CreateConsoleProxy(displayDataHandler)) {
+            using (var consoleProxy = CreateConsoleProxy(data => _ioPub.Send(message, data, MessageType.DisplayData))) {
                 consoleProxy.StartRedirect();
                 result = await _scriptEngine.ExecuteAsync(message.Content.Code);
             }
@@ -80,8 +102,7 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
             errorDisplay.Data["text/html"] = $"<p style=\"color:red;\">{error}</p>";
             _ioPub.Send(message, errorDisplay, MessageType.DisplayData);
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = null;
-            DisplayDataEmitter.UpdateDisplayDataHandler = null;
+            _currentRequest = null;
         }
 
         if (result != null) {

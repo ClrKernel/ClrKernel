@@ -3,7 +3,7 @@ using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Language.Mermaid;
 /// <summary>

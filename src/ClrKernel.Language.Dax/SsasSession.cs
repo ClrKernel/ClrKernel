@@ -34,8 +34,9 @@ public sealed partial class SsasSession {
         return directive.Name;
     }
 
-    /// <summary>Runs a <c>#!dax</c> cell against its cube and returns the result grid.</summary>
-    public DisplayData Execute(string cellBody) {
+    /// <summary>Runs a <c>#!dax</c> cell against its cube and returns the tabular
+    /// concept (drawn as the interactive grid by the registered formatters).</summary>
+    public DisplayTable Execute(string cellBody) {
         var request = DaxDirectives.ParseCell(cellBody);
         var spec = _registry.Resolve(request.CubeName);
         var connection = new SsasConnection(spec);

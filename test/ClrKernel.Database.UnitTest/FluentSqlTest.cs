@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database;
 using ClrKernel.Database.Provider.SqlServer;
@@ -27,11 +28,13 @@ public class FluentSqlResultsTest {
     }
 
     [TestMethod]
-    public void Results_renders_interactive_grid_and_is_display_data() {
+    public void Results_is_a_display_concept_that_renders_as_the_grid() {
         var results = new DataResults(Sample());
-        Assert.IsInstanceOfType(results, typeof(DisplayData)); // engine renders it directly
-        StringAssert.Contains((string)results.Data["text/html"], "Amount");
-        Assert.AreEqual("2 rows", results.Data["text/plain"]);
+        // A concept, not a bundle: the registry converts it (registrations made
+        // by DataResults itself), and the engine bundles it at the boundary.
+        Assert.IsInstanceOfType(results, typeof(IDisplayValue));
+        StringAssert.Contains(results.ToHtml().Html, "Amount");
+        Assert.AreEqual("2 rows", results.ToText().Text);
     }
 
     [TestMethod]
@@ -356,7 +359,7 @@ public class FluentSqlIntegrationTest {
         // limit caps the rendered grid, not the data — every row stays enumerable.
         Assert.AreEqual(3, results.Count, "all rows remain available regardless of the preview limit");
 
-        var html = (string)results.Data["text/html"];
+        var html = results.ToHtml().Html;
         StringAssert.Contains(html, "alpha");
         StringAssert.Contains(html, "beta");
         Assert.IsFalse(html.Contains("gamma"),

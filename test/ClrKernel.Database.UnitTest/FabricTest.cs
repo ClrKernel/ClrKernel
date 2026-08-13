@@ -136,7 +136,7 @@ public class FabricEngineWiringTest {
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
         // Bare "Fabric" resolves to the imported helper type (no ClrKernel.Database.Provider.Fabric prefix needed).
         var result = await engine.ExecuteAsync("#!csharp\nnameof(Fabric)");
-        var text = result is ClrKernel.Core.Primitives.DisplayData d && d.Data.TryGetValue("text/plain", out var t)
+        var text = result is ClrKernel.Core.Scripting.DisplayData d && d.Data.TryGetValue("text/plain", out var t)
             ? t?.ToString()
             : result?.ToString();
         StringAssert.Contains(text, "Fabric");
