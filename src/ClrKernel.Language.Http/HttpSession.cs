@@ -47,7 +47,10 @@ public sealed class HttpSession {
             }
 
             var (html, text) = HttpResponseRenderer.Render(exchange);
-            DisplayDataEmitter.Emit(new DisplayData(text, html));
+            var card = new DisplayData();
+            card.Data["text/plain"] = text;
+            card.Data["text/html"] = html;
+            DisplayDataEmitter.Emit(card);
             last = exchange;
         }
 

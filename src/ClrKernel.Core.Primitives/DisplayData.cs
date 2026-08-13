@@ -25,17 +25,14 @@ public class DisplayData {
         Transient = new Dictionary<string, object>();
     }
 
+    /// <summary>
+    /// A plain-text bundle (status lines, short summaries). Anything richer is a
+    /// display concept (<see cref="IDisplayValue"/>) packaged by
+    /// <see cref="DisplayDataPackager"/> through the formatter registry — there is
+    /// deliberately no (text, html) constructor anymore.
+    /// </summary>
     public DisplayData(string text)
-        : this(text, text) {
-
-    }
-
-    public DisplayData(string text, string html)
         : this() {
-        Data = new Dictionary<string, object>
-        {
-            { "text/plain", text },
-            { "text/html", html }
-        };
+        Data["text/plain"] = text;
     }
 }

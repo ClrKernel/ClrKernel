@@ -75,7 +75,10 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
             _logger.LogError(e, "Failed to run the code: " + message.Content.Code);
 
             var error = e.Message + Environment.NewLine + e.StackTrace;
-            _ioPub.Send(message, new DisplayData(error, $"<p style=\"color:red;\">{error}</p>"), MessageType.DisplayData);
+            var errorDisplay = new DisplayData();
+            errorDisplay.Data["text/plain"] = error;
+            errorDisplay.Data["text/html"] = $"<p style=\"color:red;\">{error}</p>";
+            _ioPub.Send(message, errorDisplay, MessageType.DisplayData);
         } finally {
             DisplayDataEmitter.DisplayDataHandler = null;
             DisplayDataEmitter.UpdateDisplayDataHandler = null;

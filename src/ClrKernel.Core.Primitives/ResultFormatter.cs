@@ -22,7 +22,9 @@ public static class ResultFormatter {
 
     public static DisplayData Format(object value) {
         if (value is null) {
-            return new DisplayData("null");
+            var nullData = new DisplayData("null");
+            nullData.Data["text/html"] = "<span>null</span>";
+            return nullData;
         }
 
         var type = value.GetType();

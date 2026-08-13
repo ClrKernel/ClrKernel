@@ -81,6 +81,13 @@ public class HtmlFormattersTest {
     }
 
     [TestMethod]
+    public void DisplayingNullStillRendersBothMimeTypes() {
+        var data = DisplayDataPackager.Pack(new DisplayObject(null));
+        Assert.AreEqual("null", data.Data["text/plain"]);
+        StringAssert.Contains((string)data.Data["text/html"], "null");
+    }
+
+    [TestMethod]
     public void ABadgeRendersAsAPill() {
         var info = new DisplayBadge("fcst", "12 ms").ToHtml().Html;
         StringAssert.Contains(info, "border-radius:10px");
