@@ -139,6 +139,40 @@ public sealed class ConnectionConfig {
     public static string FindFile(string startDirectory = null, string env = null, int maxParents = 10) =>
         CandidateFiles(env, startDirectory ?? Directory.GetCurrentDirectory(), maxParents).FirstOrDefault();
 
+    /// <summary>
+    /// The config files to load, in load order. The first directory (walking up from
+    /// <paramref name="startDirectory"/>) containing any candidate wins; within it the
+    /// base file comes first and a <c>.local</c> variant (<c>connections.local.json</c> —
+    /// typically git-ignored personal dev settings) comes second, so its same-named
+    /// entries override the shared ones. Either may exist alone.
+    /// </summary>
+    public static IReadOnlyList<string> FindFiles(string startDirectory = null, string env = null, int maxParents = 10) {
+        var dir = new DirectoryInfo(startDirectory ?? Directory.GetCurrentDirectory());
+        var depth = 0;
+        while (dir != null && depth++ <= maxParents) {
+            var found = new List<string>();
+            foreach (var fileName in FileNames(env)) {
+                var path = Path.Combine(dir.FullName, fileName);
+                if (File.Exists(path)) {
+                    found.Add(path);
+                    break;
+                }
+            }
+            foreach (var fileName in LocalFileNames(env)) {
+                var path = Path.Combine(dir.FullName, fileName);
+                if (File.Exists(path)) {
+                    found.Add(path);
+                    break;
+                }
+            }
+            if (found.Count > 0) {
+                return found;
+            }
+            dir = dir.Parent;
+        }
+        return Array.Empty<string>();
+    }
+
     /// <summary>The connection names defined in a specific config file (empty if missing/blank).</summary>
     public static IReadOnlyList<string> ListNames(string filePath) {
         if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) {
@@ -275,6 +309,12 @@ public sealed class ConnectionConfig {
         var suffix = string.IsNullOrEmpty(env) ? string.Empty : "." + env;
         yield return $"clrkernel.connections{suffix}.json";
         yield return $"connections{suffix}.json";
+    }
+
+    private static IEnumerable<string> LocalFileNames(string env) {
+        var suffix = string.IsNullOrEmpty(env) ? string.Empty : "." + env;
+        yield return $"clrkernel.connections{suffix}.local.json";
+        yield return $"connections{suffix}.local.json";
     }
 
     private static IEnumerable<string> CandidateFiles(string env, string startDirectory, int maxParents) {

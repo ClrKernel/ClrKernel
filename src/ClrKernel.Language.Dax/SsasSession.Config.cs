@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using ClrKernel.Database;
 using ClrKernel.Database.Provider.AnalysisServices;
@@ -29,26 +28,28 @@ public sealed partial class SsasSession {
     /// <c>$type</c> — a SQL Server connection, say — is skipped rather than misread.
     /// </summary>
     public IReadOnlyList<string> LoadFromConfig(string startDirectory = null) {
-        var file = ConnectionConfig.FindFile(startDirectory);
-        if (file == null) {
-            return Array.Empty<string>();
-        }
         var loaded = new List<string>();
-        foreach (var node in ConnectionConfig.LoadAllRaw(file)) {
-            if (!node.IsType(SsasConnectionConfig.TypeName)) {
-                continue;
+        // Base file first, then the .local overlay: Register replaces by name,
+        // so a personal connections.local.json entry wins over the shared one.
+        foreach (var file in ConnectionConfig.FindFiles(startDirectory)) {
+            foreach (var node in ConnectionConfig.LoadAllRaw(file)) {
+                if (!node.IsType(SsasConnectionConfig.TypeName)) {
+                    continue;
+                }
+                var spec = SsasConnectionConfig.FromNode(node);
+                // A password stored as a reference is resolved now, the same way a --secret on the
+                // directive is: the file holds the reference, never the password.
+                if (spec.Auth == SsasAuthMode.UserPassword && !string.IsNullOrWhiteSpace(spec.SecretRef)
+                    && _secrets.TryResolve(spec.SecretRef, out var password)) {
+                    spec.Password = password;
+                }
+                // A secret that isn't there yet must not stop a notebook opening — the cube registers
+                // without a password and says so when it is used.
+                _registry.Register(node.Name, spec);
+                if (!loaded.Contains(node.Name)) {
+                    loaded.Add(node.Name);
+                }
             }
-            var spec = SsasConnectionConfig.FromNode(node);
-            // A password stored as a reference is resolved now, the same way a --secret on the
-            // directive is: the file holds the reference, never the password.
-            if (spec.Auth == SsasAuthMode.UserPassword && !string.IsNullOrWhiteSpace(spec.SecretRef)
-                && _secrets.TryResolve(spec.SecretRef, out var password)) {
-                spec.Password = password;
-            }
-            // A secret that isn't there yet must not stop a notebook opening — the cube registers
-            // without a password and says so when it is used.
-            _registry.Register(node.Name, spec);
-            loaded.Add(node.Name);
         }
         return loaded;
     }
