@@ -5,6 +5,16 @@ namespace ClrKernel.UnitTest;
 
 [TestClass]
 public class ProgressBarTest {
+    // ProgressBar publishes the DisplayProgress concept; the bar itself is drawn
+    // by the registered renders.
+    [ClassInitialize]
+    public static void RegisterPlugin(TestContext _) =>
+        ClrKernel.Formatting.Html.HtmlFormatters.RegisterDefaults();
+
+    [ClassCleanup]
+    public static void UnregisterPlugin() =>
+        ClrKernel.Formatting.Html.HtmlFormatters.UnregisterDefaults();
+
     [TestMethod]
     public void Renders_percentage_on_report() {
         string last = null;

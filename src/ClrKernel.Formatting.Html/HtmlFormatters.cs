@@ -29,7 +29,6 @@ public static class HtmlFormatters {
                     new DisplayText((string)ResultFormatter.Format(o.Value).Data["text/plain"])),
                 DisplayFormatters.Register<DisplayObject, DisplayHtml>(o =>
                     new DisplayHtml((string)ResultFormatter.Format(o.Value).Data["text/html"])),
-                DisplayFormatters.Register<DisplayObject, DisplayTable>(TableExtractor.Extract),
 
                 DisplayFormatters.Register<DisplayConsoleText, DisplayText>(c =>
                     new DisplayText(AnsiRenderer.Strip(c.ConsoleOutput ?? ""))),

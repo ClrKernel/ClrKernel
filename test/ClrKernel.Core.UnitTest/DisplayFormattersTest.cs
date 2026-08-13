@@ -101,9 +101,18 @@ public class DisplayFormattersTest {
 
     [TestMethod]
     public void AnUnsatisfiablePreferenceFallsBackToTheRawObject() {
-        var obj = new DisplayObject(7, typeof(DisplayTable)); // nothing registered for tables
+        // Nothing can turn a bare int into a progress bar: not coercible, no formatter.
+        var obj = new DisplayObject(7, typeof(DisplayProgress));
         Assert.AreSame(obj, DisplayFormatters.Resolve(obj));
         Assert.AreEqual("7", obj.ToText().Text, "text fallback must still work");
+    }
+
+    [TestMethod]
+    public void TableExtractionIsBuiltIn() {
+        // Shaping a value into DisplayTable is concept work, not rendering, so it
+        // works with no formatting package registered at all.
+        var resolved = DisplayFormatters.Resolve(new DisplayObject(new[] { 1, 2 }, typeof(DisplayTable)));
+        Assert.AreEqual(2, ((DisplayTable)resolved).Rows.Count);
     }
 }
 

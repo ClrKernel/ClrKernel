@@ -6,8 +6,9 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
+using ClrKernel.Core.Primitives;
 
-namespace ClrKernel.Core.Primitives;
+namespace ClrKernel.Formatting.Html;
 /// <summary>
 /// Turns a bare cell result into a rich <see cref="DisplayData"/> (text/html
 /// with a text/plain fallback) so notebook output reads well without calling

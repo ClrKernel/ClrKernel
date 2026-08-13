@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-namespace ClrKernel.Core.Primitives;
+namespace ClrKernel.Formatting.Html;
 
 /// <summary>
 /// Turns console output containing ANSI escape sequences into HTML, and strips it for plain text.

@@ -1,4 +1,4 @@
-using ClrKernel.Core.Primitives;
+using ClrKernel.Formatting.Html;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;

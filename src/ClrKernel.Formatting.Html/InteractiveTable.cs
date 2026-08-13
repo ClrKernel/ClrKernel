@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Net;
 using System.Text;
+using ClrKernel.Core.Primitives;
 
-namespace ClrKernel.Core.Primitives;
+namespace ClrKernel.Formatting.Html;
 /// <summary>
 /// Builds a self-contained interactive HTML grid for tabular data — the kind of
 /// output <c>DisplayTable()</c> produces. Features: click-to-sort headers, a global

@@ -22,8 +22,15 @@ public static class DisplayFormatters {
         // Concept-level fallbacks only — nothing here renders. Running in the static
         // ctor guarantees they precede (and so lose to) every external registration.
         Register<DisplayObject, DisplayText>(o => new DisplayText(o.Value?.ToString() ?? ""));
+        Register<DisplayObject, DisplayTable>(TableExtractor.Extract);
         Register<DisplayConsoleText, DisplayText>(c => new DisplayText(c.ConsoleOutput ?? ""));
         Register<DisplayBadge, DisplayText>(b => new DisplayText(b.Label + ": " + b.Text));
+        Register<DisplayProgress, DisplayText>(p => {
+            var status = !string.IsNullOrEmpty(p.Status) ? p.Status
+                : p.Total > 0 ? $"{p.Completed:0.#} / {p.Total:0.#}"
+                : p.Completed.ToString("0.#");
+            return new DisplayText(string.IsNullOrEmpty(p.Label) ? status : p.Label + " · " + status);
+        });
     }
 
     public static DisplayHtml ToHtml(this IDisplayValue value) => Format<DisplayHtml>(value);

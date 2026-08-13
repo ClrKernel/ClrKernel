@@ -4,16 +4,15 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Reflection;
-using ClrKernel.Core.Primitives;
-
-namespace ClrKernel.Formatting.Html;
+namespace ClrKernel.Core.Primitives;
 
 /// <summary>
 /// Shapes an arbitrary value into the <see cref="DisplayTable"/> concept: data readers
 /// and DataTables by schema, dictionary rows by key union, sequences by the element
 /// type's public properties (scalars get a single Value column), and any other object
 /// as a one-row table of its properties. <c>TotalRows = -1</c> means the source was
-/// truncated at the limit with the remainder uncounted ("first N+").
+/// truncated at the limit with the remainder uncounted ("first N+"). This is
+/// concept-shaping, not rendering, which is why it lives in Primitives.
 /// </summary>
 public static class TableExtractor {
     private const int _limit = 1000;
@@ -53,7 +52,7 @@ public static class TableExtractor {
             } catch {
                 fieldType = typeof(string);
             }
-            types[i] = InteractiveTable.KindOf(fieldType);
+            types[i] = DisplayTable.KindOf(fieldType);
         }
 
         var rows = new List<IReadOnlyList<string>>();
@@ -65,7 +64,7 @@ public static class TableExtractor {
             }
             var row = new string[fieldCount];
             for (var i = 0; i < fieldCount; i++) {
-                row[i] = InteractiveTable.CellText(reader.GetValue(i));
+                row[i] = DisplayTable.CellText(reader.GetValue(i));
             }
             rows.Add(row);
         }
@@ -77,7 +76,7 @@ public static class TableExtractor {
         var types = new string[table.Columns.Count];
         for (var i = 0; i < table.Columns.Count; i++) {
             columns[i] = table.Columns[i].ColumnName;
-            types[i] = InteractiveTable.KindOf(table.Columns[i].DataType);
+            types[i] = DisplayTable.KindOf(table.Columns[i].DataType);
         }
 
         var rows = new List<IReadOnlyList<string>>();
@@ -87,7 +86,7 @@ public static class TableExtractor {
             var dataRow = table.Rows[r];
             var row = new string[table.Columns.Count];
             for (var c = 0; c < table.Columns.Count; c++) {
-                row[c] = InteractiveTable.CellText(dataRow[c]);
+                row[c] = DisplayTable.CellText(dataRow[c]);
             }
             rows.Add(row);
         }
@@ -112,12 +111,12 @@ public static class TableExtractor {
                 if (!columnIndex.ContainsKey(pair.Key)) {
                     columnIndex[pair.Key] = columns.Count;
                     columns.Add(pair.Key);
-                    kinds.Add(InteractiveTable.Text);
+                    kinds.Add(DisplayTable.Text);
                     kindLocked.Add(false);
                 }
                 var idx = columnIndex[pair.Key];
                 if (!kindLocked[idx] && pair.Value != null && !(pair.Value is DBNull)) {
-                    kinds[idx] = InteractiveTable.KindOf(pair.Value.GetType());
+                    kinds[idx] = DisplayTable.KindOf(pair.Value.GetType());
                     kindLocked[idx] = true;
                 }
             }
@@ -127,7 +126,7 @@ public static class TableExtractor {
         foreach (var row in taken) {
             var cellRow = new string[columns.Count];
             foreach (var pair in row) {
-                cellRow[columnIndex[pair.Key]] = InteractiveTable.CellText(pair.Value);
+                cellRow[columnIndex[pair.Key]] = DisplayTable.CellText(pair.Value);
             }
             cells.Add(cellRow);
         }
@@ -157,16 +156,16 @@ public static class TableExtractor {
         string[] types;
         if (properties.Length == 0) {
             columns = new[] { "Value" };
-            types = new[] { elementType != null ? InteractiveTable.KindOf(elementType) : InteractiveTable.Text };
+            types = new[] { elementType != null ? DisplayTable.KindOf(elementType) : DisplayTable.Text };
         } else {
             columns = properties.Select(p => p.Name).ToArray();
-            types = properties.Select(p => InteractiveTable.KindOf(p.PropertyType)).ToArray();
+            types = properties.Select(p => DisplayTable.KindOf(p.PropertyType)).ToArray();
         }
 
         var rows = new List<IReadOnlyList<string>>();
         foreach (var item in items) {
             if (properties.Length == 0) {
-                rows.Add(new[] { InteractiveTable.CellText(item) });
+                rows.Add(new[] { DisplayTable.CellText(item) });
             } else {
                 rows.Add(properties.Select(p => SafeGet(p, item)).ToArray());
             }
@@ -180,15 +179,15 @@ public static class TableExtractor {
             return new DisplayTable(
                 value,
                 new[] { "Value" },
-                new IReadOnlyList<string>[] { new[] { InteractiveTable.CellText(value) } },
-                new[] { InteractiveTable.KindOf(value.GetType()) },
+                new IReadOnlyList<string>[] { new[] { DisplayTable.CellText(value) } },
+                new[] { DisplayTable.KindOf(value.GetType()) },
                 1);
         }
         return new DisplayTable(
             value,
             properties.Select(p => p.Name).ToArray(),
             new IReadOnlyList<string>[] { properties.Select(p => SafeGet(p, value)).ToArray() },
-            properties.Select(p => InteractiveTable.KindOf(p.PropertyType)).ToArray(),
+            properties.Select(p => DisplayTable.KindOf(p.PropertyType)).ToArray(),
             1);
     }
 
@@ -199,7 +198,7 @@ public static class TableExtractor {
 
     private static string SafeGet(PropertyInfo property, object target) {
         try {
-            return InteractiveTable.CellText(property.GetValue(target));
+            return DisplayTable.CellText(property.GetValue(target));
         } catch (Exception e) {
             return "<error: " + e.GetBaseException().Message + ">";
         }

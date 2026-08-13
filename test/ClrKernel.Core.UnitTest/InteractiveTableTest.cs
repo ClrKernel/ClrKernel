@@ -2,15 +2,23 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Formatting.Html;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;
 
 [TestClass]
 public class InteractiveTableTest {
-    // Captures the html a DisplayTable overload emitted (DisplayAs publishes a
+    // The DisplayTable overloads emit concepts; the grid html needs the renders.
+    [ClassInitialize]
+    public static void RegisterPlugin(TestContext _) => HtmlFormatters.RegisterDefaults();
+
+    [ClassCleanup]
+    public static void UnregisterPlugin() => HtmlFormatters.UnregisterDefaults();
+
+    // Captures the html a DisplayTable overload emitted (it publishes a
     // display_data message; we intercept the emitter to read it back).
-    private static string CaptureHtml(Func<DisplayedValue> display) {
+    private static string CaptureHtml(Action display) {
         DisplayData captured = null;
         var previous = DisplayDataEmitter.DisplayDataHandler;
         DisplayDataEmitter.DisplayDataHandler = d => captured = d;
