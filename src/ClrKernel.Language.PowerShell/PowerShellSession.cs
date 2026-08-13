@@ -115,9 +115,9 @@ public sealed class PowerShellSession : IDisposable {
 
             var console = sb.ToString().TrimEnd('\r', '\n');
             // PowerShell colours its own output, so the raw text is full of ESC[…m sequences.
-            // Plain text keeps them out of the way for Jupyter and headless runs; the HTML view
-            // renders them, which is what a notebook shows.
-            return new DisplayData(AnsiRenderer.Strip(console), AnsiRenderer.ToHtml(console));
+            // Emit it as the console-text concept: the registered formatters render the
+            // escapes as HTML and strip them from text/plain — this language renders nothing.
+            return DisplayDataPackager.Pack(new DisplayConsoleText(console));
         }
     }
 
