@@ -33,6 +33,21 @@ public sealed partial class SqlSession {
     /// parsed directive (spec, default flag, and any C# variable to bind).</summary>
     public SqlConnectDirective Connect(string directiveLine) {
         var directive = SqlDirectives.ParseConnect(directiveLine);
+
+        // Name-only (`#!sql-connect --name x [--default] [--var y]`): reference the
+        // existing connection of that name — typically loaded from connections.json —
+        // so the C# variable binds without restating (or clobbering) the definition.
+        if (directive.IsReference) {
+            if (!_registry.TryGet(directive.Spec.Name, out var existing)) {
+                LoadFromConfig(); // a headless/Jupyter run may not have loaded the config yet
+                existing = _registry.Resolve(directive.Spec.Name);
+            }
+            if (directive.IsDefault) {
+                _registry.SetDefault(existing.Name);
+            }
+            return new SqlConnectDirective(existing, directive.IsDefault, directive.Variable, isReference: true);
+        }
+
         _registry.Register(directive.Spec, directive.IsDefault);
         return directive;
     }
