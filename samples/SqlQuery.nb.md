@@ -19,6 +19,15 @@ after the connect line should succeed; scratch tables are prefixed
 (or `CLRKERNEL_SECRET_SQL_ADVDW` for headless runs). The `--name advdw` also
 binds a C# variable `advdw`, which the C# cells below use.
 
+**Already have `advdw` in a `connections.json`?** Then don't restate it — a
+name-only connect cell *references* the saved definition instead of defining a
+new one, and still binds the `advdw` variable and sets the default. Swap the
+cell above for:
+
+```sql
+#!sql-connect --name advdw --default
+```
+
 ## SQL cells → interactive grid
 
 Customers joined to geography — sort the columns, try the per-column filters and
@@ -198,12 +207,15 @@ new { Before = before, After = after, RolledBack = before == after }
 ## Cleanup
 
 ```csharp
+var countSmoke = "SELECT COUNT(*) FROM sys.tables WHERE name LIKE 'ClrKernelSmoke[_]%'";
+var before = advdw.Scalar<int>(countSmoke);
 advdw.Execute(@"
     DROP TABLE IF EXISTS dbo.ClrKernelSmoke_TopCustomers;
     DROP TABLE IF EXISTS dbo.ClrKernelSmoke_People;
     DROP TABLE IF EXISTS dbo.ClrKernelSmoke_PeopleStaging;
     DROP TABLE IF EXISTS dbo.ClrKernelSmoke_Products;");
-"smoke tables dropped"
+var after = advdw.Scalar<int>(countSmoke);
+$"dropped {before - after} smoke table(s), {after} remaining"
 ```
 
 ## Other ways to connect (reference, not run)
