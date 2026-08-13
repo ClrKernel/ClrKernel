@@ -82,8 +82,10 @@ public static class WarehouseTableDefinition {
         }
 
         if (t == typeof(decimal)) {
-            var p = precision > 0 ? precision : 38;
-            var s = scale >= 0 ? scale : 6;
+            // money/smallmoney sources report the TDS "unspecified" sentinel (255)
+            // as their scale (sometimes precision too); decimal(19,255) is invalid.
+            var p = precision > 0 && precision <= 38 ? precision : 38;
+            var s = scale >= 0 && scale <= p ? scale : 6;
             return $"decimal({p},{s})";
         }
         if (t == typeof(DateTime)) {

@@ -60,8 +60,12 @@ internal static class SqlServerTableDefinition {
             return "float";
         }
         if (t == typeof(decimal)) {
-            var p = precision > 0 ? precision : 18;
-            var s = scale >= 0 ? scale : 2;
+            // money/smallmoney columns report the TDS "unspecified" sentinel (255)
+            // as their scale (sometimes precision too) — 255 is not a real scale,
+            // and decimal(19,255) is invalid DDL. An unspecified scale defaults to
+            // 4, which holds money exactly.
+            var p = precision > 0 && precision <= 38 ? precision : 18;
+            var s = scale >= 0 && scale <= p ? scale : 4;
             return $"decimal({p},{s})";
         }
         if (t == typeof(DateTime)) {

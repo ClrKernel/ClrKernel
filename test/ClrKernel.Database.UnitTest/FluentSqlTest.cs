@@ -148,6 +148,29 @@ public class FluentSqlTableDefinitionTest {
         StringAssert.Contains(ddl, "nvarchar");     // SQL Server uses nvarchar (unlike Fabric)
         StringAssert.Contains(ddl, "datetime2");
     }
+
+    [TestMethod]
+    public void Money_columns_reporting_the_unspecified_scale_sentinel_become_decimal_19_4() {
+        // A live SqlDataReader over a money column (e.g. AdventureWorksDW's
+        // DimProduct.ListPrice) reports NumericPrecision 19, NumericScale 255 —
+        // the TDS "unspecified" sentinel. Reproduce that schema row by hand.
+        var schema = new DataTable();
+        schema.Columns.Add("ColumnName", typeof(string));
+        schema.Columns.Add("DataType", typeof(Type));
+        schema.Columns.Add("ColumnSize", typeof(int));
+        schema.Columns.Add("NumericPrecision", typeof(int));
+        schema.Columns.Add("NumericScale", typeof(int));
+        schema.Columns.Add("AllowDBNull", typeof(bool));
+        schema.Rows.Add("ListPrice", typeof(decimal), 8, 19, 255, true);
+        schema.Rows.Add("Weird", typeof(decimal), 8, 255, 255, true);
+        schema.Rows.Add("Exact", typeof(decimal), 8, 10, 2, false);
+
+        var ddl = SqlServerTableDefinition.Generate(schema, "dbo.Target");
+
+        StringAssert.Contains(ddl, "[ListPrice] decimal(19,4) NULL");
+        StringAssert.Contains(ddl, "[Weird] decimal(18,4) NULL");
+        StringAssert.Contains(ddl, "[Exact] decimal(10,2) NOT NULL");
+    }
 }
 
 [TestClass]
