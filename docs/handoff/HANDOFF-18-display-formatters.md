@@ -91,21 +91,39 @@ PowerShell returns `DisplayConsoleText`, HTTP composes concepts, Mermaid may kee
 - Primitives gets `<LangVersion>latest</LangVersion>` + an `IsExternalInit` shim so records
   compile on netstandard2.0.
 
-## Phases
+## Phases — ALL COMPLETE (branch `feature/display-formatters`)
 
-- [ ] **P0** — LangVersion + `IsExternalInit` shim in Primitives.
-- [ ] **P1** — concepts + `DisplayFormatters` + `DisplayValues`/`DisplayCell` + packager in
-  Primitives; legacy `DisplayExtensions`/`DisplayedValue` kept working (marked obsolete);
-  unit tests: chaining, preferred-type resolve, first-display-vs-update, override wins.
-- [ ] **P2** — `ClrKernel.Formatting.Html` package; `ResultFormatter`/`InteractiveTable`/
-  `AnsiRenderer`/`ProgressBar` move out of Primitives; CLI + test mirrors register; slnx +
-  release pipeline.
-- [ ] **P3** — engine: trailing value routes through the packager (same path as `Display()`);
-  trailing `DisplayCell`/`DisplayedValue` suppressed; two-string `DisplayData` ctor deleted,
-  call sites in `ExecuteHandler` fixed here.
-- [ ] **P4** — languages emit concepts: SQL/DAX → `DisplayTable`, PowerShell →
-  `DisplayConsoleText`, HTTP; Mermaid stays `DisplayHtml`.
-- [ ] **P5** — `DisplayBytes` end-to-end: base64 over LSP JSON, extension `toOutputItems`
-  binary branch, Jupyter base64.
+- [x] **P0** — LangVersion + `IsExternalInit` shim in Primitives (whole package converted to
+  file-scoped namespaces: IDE0161 applies once the LangVersion rises, and CI verifies format).
+- [x] **P1** — concepts + `DisplayFormatters` + `DisplayValues`/`DisplayCell` + packager.
+- [x] **P2** — `ClrKernel.Formatting.Html` package; composition root + all three test-suite
+  mirrors register it; slnx + release pack list.
+- [x] **P3** — engine: trailing value routes through the packager; trailing
+  `DisplayCell`/`DisplayedValue` suppressed.
+- [x] **P4** — SQL/DAX/`DataResults` → `DisplayTable`; PowerShell → `DisplayConsoleText`;
+  the two-string `DisplayData` ctor deleted.
+- [x] **P5** — `DisplayBytes` end-to-end (base64 on the wire; the extension decodes binary
+  mimes into byte output items — `src/outputItems.ts`, unit-tested).
+- [x] **Endgame** — `ResultFormatter`/`InteractiveTable`/`AnsiRenderer` physically moved to
+  `Formatting.Html`; Primitives contains zero HTML.
 
-Each phase is independently green (`./build.sh` + tests) and its own commit(s).
+### Deviations from the plan above (all deliberate)
+
+- **`TableExtractor` lives in Primitives**, not the plugin: shaping a reader/DataTable/
+  sequence into `DisplayTable` is concept work, not rendering. `DisplayObject → DisplayTable`
+  is therefore a built-in registration and works with no render package loaded.
+- **`DisplayBadge` concept added** (label pill + text + optional `Success` tone) for the SQL
+  run summary and MERGE outcome — the alternative was leaving pill HTML inside `Language.Sql`.
+- **`ProgressBar` stayed in Primitives** but rewritten: it publishes `DisplayProgress`
+  through a `DisplayCell`; the bar is drawn by the plugin's `ProgressHtml`.
+- **HTTP and Mermaid keep their bespoke renderers** (a response card and a diagram are
+  renders by nature); they build their MIME bundles explicitly. If they ever need to be
+  pluggable, give each a concept + a formatter registered by its own package.
+- **`DisplayData(string text)` now sets `text/plain` only** (it used to duplicate unescaped
+  text into `text/html`).
+- Old `Display(mimeType)` extension replaced by `DisplayValues.Display`; `DisplayAs`
+  and `DisplayedValue` remain for raw-MIME updates. `DisplayTable()` overloads return
+  `DisplayCell` now.
+
+Each phase is an individual commit on the branch; the suite (`./build.sh Test`) and
+`dotnet format --verify-no-changes` are green at every commit from P1 on.

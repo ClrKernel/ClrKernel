@@ -2,6 +2,26 @@
 
 ## [0.5.0] - 2026-08-11
 
+- **One display pipeline, user-overridable.** `Display(x)` and a bare trailing `x`
+  now render identically — both go through a formatter registry
+  (`DisplayFormatters` in `ClrKernel.Core.Primitives`, default renders in the new
+  `ClrKernel.Formatting.Html` package). A cell can override any render:
+  `DisplayFormatters.Register<DisplayTable, DisplayHtml>(t => …)` — the newest
+  registration wins. New concept-based helpers: `x.DisplayTable()`,
+  `x.DisplayHtml()`, `x.DisplayMarkdown()`, `bytes.DisplayBytes("image/png")`, and
+  the returned cell updates in place (`cell.UpdateProgress(…)` etc.).
+- **Fixed: a trailing `x.Display()` printed the value and then the handle.** A
+  display handle is a structure, never rendered; the engine now suppresses it.
+- **Images and other binary output render.** `DisplayBytes` (base64 on the wire)
+  becomes real bytes in the notebook renderer, so `image/png`, `application/pdf`
+  and friends display instead of showing base64 text.
+- **BREAKING (packages) — `DisplayData(text, html)` is gone.** Producers emit
+  display concepts (`DisplayTable`, `DisplayConsoleText`, `DisplayBadge`, …) and
+  the registry renders them; `ClrKernel.Core.Primitives` no longer contains any
+  HTML (`ResultFormatter`, `InteractiveTable`, `AnsiRenderer` moved to
+  `ClrKernel.Formatting.Html`). The `DisplayTable()` extension overloads now
+  return a `DisplayCell` instead of a `DisplayedValue`.
+
 - **BREAKING (protocol) — the connection RPCs are now language-neutral.** The eight
   `clrkernel/sql/*` and three `clrkernel/dax/*` methods are replaced by one
   `clrkernel/connections/*` set that takes a `languageId`: `list`, `add`, `remove`,
