@@ -33,7 +33,7 @@ public class ShellRemotingTest {
         var spec = new ShellConnectionSpec { Name = "w", Host = "h", User = "u", Port = 2222, IdentityFile = "/k" };
         var args = spec.BuildSshArguments("bash -s");
         CollectionAssert.AreEqual(
-            new[] { "-o", "BatchMode=yes", "-p", "2222", "-i", "/k", "u@h", "bash -s" },
+            new[] { "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-p", "2222", "-i", "/k", "u@h", "bash -s" },
             (System.Collections.ICollection)args);
     }
 
@@ -41,7 +41,7 @@ public class ShellRemotingTest {
     public void Default_port_and_missing_user_are_omitted() {
         var args = new ShellConnectionSpec { Name = "w", Host = "h" }.BuildSshArguments("sh -s");
         CollectionAssert.AreEqual(
-            new[] { "-o", "BatchMode=yes", "h", "sh -s" },
+            new[] { "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "h", "sh -s" },
             (System.Collections.ICollection)args);
     }
 
@@ -106,14 +106,23 @@ public class ShellRemotingTest {
     // Live end-to-end, opt-in: CLRKERNEL_TEST_SSH="user@host" (key auth must already work).
     [TestMethod]
     public async Task Live_ssh_roundtrip_when_configured() {
+        // Accepts user@host, host, and an optional :port on either.
         var target = Environment.GetEnvironmentVariable("CLRKERNEL_TEST_SSH");
         if (string.IsNullOrEmpty(target)) {
-            Assert.Inconclusive("Set CLRKERNEL_TEST_SSH=user@host to run the live SSH test.");
+            Assert.Inconclusive("Set CLRKERNEL_TEST_SSH=[user@]host[:port] to run the live SSH test.");
         }
         var at = target.IndexOf('@');
+        var user = at > 0 ? target.Substring(0, at) : null;
+        var host = at >= 0 ? target.Substring(at + 1) : target;
+        var port = "";
+        var colon = host.IndexOf(':');
+        if (colon > 0) {
+            port = $" --port {host.Substring(colon + 1)}";
+            host = host.Substring(0, colon);
+        }
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
         await engine.ExecuteAsync(
-            $"#!shell-connect --name live --host {target.Substring(at + 1)} --user {target.Substring(0, at)}");
+            $"#!shell-connect --name live --host {host}{(user != null ? $" --user {user}" : "")}{port}");
 
         var echo = await engine.ExecuteAsync("#!bash --connection live\necho remote-ok");
         Assert.AreEqual("remote-ok", ((DisplayData)echo).Data["text/plain"]);

@@ -26,7 +26,11 @@ public sealed class ShellConnectionSpec {
         if (string.IsNullOrWhiteSpace(Host)) {
             throw new ShellCellException($"SSH connection '{Name}' has no host.");
         }
-        var args = new List<string> { "-o", "BatchMode=yes" };
+        // BatchMode: never hang on a password prompt. accept-new: BatchMode also
+        // can't answer the first-contact "accept host key?" question, which made
+        // every never-seen host fail with "Host key verification failed" — accept
+        // unknown hosts, still hard-fail if a known host's key CHANGES.
+        var args = new List<string> { "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new" };
         if (Port > 0 && Port != 22) {
             args.Add("-p");
             args.Add(Port.ToString());
