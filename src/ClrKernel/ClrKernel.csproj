@@ -35,6 +35,7 @@
     <ProjectReference Include="../ClrKernel.Language.Http/ClrKernel.Language.Http.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Mermaid/ClrKernel.Language.Mermaid.csproj" />
     <ProjectReference Include="../ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
+    <ProjectReference Include="../ClrKernel.Language.Shell/ClrKernel.Language.Shell.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
     <ProjectReference Include="../ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />

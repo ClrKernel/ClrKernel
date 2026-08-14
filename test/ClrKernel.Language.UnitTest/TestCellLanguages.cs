@@ -4,6 +4,7 @@ using ClrKernel.Language.Dax;
 using ClrKernel.Language.Http;
 using ClrKernel.Language.Mermaid;
 using ClrKernel.Language.PowerShell;
+using ClrKernel.Language.Shell;
 using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -29,6 +30,7 @@ public static class TestCellLanguages {
             () => new HttpCellLanguage(),
             () => new MermaidCellLanguage(),
             () => new PowerShellCellLanguage(),
+            () => new ShellCellLanguage(),
             () => new SqlCellLanguage(),
             () => new DaxCellLanguage(),
         });

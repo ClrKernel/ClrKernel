@@ -29,6 +29,10 @@ describe('fence tag -> cell language', () => {
         ['sql', 'sql'],
         ['tsql', 'sql'],
         ['dax', 'dax'],
+        ['bash', 'shellscript'],
+        ['zsh', 'shellscript'],
+        ['sh', 'shellscript'],
+        ['shell', 'shellscript'],
     ];
 
     it.each(cases)('```%s becomes a %s cell', (tag, languageId) => {
@@ -36,7 +40,10 @@ describe('fence tag -> cell language', () => {
         expect(cells).toHaveLength(1);
         expect(cells[0].kind).toBe(NotebookCellKind.Code);
         expect(cells[0].languageId).toBe(languageId);
-        expect(cells[0].value).toBe('BODY');
+        // zsh/sh fences keep their shell as an explicit selector line (bash is
+        // the shellscript default); every other tag passes the body through.
+        const expected = tag === 'zsh' || tag === 'sh' ? '#!' + tag + '\nBODY' : 'BODY';
+        expect(cells[0].value).toBe(expected);
     });
 
     it('is case-insensitive', () => {
@@ -96,5 +103,38 @@ describe('round trip', () => {
     it('supports longer and tilde fences', () => {
         expect(read('````sql\nselect 1\n````').cells[0].languageId).toBe('sql');
         expect(read('~~~sql\nselect 1\n~~~').cells[0].languageId).toBe('sql');
+    });
+});
+
+describe('shell cells', () => {
+    it('a zsh/sh fence keeps its shell via an explicit selector line', () => {
+        const cells = read('```zsh\necho hi\n```\n\n```sh\necho lo\n```').cells;
+        expect(cells[0].value).toBe('#!zsh\necho hi');
+        expect(cells[1].value).toBe('#!sh\necho lo');
+    });
+
+    it('a bash fence needs no selector (bash is the default shell)', () => {
+        const cells = read('```bash\necho hi\n```').cells;
+        expect(cells[0].value).toBe('echo hi');
+    });
+
+    it('does not duplicate a selector the fence body already has', () => {
+        const cells = read('```zsh\n#!zsh\necho hi\n```').cells;
+        expect(cells[0].value).toBe('#!zsh\necho hi');
+    });
+
+    it('serializes the fence tag from the selector line, defaulting to bash', () => {
+        expect(write([code('echo hi', 'shellscript')])).toBe('```bash\necho hi\n```\n');
+        expect(write([code('#!zsh\necho hi', 'shellscript')])).toBe('```zsh\n#!zsh\necho hi\n```\n');
+        expect(write([code('#!sh\necho hi', 'shellscript')])).toBe('```sh\n#!sh\necho hi\n```\n');
+        expect(write([code('#!shell\necho hi', 'shellscript')])).toBe('```bash\n#!shell\necho hi\n```\n');
+    });
+
+    it('round-trips zsh cells stably', () => {
+        const first = read('```zsh\necho hi\n```');
+        const md = write(first.cells as NotebookCellData[]);
+        expect(md).toBe('```zsh\n#!zsh\necho hi\n```\n');
+        const second = read(md);
+        expect(write(second.cells as NotebookCellData[])).toBe(md);
     });
 });

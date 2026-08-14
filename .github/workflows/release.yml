@@ -71,6 +71,7 @@ jobs:
           dotnet pack src/ClrKernel.Language.Http/ClrKernel.Language.Http.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Language.Mermaid/ClrKernel.Language.Mermaid.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Language.Shell/ClrKernel.Language.Shell.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.SqlServer/ClrKernel.Database.Provider.SqlServer.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Entra/ClrKernel.Database.Entra.csproj -c Release --no-build -o artifacts/pkg

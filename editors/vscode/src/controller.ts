@@ -36,7 +36,7 @@ export class ClrKernelController {
         // tooling from attaching). Plain 'csharp' is intentionally NOT listed: it would
         // add a second "C#" entry to the cell language picker, and the serializer already
         // maps every ```csharp fence to 'csharp-script' on load, so no cell is 'csharp'.
-        this.controller.supportedLanguages = ['csharp-script', 'http', 'mermaid', 'powershell', 'sql', 'dax'];
+        this.controller.supportedLanguages = ['csharp-script', 'http', 'mermaid', 'powershell', 'shellscript', 'sql', 'dax'];
         this.controller.supportsExecutionOrder = true;
         this.controller.executeHandler = (cells) => this.executeCells(cells);
     }
@@ -226,6 +226,9 @@ export class ClrKernelController {
         }
         if (cell.document.languageId === 'powershell' && !/^\s*#!(pwsh|powershell)\b/i.test(text)) {
             return '#!pwsh\n' + text;
+        }
+        if (cell.document.languageId === 'shellscript' && !/^\s*#!(bash|zsh|sh|shell)\b/i.test(text)) {
+            return '#!bash\n' + text;
         }
         if (cell.document.languageId === 'sql' && !/^\s*#!sql\b/i.test(text)) {
             return '#!sql\n' + text;

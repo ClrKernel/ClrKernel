@@ -20,6 +20,7 @@
   <Project Path="src/ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.Jdbc/ClrKernel.Database.Provider.Jdbc.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.SqlServer/ClrKernel.Database.Provider.SqlServer.csproj" />
+  <Project Path="src/ClrKernel.Language.Shell/ClrKernel.Language.Shell.csproj" />
   <Project Path="src/ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
   <Project Path="src/ClrKernel/ClrKernel.csproj" />
   <Project Path="test/ClrKernel.Core.UnitTest/ClrKernel.Core.UnitTest.csproj" />

@@ -2,6 +2,14 @@
 
 ## [0.5.0] - 2026-08-11
 
+- **Shell cells.** Set a cell's language to **Shell Script** (or start it with
+  `#!bash` / `#!zsh` / `#!sh`) to run shell commands. The working directory and
+  exported environment persist across cells like one terminal session, stderr is
+  captured inline, a non-zero exit fails the cell with its exit code, and ANSI
+  colour renders in the output (the session advertises a colour terminal, so
+  tools don't go monochrome just because output is piped). Executable markdown
+  round-trips ` ```bash `, ` ```zsh `, ` ```sh `, and ` ```shell ` fences.
+
 - **One display pipeline, user-overridable.** `Display(x)` and a bare trailing `x`
   now render identically — both go through a formatter registry
   (`DisplayFormatters` in `ClrKernel.Core.Primitives`, default renders in the new

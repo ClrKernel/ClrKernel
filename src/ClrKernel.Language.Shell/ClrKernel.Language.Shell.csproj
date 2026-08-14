@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ClrKernel.Language.Shell</RootNamespace>
+    <PackageId>ClrKernel.Language.Shell</PackageId>
+    <Description>Shell cells for ClrKernel: run bash, zsh, or sh in notebook cells (`#!bash` / `#!zsh` / `#!sh`) with the working directory and environment persisting across cells and ANSI colour output rendered in the notebook. Drives the shell cell language across the Jupyter kernel, the JSON-RPC server, and the headless runner.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Jupyter,Notebook,Kernel,Shell,bash,zsh,dotnet,CLR</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-64x64.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
+  </ItemGroup>
+</Project>
