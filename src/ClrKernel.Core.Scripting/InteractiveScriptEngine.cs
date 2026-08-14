@@ -107,6 +107,8 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     public InteractiveScriptEngine(string currentDir, ILogger logger)
         : this(currentDir, logger, null, CellLanguageRegistry.DefaultContributions) { }
 
+    /// <param name="currentDir">Working directory for relative paths (#load, #!import).</param>
+    /// <param name="logger">Engine log sink; goes to stderr in the server hosts.</param>
     /// <param name="languages">
     /// Cell languages available to this session; null uses
     /// <see cref="CellLanguageRegistry.Default"/>, set by the composition root.
@@ -247,7 +249,16 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         statement = PrepareStatement(statement);
 
         await EnsureScriptStateAsync();
-        _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
+        try {
+            _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
+        } catch (CompilationErrorException e) when (e.Diagnostics.Any(d => d.Id == "CS1109")) {
+            // CS1109: script mode nests a cell's classes inside the submission
+            // type, which makes `this` extension methods illegal. Compile the
+            // cell as a real class library instead — project mode — and
+            // reference it, so its extension methods work everywhere.
+            CompileCellAsLibrary(statement);
+            return null;
+        }
 
         // Record the successfully-compiled submission (this line is only reached
         // when the submission compiled and ran) so language services can rebuild
@@ -279,6 +290,125 @@ public class InteractiveScriptEngine : ICellExecutionContext {
 
     public object Execute(string statement) {
         return ExecuteAsync(statement).Result;
+    }
+
+    // --- Cells compiled as class libraries (extension methods) --------------
+
+    /// <summary>File-name prefix of assemblies emitted from notebook cells, so
+    /// tooling can tell a superseded cell library from a live one.</summary>
+    public const string CellLibraryPrefix = "clrkernel-cell-";
+
+    // Which emitted library currently declares each cell-defined type name;
+    // re-declaring a type swaps the old library out of the references.
+    private readonly Dictionary<string, MetadataReference> _cellLibraryByType = new();
+
+    private static bool IsLoadedType(string fullName) =>
+        AppDomain.CurrentDomain.GetAssemblies().Any(a => {
+            try {
+                return !a.IsDynamic && a.GetType(fullName, throwOnError: false) != null;
+            } catch {
+                return false;
+            }
+        });
+
+    private void CompileCellAsLibrary(string code) {
+        var parseOptions = new CSharpParseOptions(languageVersion: LanguageVersion.Preview);
+        var cellRoot = CSharpSyntaxTree.ParseText(code, parseOptions).GetCompilationUnitRoot();
+        if (cellRoot.Members.Any(m => m is GlobalStatementSyntax)) {
+            throw new InvalidOperationException(
+                "Extension methods are compiled as a class library, and that only works for a cell " +
+                "containing nothing but type declarations (and usings). Put the static class in a cell of its own.");
+        }
+
+        // The session's imports, so the cell's types see what cells see. Script
+        // imports may name a TYPE (host-style `using Console;`), which regular
+        // C# spells `using static`.
+        var source = string.Join("\n", _scriptOptions.Imports.Select(i =>
+                (IsLoadedType(i) ? "using static " : "using ") + i + ";"))
+            + "\n" + code;
+        var tree = CSharpSyntaxTree.ParseText(source, parseOptions);
+
+        // Same reference surface as execution: loaded assemblies plus the
+        // engine's explicit references — skipping superseded cell libraries.
+        var references = new Dictionary<string, MetadataReference>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()) {
+            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location)) {
+                continue;
+            }
+            var file = Path.GetFileName(assembly.Location);
+            if (file.StartsWith(CellLibraryPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            references.TryAdd(file, MetadataReference.CreateFromFile(assembly.Location));
+        }
+        foreach (var reference in _scriptOptions.MetadataReferences) {
+            if (reference is PortableExecutableReference pe && !string.IsNullOrEmpty(pe.FilePath)) {
+                references[Path.GetFileName(pe.FilePath)] = pe;
+            }
+        }
+
+        // Content-hashed assembly name: an edited cell gets a NEW identity (so
+        // the runtime can't unify it with the superseded version), and an
+        // unchanged re-run reuses the already-emitted file.
+        string hash;
+        using (var sha = System.Security.Cryptography.SHA256.Create()) {
+            hash = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(source))).Substring(0, 12);
+        }
+        var name = CellLibraryPrefix + hash;
+        var directory = Path.Combine(Path.GetTempPath(), "clrkernel", "cell-libraries");
+        Directory.CreateDirectory(directory);
+        var dllPath = Path.Combine(directory, name + ".dll");
+
+        if (!File.Exists(dllPath)) {
+            var compilation = CSharpCompilation.Create(name, new[] { tree }, references.Values,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+            using var pe = new MemoryStream();
+            using var xml = new MemoryStream();
+            var emit = compilation.Emit(pe, xmlDocumentationStream: xml);
+            if (!emit.Success) {
+                throw new InvalidOperationException("The cell failed to compile as a class library:\n" + string.Join("\n",
+                    emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString())));
+            }
+            File.WriteAllBytes(dllPath, pe.ToArray());
+            // The XML docs beside the dll give hover/completion the /// summaries.
+            File.WriteAllBytes(Path.ChangeExtension(dllPath, ".xml"), xml.ToArray());
+        }
+
+        Assembly.LoadFrom(dllPath);
+        var newReference = MetadataReference.CreateFromFile(dllPath);
+
+        var typeNames = cellRoot.DescendantNodes()
+            .OfType<MemberDeclarationSyntax>()
+            .Select(m => m switch {
+                BaseTypeDeclarationSyntax t => t.Identifier.Text,
+                DelegateDeclarationSyntax d => d.Identifier.Text,
+                _ => null,
+            })
+            .Where(n => n != null)
+            .Distinct()
+            .ToList();
+        var superseded = typeNames
+            .Where(_cellLibraryByType.ContainsKey)
+            .Select(t => _cellLibraryByType[t])
+            .Distinct()
+            .ToList();
+        _scriptOptions = _scriptOptions.WithReferences(
+            _scriptOptions.MetadataReferences.Where(r => !superseded.Contains(r)).Append(newReference));
+        foreach (var typeName in typeNames) {
+            _cellLibraryByType[typeName] = newReference;
+        }
+
+        // Namespaces declared in the cell become session imports, so other
+        // cells use the types unqualified.
+        foreach (var ns in cellRoot.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>()
+                     .Select(n => n.Name.ToString()).Distinct()) {
+            if (!_scriptOptions.Imports.Contains(ns)) {
+                _scriptOptions = _scriptOptions.AddImports(ns);
+            }
+        }
+
+        _logger.LogInformation(
+            $"cell compiled as class library {name}.dll ({string.Join(", ", typeNames)})");
     }
 
     // Initializes the persistent C# script state (default usings + any #r/#load

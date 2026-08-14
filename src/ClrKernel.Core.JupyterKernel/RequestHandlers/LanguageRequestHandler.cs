@@ -58,7 +58,10 @@ public class LanguageRequestHandler {
                 var hover = await _language.GetHoverAsync(snapshot, code, cursor).ConfigureAwait(false);
                 if (hover != null && !string.IsNullOrEmpty(hover.Markdown)) {
                     reply.Found = true;
-                    reply.Data = new Dictionary<string, object> { ["text/plain"] = hover.Markdown };
+                    var text = string.IsNullOrEmpty(hover.Documentation)
+                        ? hover.Markdown
+                        : hover.Markdown + "\n\n" + hover.Documentation;
+                    reply.Data = new Dictionary<string, object> { ["text/plain"] = text };
                 }
             }
         } catch (Exception e) {

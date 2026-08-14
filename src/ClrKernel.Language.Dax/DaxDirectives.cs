@@ -30,16 +30,6 @@ public sealed class DaxCellRequest {
 
 /// <summary>Parses the <c>#!dax-connect</c> magic and the per-cell cube selector.</summary>
 public static class DaxDirectives {
-    /// <summary>
-    /// Parses a <c>#!dax-connect</c> line. Flags: <c>--name</c>, <c>--server</c>,
-    /// <c>--database</c>, <c>--user</c>, <c>--secret</c> (an env-var name / ref),
-    /// <c>--auth</c> (integrated|sql|aad), <c>--fabric --workspace W --model M</c>,
-    /// <c>--azure-as</c>, <c>--connection-string</c>, <c>--default</c>. A committed
-    /// <c>--password</c> is rejected.
-    /// </summary>
-    /// <param name="secrets">Resolves a <c>--secret</c> reference. Defaults to a fresh store,
-    /// which reads the OS credential manager and the <c>CLRKERNEL_SECRET_*</c> environment
-    /// variables — the same places a SQL connection's password comes from.</param>
     /// <summary>The <c>--secret</c> reference on a connect line, or null. Lets a caller put the
     /// password in the store under the right key before the line is parsed.</summary>
     public static string SecretRefOf(string line) {
@@ -53,6 +43,17 @@ public static class DaxDirectives {
         return null;
     }
 
+    /// <summary>
+    /// Parses a <c>#!dax-connect</c> line. Flags: <c>--name</c>, <c>--server</c>,
+    /// <c>--database</c>, <c>--user</c>, <c>--secret</c> (an env-var name / ref),
+    /// <c>--auth</c> (integrated|sql|aad), <c>--fabric --workspace W --model M</c>,
+    /// <c>--azure-as</c>, <c>--connection-string</c>, <c>--default</c>. A committed
+    /// <c>--password</c> is rejected.
+    /// </summary>
+    /// <param name="line">The full <c>#!dax-connect</c> line, selector included.</param>
+    /// <param name="secrets">Resolves a <c>--secret</c> reference. Defaults to a fresh store,
+    /// which reads the OS credential manager and the <c>CLRKERNEL_SECRET_*</c> environment
+    /// variables — the same places a SQL connection's password comes from.</param>
     public static DaxConnectDirective ParseConnect(string line, SecretStore secrets = null) {
         var tokens = Tokenize(StripSelector(line, "#!dax-connect"));
         string name = null, server = null, database = null, user = null, secret = null,

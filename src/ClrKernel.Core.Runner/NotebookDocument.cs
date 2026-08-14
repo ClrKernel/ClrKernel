@@ -28,7 +28,7 @@ public sealed class NotebookCell {
 
 /// <summary>
 /// Parses a notebook into an ordered list of markdown and code cells — the full
-/// structure (prose included), unlike <see cref="NotebookImporter.ExtractCSharpBlocks"/>
+/// structure (prose included), unlike <c>NotebookImporter.ExtractCSharpBlocks</c>
 /// which returns only the C#. Used by the runner to write a faithful executed
 /// .ipynb. Supports .nb.md / .md (executable markdown), .ipynb, .dib, and .csx.
 /// </summary>

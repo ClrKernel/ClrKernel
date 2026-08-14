@@ -62,6 +62,67 @@ public static class DecompiledSource {
         }
     }
 
+    /// <summary>
+    /// An overview "peek" for a namespace symbol (F12 on a using directive): its
+    /// public types across every referenced assembly, each with its /// summary,
+    /// plus child namespaces. Not decompilation — a namespace has no single source —
+    /// but enough to browse what it offers and F12 onward from a type name.
+    /// </summary>
+    public static MetadataSourceDto ForNamespace(INamespaceSymbol ns) {
+        var name = ns.IsGlobalNamespace ? "<global>" : ns.ToDisplayString();
+        var sb = new StringBuilder();
+        sb.Append("// Namespace ").Append(name).Append(" — public types visible to this session.\n");
+        sb.Append("// Go to Definition on a type name in your cell to see its decompiled source.\n\n");
+
+        var children = ns.GetNamespaceMembers().Select(c => c.ToDisplayString()).OrderBy(c => c).ToList();
+        if (children.Count > 0) {
+            sb.Append("// Child namespaces: ").Append(string.Join(", ", children)).Append("\n\n");
+        }
+
+        if (!ns.IsGlobalNamespace) {
+            sb.Append("namespace ").Append(name).Append(";\n\n");
+        }
+
+        var types = ns.GetTypeMembers()
+            .Where(t => t.DeclaredAccessibility == Accessibility.Public)
+            .OrderBy(t => t.Name).ThenBy(t => t.Arity)
+            .ToList();
+        foreach (var type in types) {
+            var summary = XmlDocs.Summary(type);
+            if (summary != null) {
+                sb.Append("/// <summary>").Append(summary).Append("</summary>\n");
+            }
+            sb.Append("public ").Append(Modifiers(type)).Append(KindKeyword(type)).Append(' ')
+                .Append(type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)).Append(";\n\n");
+        }
+        if (types.Count == 0) {
+            sb.Append("// (no public types)\n");
+        }
+
+        return new MetadataSourceDto(KeyFor("namespace", name), sb.ToString(), 0, 0);
+    }
+
+    private static string Modifiers(INamedTypeSymbol type) {
+        if (type.TypeKind != TypeKind.Class) {
+            return string.Empty;
+        }
+        if (type.IsStatic) {
+            return "static ";
+        }
+        if (type.IsAbstract) {
+            return "abstract ";
+        }
+        return type.IsSealed ? "sealed " : string.Empty;
+    }
+
+    private static string KindKeyword(INamedTypeSymbol type) => type.TypeKind switch {
+        TypeKind.Interface => "interface",
+        TypeKind.Struct => "struct",
+        TypeKind.Enum => "enum",
+        TypeKind.Delegate => "delegate",
+        _ => "class",
+    };
+
     // A stable, URI-path-safe name ending in .cs so editors pick C# highlighting.
     private static string KeyFor(string assemblyPath, string typeName) {
         var safe = new string(typeName.Select(c => char.IsLetterOrDigit(c) || c == '.' ? c : '_').ToArray());

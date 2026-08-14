@@ -20,11 +20,16 @@ public sealed record CompletionResultDto(
     int ReplaceLength,
     IReadOnlyList<CompletionItemDto> Items);
 
-/// <summary>Hover / quick-info: markdown plus the span it describes (cell-relative).</summary>
+/// <summary>
+/// Hover / quick-info: the signature (<see cref="Markdown"/>, rendered as C# code by
+/// the host), optional prose documentation (/// summary etc.), and the span they
+/// describe (cell-relative).
+/// </summary>
 public sealed record HoverDto(
     string Markdown,
     int Start,
-    int Length);
+    int Length,
+    string Documentation = null);
 
 /// <summary>One parameter of a signature.</summary>
 public sealed record ParameterDto(string Label, string Documentation);

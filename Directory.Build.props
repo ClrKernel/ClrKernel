@@ -6,6 +6,11 @@
         <Authors>Jeremy Adams, Dan Shryock</Authors>
         <TargetFramework>net8.0</TargetFramework>
         <RollForward>Major</RollForward>
+        <!-- Ship the XML docs: the language service feeds them to Roslyn so hover,
+             completion and the namespace peek show /// summaries for ClrKernel's
+             own APIs, same as for nuget packages. -->
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
         <!-- Ship only English satellite assemblies. Roslyn brings ~15 localized
              resource DLLs (~7 MB) we don't surface; keep just neutral/en. -->
         <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

@@ -5,7 +5,7 @@ namespace ClrKernel.Formatting.Html;
 
 /// <summary>
 /// Renders the <see cref="DisplayProgress"/> concept as the same self-contained bar
-/// <see cref="ProgressBar"/> draws: determinate when a positive total is known,
+/// the old <c>ProgressBar</c> drew: determinate when a positive total is known,
 /// striped-indeterminate otherwise, green at 100%.
 /// </summary>
 public static class ProgressHtml {

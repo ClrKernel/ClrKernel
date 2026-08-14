@@ -159,4 +159,55 @@ public class DefinitionTest {
         Assert.IsFalse(defs[0].InCurrentCell);
         StringAssert.Contains(defs[0].SourceLine, "var answer = 42;");
     }
+
+    [TestMethod]
+    public async Task A_namespace_in_a_using_directive_peeks_its_types() {
+        // The worst-case real shape: the cell has RUN (so its using is duplicated
+        // by the imports and the replayed submission, and sits mid-script in the
+        // merged doc where a using directive is illegal), and a #r directive line
+        // precedes it. The using-line resolution must not depend on the parse.
+        var engine = await EngineWithAsync("using System.Text;\nvar sb = new StringBuilder();");
+        const string code = "#r \"nuget: Humanizer\"\nusing System.Text;\nvar sb = new StringBuilder();";
+        var result = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("Text") + 1);
+        Assert.AreEqual(0, result.Locations.Count);
+        Assert.IsNotNull(result.Metadata, "a namespace should yield an overview peek");
+        StringAssert.Contains(result.Metadata.Text, "namespace System.Text;");
+        StringAssert.Contains(result.Metadata.Text, "class StringBuilder");
+    }
+
+    [TestMethod]
+    public async Task Definition_works_with_the_caret_at_the_end_of_the_name() {
+        // IDE F12 is forgiving about the exact caret position; ours is too.
+        var engine = await EngineWithAsync();
+        const string code = "Console.WriteLine(1)";
+        var caret = code.IndexOf("WriteLine") + "WriteLine".Length;
+        var result = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, caret);
+        Assert.IsNotNull(result.Metadata);
+        StringAssert.Contains(result.Metadata.Text, "WriteLine");
+    }
+
+    [TestMethod]
+    public async Task Hover_carries_xml_documentation_for_a_clrkernel_symbol() {
+        // ClrKernel ships its own XML docs and the reference builder attaches
+        // them, so /// summaries surface in hover.
+        var engine = await EngineWithAsync();
+        const string code = "DisplayValues.Display(1)";
+        var hover = await _svc.GetHoverAsync(engine.SnapshotState(), code, code.IndexOf("DisplayValues") + 1);
+        Assert.IsNotNull(hover);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(hover.Documentation),
+            "expected the /// summary of DisplayValues in hover documentation");
+        StringAssert.Contains(hover.Documentation, "display API");
+    }
+
+    [TestMethod]
+    public async Task Completion_documentation_resolves_for_the_focused_item() {
+        var engine = await EngineWithAsync();
+        const string code = "Console.";
+        var result = await _svc.GetCompletionsAsync(engine.SnapshotState(), code, code.Length);
+        var index = result.Items.ToList().FindIndex(i => i.Label == "WriteLine");
+        Assert.IsTrue(index >= 0);
+        var text = await _svc.GetCompletionDocumentationAsync(index);
+        Assert.IsNotNull(text);
+        StringAssert.Contains(text, "WriteLine");
+    }
 }

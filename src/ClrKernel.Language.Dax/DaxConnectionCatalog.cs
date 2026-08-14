@@ -13,7 +13,7 @@ namespace ClrKernel.Language.Dax;
 /// is what the two interfaces were separated for.
 /// </para>
 /// <para>
-/// <c>SetDefault</c> and <c>Remove</c> were already on <see cref="SsasConnectionRegistry"/> — DAX
+/// <c>SetDefault</c> and <c>Remove</c> were already on <c>SsasConnectionRegistry</c> — DAX
 /// only ever lacked the RPCs, not the capability. Routing through the catalog gives it both for
 /// free.
 /// </para>

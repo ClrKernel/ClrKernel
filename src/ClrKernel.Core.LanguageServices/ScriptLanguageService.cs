@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -111,26 +113,74 @@ public sealed class ScriptLanguageService {
     /// completion the same surface execution sees once a cell has run.
     /// </summary>
     private static IReadOnlyList<MetadataReference> BuildReferences(ScriptStateSnapshot snapshot) {
-        var byPath = new Dictionary<string, MetadataReference>(System.StringComparer.OrdinalIgnoreCase);
+        // Keyed by assembly FILE NAME, not path: the same assembly loaded from two
+        // places (the host's copy and a nuget-restored one, or two package versions)
+        // would otherwise put duplicate identities into the compilation, and symbol
+        // resolution for every type they touch silently fails.
+        var byName = new Dictionary<string, MetadataReference>(System.StringComparer.OrdinalIgnoreCase);
 
         foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies()) {
             if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location)) {
                 continue;
             }
-            byPath.TryAdd(assembly.Location, MetadataReference.CreateFromFile(assembly.Location));
+            var fileName = Path.GetFileName(assembly.Location);
+            // Cell-compiled libraries stay loaded after being superseded by a
+            // re-run; only the engine's references (below) know the live one.
+            if (fileName.StartsWith(InteractiveScriptEngine.CellLibraryPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            byName.TryAdd(fileName, ReferenceFor(assembly.Location));
         }
 
-        // Only resolvable file-based references are valid in a fresh compilation;
-        // by-name/unresolved ones (framework refs) are already covered above by
-        // the loaded assemblies. Skipping them avoids
-        // "UnresolvedMetadataReference is not valid for this compilation".
+        // The engine's explicit references WIN over loaded assemblies — they are
+        // the versions cell execution actually uses. Only resolvable file-based
+        // references are valid in a fresh compilation; by-name/unresolved ones
+        // (framework refs) are already covered above by the loaded assemblies.
         foreach (var reference in snapshot.References) {
             if (reference is PortableExecutableReference pe && !string.IsNullOrEmpty(pe.FilePath)) {
-                byPath.TryAdd(pe.FilePath, pe);
+                byName[Path.GetFileName(pe.FilePath)] = ReferenceFor(pe.FilePath);
             }
         }
 
-        return byPath.Values.ToArray();
+        return byName.Values.ToArray();
+    }
+
+    // References cached per path with XML documentation attached, so hover,
+    // completion and signature help can show /// summaries. Nuget packages and
+    // ClrKernel ship the .xml beside the dll; the shared framework doesn't, but
+    // its ref pack does. The cache also keeps per-keystroke document builds cheap.
+    private static readonly ConcurrentDictionary<string, MetadataReference> _referenceCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static MetadataReference ReferenceFor(string path) =>
+        _referenceCache.GetOrAdd(path, p => {
+            var xml = FindXmlDocs(p);
+            return MetadataReference.CreateFromFile(
+                p, documentation: xml == null ? null : XmlDocumentationProvider.CreateFromFile(xml));
+        });
+
+    private static string FindXmlDocs(string assemblyPath) {
+        var sibling = Path.ChangeExtension(assemblyPath, ".xml");
+        if (File.Exists(sibling)) {
+            return sibling;
+        }
+        // <root>/shared/<framework>/<version>/Foo.dll has no docs; the matching
+        // ref pack <root>/packs/<framework>.Ref/<version>/ref/<tfm>/Foo.xml does.
+        var versionDir = new DirectoryInfo(Path.GetDirectoryName(assemblyPath) ?? ".");
+        var frameworkDir = versionDir.Parent;
+        if (frameworkDir?.Parent is not { } sharedDir
+            || !sharedDir.Name.Equals("shared", StringComparison.OrdinalIgnoreCase)
+            || sharedDir.Parent == null) {
+            return null;
+        }
+        var refRoot = Path.Combine(sharedDir.Parent.FullName, "packs", frameworkDir.Name + ".Ref", versionDir.Name, "ref");
+        if (!Directory.Exists(refRoot)) {
+            return null;
+        }
+        var fileName = Path.GetFileNameWithoutExtension(assemblyPath) + ".xml";
+        return Directory.EnumerateDirectories(refRoot)
+            .Select(tfm => Path.Combine(tfm, fileName))
+            .FirstOrDefault(File.Exists);
     }
 
     // --- Completion --------------------------------------------------------
@@ -160,9 +210,30 @@ public sealed class ScriptLanguageService {
                 Detail: item.InlineDescription ?? string.Empty));
         }
 
+        // Kept so completionItem/resolve can lazily fetch one item's description
+        // (signature + /// summary) by its index, IDE-style, without paying that
+        // cost for the whole list up front.
+        _lastCompletion = (document, service, completions.ItemsList);
+
         // Span of existing text being replaced, mapped back to cell coordinates.
         var replaceStart = Math.Max(0, completions.Span.Start - prefix);
         return new CompletionResultDto(replaceStart, completions.Span.Length, items);
+    }
+
+    private (Document Document, CompletionService Service, IReadOnlyList<CompletionItem> Items) _lastCompletion;
+
+    /// <summary>
+    /// The description (signature and documentation) of item <paramref name="index"/>
+    /// from the most recent <see cref="GetCompletionsAsync"/> call, or null.
+    /// </summary>
+    public async Task<string> GetCompletionDocumentationAsync(int index, CancellationToken cancellationToken = default) {
+        var (document, service, items) = _lastCompletion;
+        if (document == null || items == null || index < 0 || index >= items.Count) {
+            return null;
+        }
+        var description = await service.GetDescriptionAsync(document, items[index], cancellationToken)
+            .ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(description?.Text) ? null : description.Text;
     }
 
     private static string MapKind(ImmutableArray<string> tags) {
@@ -185,10 +256,20 @@ public sealed class ScriptLanguageService {
         ScriptStateSnapshot snapshot, string code, int position, CancellationToken cancellationToken = default) {
         var empty = new DefinitionResultDto(Array.Empty<DefinitionLocationDto>(), null);
         var (document, pos, prefix) = BuildDocument(snapshot, code, position);
-        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, pos, cancellationToken)
-            .ConfigureAwait(false);
+        // A cell's `using` line lands mid-script in the merged doc, where a using
+        // directive is illegal and parser recovery mangles it — resolve it from
+        // the raw cell text instead of the tree.
+        var symbol = await UsingLineSymbolAsync(document, code, position, cancellationToken).ConfigureAwait(false)
+            ?? await SymbolFinder.FindSymbolAtPositionAsync(document, pos, cancellationToken).ConfigureAwait(false)
+            ?? await FallbackSymbolAsync(document, pos, cancellationToken).ConfigureAwait(false);
         if (symbol == null) {
             return empty;
+        }
+
+        // A namespace (F12 on a using directive) has no single definition; peek
+        // an overview of its public types instead.
+        if (symbol is INamespaceSymbol ns) {
+            return new DefinitionResultDto(Array.Empty<DefinitionLocationDto>(), DecompiledSource.ForNamespace(ns));
         }
 
         var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
@@ -227,6 +308,82 @@ public sealed class ScriptLanguageService {
         return new DefinitionResultDto(Array.Empty<DefinitionLocationDto>(), metadata);
     }
 
+    /// <summary>
+    /// When the caret sits on a <c>using Foo.Bar;</c> (or <c>using static T</c> /
+    /// alias) line of the cell, resolves the dotted name against the compilation —
+    /// a namespace symbol, or the named type for the static/alias forms.
+    /// </summary>
+    private static async Task<ISymbol> UsingLineSymbolAsync(
+        Document document, string code, int position, CancellationToken cancellationToken) {
+        if (string.IsNullOrEmpty(code)) {
+            return null;
+        }
+        var caret = Math.Min(Math.Max(position, 0), code.Length);
+        var lineStart = caret == 0 ? 0 : code.LastIndexOf('\n', caret - 1) + 1;
+        var lineEnd = caret >= code.Length ? code.Length : code.IndexOf('\n', caret);
+        if (lineEnd < 0) {
+            lineEnd = code.Length;
+        }
+        var line = code.Substring(lineStart, lineEnd - lineStart).Trim().TrimEnd(';').Trim();
+        if (!line.StartsWith("using ", StringComparison.Ordinal)) {
+            return null;
+        }
+        var name = line.Substring("using ".Length).Trim();
+        if (name.StartsWith("static ", StringComparison.Ordinal)) {
+            name = name.Substring("static ".Length).Trim();
+        }
+        var equals = name.IndexOf('=');
+        if (equals >= 0) {
+            name = name.Substring(equals + 1).Trim();
+        }
+        if (name.Length == 0 || !name.All(c => char.IsLetterOrDigit(c) || c == '.' || c == '_')) {
+            return null;
+        }
+
+        var compilation = await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
+        if (compilation == null) {
+            return null;
+        }
+        var parts = name.Split('.');
+        INamespaceSymbol ns = compilation.GlobalNamespace;
+        for (var i = 0; i < parts.Length - 1 && ns != null; i++) {
+            ns = ns.GetNamespaceMembers().FirstOrDefault(n => n.Name == parts[i]);
+        }
+        if (ns == null) {
+            return null;
+        }
+        var last = parts[^1];
+        return (ISymbol)ns.GetNamespaceMembers().FirstOrDefault(n => n.Name == last)
+            ?? ns.GetTypeMembers(last).FirstOrDefault();
+    }
+
+    // SymbolFinder wants the caret ON a name token; an IDE's F12 is more
+    // forgiving. Retry via the semantic model at the caret and one position
+    // left (caret at a token's end touches the NEXT token), accepting candidate
+    // symbols too — e.g. an overload that didn't fully bind.
+    private static async Task<ISymbol> FallbackSymbolAsync(Document document, int pos, CancellationToken cancellationToken) {
+        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        var model = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (root == null || model == null || root.FullSpan.End == 0) {
+            return null;
+        }
+        foreach (var probe in new[] { pos, pos - 1 }) {
+            var clamped = Math.Max(0, Math.Min(probe, root.FullSpan.End - 1));
+            var token = root.FindToken(clamped);
+            for (var node = token.Parent; node != null; node = node.Parent) {
+                var info = model.GetSymbolInfo(node, cancellationToken);
+                var symbol = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
+                if (symbol != null) {
+                    return symbol;
+                }
+                if (node is StatementSyntax or MemberDeclarationSyntax) {
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
     // --- Hover / quick info ------------------------------------------------
 
     public async Task<HoverDto> GetHoverAsync(
@@ -242,20 +399,31 @@ public sealed class ScriptLanguageService {
             return null;
         }
 
-        var sb = new StringBuilder();
+        // The Description section is a signature (rendered as C# by the host);
+        // everything else — /// summaries, exceptions, usage — is prose.
+        string description = null;
+        var docs = new StringBuilder();
         foreach (var section in info.Sections) {
             var text = section.Text;
-            if (!string.IsNullOrEmpty(text)) {
-                if (sb.Length > 0) {
-                    sb.Append("\n\n");
-                }
-                sb.Append(text);
+            if (string.IsNullOrEmpty(text)) {
+                continue;
             }
+            if (description == null && section.Kind == QuickInfoSectionKinds.Description) {
+                description = text;
+                continue;
+            }
+            if (docs.Length > 0) {
+                docs.Append("\n\n");
+            }
+            docs.Append(text);
         }
 
         var start = Math.Max(0, info.Span.Start - prefix);
-        return new HoverDto(sb.ToString(), start, info.Span.Length);
+        return new HoverDto(description ?? docs.ToString(), start, info.Span.Length,
+            description == null ? null : NullIfEmpty(docs.ToString()));
     }
+
+    private static string NullIfEmpty(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
     // --- Signature help (semantic-model based, public APIs only) -----------
 
@@ -309,9 +477,9 @@ public sealed class ScriptLanguageService {
         var signatures = methods
             .Select(m => new SignatureDto(
                 Label: m.ToDisplayString(_signatureFormat),
-                Documentation: string.Empty,
+                Documentation: XmlDocs.Summary(m) ?? string.Empty,
                 Parameters: m.Parameters.Select(p =>
-                    new ParameterDto(p.ToDisplayString(_signatureFormat), string.Empty)).ToArray()))
+                    new ParameterDto(p.ToDisplayString(_signatureFormat), XmlDocs.Param(m, p.Name) ?? string.Empty)).ToArray()))
             .ToArray();
 
         // Prefer an overload whose parameter count can satisfy the active index.

@@ -88,7 +88,7 @@ public sealed class LspServer {
                 TextDocumentSync = 1, // full
                 CompletionProvider = new CompletionOptions {
                     TriggerCharacters = new List<string> { ".", " " },
-                    ResolveProvider = false,
+                    ResolveProvider = true,
                 },
                 HoverProvider = true,
                 SignatureHelpProvider = new SignatureHelpOptions {
@@ -243,6 +243,7 @@ public sealed class LspServer {
                 SortText = item.SortText,
                 FilterText = item.FilterText,
                 InsertText = item.InsertText,
+                Data = list.Items.Count,
                 TextEdit = new TextEdit {
                     Range = new Range { Start = startPos, End = endPos },
                     NewText = item.InsertText,
@@ -250,6 +251,34 @@ public sealed class LspServer {
             });
         }
         return list;
+    }
+
+    // Fills in the focused item's documentation (signature + /// summary) lazily,
+    // IDE-style. Items without Data — the non-C# language cells — pass through.
+    [JsonRpcMethod("completionItem/resolve", UseSingleObjectParameterDeserialization = true)]
+    public async Task<CompletionItem> ResolveCompletionItem(CompletionItem item) {
+        if (item?.Data == null || !int.TryParse(item.Data.ToString(), out var index)) {
+            return item;
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(false);
+        string text;
+        try {
+            text = await _language.GetCompletionDocumentationAsync(index).ConfigureAwait(false);
+        } finally {
+            _gate.Release();
+        }
+        if (string.IsNullOrEmpty(text)) {
+            return item;
+        }
+
+        // First line is the signature; the rest is prose documentation.
+        var newline = text.IndexOf('\n');
+        var value = newline < 0
+            ? "```csharp\n" + text + "\n```"
+            : "```csharp\n" + text[..newline].TrimEnd() + "\n```\n" + text[(newline + 1)..];
+        item.Documentation = new MarkupContent { Kind = "markdown", Value = value };
+        return item;
     }
 
     [JsonRpcMethod("textDocument/definition", UseSingleObjectParameterDeserialization = true)]
@@ -430,8 +459,12 @@ public sealed class LspServer {
         if (hover == null || string.IsNullOrEmpty(hover.Markdown)) {
             return null;
         }
+        var value = "```csharp\n" + hover.Markdown + "\n```";
+        if (!string.IsNullOrEmpty(hover.Documentation)) {
+            value += "\n\n" + hover.Documentation;
+        }
         return new Hover {
-            Contents = new MarkupContent { Kind = "markdown", Value = "```csharp\n" + hover.Markdown + "\n```" },
+            Contents = new MarkupContent { Kind = "markdown", Value = value },
             Range = new Range {
                 Start = OffsetToPosition(code, hover.Start),
                 End = OffsetToPosition(code, hover.Start + hover.Length),
