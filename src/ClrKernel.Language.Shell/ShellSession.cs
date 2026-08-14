@@ -27,6 +27,7 @@ public sealed class ShellSession {
     // across remote cells the way it does locally.
     private readonly Dictionary<string, ShellConnectionSpec> _connections = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _remoteCwd = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _remoteShells = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Registers an SSH target from a <c>#!shell-connect</c> line.</summary>
     public ShellConnectionSpec Connect(string directiveLine) {
@@ -34,6 +35,7 @@ public sealed class ShellSession {
         lock (_lock) {
             _connections[spec.Name] = spec;
             _remoteCwd.Remove(spec.Name);
+            _remoteShells.Remove(spec.Name);
         }
         return spec;
     }
@@ -88,27 +90,126 @@ public sealed class ShellSession {
     }
 
     /// <summary>Runs a cell on a registered SSH target via the system <c>ssh</c> client.
-    /// The script travels on stdin (<c>shell -s</c>), so no remote-quoting games; the
-    /// remote working directory persists per target (exported env does not — each
-    /// remote cell is a fresh login).</summary>
+    /// The script travels on stdin, so no remote-quoting games. The remote shell is the
+    /// requested one when the target has it, otherwise auto-detected once per target
+    /// (bash → sh → pwsh → powershell), which is what makes shell cells work against
+    /// Windows OpenSSH boxes whose default shell is cmd/PowerShell. The remote working
+    /// directory persists per target (exported env does not — each remote cell is a
+    /// fresh login).</summary>
     public async Task<ShellRunResult> ExecuteRemoteAsync(string shell, string script, string connectionName) {
         var spec = Resolve(connectionName);
+        var resolved = await ResolveRemoteShellAsync(spec, shell).ConfigureAwait(false);
         string remoteCwd;
         lock (_lock) {
             _remoteCwd.TryGetValue(spec.Name, out remoteCwd);
         }
 
-        var wrapped =
-            "exec 2>&1\n" +
-            // Not a TTY on the remote end either: advertise colour there too.
-            "export TERM=xterm-256color CLICOLOR=1 CLICOLOR_FORCE=1 FORCE_COLOR=1\n" +
-            "unset NO_COLOR\n" +
-            (remoteCwd != null ? $"cd '{remoteCwd.Replace("'", "'\\''")}' 2>/dev/null\n" : "") +
-            (script ?? string.Empty) + "\n" +
-            "__ck_rc=$?\n" +
-            $"printf '{_cwdMarker}%s{_cwdMarker}' \"$PWD\"\n" +
-            "exit $__ck_rc\n";
+        var isPowerShell = resolved is "pwsh" or "powershell";
+        var remoteCommand = isPowerShell
+            ? resolved + " -NoProfile -NonInteractive -Command -"
+            : resolved + " -s";
+        var wrapped = isPowerShell
+            ? BuildPowerShellWrapper(script, remoteCwd)
+            : BuildPosixWrapper(script, remoteCwd);
 
+        var run = await RunSshAsync(spec, remoteCommand, wrapped).ConfigureAwait(false);
+        if (run.ExitCode == 255) {
+            // 255 is ssh's own failure code, distinct from the remote command's.
+            throw new ShellCellException(
+                $"ssh to {spec.Describe()} failed: {(run.Stderr.Length > 0 ? run.Stderr : "connection error")}. " +
+                "Key-based auth is required (BatchMode) — check your keys/agent or ~/.ssh/config.");
+        }
+
+        var (output, capturedCwd) = StripCwdMarker(run.Stdout);
+        if (capturedCwd != null) {
+            lock (_lock) {
+                _remoteCwd[spec.Name] = capturedCwd;
+            }
+        }
+        // Local stderr is ssh client chatter (host-key notices, the post-quantum
+        // warning, …): surface it only when the command failed, where it may also
+        // carry the actual reason.
+        if (run.ExitCode != 0 && run.Stderr.Length > 0) {
+            output = output.Length > 0 ? output + "\n" + run.Stderr : run.Stderr;
+        }
+        return new ShellRunResult { Output = output.TrimEnd('\r', '\n'), ExitCode = run.ExitCode };
+    }
+
+    // What actually runs cells on the target, chosen once per target and cached:
+    // the requested shell if present, else the first of the fallbacks that answers.
+    private async Task<string> ResolveRemoteShellAsync(ShellConnectionSpec spec, string requestedShell) {
+        if (!string.IsNullOrEmpty(spec.RemoteShell)) {
+            return spec.RemoteShell.ToLowerInvariant();
+        }
+        lock (_lock) {
+            if (_remoteShells.TryGetValue(spec.Name, out var cached)) {
+                return cached;
+            }
+        }
+
+        var candidates = new List<string>();
+        if (!string.IsNullOrEmpty(requestedShell) && !candidates.Contains(requestedShell)) {
+            candidates.Add(requestedShell);
+        }
+        foreach (var fallback in new[] { "bash", "sh", "pwsh", "powershell" }) {
+            if (!candidates.Contains(fallback)) {
+                candidates.Add(fallback);
+            }
+        }
+
+        var failures = new List<string>();
+        foreach (var candidate in candidates) {
+            var probe = await RunSshAsync(spec, ProbeCommandFor(candidate), null).ConfigureAwait(false);
+            if (probe.ExitCode == 255) {
+                throw new ShellCellException(
+                    $"ssh to {spec.Describe()} failed: {(probe.Stderr.Length > 0 ? probe.Stderr : "connection error")}. " +
+                    "Key-based auth is required (BatchMode) — check your keys/agent or ~/.ssh/config.");
+            }
+            if (probe.ExitCode == 0 && probe.Stdout.Contains("ck-ok")) {
+                lock (_lock) {
+                    _remoteShells[spec.Name] = candidate;
+                }
+                return candidate;
+            }
+            failures.Add(candidate);
+        }
+        throw new ShellCellException(
+            $"No usable shell found on {spec.Describe()} (tried: {string.Join(", ", failures)}). " +
+            "Set one explicitly with #!shell-connect ... --remote-shell <shell>.");
+    }
+
+    /// <summary>The probe that answers "does this shell exist on the target?" — valid
+    /// under cmd.exe, PowerShell, and POSIX login shells alike.</summary>
+    internal static string ProbeCommandFor(string candidate) =>
+        candidate is "pwsh" or "powershell"
+            ? candidate + " -NoProfile -NonInteractive -Command \"Write-Output ck-ok\""
+            : candidate + " -c \"echo ck-ok\"";
+
+    internal static string BuildPosixWrapper(string script, string remoteCwd) =>
+        "exec 2>&1\n" +
+        // Not a TTY on the remote end either: advertise colour there too.
+        "export TERM=xterm-256color CLICOLOR=1 CLICOLOR_FORCE=1 FORCE_COLOR=1\n" +
+        "unset NO_COLOR\n" +
+        (remoteCwd != null ? $"cd '{remoteCwd.Replace("'", "'\\''")}' 2>/dev/null\n" : "") +
+        (script ?? string.Empty) + "\n" +
+        "__ck_rc=$?\n" +
+        $"printf '{_cwdMarker}%s{_cwdMarker}' \"$PWD\"\n" +
+        "exit $__ck_rc\n";
+
+    // Windows PowerShell 5.1 compatible (no PS7-only syntax): capture $?/$LASTEXITCODE,
+    // print the cwd marker, exit with the script's code.
+    internal static string BuildPowerShellWrapper(string script, string remoteCwd) =>
+        (remoteCwd != null
+            ? $"Set-Location -LiteralPath '{remoteCwd.Replace("'", "''")}' -ErrorAction SilentlyContinue\n"
+            : "") +
+        (script ?? string.Empty) + "\n" +
+        "$__ck_ok = $?\n" +
+        "$__ck_rc = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($__ck_ok) { 0 } else { 1 }\n" +
+        "Write-Output ([string][char]1 + (Get-Location).Path + [string][char]1)\n" +
+        "exit $__ck_rc\n";
+
+    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunSshAsync(
+        ShellConnectionSpec spec, string remoteCommand, string stdin) {
         var start = new ProcessStartInfo {
             FileName = "ssh",
             RedirectStandardOutput = true,
@@ -116,7 +217,7 @@ public sealed class ShellSession {
             RedirectStandardInput = true,
             UseShellExecute = false,
         };
-        foreach (var argument in spec.BuildSshArguments(shell + " -s")) {
+        foreach (var argument in spec.BuildSshArguments(remoteCommand)) {
             start.ArgumentList.Add(argument);
         }
 
@@ -126,33 +227,17 @@ public sealed class ShellSession {
         } catch (Win32Exception e) {
             throw new ShellCellException("'ssh' was not found on PATH. Remote shell cells need an OpenSSH client.", e);
         }
-        await process.StandardInput.WriteAsync(wrapped).ConfigureAwait(false);
+        if (stdin != null) {
+            await process.StandardInput.WriteAsync(stdin).ConfigureAwait(false);
+        }
         process.StandardInput.Close();
 
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync().ConfigureAwait(false);
-
-        // The remote side merges its own stderr; anything on the local stderr is
-        // the ssh client itself (auth, host key, unreachable host).
-        var (output, capturedCwd) = StripCwdMarker(await stdout.ConfigureAwait(false));
-        var sshErrors = (await stderr.ConfigureAwait(false)).TrimEnd('\r', '\n');
-
-        if (process.ExitCode == 255) {
-            // 255 is ssh's own failure code, distinct from the remote command's.
-            throw new ShellCellException(
-                $"ssh to {spec.Describe()} failed: {(sshErrors.Length > 0 ? sshErrors : "connection error")}. " +
-                "Key-based auth is required (BatchMode) — check your keys/agent or ~/.ssh/config.");
-        }
-        if (capturedCwd != null) {
-            lock (_lock) {
-                _remoteCwd[spec.Name] = capturedCwd;
-            }
-        }
-        if (sshErrors.Length > 0) {
-            output = output.Length > 0 ? output + "\n" + sshErrors : sshErrors;
-        }
-        return new ShellRunResult { Output = output.TrimEnd('\r', '\n'), ExitCode = process.ExitCode };
+        return (process.ExitCode,
+            await stdout.ConfigureAwait(false),
+            (await stderr.ConfigureAwait(false)).TrimEnd('\r', '\n'));
     }
 
     // \x01 can't appear in ordinary output, so the marker survives any script.

@@ -82,6 +82,40 @@ public class PwshRemotingTest {
         Assert.IsNull(PwshDirectives.SelectorConnection("#!pwsh"));
     }
 
+    // Live end-to-end against a Windows (or any) box, opt-in:
+    // CLRKERNEL_TEST_PSREMOTE="[user@]host[:port]" — PowerShell-over-SSH, so the
+    // remote needs PowerShell and the sshd "Subsystem powershell" entry.
+    [TestMethod]
+    public async System.Threading.Tasks.Task Live_psremoting_over_ssh_when_configured() {
+        var target = Environment.GetEnvironmentVariable("CLRKERNEL_TEST_PSREMOTE");
+        if (string.IsNullOrEmpty(target)) {
+            Assert.Inconclusive("Set CLRKERNEL_TEST_PSREMOTE=[user@]host[:port] to run the live PSRemoting test.");
+        }
+        var at = target.IndexOf('@');
+        var user = at > 0 ? target.Substring(0, at) : null;
+        var host = at >= 0 ? target.Substring(at + 1) : target;
+        var port = "";
+        var colon = host.IndexOf(':');
+        if (colon > 0) {
+            port = $" --port {host.Substring(colon + 1)}";
+            host = host.Substring(0, colon);
+        }
+        var engine = new ClrKernel.Core.Scripting.InteractiveScriptEngine(
+            System.IO.Directory.GetCurrentDirectory(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        await engine.ExecuteAsync(
+            $"#!pwsh-connect --name livewin --host {host}{(user != null ? $" --user {user}" : "")}{port}");
+
+        string Text(object r) => ((ClrKernel.Core.Scripting.DisplayData)r).Data["text/plain"].ToString();
+
+        var version = Text(await engine.ExecuteAsync("#!pwsh --connection livewin\n$PSVersionTable.PSVersion.Major"));
+        Assert.IsTrue(int.TryParse(version.Trim(), out var major) && major >= 5, $"unexpected version output: {version}");
+
+        // Remote runspace state persists across cells.
+        await engine.ExecuteAsync("#!pwsh --connection livewin\n$ck_live = 41");
+        var sum = Text(await engine.ExecuteAsync("#!pwsh --connection livewin\n$ck_live + 1"));
+        StringAssert.Contains(sum, "42");
+    }
+
     [TestMethod]
     public void An_unknown_connection_names_the_known_ones() {
         using var session = new PowerShellSession();

@@ -103,6 +103,53 @@ public class ShellRemotingTest {
         StringAssert.StartsWith(blocks[1], "#!pwsh\n");
     }
 
+    [TestMethod]
+    public void ParseConnect_reads_an_explicit_remote_shell() {
+        var spec = ShellDirectives.ParseConnect("#!shell-connect --name win --host w01 --remote-shell PowerShell");
+        Assert.AreEqual("powershell", spec.RemoteShell);
+    }
+
+    [TestMethod]
+    public void Probe_commands_are_valid_under_cmd_powershell_and_posix() {
+        Assert.AreEqual("bash -c \"echo ck-ok\"", ShellSession.ProbeCommandFor("bash"));
+        Assert.AreEqual("powershell -NoProfile -NonInteractive -Command \"Write-Output ck-ok\"",
+            ShellSession.ProbeCommandFor("powershell"));
+        Assert.AreEqual("pwsh -NoProfile -NonInteractive -Command \"Write-Output ck-ok\"",
+            ShellSession.ProbeCommandFor("pwsh"));
+    }
+
+    [TestMethod]
+    public void The_powershell_wrapper_restores_cwd_marks_it_and_exits_with_the_script_code() {
+        var wrapper = ShellSession.BuildPowerShellWrapper("Get-Date", "C:\\Users\\it's here");
+        StringAssert.StartsWith(wrapper, "Set-Location -LiteralPath 'C:\\Users\\it''s here'");
+        StringAssert.Contains(wrapper, "Get-Date");
+        StringAssert.Contains(wrapper, "[char]1");
+        StringAssert.Contains(wrapper, "exit $__ck_rc");
+    }
+
+    [TestMethod]
+    public void The_posix_wrapper_forces_colour_and_marks_the_cwd() {
+        var wrapper = ShellSession.BuildPosixWrapper("ls", null);
+        StringAssert.StartsWith(wrapper, "exec 2>&1");
+        StringAssert.Contains(wrapper, "CLICOLOR_FORCE=1");
+        StringAssert.Contains(wrapper, "exit $__ck_rc");
+    }
+
+    [TestMethod]
+    public void A_config_node_can_pin_the_remote_shell() {
+        var dir = Path.Combine(Path.GetTempPath(), "ck-rsh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try {
+            File.WriteAllText(Path.Combine(dir, "connections.json"), """
+                { "win01": { "$type": "Ssh", "host": "w01", "user": "u", "remoteShell": "powershell" } }
+                """);
+            var node = ClrKernel.Database.ConnectionConfig.LoadAllRaw(Path.Combine(dir, "connections.json"))[0];
+            Assert.AreEqual("powershell", ShellConnectionConfig.FromNode(node).RemoteShell);
+        } finally {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
     // Live end-to-end, opt-in: CLRKERNEL_TEST_SSH="user@host" (key auth must already work).
     [TestMethod]
     public async Task Live_ssh_roundtrip_when_configured() {
@@ -124,12 +171,16 @@ public class ShellRemotingTest {
         await engine.ExecuteAsync(
             $"#!shell-connect --name live --host {host}{(user != null ? $" --user {user}" : "")}{port}");
 
+        // Auto-detect makes this work against POSIX and Windows OpenSSH targets
+        // alike (echo and cd/pwd exist in bash, sh, and PowerShell).
         var echo = await engine.ExecuteAsync("#!bash --connection live\necho remote-ok");
-        Assert.AreEqual("remote-ok", ((DisplayData)echo).Data["text/plain"]);
+        StringAssert.Contains(((DisplayData)echo).Data["text/plain"].ToString(), "remote-ok");
 
-        // cd carries to the next remote cell.
-        await engine.ExecuteAsync("#!bash --connection live\ncd /tmp");
-        var pwd = await engine.ExecuteAsync("#!bash --connection live\npwd");
-        StringAssert.Contains(((DisplayData)pwd).Data["text/plain"].ToString(), "tmp");
+        // cd carries to the next remote cell: pwd must differ after cd ..
+        var before = ((DisplayData)await engine.ExecuteAsync("#!bash --connection live\npwd")).Data["text/plain"].ToString();
+        await engine.ExecuteAsync("#!bash --connection live\ncd ..");
+        var after = ((DisplayData)await engine.ExecuteAsync("#!bash --connection live\npwd")).Data["text/plain"].ToString();
+        Assert.IsFalse(string.IsNullOrWhiteSpace(before));
+        Assert.AreNotEqual(before, after, "cd in one remote cell must hold in the next");
     }
 }

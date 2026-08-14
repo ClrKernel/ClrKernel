@@ -28,6 +28,7 @@ public static class ShellDirectives {
                         : throw new FormatException("--port expects a number.");
                     break;
                 case "--identity": case "-i": spec.IdentityFile = Next(); break;
+                case "--remote-shell": case "--shell": spec.RemoteShell = Next().ToLowerInvariant(); break;
                 case "--password":
                     throw new FormatException(
                         "SSH targets use key authentication (your keys, agent, and ~/.ssh/config apply); " +

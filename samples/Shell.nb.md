@@ -67,7 +67,14 @@ uptime
 
 The **remote working directory persists per target** (`cd` carries to the next
 remote cell); exported environment does not — each remote cell is a fresh
-login. Colour is forced on the remote end too. Targets can also live in
+login. Colour is forced on the remote end too.
+
+**Windows targets work.** If the box doesn't have the shell you asked for, the
+session auto-detects what it does have (bash → sh → pwsh → powershell, cached
+per target) — so `#!bash --connection winbox` against a Windows OpenSSH server
+runs your commands in PowerShell. Write commands the target understands; pin
+the shell explicitly with `--remote-shell powershell` (or in the config node as
+`"remoteShell"`) if you don't want detection. Targets can also live in
 `connections.json` (or your git-ignored `connections.local.json`):
 
 ```json

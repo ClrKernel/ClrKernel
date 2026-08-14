@@ -18,6 +18,11 @@ public sealed class ShellConnectionSpec {
     public int Port { get; set; }
     public string IdentityFile { get; set; }
 
+    /// <summary>Explicit remote shell (bash/sh/zsh/pwsh/powershell); null = auto-detect
+    /// on first use — the requested shell if the target has it, else bash → sh → pwsh
+    /// → powershell (which is how cells reach Windows OpenSSH boxes).</summary>
+    public string RemoteShell { get; set; }
+
     public string Describe() =>
         (string.IsNullOrEmpty(User) ? "" : User + "@") + Host + (Port > 0 && Port != 22 ? ":" + Port : "");
 
@@ -61,6 +66,7 @@ public static class ShellConnectionConfig {
             User = node.Get("user") ?? node.Get("username"),
             Port = int.TryParse(node.Get("port"), out var port) ? port : 0,
             IdentityFile = node.Get("identity") ?? node.Get("identityFile"),
+            RemoteShell = node.Get("remoteShell") ?? node.Get("shell"),
         };
     }
 }
