@@ -42,7 +42,8 @@ public sealed class PwshConnectionSpec {
             throw new PowerShellCellException($"PSRemoting connection '{Name}' has no host.");
         }
         if (Transport == PwshTransport.Ssh) {
-            return new SSHConnectionInfo(User, Host, IdentityFile, Port > 0 ? Port : 22);
+            // Explicit connecting timeout: the default lets a dead host hang a cell.
+            return new SSHConnectionInfo(User, Host, IdentityFile, Port > 0 ? Port : 22, "powershell", 20000);
         }
         var credential = BuildCredential(secrets);
         var scheme = UseSsl ? "https" : "http";

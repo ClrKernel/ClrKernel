@@ -91,7 +91,18 @@ public sealed class PowerShellSession : IDisposable {
         }
         var runspace = RunspaceFactory.CreateRunspace(spec.CreateConnectionInfo(_secrets));
         try {
-            runspace.Open();
+            // SSHConnectionInfo locates the ssh binary through PowerShell's command
+            // discovery, which reads an execution context from thread-local state —
+            // a hosted SDK thread has none, so the open dies with ENOENT before
+            // touching the network. The session's local runspace, set as this
+            // thread's DefaultRunspace for the duration of the open, provides it.
+            var previous = Runspace.DefaultRunspace;
+            System.Management.Automation.Runspaces.Runspace.DefaultRunspace = Runspace;
+            try {
+                runspace.Open();
+            } finally {
+                System.Management.Automation.Runspaces.Runspace.DefaultRunspace = previous;
+            }
         } catch (Exception e) {
             runspace.Dispose();
             throw new PowerShellCellException(
