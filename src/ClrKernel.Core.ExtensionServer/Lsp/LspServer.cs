@@ -94,6 +94,7 @@ public sealed class LspServer {
                 SignatureHelpProvider = new SignatureHelpOptions {
                     TriggerCharacters = new List<string> { "(", "," },
                 },
+                DefinitionProvider = true,
             },
             ServerInfo = new ServerInfo {
                 Name = "ClrKernel",
@@ -249,6 +250,116 @@ public sealed class LspServer {
             });
         }
         return list;
+    }
+
+    [JsonRpcMethod("textDocument/definition", UseSingleObjectParameterDeserialization = true)]
+    public async Task<List<Location>> Definition(TextDocumentPositionParams p) {
+        var (code, offset) = Resolve(p);
+        if (code == null || ServicesFor(p) != null) {
+            return new List<Location>(); // only C# cells carry definitions today
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(false);
+        IReadOnlyList<ClrKernel.Core.LanguageServices.DefinitionLocationDto> definitions;
+        try {
+            definitions = await _language.GetDefinitionsAsync(_engine.SnapshotState(), code, offset)
+                .ConfigureAwait(false);
+        } finally {
+            _gate.Release();
+        }
+
+        // Candidate cells for prior-submission definitions: the current cell first
+        // (a definition executed from it still lives there), then every other open
+        // cell of the same language.
+        var currentUri = p.TextDocument.Uri;
+        var language = _languages.TryGetValue(currentUri, out var l) ? l : "csharp";
+        var candidates = new List<(string Uri, string Text)> { (currentUri, code) };
+        foreach (var kv in _languages) {
+            if (kv.Key != currentUri
+                && kv.Value.Equals(language, StringComparison.OrdinalIgnoreCase)
+                && _documents.TryGetValue(kv.Key, out var text)) {
+                candidates.Add((kv.Key, text));
+            }
+        }
+        return MapDefinitions(definitions, currentUri, code, candidates);
+    }
+
+    /// <summary>
+    /// Turns service definitions into LSP locations. A current-cell definition maps by
+    /// offset; a definition from an executed submission is found by locating its
+    /// defining line in an open cell (exact line first, then whitespace-insensitive
+    /// with the column shifted accordingly). A line no open cell contains — edited
+    /// since execution, or from a closed notebook — yields no location.
+    /// </summary>
+    internal static List<Location> MapDefinitions(
+        IReadOnlyList<ClrKernel.Core.LanguageServices.DefinitionLocationDto> definitions,
+        string currentUri, string currentCode, IReadOnlyList<(string Uri, string Text)> openDocs) {
+        var locations = new List<Location>();
+        foreach (var definition in definitions) {
+            if (definition.InCurrentCell) {
+                locations.Add(new Location {
+                    Uri = currentUri,
+                    Range = new Range {
+                        Start = OffsetToPosition(currentCode, definition.Start),
+                        End = OffsetToPosition(currentCode, definition.Start + definition.Length),
+                    },
+                });
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(definition.SourceLine)) {
+                continue;
+            }
+            foreach (var (uri, text) in openDocs) {
+                var start = FindLine(text, definition.SourceLine, out var columnAdjust);
+                if (start < 0) {
+                    continue;
+                }
+                var offset = start + definition.ColumnInLine + columnAdjust;
+                locations.Add(new Location {
+                    Uri = uri,
+                    Range = new Range {
+                        Start = OffsetToPosition(text, offset),
+                        End = OffsetToPosition(text, offset + definition.Length),
+                    },
+                });
+                break;
+            }
+        }
+        return locations;
+    }
+
+    // The offset of the first line in <paramref name="text"/> equal to
+    // <paramref name="line"/> — exact match preferred, then trimmed-equal with
+    // the column adjusted by the indentation difference. -1 when absent.
+    private static int FindLine(string text, string line, out int columnAdjust) {
+        columnAdjust = 0;
+        var offset = 0;
+        var trimmedTarget = line.Trim();
+        var fallbackStart = -1;
+        var fallbackAdjust = 0;
+        foreach (var docLine in (text ?? string.Empty).Replace("\r\n", "\n").Split('\n')) {
+            if (docLine == line) {
+                return offset;
+            }
+            if (fallbackStart < 0 && docLine.Trim() == trimmedTarget && trimmedTarget.Length > 0) {
+                fallbackStart = offset;
+                fallbackAdjust = LeadingWhitespace(docLine) - LeadingWhitespace(line);
+            }
+            offset += docLine.Length + 1;
+        }
+        if (fallbackStart >= 0) {
+            columnAdjust = fallbackAdjust;
+            return fallbackStart;
+        }
+        return -1;
+    }
+
+    private static int LeadingWhitespace(string line) {
+        var i = 0;
+        while (i < line.Length && char.IsWhiteSpace(line[i])) {
+            i++;
+        }
+        return i;
     }
 
     [JsonRpcMethod("textDocument/hover", UseSingleObjectParameterDeserialization = true)]

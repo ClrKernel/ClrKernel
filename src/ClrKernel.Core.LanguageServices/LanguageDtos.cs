@@ -40,3 +40,17 @@ public sealed record SignatureHelpDto(
     IReadOnlyList<SignatureDto> Signatures,
     int ActiveSignature,
     int ActiveParameter);
+
+/// <summary>
+/// One place a symbol is defined. <see cref="InCurrentCell"/> means
+/// <see cref="Start"/>/<see cref="Length"/> are offsets into the cell the query came
+/// from; otherwise the definition sits in a replayed (executed) submission, and
+/// <see cref="SourceLine"/> + <see cref="ColumnInLine"/> let the host find the same
+/// line in whichever open cell still contains it.
+/// </summary>
+public sealed record DefinitionLocationDto(
+    bool InCurrentCell,
+    int Start,
+    int Length,
+    string SourceLine,
+    int ColumnInLine);

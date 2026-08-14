@@ -2,6 +2,11 @@
 
 ## [0.5.0] - 2026-08-11
 
+- **Go to Definition / Peek Definition in C# cells.** Right-click a symbol (or
+  F12 / ⌥F12) to jump to — or peek — where it's defined: functions, variables,
+  records, and classes from earlier cells or the same cell, across cells in the
+  notebook. Definitions reflect the live session, the same way completion does;
+  BCL/nuget symbols have no source to jump to and keep showing hover info.
 - **Remote cells: SSH for shell, PSRemoting for PowerShell.** Register a target
   with `#!shell-connect --name web01 --host … --user …` (key auth via your ssh
   keys/agent/config) or `#!pwsh-connect --name srv --host …` (`--ssh` default,

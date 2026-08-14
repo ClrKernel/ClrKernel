@@ -11,6 +11,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Text;
@@ -170,6 +171,41 @@ public sealed class ScriptLanguageService {
         }
         // First tag is the symbol kind; the LSP/Jupyter layer maps it further.
         return tags[0];
+    }
+
+    // --- Definition --------------------------------------------------------
+
+    /// <summary>
+    /// Where the symbol at <paramref name="position"/> is defined, in source only —
+    /// a metadata symbol (BCL, nuget) yields nothing. Definitions in the current
+    /// cell come back as cell offsets; definitions in earlier executed submissions
+    /// come back as the defining line's text for the host to locate in an open cell.
+    /// </summary>
+    public async Task<IReadOnlyList<DefinitionLocationDto>> GetDefinitionsAsync(
+        ScriptStateSnapshot snapshot, string code, int position, CancellationToken cancellationToken = default) {
+        var (document, pos, prefix) = BuildDocument(snapshot, code, position);
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, pos, cancellationToken)
+            .ConfigureAwait(false);
+        if (symbol == null) {
+            return Array.Empty<DefinitionLocationDto>();
+        }
+
+        var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        var results = new List<DefinitionLocationDto>();
+        foreach (var location in symbol.Locations) {
+            if (!location.IsInSource) {
+                continue;
+            }
+            var span = location.SourceSpan;
+            if (span.Start >= prefix) {
+                results.Add(new DefinitionLocationDto(true, span.Start - prefix, span.Length, null, 0));
+            } else {
+                var line = text.Lines.GetLineFromPosition(span.Start);
+                results.Add(new DefinitionLocationDto(
+                    false, 0, span.Length, line.ToString(), span.Start - line.Start));
+            }
+        }
+        return results;
     }
 
     // --- Hover / quick info ------------------------------------------------

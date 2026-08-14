@@ -36,4 +36,7 @@
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.Core.UnitTest" />
+  </ItemGroup>
 </Project>

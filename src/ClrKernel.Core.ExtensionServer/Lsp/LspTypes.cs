@@ -137,6 +137,12 @@ public sealed class ServerCapabilities {
     public CompletionOptions CompletionProvider { get; set; }
     public bool HoverProvider { get; set; }
     public SignatureHelpOptions SignatureHelpProvider { get; set; }
+    public bool DefinitionProvider { get; set; }
+}
+
+public sealed class Location {
+    public string Uri { get; set; }
+    public Range Range { get; set; }
 }
 
 public sealed class CompletionOptions {
