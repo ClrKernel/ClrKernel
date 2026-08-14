@@ -176,18 +176,19 @@ public sealed class ScriptLanguageService {
     // --- Definition --------------------------------------------------------
 
     /// <summary>
-    /// Where the symbol at <paramref name="position"/> is defined, in source only —
-    /// a metadata symbol (BCL, nuget) yields nothing. Definitions in the current
-    /// cell come back as cell offsets; definitions in earlier executed submissions
-    /// come back as the defining line's text for the host to locate in an open cell.
+    /// Where the symbol at <paramref name="position"/> is defined. Source symbols come
+    /// back as locations (current cell by offset, earlier executed submissions by their
+    /// defining line); a metadata symbol — BCL, nuget, ClrKernel, anything referenced
+    /// without source — comes back as decompiled C# so the host can peek it.
     /// </summary>
-    public async Task<IReadOnlyList<DefinitionLocationDto>> GetDefinitionsAsync(
+    public async Task<DefinitionResultDto> GetDefinitionsAsync(
         ScriptStateSnapshot snapshot, string code, int position, CancellationToken cancellationToken = default) {
+        var empty = new DefinitionResultDto(Array.Empty<DefinitionLocationDto>(), null);
         var (document, pos, prefix) = BuildDocument(snapshot, code, position);
         var symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, pos, cancellationToken)
             .ConfigureAwait(false);
         if (symbol == null) {
-            return Array.Empty<DefinitionLocationDto>();
+            return empty;
         }
 
         var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
@@ -198,14 +199,32 @@ public sealed class ScriptLanguageService {
             }
             var span = location.SourceSpan;
             if (span.Start >= prefix) {
-                results.Add(new DefinitionLocationDto(true, span.Start - prefix, span.Length, null, 0));
+                // The whole declaration (method body and all) lets a peek frame the
+                // entire member instead of one line.
+                var fullStart = -1;
+                var fullLength = 0;
+                foreach (var reference in symbol.DeclaringSyntaxReferences) {
+                    if (reference.SyntaxTree == location.SourceTree && reference.Span.Start >= prefix) {
+                        fullStart = reference.Span.Start - prefix;
+                        fullLength = reference.Span.Length;
+                        break;
+                    }
+                }
+                results.Add(new DefinitionLocationDto(
+                    true, span.Start - prefix, span.Length, null, 0, fullStart, fullLength));
             } else {
                 var line = text.Lines.GetLineFromPosition(span.Start);
                 results.Add(new DefinitionLocationDto(
                     false, 0, span.Length, line.ToString(), span.Start - line.Start));
             }
         }
-        return results;
+        if (results.Count > 0) {
+            return new DefinitionResultDto(results, null);
+        }
+
+        var metadata = await DecompiledSource.ForSymbolAsync(document, symbol, cancellationToken)
+            .ConfigureAwait(false);
+        return new DefinitionResultDto(Array.Empty<DefinitionLocationDto>(), metadata);
     }
 
     // --- Hover / quick info ------------------------------------------------

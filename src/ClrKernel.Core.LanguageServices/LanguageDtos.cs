@@ -42,15 +42,32 @@ public sealed record SignatureHelpDto(
     int ActiveParameter);
 
 /// <summary>
-/// One place a symbol is defined. <see cref="InCurrentCell"/> means
+/// One place a symbol is defined in source. <see cref="InCurrentCell"/> means
 /// <see cref="Start"/>/<see cref="Length"/> are offsets into the cell the query came
-/// from; otherwise the definition sits in a replayed (executed) submission, and
-/// <see cref="SourceLine"/> + <see cref="ColumnInLine"/> let the host find the same
-/// line in whichever open cell still contains it.
+/// from (with <see cref="FullStart"/>/<see cref="FullLength"/> spanning the whole
+/// declaration, so a peek frames the entire member); otherwise the definition sits in
+/// a replayed (executed) submission, and <see cref="SourceLine"/> +
+/// <see cref="ColumnInLine"/> let the host find the same line in whichever open cell
+/// still contains it.
 /// </summary>
 public sealed record DefinitionLocationDto(
     bool InCurrentCell,
     int Start,
     int Length,
     string SourceLine,
-    int ColumnInLine);
+    int ColumnInLine,
+    int FullStart = -1,
+    int FullLength = 0);
+
+/// <summary>
+/// Decompiled source for a metadata symbol (BCL, nuget, ClrKernel — anything
+/// referenced without source). <see cref="Key"/> names the virtual document the host
+/// serves it under; <see cref="Start"/>/<see cref="Length"/> select the member inside
+/// <see cref="Text"/>.
+/// </summary>
+public sealed record MetadataSourceDto(string Key, string Text, int Start, int Length);
+
+/// <summary>Definition lookup outcome: source locations, or decompiled metadata, or neither.</summary>
+public sealed record DefinitionResultDto(
+    IReadOnlyList<DefinitionLocationDto> Locations,
+    MetadataSourceDto Metadata);

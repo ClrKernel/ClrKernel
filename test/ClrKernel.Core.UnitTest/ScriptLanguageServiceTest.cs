@@ -107,7 +107,7 @@ public class DefinitionTest {
     public async Task A_symbol_defined_in_an_earlier_cell_reports_its_defining_line() {
         var engine = await EngineWithAsync("int Add(int a, int b) => a + b;");
         const string code = "Add(1, 2)";
-        var defs = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, 1);
+        var defs = (await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, 1)).Locations;
         Assert.AreEqual(1, defs.Count);
         Assert.IsFalse(defs[0].InCurrentCell);
         StringAssert.Contains(defs[0].SourceLine, "int Add(int a, int b)");
@@ -118,25 +118,43 @@ public class DefinitionTest {
     public async Task A_symbol_defined_in_the_current_cell_reports_cell_offsets() {
         var engine = await EngineWithAsync();
         const string code = "var total = 5;\nvar doubled = total * 2;";
-        var defs = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("total * 2") + 1);
+        var defs = (await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("total * 2") + 1)).Locations;
         Assert.AreEqual(1, defs.Count);
         Assert.IsTrue(defs[0].InCurrentCell);
         Assert.AreEqual("total", code.Substring(defs[0].Start, defs[0].Length));
     }
 
     [TestMethod]
-    public async Task A_metadata_symbol_yields_no_source_definition() {
+    public async Task A_bcl_symbol_decompiles_to_source() {
         var engine = await EngineWithAsync();
         const string code = "Console.WriteLine(1)";
-        var defs = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("WriteLine") + 1);
-        Assert.AreEqual(0, defs.Count, "BCL symbols have no source to jump to");
+        var result = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("WriteLine") + 1);
+        Assert.AreEqual(0, result.Locations.Count);
+        Assert.IsNotNull(result.Metadata, "a metadata symbol should decompile");
+        StringAssert.EndsWith(result.Metadata.Key, ".cs");
+        StringAssert.Contains(result.Metadata.Text, "class Console");
+        StringAssert.Contains(result.Metadata.Text, "WriteLine");
+        Assert.AreEqual("WriteLine",
+            result.Metadata.Text.Substring(result.Metadata.Start, result.Metadata.Length));
+    }
+
+    [TestMethod]
+    public async Task A_clrkernel_symbol_decompiles_to_source() {
+        // Not just the BCL: anything referenced without source, ClrKernel included.
+        var engine = await EngineWithAsync();
+        const string code = "DisplayTable.KindOf(typeof(int))";
+        var result = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("KindOf") + 1);
+        Assert.AreEqual(0, result.Locations.Count);
+        Assert.IsNotNull(result.Metadata);
+        StringAssert.Contains(result.Metadata.Text, "record DisplayTable");
+        StringAssert.Contains(result.Metadata.Text, "KindOf");
     }
 
     [TestMethod]
     public async Task A_variable_from_an_earlier_cell_resolves_to_its_declaration_line() {
         var engine = await EngineWithAsync("var answer = 42;");
         const string code = "answer + 1";
-        var defs = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, 2);
+        var defs = (await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, 2)).Locations;
         Assert.AreEqual(1, defs.Count);
         Assert.IsFalse(defs[0].InCurrentCell);
         StringAssert.Contains(defs[0].SourceLine, "var answer = 42;");

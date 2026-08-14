@@ -13,15 +13,16 @@ namespace ClrKernel.UnitTest;
 [TestClass]
 public class DefinitionMappingTest {
     [TestMethod]
-    public void A_current_cell_definition_maps_by_offset() {
-        const string code = "var x = 1;\nx + 1";
+    public void A_current_cell_definition_maps_by_offset_and_frames_the_full_declaration() {
+        const string code = "int Add(int a)\n{\n    return a;\n}\nAdd(1)";
         var locations = LspServer.MapDefinitions(
-            new[] { new DefinitionLocationDto(true, 4, 1, null, 0) },
+            new[] { new DefinitionLocationDto(true, 4, 3, null, 0, FullStart: 0, FullLength: code.IndexOf("}") + 1) },
             "cell-1", code, new List<(string, string)> { ("cell-1", code) });
         Assert.AreEqual(1, locations.Count);
-        Assert.AreEqual("cell-1", locations[0].Uri);
-        Assert.AreEqual(0, locations[0].Range.Start.Line);
-        Assert.AreEqual(4, locations[0].Range.Start.Character);
+        Assert.AreEqual("cell-1", locations[0].TargetUri);
+        Assert.AreEqual(4, locations[0].TargetSelectionRange.Start.Character, "selection is the name token");
+        Assert.AreEqual(0, locations[0].TargetRange.Start.Line);
+        Assert.AreEqual(3, locations[0].TargetRange.End.Line, "the peek frames the whole body");
     }
 
     [TestMethod]
@@ -34,10 +35,10 @@ public class DefinitionMappingTest {
             new[] { new DefinitionLocationDto(false, 0, 3, "int Add(int a, int b) => a + b;", 4) },
             "cell-2", "Add(1, 2)", docs);
         Assert.AreEqual(1, locations.Count);
-        Assert.AreEqual("cell-1", locations[0].Uri);
-        Assert.AreEqual(1, locations[0].Range.Start.Line);
-        Assert.AreEqual(4, locations[0].Range.Start.Character);
-        Assert.AreEqual(7, locations[0].Range.End.Character);
+        Assert.AreEqual("cell-1", locations[0].TargetUri);
+        Assert.AreEqual(1, locations[0].TargetSelectionRange.Start.Line);
+        Assert.AreEqual(4, locations[0].TargetSelectionRange.Start.Character);
+        Assert.AreEqual(7, locations[0].TargetSelectionRange.End.Character);
     }
 
     [TestMethod]
@@ -49,7 +50,7 @@ public class DefinitionMappingTest {
             new[] { new DefinitionLocationDto(false, 0, 3, "int Add(int a, int b) => a + b;", 4) },
             "cell-1", "", docs);
         Assert.AreEqual(1, locations.Count);
-        Assert.AreEqual(8, locations[0].Range.Start.Character, "column shifts by the indentation delta");
+        Assert.AreEqual(8, locations[0].TargetSelectionRange.Start.Character, "column shifts by the indentation delta");
     }
 
     [TestMethod]

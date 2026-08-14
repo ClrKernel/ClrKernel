@@ -145,6 +145,14 @@ public sealed class Location {
     public Range Range { get; set; }
 }
 
+public sealed class LocationLink {
+    public string TargetUri { get; set; }
+    /// <summary>The region a peek frames — the whole declaration when known.</summary>
+    public Range TargetRange { get; set; }
+    /// <summary>The name token, highlighted inside the peek.</summary>
+    public Range TargetSelectionRange { get; set; }
+}
+
 public sealed class CompletionOptions {
     public List<string> TriggerCharacters { get; set; }
     public bool ResolveProvider { get; set; }

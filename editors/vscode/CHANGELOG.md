@@ -5,8 +5,12 @@
 - **Go to Definition / Peek Definition in C# cells.** Right-click a symbol (or
   F12 / ⌥F12) to jump to — or peek — where it's defined: functions, variables,
   records, and classes from earlier cells or the same cell, across cells in the
-  notebook. Definitions reflect the live session, the same way completion does;
-  BCL/nuget symbols have no source to jump to and keep showing hover info.
+  notebook. Definitions reflect the live session, the same way completion does,
+  and the peek frames the whole declaration, not just its first line.
+- **Decompiled source for everything else.** Go to Definition on a symbol with
+  no notebook source — the BCL, nuget packages, ClrKernel's own types — opens
+  readable decompiled C# (ILSpy engine) in a read-only document, scrolled to
+  the member you asked about.
 - **Remote cells: SSH for shell, PSRemoting for PowerShell.** Register a target
   with `#!shell-connect --name web01 --host … --user …` (key auth via your ssh
   keys/agent/config) or `#!pwsh-connect --name srv --host …` (`--ssh` default,

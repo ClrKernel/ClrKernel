@@ -253,19 +253,36 @@ public sealed class LspServer {
     }
 
     [JsonRpcMethod("textDocument/definition", UseSingleObjectParameterDeserialization = true)]
-    public async Task<List<Location>> Definition(TextDocumentPositionParams p) {
+    public async Task<List<LocationLink>> Definition(TextDocumentPositionParams p) {
         var (code, offset) = Resolve(p);
         if (code == null || ServicesFor(p) != null) {
-            return new List<Location>(); // only C# cells carry definitions today
+            return new List<LocationLink>(); // only C# cells carry definitions today
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
-        IReadOnlyList<ClrKernel.Core.LanguageServices.DefinitionLocationDto> definitions;
+        ClrKernel.Core.LanguageServices.DefinitionResultDto result;
         try {
-            definitions = await _language.GetDefinitionsAsync(_engine.SnapshotState(), code, offset)
+            result = await _language.GetDefinitionsAsync(_engine.SnapshotState(), code, offset)
                 .ConfigureAwait(false);
         } finally {
             _gate.Release();
+        }
+
+        // Metadata symbol: serve the decompiled type as a virtual document the
+        // client resolves through clrkernel/metadataSource.
+        if (result.Locations.Count == 0 && result.Metadata != null) {
+            _metadataSources[result.Metadata.Key] = result.Metadata.Text;
+            var selection = new Range {
+                Start = OffsetToPosition(result.Metadata.Text, result.Metadata.Start),
+                End = OffsetToPosition(result.Metadata.Text, result.Metadata.Start + result.Metadata.Length),
+            };
+            return new List<LocationLink> {
+                new() {
+                    TargetUri = "clrkernel-metadata:/" + result.Metadata.Key,
+                    TargetRange = selection,
+                    TargetSelectionRange = selection,
+                },
+            };
         }
 
         // Candidate cells for prior-submission definitions: the current cell first
@@ -281,28 +298,53 @@ public sealed class LspServer {
                 candidates.Add((kv.Key, text));
             }
         }
-        return MapDefinitions(definitions, currentUri, code, candidates);
+        return MapDefinitions(result.Locations, currentUri, code, candidates);
+    }
+
+    // Decompiled sources by virtual-document key, kept for the client's content
+    // provider to fetch (and refetch, e.g. after a window reload).
+    private readonly ConcurrentDictionary<string, string> _metadataSources = new();
+
+    [JsonRpcMethod("clrkernel/metadataSource", UseSingleObjectParameterDeserialization = true)]
+    public object MetadataSource(MetadataSourceParams p) {
+        var text = p?.Key != null && _metadataSources.TryGetValue(p.Key, out var t)
+            ? t
+            : "// Decompiled source is no longer available - use Go to Definition again.";
+        return new { text };
+    }
+
+    public sealed class MetadataSourceParams {
+        public string Key { get; set; }
     }
 
     /// <summary>
-    /// Turns service definitions into LSP locations. A current-cell definition maps by
-    /// offset; a definition from an executed submission is found by locating its
-    /// defining line in an open cell (exact line first, then whitespace-insensitive
-    /// with the column shifted accordingly). A line no open cell contains — edited
-    /// since execution, or from a closed notebook — yields no location.
+    /// Turns service definitions into LSP location links. A current-cell definition
+    /// maps by offset (the peek frames the whole declaration when known); a definition
+    /// from an executed submission is found by locating its defining line in an open
+    /// cell (exact line first, then whitespace-insensitive with the column shifted).
+    /// A line no open cell contains — edited since execution, or from a closed
+    /// notebook — yields no location.
     /// </summary>
-    internal static List<Location> MapDefinitions(
+    internal static List<LocationLink> MapDefinitions(
         IReadOnlyList<ClrKernel.Core.LanguageServices.DefinitionLocationDto> definitions,
         string currentUri, string currentCode, IReadOnlyList<(string Uri, string Text)> openDocs) {
-        var locations = new List<Location>();
+        var locations = new List<LocationLink>();
         foreach (var definition in definitions) {
             if (definition.InCurrentCell) {
-                locations.Add(new Location {
-                    Uri = currentUri,
-                    Range = new Range {
-                        Start = OffsetToPosition(currentCode, definition.Start),
-                        End = OffsetToPosition(currentCode, definition.Start + definition.Length),
-                    },
+                var selection = new Range {
+                    Start = OffsetToPosition(currentCode, definition.Start),
+                    End = OffsetToPosition(currentCode, definition.Start + definition.Length),
+                };
+                var target = definition.FullStart >= 0
+                    ? new Range {
+                        Start = OffsetToPosition(currentCode, definition.FullStart),
+                        End = OffsetToPosition(currentCode, definition.FullStart + definition.FullLength),
+                    }
+                    : selection;
+                locations.Add(new LocationLink {
+                    TargetUri = currentUri,
+                    TargetRange = target,
+                    TargetSelectionRange = selection,
                 });
                 continue;
             }
@@ -315,12 +357,14 @@ public sealed class LspServer {
                     continue;
                 }
                 var offset = start + definition.ColumnInLine + columnAdjust;
-                locations.Add(new Location {
-                    Uri = uri,
-                    Range = new Range {
-                        Start = OffsetToPosition(text, offset),
-                        End = OffsetToPosition(text, offset + definition.Length),
-                    },
+                var selection = new Range {
+                    Start = OffsetToPosition(text, offset),
+                    End = OffsetToPosition(text, offset + definition.Length),
+                };
+                locations.Add(new LocationLink {
+                    TargetUri = uri,
+                    TargetRange = selection,
+                    TargetSelectionRange = selection,
                 });
                 break;
             }

@@ -11,6 +11,11 @@ export function activate(context: vscode.ExtensionContext): void {
     const controller = new ClrKernelController(NOTEBOOK_TYPE);
     context.subscriptions.push(
         vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new MarkdownNotebookSerializer()),
+        // Read-only virtual documents for Go to Definition on metadata symbols:
+        // the server decompiles the type; the .cs path gives C# highlighting.
+        vscode.workspace.registerTextDocumentContentProvider('clrkernel-metadata', {
+            provideTextDocumentContent: (uri) => controller.metadataSource(uri.path.replace(/^\//, '')),
+        }),
         controller,
         vscode.commands.registerCommand('clrkernel.newNotebook', createNewNotebook),
         vscode.commands.registerCommand('clrkernel.restartKernel', async () => {

@@ -240,6 +240,19 @@ export class ClrKernelController {
     }
 
     /**
+     * Decompiled source for a metadata symbol, fetched from the running server.
+     * Definition results only ever point at this scheme when the server is up,
+     * so a missing client just explains itself.
+     */
+    async metadataSource(key: string): Promise<string> {
+        if (!this.client?.running) {
+            return '// The ClrKernel server is not running - use Go to Definition again.';
+        }
+        const result = await this.client.request<{ text: string }>('clrkernel/metadataSource', { key });
+        return result?.text ?? '';
+    }
+
+    /**
      * Ensures the server is running for the given notebook and returns the client,
      * so the SQL connection UI can issue clrkernel/connections/* requests over the same
      * process that runs cells (and therefore shares the connection registry).
