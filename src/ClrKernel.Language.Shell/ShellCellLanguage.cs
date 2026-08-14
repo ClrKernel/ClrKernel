@@ -45,15 +45,21 @@ public sealed class ShellCellLanguage : ICellLanguage {
 
         if (result.ExitCode != 0) {
             // The output is still worth seeing (it usually says why): display it,
-            // then fail the cell with the exit code.
+            // AND carry its tail in the exception — a host that isn't showing
+            // display output (tests, logs) must still see the reason.
             if (!string.IsNullOrEmpty(result.Output)) {
                 new DisplayConsoleText(result.Output).Display();
             }
-            throw new ShellCellException($"{shell} exited with code {result.ExitCode}" + (connection != null ? $" on '{connection}'." : "."));
+            throw new ShellCellException(
+                $"{shell} exited with code {result.ExitCode}" + (connection != null ? $" on '{connection}'" : "") +
+                (string.IsNullOrEmpty(result.Output) ? "." : ": " + Tail(result.Output, 400)));
         }
 
         return string.IsNullOrEmpty(result.Output) ? null : new DisplayConsoleText(result.Output);
     }
+
+    private static string Tail(string text, int max) =>
+        text.Length <= max ? text : "…" + text.Substring(text.Length - max);
 
     private static string ShellFor(string selector) {
         var name = (selector ?? string.Empty).TrimStart('#', '!');
