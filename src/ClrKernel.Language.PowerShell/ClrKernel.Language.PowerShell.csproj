@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
+    <!-- PSRemoting targets: secret references for WinRM, shared connections.json machinery. -->
+    <ProjectReference Include="../ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
     <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
   </ItemGroup>
 

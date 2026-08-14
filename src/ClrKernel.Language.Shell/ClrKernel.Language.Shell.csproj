@@ -19,7 +19,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.Language.UnitTest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
     <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
+    <!-- connections.json ("$type": "Ssh") shares the one config machinery. -->
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
   </ItemGroup>
 </Project>

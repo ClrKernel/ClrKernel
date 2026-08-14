@@ -19,7 +19,7 @@ public sealed class ShellCellLanguage : ICellLanguage {
     /// <summary>Matches the VS Code cell languageId for shell scripts.</summary>
     public string Id => "shellscript";
 
-    public IReadOnlyList<string> Selectors { get; } = new[] { "#!bash", "#!zsh", "#!sh", "#!shell" };
+    public IReadOnlyList<string> Selectors { get; } = new[] { "#!bash", "#!zsh", "#!sh", "#!shell", "#!shell-connect" };
 
     public ICellLanguageServices Services => null;
 
@@ -32,8 +32,16 @@ public sealed class ShellCellLanguage : ICellLanguage {
     public ShellSession Session => _session ??= new ShellSession();
 
     public async Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) {
+        if (cell.Selector.Equals("#!shell-connect", StringComparison.OrdinalIgnoreCase)) {
+            var spec = Session.Connect(cell.FirstLine);
+            return new DisplayBadge("ssh " + spec.Name, spec.Describe());
+        }
+
         var shell = ShellFor(cell.Selector);
-        var result = await Session.ExecuteAsync(shell, cell.Body, context.WorkingDirectory).ConfigureAwait(false);
+        var connection = ShellDirectives.SelectorConnection(cell.FirstLine);
+        var result = connection != null
+            ? await Session.ExecuteRemoteAsync(shell, cell.Body, connection).ConfigureAwait(false)
+            : await Session.ExecuteAsync(shell, cell.Body, context.WorkingDirectory).ConfigureAwait(false);
 
         if (result.ExitCode != 0) {
             // The output is still worth seeing (it usually says why): display it,
@@ -41,7 +49,7 @@ public sealed class ShellCellLanguage : ICellLanguage {
             if (!string.IsNullOrEmpty(result.Output)) {
                 new DisplayConsoleText(result.Output).Display();
             }
-            throw new ShellCellException($"{shell} exited with code {result.ExitCode}.");
+            throw new ShellCellException($"{shell} exited with code {result.ExitCode}" + (connection != null ? $" on '{connection}'." : "."));
         }
 
         return string.IsNullOrEmpty(result.Output) ? null : new DisplayConsoleText(result.Output);

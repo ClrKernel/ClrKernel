@@ -1,5 +1,28 @@
 # PowerShell in ClrKernel
 
+## PSRemoting
+
+Register a remote target once, then run any PowerShell cell on it with
+`--connection` — the remote runspace persists, so remote variables and imports
+carry across cells exactly like the local session:
+
+```powershell
+#!pwsh-connect --name srv --host srv01.example.com --user admin --identity ~/.ssh/id_ed25519
+```
+
+```powershell
+#!pwsh --connection srv
+$env:COMPUTERNAME
+Get-Process | Select-Object -First 5
+```
+
+`--ssh` (the default) uses PowerShell-over-SSH: key auth, and the remote needs
+PowerShell with the ssh subsystem enabled. `--winrm` uses classic PSRemoting:
+`--user CONTOSO\svc --secret ps:srv01` takes the password from your OS
+credential store by reference — it is never written to the notebook or any
+file. Targets can also live in `connections.json` as `"$type": "PSRemoting"`
+(or reuse a shell `"$type": "Ssh"` entry).
+
 ClrKernel runs **PowerShell cells** in an in-process runspace. In a notebook,
 set a cell's language to **PowerShell** (or start it with the `#!pwsh` selector);
 in a plain `.nb.md` file, use a ` ```powershell ` fenced block. Variables and

@@ -2,6 +2,15 @@
 
 ## [0.5.0] - 2026-08-11
 
+- **Remote cells: SSH for shell, PSRemoting for PowerShell.** Register a target
+  with `#!shell-connect --name web01 --host … --user …` (key auth via your ssh
+  keys/agent/config) or `#!pwsh-connect --name srv --host …` (`--ssh` default,
+  or `--winrm --user … --secret <ref>` with the password coming from the OS
+  credential store, never a file), then run any cell on it with
+  `#!bash --connection web01` / `#!pwsh --connection srv`. Remote PowerShell
+  state lives in a persistent remote runspace; remote shell cells keep their
+  working directory per target. Targets can be saved in `connections.json`
+  (`"$type": "Ssh"` — shared by both languages — or `"$type": "PSRemoting"`).
 - **Shell cells.** Set a cell's language to **Shell Script** (or start it with
   `#!bash` / `#!zsh` / `#!sh`) to run shell commands. The working directory and
   exported environment persist across cells like one terminal session, stderr is

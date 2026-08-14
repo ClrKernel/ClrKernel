@@ -195,7 +195,7 @@ public class NotebookImporter {
                 } else if (section == "mermaid") {
                     blocks.Add(_mermaidSelector + "\n" + text);
                 } else if (_pwshSectionNames.Contains(section)) {
-                    blocks.Add(_pwshSelector + "\n" + text);
+                    blocks.Add(PwshBlock(text));
                 } else if (section == "sql") {
                     blocks.Add(SqlBlock(text));
                 } else if (section == "dax") {
@@ -239,6 +239,13 @@ public class NotebookImporter {
         text.TrimStart().StartsWith("#!sql", StringComparison.OrdinalIgnoreCase)
             ? text
             : _sqlSelector + "\n" + text;
+
+    // A PowerShell block already carrying a #!pwsh selector (e.g. #!pwsh-connect)
+    // passes through; a bare script gets #!pwsh prepended.
+    private static string PwshBlock(string text) =>
+        text.TrimStart().StartsWith("#!pwsh", StringComparison.OrdinalIgnoreCase)
+            ? text
+            : _pwshSelector + "\n" + text;
 
     // A shell block already carrying its selector passes through; a bare script
     // gets the selector matching its fence tag ("shell" means bash).
@@ -292,7 +299,7 @@ public class NotebookImporter {
                 if (text.Length > 0) {
                     blocks.Add(isHttp ? _httpSelector + "\n" + text
                         : isMermaid ? _mermaidSelector + "\n" + text
-                        : isPwsh ? _pwshSelector + "\n" + text
+                        : isPwsh ? PwshBlock(text)
                         : isSql ? SqlBlock(text)
                         : isDax ? DaxBlock(text)
                         : shellTag != null ? ShellBlock(text, shellTag)

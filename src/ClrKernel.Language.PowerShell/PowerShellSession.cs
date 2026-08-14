@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Management.Automation;
@@ -7,6 +8,7 @@ using System.Management.Automation.Runspaces;
 using System.Text;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
+using ClrKernel.Core.Secrets;
 using SMA = System.Management.Automation;
 
 namespace ClrKernel.Language.PowerShell;
@@ -23,6 +25,98 @@ public sealed class PowerShellSession : IDisposable {
     private readonly object _lock = new();
     private Runspace _runspace;
     private bool _disposed;
+
+    // Named PSRemoting targets (#!pwsh-connect / connections.json) and their live
+    // runspaces, opened lazily. A remote runspace persists like the local one, so
+    // remote state carries across cells naturally.
+    private readonly Dictionary<string, PwshConnectionSpec> _remoteSpecs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Runspace> _remoteRunspaces = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SecretStore _secrets = new();
+
+    /// <summary>Registers a PSRemoting target from a <c>#!pwsh-connect</c> line.</summary>
+    public PwshConnectionSpec Connect(string directiveLine) {
+        var spec = PwshDirectives.ParseConnect(directiveLine);
+        lock (_lock) {
+            _remoteSpecs[spec.Name] = spec;
+            if (_remoteRunspaces.Remove(spec.Name, out var stale)) {
+                stale.Dispose(); // a redefinition reconnects on next use
+            }
+        }
+        return spec;
+    }
+
+    /// <summary>Registers every <c>"$type": "PSRemoting"</c> and <c>"$type": "Ssh"</c>
+    /// entry from the nearest connections.json (+ .local overlay); one SSH host
+    /// definition serves both shell and PowerShell cells.</summary>
+    public IReadOnlyList<string> LoadFromConfig(string startDirectory = null) {
+        var loaded = new List<string>();
+        foreach (var file in ClrKernel.Database.ConnectionConfig.FindFiles(startDirectory)) {
+            foreach (var node in ClrKernel.Database.ConnectionConfig.LoadAllRaw(file)) {
+                if (!node.IsType(PwshConnectionConfig.TypeName) && !node.IsType(PwshConnectionConfig.SshTypeName)) {
+                    continue;
+                }
+                var spec = PwshConnectionConfig.FromNode(node);
+                lock (_lock) {
+                    _remoteSpecs[spec.Name] = spec;
+                }
+                if (!loaded.Contains(node.Name)) {
+                    loaded.Add(node.Name);
+                }
+            }
+        }
+        return loaded;
+    }
+
+    private Runspace RunspaceFor(string connectionName) {
+        if (string.IsNullOrEmpty(connectionName)) {
+            return Runspace;
+        }
+        lock (_lock) {
+            if (_remoteRunspaces.TryGetValue(connectionName, out var open)) {
+                return open;
+            }
+        }
+        if (!HasSpec(connectionName)) {
+            LoadFromConfig(); // a saved target may not have been loaded yet
+        }
+        PwshConnectionSpec spec;
+        lock (_lock) {
+            if (!_remoteSpecs.TryGetValue(connectionName, out spec)) {
+                throw new PowerShellCellException(
+                    $"No PSRemoting connection named '{connectionName}'. " +
+                    (_remoteSpecs.Count == 0
+                        ? "Add one with #!pwsh-connect --name <n> --host <host>."
+                        : $"Known connections: {string.Join(", ", _remoteSpecs.Keys)}."));
+            }
+        }
+        var runspace = RunspaceFactory.CreateRunspace(spec.CreateConnectionInfo(_secrets));
+        try {
+            runspace.Open();
+        } catch (Exception e) {
+            runspace.Dispose();
+            throw new PowerShellCellException(
+                $"Could not open a remote runspace on {spec.Describe()}: {e.Message}" +
+                (spec.Transport == PwshTransport.Ssh
+                    ? " (PowerShell-over-SSH needs PowerShell installed on the remote and the ssh subsystem enabled.)"
+                    : ""), e);
+        }
+        EnableAnsiOutput(runspace);
+        lock (_lock) {
+            // Another thread may have raced the open; keep the first, drop ours.
+            if (_remoteRunspaces.TryGetValue(connectionName, out var existing)) {
+                runspace.Dispose();
+                return existing;
+            }
+            _remoteRunspaces[connectionName] = runspace;
+            return runspace;
+        }
+    }
+
+    private bool HasSpec(string name) {
+        lock (_lock) {
+            return _remoteSpecs.ContainsKey(name);
+        }
+    }
 
     private Runspace Runspace {
         get {
@@ -66,10 +160,11 @@ public sealed class PowerShellSession : IDisposable {
     /// throws <see cref="PowerShellCellException"/> so the host shows it as an
     /// error output.
     /// </summary>
-    public DisplayData Execute(string code) {
+    public DisplayData Execute(string code, string connectionName = null) {
+        var runspace = RunspaceFor(connectionName);
         lock (_lock) {
             using var ps = SMA.PowerShell.Create();
-            ps.Runspace = Runspace;
+            ps.Runspace = runspace;
             ps.AddScript(code ?? string.Empty);
 
             Collection<PSObject> output;
@@ -442,11 +537,15 @@ public sealed class PowerShellSession : IDisposable {
             _disposed = true;
             _runspace?.Dispose();
             _runspace = null;
+            foreach (var remote in _remoteRunspaces.Values) {
+                remote.Dispose();
+            }
+            _remoteRunspaces.Clear();
         }
     }
 }
 
 /// <summary>Thrown for a terminating error in a PowerShell cell.</summary>
 public sealed class PowerShellCellException : Exception {
-    public PowerShellCellException(string message, Exception inner) : base(message, inner) { }
+    public PowerShellCellException(string message, Exception inner = null) : base(message, inner) { }
 }

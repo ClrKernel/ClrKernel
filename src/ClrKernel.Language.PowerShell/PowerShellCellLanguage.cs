@@ -14,7 +14,7 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
 
     public string Id => "powershell";
 
-    public IReadOnlyList<string> Selectors { get; } = new[] { "#!pwsh", "#!powershell" };
+    public IReadOnlyList<string> Selectors { get; } = new[] { "#!pwsh", "#!powershell", "#!pwsh-connect" };
 
     public ICellLanguageServices Services => _services ??= new PowerShellCellLanguageServices(this);
 
@@ -28,6 +28,12 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
     /// <summary>The runspace, created on first use (also by completion queries).</summary>
     public PowerShellSession Session => _session ??= new PowerShellSession();
 
-    public Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) =>
-        Task.FromResult<object>(Session.Execute(cell.Body));
+    public Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) {
+        if (cell.Selector.Equals("#!pwsh-connect", System.StringComparison.OrdinalIgnoreCase)) {
+            var spec = Session.Connect(cell.FirstLine);
+            return Task.FromResult<object>(new ClrKernel.Core.Primitives.DisplayBadge("psremote " + spec.Name, spec.Describe()));
+        }
+        var connection = PwshDirectives.SelectorConnection(cell.FirstLine);
+        return Task.FromResult<object>(Session.Execute(cell.Body, connection));
+    }
 }

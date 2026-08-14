@@ -48,6 +48,34 @@ echo "running under zsh $ZSH_VERSION"
 echo "plain POSIX sh"
 ```
 
+## Remote cells over SSH
+
+Register a target once — auth is your ssh keys/agent/`~/.ssh/config`
+(`BatchMode`, so a missing key fails fast instead of prompting; passwords are
+deliberately unsupported) — then point any shell cell at it with
+`--connection`:
+
+```bash
+#!shell-connect --name web01 --host web01.example.com --user deploy
+```
+
+```bash
+#!bash --connection web01
+hostname
+uptime
+```
+
+The **remote working directory persists per target** (`cd` carries to the next
+remote cell); exported environment does not — each remote cell is a fresh
+login. Colour is forced on the remote end too. Targets can also live in
+`connections.json` (or your git-ignored `connections.local.json`):
+
+```json
+{
+  "web01": { "$type": "Ssh", "host": "web01.example.com", "user": "deploy", "port": "22" }
+}
+```
+
 ## Errors
 
 stderr is captured inline (in order), and a non-zero exit fails the cell with
