@@ -53,8 +53,11 @@ public static class DecompiledSource {
 
             var (start, length) = LocateMember(text, symbol);
             return new MetadataSourceDto(KeyFor(pe.FilePath, metadataName), text, start, length);
-        } catch {
-            // Decompilation is best-effort; "no definition" beats a broken peek.
+        } catch (Exception e) {
+            // Best-effort: "no definition" beats a broken peek — but say why on
+            // stderr, which is the log channel in every host mode.
+            Console.Error.WriteLine(
+                $"clrkernel: decompilation failed for {symbol.ToDisplayString()}: {e.GetType().Name}: {e.Message}");
             return null;
         }
     }
