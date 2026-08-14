@@ -142,3 +142,27 @@ public class FabricEngineWiringTest {
         StringAssert.Contains(text, "Fabric");
     }
 }
+
+[TestClass]
+public class FabricFactoryTest {
+    [TestMethod]
+    public void Interactive_uses_the_browser_only_credential() {
+        // Constructing the credential never prompts; only a token request would.
+        var connection = ClrKernel.Database.Provider.Fabric.Fabric.Interactive();
+        Assert.IsNotNull(connection);
+    }
+
+    [TestMethod]
+    public void WithCredential_rejects_null() {
+        Assert.ThrowsExactly<ArgumentNullException>(
+            () => ClrKernel.Database.Provider.Fabric.Fabric.WithCredential(null));
+    }
+
+    [TestMethod]
+    public void InteractiveOnly_is_a_bare_browser_credential_not_a_chain() {
+        Assert.IsInstanceOfType(
+            ClrKernel.Database.Entra.EntraAuth.InteractiveOnly(),
+            typeof(Azure.Identity.InteractiveBrowserCredential),
+            "no chain: the browser must always be the one asked");
+    }
+}

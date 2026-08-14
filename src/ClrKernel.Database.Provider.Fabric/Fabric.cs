@@ -29,8 +29,12 @@ public static class Fabric {
     /// job; see the note on <see cref="EntraAuth.DefaultWithInteractiveFallback"/>.</remarks>
     public static FabricConnection Connect() => WithCredential(EntraAuth.DefaultThenInteractiveBrowser());
 
-    public static FabricConnection InteractiveSigninConnection() =>
-        new FabricConnection(new Azure.Identity.DefaultAzureCredential(true));
+    /// <summary>
+    /// Connects with an explicit browser sign-in only — no credential chain
+    /// (<see cref="EntraAuth.InteractiveOnly"/>), so the browser always opens and the
+    /// user picks the account instead of silently reusing an az CLI / VS session.
+    /// </summary>
+    public static FabricConnection Interactive() => WithCredential(EntraAuth.InteractiveOnly());
 
     /// <summary>Connects with an Entra service principal (client secret).</summary>
     public static FabricConnection ClientSecret(string tenantId, string clientId, string clientSecret) =>
@@ -38,10 +42,7 @@ public static class Fabric {
 
     /// <summary>Connects with a caller-supplied Azure <see cref="TokenCredential"/>.</summary>
     public static FabricConnection WithCredential(TokenCredential credential) {
-        if (credential is null) {
-            throw new ArgumentNullException(nameof(credential));
-        }
-
+        ArgumentNullException.ThrowIfNull(credential);
         return new FabricConnection(credential);
     }
 }
