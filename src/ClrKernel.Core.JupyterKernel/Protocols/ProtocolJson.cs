@@ -8,7 +8,7 @@ namespace ClrKernel.Core.JupyterKernel.Protocols;
 /// Property names default to camelCase (data, transient, ...); snake_case
 /// fields (msg_id, execution_count, ...) are pinned with [JsonPropertyName].
 /// Case-insensitive reads accept whatever casing a client sends. Relaxed
-/// escaping keeps HTML/output payloads readable (no < for '<'), matching
+/// escaping keeps HTML/output payloads readable (no \u003C escapes), matching
 /// the previous Newtonsoft behavior.
 /// </summary>
 public static class ProtocolJson {

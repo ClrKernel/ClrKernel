@@ -43,7 +43,7 @@ public class CoreDatabaseTest {
         Assert.AreEqual(2, inserted);
 
         var results = _db.Query("select * from Person order by Id").Results();
-        Assert.IsInstanceOfType(results, typeof(DisplayData));   // renders as the grid
+        Assert.IsInstanceOfType(results, typeof(IDisplayValue)); // renders as the grid
         Assert.AreEqual(2, results.Count);
         Assert.AreEqual("Ann", (string)results[0].Name);          // dynamic row access
 

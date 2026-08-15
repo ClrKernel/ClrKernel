@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Management.Automation;
@@ -6,6 +7,8 @@ using System.Management.Automation.Language;
 using System.Management.Automation.Runspaces;
 using System.Text;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
+using ClrKernel.Core.Secrets;
 using SMA = System.Management.Automation;
 
 namespace ClrKernel.Language.PowerShell;
@@ -23,6 +26,109 @@ public sealed class PowerShellSession : IDisposable {
     private Runspace _runspace;
     private bool _disposed;
 
+    // Named PSRemoting targets (#!pwsh-connect / connections.json) and their live
+    // runspaces, opened lazily. A remote runspace persists like the local one, so
+    // remote state carries across cells naturally.
+    private readonly Dictionary<string, PwshConnectionSpec> _remoteSpecs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Runspace> _remoteRunspaces = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SecretStore _secrets = new();
+
+    /// <summary>Registers a PSRemoting target from a <c>#!pwsh-connect</c> line.</summary>
+    public PwshConnectionSpec Connect(string directiveLine) {
+        var spec = PwshDirectives.ParseConnect(directiveLine);
+        lock (_lock) {
+            _remoteSpecs[spec.Name] = spec;
+            if (_remoteRunspaces.Remove(spec.Name, out var stale)) {
+                stale.Dispose(); // a redefinition reconnects on next use
+            }
+        }
+        return spec;
+    }
+
+    /// <summary>Registers every <c>"$type": "PSRemoting"</c> and <c>"$type": "Ssh"</c>
+    /// entry from the nearest connections.json (+ .local overlay); one SSH host
+    /// definition serves both shell and PowerShell cells.</summary>
+    public IReadOnlyList<string> LoadFromConfig(string startDirectory = null) {
+        var loaded = new List<string>();
+        foreach (var file in ClrKernel.Database.ConnectionConfig.FindFiles(startDirectory)) {
+            foreach (var node in ClrKernel.Database.ConnectionConfig.LoadAllRaw(file)) {
+                if (!node.IsType(PwshConnectionConfig.TypeName) && !node.IsType(PwshConnectionConfig.SshTypeName)) {
+                    continue;
+                }
+                var spec = PwshConnectionConfig.FromNode(node);
+                lock (_lock) {
+                    _remoteSpecs[spec.Name] = spec;
+                }
+                if (!loaded.Contains(node.Name)) {
+                    loaded.Add(node.Name);
+                }
+            }
+        }
+        return loaded;
+    }
+
+    private Runspace RunspaceFor(string connectionName) {
+        if (string.IsNullOrEmpty(connectionName)) {
+            return Runspace;
+        }
+        lock (_lock) {
+            if (_remoteRunspaces.TryGetValue(connectionName, out var open)) {
+                return open;
+            }
+        }
+        if (!HasSpec(connectionName)) {
+            LoadFromConfig(); // a saved target may not have been loaded yet
+        }
+        PwshConnectionSpec spec;
+        lock (_lock) {
+            if (!_remoteSpecs.TryGetValue(connectionName, out spec)) {
+                throw new PowerShellCellException(
+                    $"No PSRemoting connection named '{connectionName}'. " +
+                    (_remoteSpecs.Count == 0
+                        ? "Add one with #!pwsh-connect --name <n> --host <host>."
+                        : $"Known connections: {string.Join(", ", _remoteSpecs.Keys)}."));
+            }
+        }
+        var runspace = RunspaceFactory.CreateRunspace(spec.CreateConnectionInfo(_secrets));
+        try {
+            // SSHConnectionInfo locates the ssh binary through PowerShell's command
+            // discovery, which reads an execution context from thread-local state —
+            // a hosted SDK thread has none, so the open dies with ENOENT before
+            // touching the network. The session's local runspace, set as this
+            // thread's DefaultRunspace for the duration of the open, provides it.
+            var previous = Runspace.DefaultRunspace;
+            System.Management.Automation.Runspaces.Runspace.DefaultRunspace = Runspace;
+            try {
+                runspace.Open();
+            } finally {
+                System.Management.Automation.Runspaces.Runspace.DefaultRunspace = previous;
+            }
+        } catch (Exception e) {
+            runspace.Dispose();
+            throw new PowerShellCellException(
+                $"Could not open a remote runspace on {spec.Describe()}: {e.Message}" +
+                (spec.Transport == PwshTransport.Ssh
+                    ? " (PowerShell-over-SSH needs PowerShell installed on the remote and the ssh subsystem enabled.)"
+                    : ""), e);
+        }
+        EnableAnsiOutput(runspace);
+        lock (_lock) {
+            // Another thread may have raced the open; keep the first, drop ours.
+            if (_remoteRunspaces.TryGetValue(connectionName, out var existing)) {
+                runspace.Dispose();
+                return existing;
+            }
+            _remoteRunspaces[connectionName] = runspace;
+            return runspace;
+        }
+    }
+
+    private bool HasSpec(string name) {
+        lock (_lock) {
+            return _remoteSpecs.ContainsKey(name);
+        }
+    }
+
     private Runspace Runspace {
         get {
             if (_runspace == null) {
@@ -30,8 +136,31 @@ public sealed class PowerShellSession : IDisposable {
                 // open; Import-Module still pulls anything else on demand.
                 _runspace = RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
                 _runspace.Open();
+                EnableAnsiOutput(_runspace);
             }
             return _runspace;
+        }
+    }
+
+    /// <summary>
+    /// Makes PowerShell colour its own output.
+    /// </summary>
+    /// <remarks>
+    /// <c>$PSStyle.OutputRendering</c> defaults to <c>Host</c>, meaning "emit escape sequences only
+    /// if the host is a console that can show them". A hosted runspace is not, so every table,
+    /// list and formatted view came through with the colour silently dropped — not stripped later,
+    /// never produced. <c>Ansi</c> makes it always emit, which is what a notebook wants: the cell
+    /// renders the escapes as HTML, and the plain-text view strips them again.
+    /// <para>Best effort — <c>$PSStyle</c> arrived in PowerShell 7.2.</para>
+    /// </remarks>
+    private static void EnableAnsiOutput(Runspace runspace) {
+        try {
+            using var ps = SMA.PowerShell.Create();
+            ps.Runspace = runspace;
+            ps.AddScript("if ($null -ne $PSStyle) { $PSStyle.OutputRendering = 'Ansi' }");
+            ps.Invoke();
+        } catch (RuntimeException) {
+            // An older PowerShell simply stays monochrome.
         }
     }
 
@@ -42,10 +171,11 @@ public sealed class PowerShellSession : IDisposable {
     /// throws <see cref="PowerShellCellException"/> so the host shows it as an
     /// error output.
     /// </summary>
-    public DisplayData Execute(string code) {
+    public DisplayData Execute(string code, string connectionName = null) {
+        var runspace = RunspaceFor(connectionName);
         lock (_lock) {
             using var ps = SMA.PowerShell.Create();
-            ps.Runspace = Runspace;
+            ps.Runspace = runspace;
             ps.AddScript(code ?? string.Empty);
 
             Collection<PSObject> output;
@@ -59,9 +189,21 @@ public sealed class PowerShellSession : IDisposable {
 
             // Write-Host / Write-Information appear on the Information stream.
             foreach (var record in ps.Streams.Information) {
-                var text = record?.MessageData?.ToString();
-                if (!string.IsNullOrEmpty(text)) {
-                    sb.AppendLine(text);
+                // Write-Host carries its colours as properties on a HostInformationMessage rather
+                // than as escape sequences — a console host applies them itself. Turning them back
+                // into ANSI is what keeps `Write-Host -ForegroundColor Red` red in a notebook.
+                // (A -BackgroundColor with no foreground never arrives: PowerShell delivers the
+                // record with both colours null in that case, so there is nothing to apply.)
+                if (record?.MessageData is HostInformationMessage host) {
+                    var text = host.Message;
+                    if (!string.IsNullOrEmpty(text)) {
+                        sb.AppendLine(Colourize(text, host.ForegroundColor, host.BackgroundColor));
+                    }
+                    continue;
+                }
+                var plain = record?.MessageData?.ToString();
+                if (!string.IsNullOrEmpty(plain)) {
+                    sb.AppendLine(plain);
                 }
             }
 
@@ -70,14 +212,19 @@ public sealed class PowerShellSession : IDisposable {
                 sb.Append(formatted).Append('\n');
             }
 
+            // The console colours these; we format them ourselves, so we colour them ourselves.
             foreach (var warning in ps.Streams.Warning) {
-                sb.Append("WARNING: ").Append(warning.Message).Append('\n');
+                sb.Append(Colourize("WARNING: " + warning.Message, ConsoleColor.Yellow, null)).Append('\n');
             }
             foreach (var error in ps.Streams.Error) {
-                sb.Append(FormatError(error)).Append('\n');
+                sb.Append(Colourize(FormatError(error), ConsoleColor.Red, null)).Append('\n');
             }
 
-            return new DisplayData(sb.ToString().TrimEnd('\r', '\n'));
+            var console = sb.ToString().TrimEnd('\r', '\n');
+            // PowerShell colours its own output, so the raw text is full of ESC[…m sequences.
+            // Emit it as the console-text concept: the registered formatters render the
+            // escapes as HTML and strip them from text/plain — this language renders nothing.
+            return MimeBundler.Bundle(new DisplayConsoleText(console));
         }
     }
 
@@ -342,6 +489,48 @@ public sealed class PowerShellSession : IDisposable {
         return sb.ToString().TrimEnd('\r', '\n');
     }
 
+    /// <summary>Wraps text in the ANSI codes for the given console colours.</summary>
+    private static string Colourize(string text, ConsoleColor? foreground, ConsoleColor? background) {
+        if (string.IsNullOrEmpty(text) || (foreground == null && background == null)) {
+            return text;
+        }
+        var codes = new StringBuilder();
+        if (foreground != null) {
+            codes.Append(AnsiCode(foreground.Value, background: false));
+        }
+        if (background != null) {
+            if (codes.Length > 0) {
+                codes.Append(';');
+            }
+            codes.Append(AnsiCode(background.Value, background: true));
+        }
+        return "\u001b[" + codes + "m" + text + "\u001b[0m";
+    }
+
+    // ConsoleColor's order is not the ANSI order, so this is a lookup rather than arithmetic.
+    private static int AnsiCode(ConsoleColor colour, bool background) {
+        var code = colour switch {
+            ConsoleColor.Black => 30,
+            ConsoleColor.DarkBlue => 34,
+            ConsoleColor.DarkGreen => 32,
+            ConsoleColor.DarkCyan => 36,
+            ConsoleColor.DarkRed => 31,
+            ConsoleColor.DarkMagenta => 35,
+            ConsoleColor.DarkYellow => 33,
+            ConsoleColor.Gray => 37,
+            ConsoleColor.DarkGray => 90,
+            ConsoleColor.Blue => 94,
+            ConsoleColor.Green => 92,
+            ConsoleColor.Cyan => 96,
+            ConsoleColor.Red => 91,
+            ConsoleColor.Magenta => 95,
+            ConsoleColor.Yellow => 93,
+            ConsoleColor.White => 97,
+            _ => 39,
+        };
+        return background ? code + 10 : code;
+    }
+
     private static string FormatError(ErrorRecord error) {
         if (error == null) {
             return null;
@@ -359,11 +548,15 @@ public sealed class PowerShellSession : IDisposable {
             _disposed = true;
             _runspace?.Dispose();
             _runspace = null;
+            foreach (var remote in _remoteRunspaces.Values) {
+                remote.Dispose();
+            }
+            _remoteRunspaces.Clear();
         }
     }
 }
 
 /// <summary>Thrown for a terminating error in a PowerShell cell.</summary>
 public sealed class PowerShellCellException : Exception {
-    public PowerShellCellException(string message, Exception inner) : base(message, inner) { }
+    public PowerShellCellException(string message, Exception inner = null) : base(message, inner) { }
 }

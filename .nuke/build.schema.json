@@ -28,6 +28,7 @@
         "Build",
         "Clean",
         "Extension",
+        "ExtensionTest",
         "Format",
         "Restore",
         "Test"

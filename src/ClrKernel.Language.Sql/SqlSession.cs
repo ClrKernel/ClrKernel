@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Data.SqlClient;
@@ -10,10 +11,10 @@ using Microsoft.Data.SqlClient;
 namespace ClrKernel.Language.Sql;
 /// <summary>
 /// Holds the SQL connections for a notebook session and runs <c>#!sql</c>
-/// cells. Query result sets render as interactive grids (via
-/// <see cref="DisplayExtensions.DisplayTable(System.Data.IDataReader, int)"/>);
-/// the cell's own return value is a short run summary. Passwords are resolved
-/// from the <see cref="SecretStore"/> at execution time and never persisted.
+/// cells. Query result sets are displayed as <see cref="DisplayTable"/> concepts
+/// (drawn as the interactive grid by the registered formatters); the cell's own
+/// return value is a short run summary. Passwords are resolved from the
+/// <see cref="SecretStore"/> at execution time and never persisted.
 /// </summary>
 public sealed partial class SqlSession {
     private readonly SqlConnectionRegistry _registry = new SqlConnectionRegistry();
@@ -33,6 +34,21 @@ public sealed partial class SqlSession {
     /// parsed directive (spec, default flag, and any C# variable to bind).</summary>
     public SqlConnectDirective Connect(string directiveLine) {
         var directive = SqlDirectives.ParseConnect(directiveLine);
+
+        // Name-only (`#!sql-connect --name x [--default] [--var y]`): reference the
+        // existing connection of that name — typically loaded from connections.json —
+        // so the C# variable binds without restating (or clobbering) the definition.
+        if (directive.IsReference) {
+            if (!_registry.TryGet(directive.Spec.Name, out var existing)) {
+                LoadFromConfig(); // a headless/Jupyter run may not have loaded the config yet
+                existing = _registry.Resolve(directive.Spec.Name);
+            }
+            if (directive.IsDefault) {
+                _registry.SetDefault(existing.Name);
+            }
+            return new SqlConnectDirective(existing, directive.IsDefault, directive.Variable, isReference: true);
+        }
+
         _registry.Register(directive.Spec, directive.IsDefault);
         return directive;
     }
@@ -109,7 +125,7 @@ public sealed partial class SqlSession {
             } catch {
                 fieldType = typeof(string);
             }
-            types[i] = InteractiveTable.KindOf(fieldType);
+            types[i] = DisplayTable.KindOf(fieldType);
         }
 
         var rows = new List<IReadOnlyList<string>>();
@@ -121,14 +137,13 @@ public sealed partial class SqlSession {
             }
             var row = new string[fieldCount];
             for (var i = 0; i < fieldCount; i++) {
-                row[i] = InteractiveTable.CellText(reader.GetValue(i));
+                row[i] = DisplayTable.CellText(reader.GetValue(i));
             }
             rows.Add(row);
         }
 
-        var html = InteractiveTable.Render(columns, rows, types, total);
-        var text = $"[{total} row(s), {fieldCount} column(s)]";
-        DisplayDataEmitter.Emit(new DisplayData(text, html));
+        // The concept, not a render: display it and the listening host draws the grid.
+        new DisplayTable(null, columns, rows, types, total).Display();
         return total;
     }
 
@@ -143,16 +158,7 @@ public sealed partial class SqlSession {
             }
         }
         parts.Add($"{ms} ms");
-        var text = $"{spec.Name}: {string.Join(" • ", parts)}";
-
-        var html =
-            "<div style=\"font:12px/1.5 -apple-system,Segoe UI,sans-serif;color:#57606a;" +
-            "padding:2px 0\">" +
-            $"<span style=\"display:inline-block;padding:1px 6px;border-radius:10px;" +
-            $"background:#ddf4ff;color:#0969da;margin-right:6px\">{Encode(spec.Name)}</span>" +
-            Encode(string.Join(" • ", parts)) + "</div>";
-
-        return new DisplayData(text, html);
+        return MimeBundler.Bundle(new DisplayBadge(spec.Name, string.Join(" • ", parts)));
     }
 
     private static string FormatSqlError(SqlConnectionSpec spec, SqlException e) {
@@ -174,6 +180,4 @@ public sealed partial class SqlSession {
         return sb.ToString();
     }
 
-    private static string Encode(string s) =>
-        System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
 }

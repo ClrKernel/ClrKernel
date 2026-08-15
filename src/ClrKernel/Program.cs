@@ -16,9 +16,10 @@ namespace ClrKernel;
 /// </summary>
 public static class Program {
     public static async Task<int> Main(string[] args) {
-        // Composition root: make the cell languages available to every engine
-        // this process creates, whatever mode it runs in.
+        // Composition root: make the cell languages and the display renders
+        // available to every engine this process creates, whatever mode it runs in.
         CellLanguages.RegisterDefaults();
+        Formatting.Html.HtmlFormatters.RegisterDefaults();
 
         // Kernel-spec queries are terminal — answer and exit before mode dispatch.
         if (args.Length >= 1 && args[0] is "--kernel-spec-path" or "--kernel-spec-details") {

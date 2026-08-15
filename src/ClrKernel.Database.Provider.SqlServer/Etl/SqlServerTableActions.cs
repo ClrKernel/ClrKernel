@@ -54,7 +54,7 @@ public static class SqlServerTableActions {
 
     /// <summary>
     /// Maps a <see cref="TableActionKind.Merge"/> action onto a <see cref="MergeSpec"/>.
-    /// <paramref name="updateColumns"/>/<paramref name="insertColumns"/> are left null when not
+    /// <c>UpdateColumns</c>/<c>InsertColumns</c> are left null when not
     /// supplied, which is the signal for the caller to introspect the target's schema first.
     /// </summary>
     public static MergeSpec ToMergeSpec(TableAction action) {

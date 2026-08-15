@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.AnalysisServices;
 

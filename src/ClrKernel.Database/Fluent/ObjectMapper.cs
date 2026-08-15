@@ -7,7 +7,7 @@ using System.Reflection;
 namespace ClrKernel.Database;
 
 /// <summary>
-/// Maps query rows to <typeparamref name="T"/>: a scalar type (single column),
+/// Maps query rows to <c>T</c>: a scalar type (single column),
 /// a class with settable properties, or a record / immutable type whose
 /// constructor parameters match column names (case-insensitive).
 /// </summary>

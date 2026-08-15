@@ -33,6 +33,13 @@ public sealed class SsasConnectionSpec {
     public SsasAuthMode Auth { get; set; } = SsasAuthMode.Integrated;
     public string User { get; set; }
     public string Password { get; set; }
+
+    /// <summary>
+    /// Where <see cref="Password"/> came from, kept so the connection can be written to a
+    /// <c>connections.json</c> as a reference instead of a password. The password itself is
+    /// resolved when the connection is made and never persisted.
+    /// </summary>
+    public string SecretRef { get; set; }
     public string RawConnectionString { get; set; }
     public string Provider { get; set; } = "MSOLAP";
 

@@ -65,10 +65,26 @@ public static class AnalysisServices {
     /// XMLA endpoint with Microsoft Entra auth. <paramref name="workspace"/> is the
     /// workspace name and <paramref name="model"/> the dataset/semantic model name.</summary>
     public static SsasConnection ConnectFabric(
-        string workspace, string model, TokenCredential credential = null) {
-        var server = "powerbi://api.powerbi.com/v1.0/myorg/" + workspace;
-        return AzureAd(server, model, credential, EntraScopes.PowerBi);
-    }
+        string workspace, string model, TokenCredential credential = null) =>
+        AzureAd(FabricServer(workspace), model, credential, EntraScopes.PowerBi);
+
+    /// <summary>
+    /// Connects to a Fabric / Power BI semantic model using the signed-in Windows identity
+    /// (<c>Integrated Security=SSPI</c>) rather than a token this process fetches.
+    /// </summary>
+    /// <remarks>
+    /// On a domain- or Entra-joined Windows machine, the XMLA endpoint accepts SSPI and Windows
+    /// negotiates the Entra identity itself — no <c>az login</c>, no browser, no app registration.
+    /// That is often the only path that works where conditional access governs sign-in, because a
+    /// token this process fetches comes from a generic developer application the tenant may refuse.
+    /// SSPI is Windows-only; elsewhere <see cref="ConnectFabric"/> is the one to use.
+    /// </remarks>
+    public static SsasConnection ConnectFabricIntegrated(string workspace, string model) =>
+        Connect(FabricServer(workspace), model);
+
+    /// <summary>The XMLA endpoint for a Fabric / Power BI workspace.</summary>
+    public static string FabricServer(string workspace) =>
+        "powerbi://api.powerbi.com/v1.0/myorg/" + workspace;
 
     private static SsasConnection AzureAd(string server, string database, TokenCredential credential, string scope) {
         var cred = credential ?? EntraAuth.DefaultWithInteractiveFallback();

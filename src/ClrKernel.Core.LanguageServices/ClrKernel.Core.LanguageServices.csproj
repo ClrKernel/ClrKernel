@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <!-- Completion / QuickInfo services live in the Features assemblies. -->
+    <PackageReference Include="ICSharpCode.Decompiler" Version="11.0.0.9375" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.6.0" />
   </ItemGroup>
   <ItemGroup>

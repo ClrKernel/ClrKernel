@@ -16,7 +16,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Fabric.Api" Version="1.0.0" />
     <PackageReference Include="Azure.Storage.Files.DataLake" Version="12.21.0" />
-    <PackageReference Include="Azure.Identity" Version="1.13.1" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Parquet.Net" Version="5.2.0" />
     <!-- Pin the latest patched Snappier: Parquet.Net 5.2.0 pulls 1.1.6 transitively,
          which has NU1903 advisory GHSA-pggp-6c3x-2xmx. (Parquet.Net 6.x drops the

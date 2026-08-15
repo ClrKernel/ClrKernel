@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.AnalysisServices;
 using ClrKernel.Language.Dax;

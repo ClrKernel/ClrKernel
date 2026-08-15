@@ -2,24 +2,32 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Formatting.Html;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;
 
 [TestClass]
 public class InteractiveTableTest {
-    // Captures the html a DisplayTable overload emitted (DisplayAs publishes a
-    // display_data message; we intercept the emitter to read it back).
-    private static string CaptureHtml(Func<DisplayedValue> display) {
-        DisplayData captured = null;
-        var previous = DisplayDataEmitter.DisplayDataHandler;
-        DisplayDataEmitter.DisplayDataHandler = d => captured = d;
+    // The DisplayTable overloads emit concepts; the grid html needs the renders.
+    [ClassInitialize]
+    public static void RegisterPlugin(TestContext _) => HtmlFormatters.RegisterDefaults();
+
+    [ClassCleanup]
+    public static void UnregisterPlugin() => HtmlFormatters.UnregisterDefaults();
+
+    // Captures the html a DisplayTable overload displayed (cells raise the
+    // DisplayValues events; the test listens like a host would).
+    private static string CaptureHtml(Action display) {
+        ClrKernel.Core.Scripting.DisplayData captured = null;
+        void OnCell(DisplayCell cell) => captured = ClrKernel.Core.Scripting.MimeBundler.Bundle(cell);
+        DisplayValues.OnCellDisplayed += OnCell;
         try {
             display();
         } finally {
-            DisplayDataEmitter.DisplayDataHandler = previous;
+            DisplayValues.OnCellDisplayed -= OnCell;
         }
-        Assert.IsNotNull(captured, "no display_data was emitted");
+        Assert.IsNotNull(captured, "nothing was displayed");
         return (string)captured.Data["text/html"];
     }
 
@@ -135,7 +143,8 @@ public class InteractiveTableTest {
             }
         }
 
-        var html = CaptureHtml(() => Numbers().DisplayTable(limit: 5));
+        // A non-default limit is the extractor's parameter now.
+        var html = CaptureHtml(() => TableExtractor.Extract(Numbers(), 5).Display());
         StringAssert.Contains(html, "\"shown\":5");
         StringAssert.Contains(html, "\"total\":-1");   // unknown-but-more sentinel
     }

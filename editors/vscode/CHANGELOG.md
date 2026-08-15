@@ -2,6 +2,52 @@
 
 ## [0.5.0] - 2026-08-11
 
+- **Go to Definition / Peek Definition in C# cells.** Right-click a symbol (or
+  F12 / ⌥F12) to jump to — or peek — where it's defined: functions, variables,
+  records, and classes from earlier cells or the same cell, across cells in the
+  notebook. Definitions reflect the live session, the same way completion does,
+  and the peek frames the whole declaration, not just its first line.
+- **Decompiled source for everything else.** Go to Definition on a symbol with
+  no notebook source — the BCL, nuget packages, ClrKernel's own types — opens
+  readable decompiled C# (ILSpy engine) in a read-only document, scrolled to
+  the member you asked about.
+- **Remote cells: SSH for shell, PSRemoting for PowerShell.** Register a target
+  with `#!shell-connect --name web01 --host … --user …` (key auth via your ssh
+  keys/agent/config) or `#!pwsh-connect --name srv --host …` (`--ssh` default,
+  or `--winrm --user … --secret <ref>` with the password coming from the OS
+  credential store, never a file), then run any cell on it with
+  `#!bash --connection web01` / `#!pwsh --connection srv`. Remote PowerShell
+  state lives in a persistent remote runspace; remote shell cells keep their
+  working directory per target. Targets can be saved in `connections.json`
+  (`"$type": "Ssh"` — shared by both languages — or `"$type": "PSRemoting"`).
+- **Shell cells.** Set a cell's language to **Shell Script** (or start it with
+  `#!bash` / `#!zsh` / `#!sh`) to run shell commands. The working directory and
+  exported environment persist across cells like one terminal session, stderr is
+  captured inline, a non-zero exit fails the cell with its exit code, and ANSI
+  colour renders in the output (the session advertises a colour terminal, so
+  tools don't go monochrome just because output is piped). Executable markdown
+  round-trips ` ```bash `, ` ```zsh `, ` ```sh `, and ` ```shell ` fences.
+
+- **One display pipeline, user-overridable.** `Display(x)` and a bare trailing `x`
+  now render identically — both go through a formatter registry
+  (`DisplayFormatters` in `ClrKernel.Core.Primitives`, default renders in the new
+  `ClrKernel.Formatting.Html` package). A cell can override any render:
+  `DisplayFormatters.Register<DisplayTable, DisplayHtml>(t => …)` — the newest
+  registration wins. New concept-based helpers: `x.DisplayTable()`,
+  `x.DisplayHtml()`, `x.DisplayMarkdown()`, `bytes.DisplayBytes("image/png")`, and
+  the returned cell updates in place (`cell.UpdateProgress(…)` etc.).
+- **Fixed: a trailing `x.Display()` printed the value and then the handle.** A
+  display handle is a structure, never rendered; the engine now suppresses it.
+- **Images and other binary output render.** `DisplayBytes` (base64 on the wire)
+  becomes real bytes in the notebook renderer, so `image/png`, `application/pdf`
+  and friends display instead of showing base64 text.
+- **BREAKING (packages) — `DisplayData(text, html)` is gone.** Producers emit
+  display concepts (`DisplayTable`, `DisplayConsoleText`, `DisplayBadge`, …) and
+  the registry renders them; `ClrKernel.Core.Primitives` no longer contains any
+  HTML (`ResultFormatter`, `InteractiveTable`, `AnsiRenderer` moved to
+  `ClrKernel.Formatting.Html`). The `DisplayTable()` extension overloads now
+  return a `DisplayCell` instead of a `DisplayedValue`.
+
 - **BREAKING (protocol) — the connection RPCs are now language-neutral.** The eight
   `clrkernel/sql/*` and three `clrkernel/dax/*` methods are replaced by one
   `clrkernel/connections/*` set that takes a `languageId`: `list`, `add`, `remove`,

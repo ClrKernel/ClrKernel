@@ -60,6 +60,7 @@ public interface IConnectionCatalog {
     /// <c>#!sql-connect</c> / <c>#!dax-connect</c> line a user could type. Keeping the directive as
     /// the wire format means the UI never has to model each provider's options.
     /// </summary>
+    /// <param name="directive">The full connect-directive line, selector included.</param>
     /// <param name="secret">Stored against the connection's secret reference when supplied.
     /// Never persisted to the notebook or a config file.</param>
     /// <returns>The registered connection's name.</returns>

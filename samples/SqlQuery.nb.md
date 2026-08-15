@@ -1,130 +1,235 @@
-# Querying SQL from C# cells
+# SQL smoke test — AdventureWorksDW2025
 
-ClrKernel's `SqlServer` helper gives C# cells an ergonomic, ad-hoc query API — connect,
-query, and get results without registering a named `#!sql-connect` connection
-first. Results render as the same interactive grid the `#!sql` cells use, and are
-also enumerable as dynamic rows, so one object works both when displayed and in
-code.
+A runnable, top-to-bottom check of ClrKernel's SQL functionality against
+Microsoft's sample warehouse
+[AdventureWorksDW2025](https://learn.microsoft.com/sql/samples/adventureworks-install-configure)
+(any AdventureWorksDW20xx restore works — the tables used here exist in all of
+them). **Edit the `#!sql-connect` cell below** (server / auth) — or use the
+connection button next to the cell language picker — then Run All. Every cell
+after the connect line should succeed; scratch tables are prefixed
+`ClrKernelSmoke_` and dropped by the last cell.
 
-## Connect
-
-`SqlServer.Connection(server, database)` opens an ad-hoc connection. Auth is Integrated
-Security by default (Windows Integrated on Windows, Microsoft Entra "Default" on
-macOS/Linux):
-
-```csharp
-var dw = SqlServer.Connection("database.example.com", "AdventureWorksDW2025");
+```sql
+#!sql-connect --name advdw --server localhost --database AdventureWorksDW2025 --auth integrated --default
 ```
 
-Other ways to connect:
+`--auth integrated` is Windows Integrated auth on Windows and Microsoft Entra
+"Default" on macOS/Linux. For a SQL login use
+`--auth sql --user <name>` and store the password once via the connection button
+(or `CLRKERNEL_SECRET_SQL_ADVDW` for headless runs). The `--name advdw` also
+binds a C# variable `advdw`, which the C# cells below use.
 
-```csharp
-// SQL login — password from the secret store (never inline):
-var app = SqlServer.Connection("sql01", "AppDb", "svc_reader", "sql:app-reader");
+**Already have `advdw` in a `connections.json`?** Then don't restate it — a
+name-only connect cell *references* the saved definition instead of defining a
+new one, and still binds the `advdw` variable and sets the default. Swap the
+cell above for:
 
-// Microsoft Entra (Azure AD):
-var azure = SqlServer.AzureConnection("myserver.database.windows.net", "Sales");
-
-// Reuse a connection already defined with #!sql-connect:
-var reused = SqlServer.Database("analytics");
-// (a #!sql-connect --name analytics cell also binds `analytics` for you directly)
-
-// Full connection string (escape hatch):
-var raw = SqlServer.ConnectionString("Server=...;Database=...;Trusted_Connection=True;");
+```sql
+#!sql-connect --name advdw --default
 ```
 
-## Query → grid + rows
+## SQL cells → interactive grid
 
-`.Query(sql).Results()` runs the query and returns a result that **renders as the
-interactive grid** when it's the cell's value:
+Customers joined to geography — sort the columns, try the per-column filters and
+the Analyze panel:
 
-```csharp
-dw.Query("select top 100 * from dbo.Orders order by OrderDate desc").Results()
+```sql
+SELECT TOP (200)
+    c.CustomerKey, c.FirstName, c.LastName, c.EmailAddress,
+    c.YearlyIncome, g.City, g.EnglishCountryRegionName AS Country
+FROM dbo.DimCustomer c
+JOIN dbo.DimGeography g ON g.GeographyKey = c.GeographyKey
+ORDER BY c.CustomerKey;
 ```
 
-The very same object is enumerable as **dynamic rows** — access columns by name or
-index:
+Internet sales by calendar year (the summary badge under the grid shows the
+connection name, result-set count, and timing):
+
+```sql
+SELECT d.CalendarYear,
+       COUNT(DISTINCT f.SalesOrderNumber) AS Orders,
+       SUM(f.SalesAmount)                 AS Revenue
+FROM dbo.FactInternetSales f
+JOIN dbo.DimDate d ON d.DateKey = f.OrderDateKey
+GROUP BY d.CalendarYear
+ORDER BY d.CalendarYear;
+```
+
+## Query from C# → the same grid
 
 ```csharp
-var orders = dw.Query("select OrderId, Customer, Total from dbo.Orders").Results();
-Console.WriteLine($"{orders.Count} orders");
-foreach (var o in orders) {
-    Console.WriteLine($"{o.OrderId}  {o.Customer}  {o.Total:C}");
+advdw.Query(@"
+    SELECT TOP (10)
+        p.EnglishProductName    AS Product,
+        SUM(f.SalesAmount)      AS Revenue,
+        SUM(f.OrderQuantity)    AS Units
+    FROM dbo.FactInternetSales f
+    JOIN dbo.DimProduct p ON p.ProductKey = f.ProductKey
+    GROUP BY p.EnglishProductName
+    ORDER BY Revenue DESC").Results()
+```
+
+The same object enumerates as **dynamic rows** — columns by name or index:
+
+```csharp
+var byYear = advdw.Query(@"
+    SELECT d.CalendarYear, COUNT(DISTINCT f.SalesOrderNumber) AS Orders, SUM(f.SalesAmount) AS Revenue
+    FROM dbo.FactInternetSales f
+    JOIN dbo.DimDate d ON d.DateKey = f.OrderDateKey
+    GROUP BY d.CalendarYear ORDER BY d.CalendarYear").Results();
+
+Console.WriteLine($"{byYear.Count} calendar years");
+foreach (var y in byYear) {
+    Console.WriteLine($"{y.CalendarYear}  {y.Orders,6:N0} orders  {y.Revenue,16:C0}");
 }
-var firstCustomer = orders[0]["Customer"];
+byYear[0]["CalendarYear"]
 ```
 
 ## Typed results
 
-`.Results<T>()` maps each row to a record or class (by constructor parameters or
-settable properties, matched to column names):
-
 ```csharp
-record Order(int OrderId, string Customer, decimal Total);
+record Product(string EnglishProductName, string Color, decimal? ListPrice);
 
-var top = dw.Query("select OrderId, Customer, Total from dbo.Orders order by Total desc")
-            .Results<Order>();
-var biggest = top[0];               // strongly typed
+var priciest = advdw.Query(@"
+    SELECT TOP (5) EnglishProductName, Color, ListPrice
+    FROM dbo.DimProduct WHERE ListPrice IS NOT NULL
+    ORDER BY ListPrice DESC").Results<Product>();
+priciest[0]
 ```
 
-## Parameters, scalars, and commands
+## Parameters and scalars
 
-Bind parameters with an anonymous object (`@name` → property), and use `Scalar`
-and `Execute` for single values and non-queries:
+Date-agnostic on purpose: whatever vintage your restore is, this derives its
+window from the data:
 
 ```csharp
-var since = dw.Query("select * from dbo.Orders where OrderDate >= @from", new { from = new DateTime(2026, 1, 1) })
-              .Results();
+var latest = advdw.Scalar<DateTime>("SELECT MAX(OrderDate) FROM dbo.FactInternetSales");
+var from   = latest.AddMonths(-6);
 
-var total  = dw.Scalar<decimal>("select sum(Total) from dbo.Orders");
-var closed = dw.Execute("update dbo.Orders set Status = 'Closed' where Total = 0");
+var recentOrders = advdw.Scalar<int>(
+    "SELECT COUNT(DISTINCT SalesOrderNumber) FROM dbo.FactInternetSales WHERE OrderDate >= @from",
+    new { from });
+var totalRevenue = advdw.Scalar<decimal>("SELECT SUM(SalesAmount) FROM dbo.FactInternetSales");
+
+new { LatestOrder = latest, LastSixMonthsOrders = recentOrders, TotalRevenue = totalRevenue }
 ```
 
-## Tables and bulk copy
+## Display() and trailing values render identically
 
-`.Table(name)` reads as a source and writes as a bulk-copy target. `createIfMissing`
-builds the destination from the source schema; `.Exists()` / `.Count()` inspect it:
+`Display()` mid-cell and the bare trailing value take the same formatting path
+— the two outputs below should look the same (and no handle is printed after):
 
 ```csharp
-var staging = dw.Table("stg.Orders");
-if (!staging.Exists()) { /* … */ }
-
-// Stream a query straight into a table, creating it if needed:
-var copied = dw.Table("stg.Orders")
-    .BulkCopyFrom(dw.Query("select * from dbo.Orders"), createIfMissing: true);
-copied   // "12,480 rows → stg.Orders (…ms)"
+var summary = new { Database = "AdventureWorksDW2025", Years = byYear.Count, Revenue = totalRevenue };
+summary.Display();
+summary
 ```
 
-You can also bulk-copy an in-memory collection (POCOs, records, anonymous types):
+## Bulk copy — query → table
+
+Streams a query into a scratch table, creating it from the source schema
+(`--truncate` semantics via options make this cell re-runnable):
 
 ```csharp
-var rows = new[] {
-    new { Id = 1, Name = "Ann" },
-    new { Id = 2, Name = "Ben" },
+var copied = advdw.Table("dbo.ClrKernelSmoke_TopCustomers")
+    .BulkCopyFrom(
+        advdw.Query(@"SELECT TOP (1000) CustomerKey, FirstName, LastName, EmailAddress, YearlyIncome
+                      FROM dbo.DimCustomer ORDER BY CustomerKey"),
+        new BulkCopyOptions { TruncateFirst = true },
+        createIfMissing: true);
+copied
+```
+
+## Bulk copy — in-memory rows → table
+
+```csharp
+var people = new[] {
+    new { Id = 1, Name = "Ann",  Region = "Europe"  },
+    new { Id = 2, Name = "Ben",  Region = "Pacific" },
 };
-dw.Table("dbo.People").BulkCopyFrom(rows, createIfMissing: true);
+advdw.Table("dbo.ClrKernelSmoke_People")
+     .BulkCopyFrom(people, new BulkCopyOptions { TruncateFirst = true }, createIfMissing: true)
+```
+
+## MERGE from C#
+
+Stage some changes (one update, one new row), then merge on the key — the
+result shows per-action counts (expect Inserted 1, Updated 1):
+
+```csharp
+var changes = new[] {
+    new { Id = 1, Name = "Ann (updated)", Region = "Europe"        },
+    new { Id = 3, Name = "Cid (new)",     Region = "North America" },
+};
+advdw.Table("dbo.ClrKernelSmoke_PeopleStaging")
+     .BulkCopyFrom(changes, new BulkCopyOptions { TruncateFirst = true }, createIfMissing: true);
+
+SqlServer.Merge("advdw", new MergeSpec {
+    Target     = "dbo.ClrKernelSmoke_People",
+    Source     = "dbo.ClrKernelSmoke_PeopleStaging",
+    KeyColumns = { "Id" },
+})
+```
+
+## The `#!sql-bulk` and `#!sql-merge` magics
+
+The same operations as cell magics (re-running the merge is idempotent — expect
+Updated 2, Inserted 0 this time):
+
+```sql
+#!sql-bulk --from advdw --query "SELECT TOP (500) ProductKey, EnglishProductName, Color, ListPrice FROM dbo.DimProduct" --to advdw --table dbo.ClrKernelSmoke_Products --create --truncate
+```
+
+```sql
+#!sql-merge --connection advdw --target dbo.ClrKernelSmoke_People --source dbo.ClrKernelSmoke_PeopleStaging --on Id
+```
+
+Verify the merged rows (Ann updated, Ben untouched, Cid inserted):
+
+```sql
+SELECT * FROM dbo.ClrKernelSmoke_People ORDER BY Id;
 ```
 
 ## Transactions
 
-`.Transaction()` scopes a unit of work; commit to keep it, or let it dispose to
-roll back:
+No `Commit()` → the insert rolls back when the transaction disposes:
 
 ```csharp
-using (var tx = dw.Transaction()) {
-    tx.Execute("insert into dbo.Audit(Note) values ('start')");
-    tx.Execute("update dbo.Orders set Status = 'Archived' where Year < 2020");
-    tx.Commit();   // omit to roll back
+var before = advdw.Scalar<int>("SELECT COUNT(*) FROM dbo.ClrKernelSmoke_People");
+using (var tx = advdw.Transaction()) {
+    tx.Execute("INSERT INTO dbo.ClrKernelSmoke_People (Id, Name, Region) VALUES (99, 'Rolled Back', 'X')");
+    // tx.Commit();   // deliberately omitted
 }
+var after = advdw.Scalar<int>("SELECT COUNT(*) FROM dbo.ClrKernelSmoke_People");
+new { Before = before, After = after, RolledBack = before == after }
 ```
 
-## Notes
+## Cleanup
 
-- **Relationship to `#!sql` cells.** This is the C# counterpart to the `#!sql`
-  cell language; both render the same interactive grid. Use `#!sql` for SQL-first
-  cells, `SqlServer.Connection(...)` when you're already in C# and want rows as objects.
-- **Secrets.** Passwords are never inline — a SQL login reads its password from
-  the OS secret store under the `secretRef` you pass (or `CLRKERNEL_SECRET_<REF>`
-  for headless runs).
-- **Streaming.** `.Query(sql).OpenReader()` returns a plain `IDataReader` if you
-  want to stream rows yourself (e.g. into another system).
+```csharp
+var countSmoke = "SELECT COUNT(*) FROM sys.tables WHERE name LIKE 'ClrKernelSmoke[_]%'";
+var before = advdw.Scalar<int>(countSmoke);
+advdw.Execute(@"
+    DROP TABLE IF EXISTS dbo.ClrKernelSmoke_TopCustomers;
+    DROP TABLE IF EXISTS dbo.ClrKernelSmoke_People;
+    DROP TABLE IF EXISTS dbo.ClrKernelSmoke_PeopleStaging;
+    DROP TABLE IF EXISTS dbo.ClrKernelSmoke_Products;");
+var after = advdw.Scalar<int>(countSmoke);
+$"dropped {before - after} smoke table(s), {after} remaining"
+```
+
+## Other ways to connect (reference, not run)
+
+```csharp
+// SQL login — password from the secret store (never inline):
+// var app = SqlServer.Connection("sql01", "AppDb", "svc_reader", "sql:app-reader");
+
+// Microsoft Entra (Azure AD):
+// var azure = SqlServer.AzureConnection("myserver.database.windows.net", "Sales");
+
+// Full connection string (escape hatch):
+// var raw = SqlServer.ConnectionString("Server=...;Database=...;Trusted_Connection=True;");
+
+// Reuse any #!sql-connect connection by name:
+// var reused = SqlServer.Database("advdw");
+```

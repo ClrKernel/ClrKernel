@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.SqlServer;
 using ClrKernel.Language.Sql;
@@ -28,6 +27,42 @@ public class SqlDirectivesTest {
     public void ParseConnect_defaults_to_integrated_without_user() {
         var d = SqlDirectives.ParseConnect("#!sql-connect --name warehouse --server dw");
         Assert.AreEqual(SqlAuthMode.Integrated, d.Spec.Auth);
+        Assert.IsFalse(d.IsReference, "a --server flag defines a connection");
+    }
+
+    [TestMethod]
+    public void ParseConnect_name_only_is_a_reference_not_a_definition() {
+        var d = SqlDirectives.ParseConnect("#!sql-connect --name advdw --default --var advdw");
+        Assert.IsTrue(d.IsReference);
+        Assert.AreEqual("advdw", d.Spec.Name);
+        Assert.AreEqual("advdw", d.Variable);
+        Assert.IsTrue(d.IsDefault);
+    }
+
+    [TestMethod]
+    public void Connect_by_name_reuses_the_registered_spec_instead_of_clobbering_it() {
+        var session = new SqlSession();
+        session.Connect("#!sql-connect --name advdw --server db01 --database AdventureWorksDW2025 --auth sql --user sa");
+
+        // The scenario from connections.json: the entry exists, a notebook cell
+        // just wants the C# variable (and to make it the default).
+        var d = session.Connect("#!sql-connect --name advdw --default");
+
+        Assert.IsTrue(d.IsReference);
+        Assert.AreEqual("db01", d.Spec.Server, "the existing definition must survive");
+        Assert.AreEqual(SqlAuthMode.SqlPassword, d.Spec.Auth);
+        Assert.AreEqual("advdw", d.Variable, "the name still binds the C# variable");
+        Assert.AreEqual("advdw", session.Connections.DefaultName);
+    }
+
+    [TestMethod]
+    public void Connect_by_unknown_name_names_the_known_connections() {
+        var session = new SqlSession();
+        session.Connect("#!sql-connect --name other --server db01");
+        var e = Assert.ThrowsExactly<InvalidOperationException>(
+            () => session.Connect("#!sql-connect --name missing"));
+        StringAssert.Contains(e.Message, "missing");
+        StringAssert.Contains(e.Message, "other");
     }
 
     [TestMethod]

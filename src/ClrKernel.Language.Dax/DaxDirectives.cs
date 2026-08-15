@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.AnalysisServices;
 
 namespace ClrKernel.Language.Dax;
@@ -29,6 +30,19 @@ public sealed class DaxCellRequest {
 
 /// <summary>Parses the <c>#!dax-connect</c> magic and the per-cell cube selector.</summary>
 public static class DaxDirectives {
+    /// <summary>The <c>--secret</c> reference on a connect line, or null. Lets a caller put the
+    /// password in the store under the right key before the line is parsed.</summary>
+    public static string SecretRefOf(string line) {
+        var tokens = Tokenize(StripSelector(line ?? string.Empty, "#!dax-connect"));
+        for (var i = 0; i < tokens.Count - 1; i++) {
+            var t = tokens[i].ToLowerInvariant();
+            if (t == "--secret" || t == "--secret-ref") {
+                return tokens[i + 1];
+            }
+        }
+        return null;
+    }
+
     /// <summary>
     /// Parses a <c>#!dax-connect</c> line. Flags: <c>--name</c>, <c>--server</c>,
     /// <c>--database</c>, <c>--user</c>, <c>--secret</c> (an env-var name / ref),
@@ -36,11 +50,15 @@ public static class DaxDirectives {
     /// <c>--azure-as</c>, <c>--connection-string</c>, <c>--default</c>. A committed
     /// <c>--password</c> is rejected.
     /// </summary>
-    public static DaxConnectDirective ParseConnect(string line) {
+    /// <param name="line">The full <c>#!dax-connect</c> line, selector included.</param>
+    /// <param name="secrets">Resolves a <c>--secret</c> reference. Defaults to a fresh store,
+    /// which reads the OS credential manager and the <c>CLRKERNEL_SECRET_*</c> environment
+    /// variables — the same places a SQL connection's password comes from.</param>
+    public static DaxConnectDirective ParseConnect(string line, SecretStore secrets = null) {
         var tokens = Tokenize(StripSelector(line, "#!dax-connect"));
         string name = null, server = null, database = null, user = null, secret = null,
                auth = null, workspace = null, model = null, connectionString = null;
-        bool fabric = false, azureAs = false, isDefault = false;
+        bool fabric = false, azureAs = false, isDefault = false, integrated = false;
 
         for (var i = 0; i < tokens.Count; i++) {
             var t = tokens[i];
@@ -56,6 +74,7 @@ public static class DaxDirectives {
                 case "--model": case "--dataset": model = Next(); break;
                 case "--connection-string": case "--cs": connectionString = Next(); break;
                 case "--fabric": fabric = true; break;
+                case "--integrated": case "--sspi": case "--windows": integrated = true; break;
                 case "--azure-as": case "--aas": azureAs = true; break;
                 case "--default": isDefault = true; break;
                 case "--password":
@@ -78,14 +97,29 @@ public static class DaxDirectives {
             if (string.IsNullOrWhiteSpace(workspace) || string.IsNullOrWhiteSpace(model)) {
                 throw new FormatException("#!dax-connect --fabric requires --workspace and --model.");
             }
-            spec = AnalysisServices.ConnectFabric(workspace, model).Spec;
+            // --integrated hands the XMLA endpoint the signed-in Windows identity instead of a
+            // token fetched here. On an Entra-joined machine that is frequently the only thing the
+            // tenant accepts, since a token this process obtains comes from a generic developer
+            // application rather than one the tenant has approved.
+            spec = integrated
+                ? AnalysisServices.ConnectFabricIntegrated(workspace, model).Spec
+                : AnalysisServices.ConnectFabric(workspace, model).Spec;
+        } else if (integrated && !string.IsNullOrWhiteSpace(server)) {
+            spec = AnalysisServices.Connect(server, database).Spec;
         } else if (azureAs || auth == "aad" || auth == "entra") {
             RequireServer(server);
-            spec = AnalysisServices.ConnectAzureAnalysisServices(server, database).Spec;
+            spec = integrated
+                ? AnalysisServices.Connect(server, database).Spec
+                : AnalysisServices.ConnectAzureAnalysisServices(server, database).Spec;
         } else if (!string.IsNullOrWhiteSpace(user) || auth == "sql" || auth == "user") {
             RequireServer(server);
-            var password = string.IsNullOrWhiteSpace(secret) ? null : ResolveSecret(secret);
+            var password = string.IsNullOrWhiteSpace(secret)
+                ? null
+                : (secrets ?? new SecretStore()).Resolve(secret);
             spec = AnalysisServices.Connect(server, database, user, password).Spec;
+            // Keep the reference, not just the resolved password, so this cube can be written to a
+            // connections.json without the password going with it.
+            spec.SecretRef = secret;
         } else {
             RequireServer(server);
             spec = AnalysisServices.Connect(server, database).Spec;
@@ -147,21 +181,6 @@ public static class DaxDirectives {
 
     // Resolves a secret ref from an environment variable, matching the SQL
     // convention: the ref itself, or CLRKERNEL_SECRET_<REF> (upper, non-alnum → '_').
-    private static string ResolveSecret(string reference) {
-        var direct = Environment.GetEnvironmentVariable(reference);
-        if (!string.IsNullOrEmpty(direct)) {
-            return direct;
-        }
-        var sb = new StringBuilder("CLRKERNEL_SECRET_");
-        foreach (var c in reference) {
-            sb.Append(char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_');
-        }
-        var byName = Environment.GetEnvironmentVariable(sb.ToString());
-        if (string.IsNullOrEmpty(byName)) {
-            throw new FormatException($"No secret found for '{reference}'. Set the {sb} environment variable.");
-        }
-        return byName;
-    }
 
     private static string StripSelector(string line, string selector) {
         var t = (line ?? string.Empty).TrimStart();

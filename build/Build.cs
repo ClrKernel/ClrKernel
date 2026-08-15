@@ -16,6 +16,7 @@ using static Nuke.Common.Tools.Npm.NpmTasks;
 ///   ./build.sh Build --project ClrKernel.Language.Http   # build a single project
 ///   ./build.sh Test  --filter Http              # run a subset of tests
 ///   ./build.sh Extension             # build the VS Code extension
+///   ./build.sh ExtensionTest         # run the extension's unit tests
 ///   ./build.sh All                   # solution build+test AND the extension
 ///   ./build.sh Format                # verify formatting (Format --apply to fix)
 /// </summary>
@@ -114,7 +115,17 @@ class ClrKernelBuild : NukeBuild {
             Npm("run compile", ExtensionDirectory);
         });
 
+    Target ExtensionTest => _ => _
+        .Description("Run the VS Code extension's unit tests (vitest).")
+        .DependsOn(Extension)
+        .Executes(() => {
+            // The extension is TypeScript that tsc alone can only prove type-correct. These cover
+            // the parts with real logic: the directives sent to the kernel, the version guard, and
+            // the .nb.md serializer.
+            Npm("test", ExtensionDirectory);
+        });
+
     Target All => _ => _
-        .Description("Build and test the solution AND build the VS Code extension.")
-        .DependsOn(Test, Extension);
+        .Description("Build and test the solution AND build and test the VS Code extension.")
+        .DependsOn(Test, ExtensionTest);
 }

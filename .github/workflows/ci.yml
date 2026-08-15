@@ -28,6 +28,32 @@ jobs:
       - name: Test
         run: dotnet test ClrKernel.slnx -c Release --no-build
 
+  extension:
+    name: VS Code extension (compile + unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: editors/vscode
+
+      # tsc proves the extension is type-correct; the unit tests cover the parts with real
+      # logic — the directives sent to the kernel, the version guard, the .nb.md serializer.
+      - name: Compile
+        run: npm run compile
+        working-directory: editors/vscode
+
+      - name: Test
+        run: npm test
+        working-directory: editors/vscode
+
   notebook-smoke:
     name: Headless notebook smoke test
     runs-on: ubuntu-latest

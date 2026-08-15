@@ -354,3 +354,5 @@ editors/vscode/*.vsix
 
 # local AI assistant context
 CLAUDE.md
+
+connections.local.json

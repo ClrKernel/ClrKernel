@@ -23,20 +23,21 @@ public static class SqlDirectives {
         bool authExplicit = false;
         string explicitVariable = null;
         bool variableFlagSeen = false;
+        bool specFlagSeen = false; // any flag that *shapes* a connection (vs. referencing one)
 
         for (var i = 0; i < tokens.Count; i++) {
             var t = tokens[i];
             string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
             switch (t.ToLowerInvariant()) {
                 case "--name": case "-n": spec.Name = Next(); break;
-                case "--server": case "--host": case "-s": case "-S": spec.Server = Next(); break;
-                case "--database": case "-d": case "-D": spec.Database = Next(); break;
-                case "--user": case "--username": case "-u": case "-U": spec.User = Next(); break;
-                case "--secret": case "--secret-ref": spec.SecretRef = Next(); break;
-                case "--connection-string": case "--cs": spec.RawConnectionString = Next(); break;
-                case "--provider": spec.Provider = Next(); break;
-                case "--encrypt": spec.Encrypt = ParseBool(Next()); break;
-                case "--trust-cert": case "--trust-server-certificate": spec.TrustServerCertificate = true; break;
+                case "--server": case "--host": case "-s": case "-S": spec.Server = Next(); specFlagSeen = true; break;
+                case "--database": case "-d": case "-D": spec.Database = Next(); specFlagSeen = true; break;
+                case "--user": case "--username": case "-u": case "-U": spec.User = Next(); specFlagSeen = true; break;
+                case "--secret": case "--secret-ref": spec.SecretRef = Next(); specFlagSeen = true; break;
+                case "--connection-string": case "--cs": spec.RawConnectionString = Next(); specFlagSeen = true; break;
+                case "--provider": spec.Provider = Next(); specFlagSeen = true; break;
+                case "--encrypt": spec.Encrypt = ParseBool(Next()); specFlagSeen = true; break;
+                case "--trust-cert": case "--trust-server-certificate": spec.TrustServerCertificate = true; specFlagSeen = true; break;
                 case "--default": isDefault = true; break;
                 case "--var":
                 case "--variable":
@@ -45,7 +46,7 @@ public static class SqlDirectives {
                     variableFlagSeen = true;
                     break;
                 case "--no-var": case "--no-variable": variableFlagSeen = true; break;
-                case "--auth": case "-a": spec.Auth = ParseAuth(Next()); authExplicit = true; break;
+                case "--auth": case "-a": spec.Auth = ParseAuth(Next()); authExplicit = true; specFlagSeen = true; break;
                 case "--option": {
                         var kv = Next();
                         var eq = kv.IndexOf('=');
@@ -53,6 +54,7 @@ public static class SqlDirectives {
                             throw new FormatException($"--option expects key=value, got '{kv}'.");
                         }
                         spec.ExtraOptions[kv.Substring(0, eq)] = kv.Substring(eq + 1);
+                        specFlagSeen = true;
                         break;
                     }
                 case "--password":
@@ -78,7 +80,10 @@ public static class SqlDirectives {
             }
         }
         var variable = ResolveVariable(explicitVariable, variableFlagSeen, spec.Name);
-        return new SqlConnectDirective(spec, isDefault, variable);
+        // Only --name (plus --default/--var) means "reference an existing connection"
+        // — one loaded from connections.json or registered earlier — rather than
+        // "define a new one". Registering the bare spec would clobber the real one.
+        return new SqlConnectDirective(spec, isDefault, variable, isReference: !specFlagSeen);
     }
 
     // Decides the C# variable to bind: an explicit --var (validated), else the
@@ -258,13 +263,20 @@ public static class SqlDirectives {
 
 /// <summary>A parsed <c>#!sql-connect</c>: the spec plus whether it is the default.</summary>
 public sealed class SqlConnectDirective {
-    public SqlConnectDirective(SqlConnectionSpec spec, bool isDefault, string variable = null) {
+    public SqlConnectDirective(SqlConnectionSpec spec, bool isDefault, string variable = null, bool isReference = false) {
         Spec = spec;
         IsDefault = isDefault;
         Variable = variable;
+        IsReference = isReference;
     }
     public SqlConnectionSpec Spec { get; }
     public bool IsDefault { get; }
+
+    /// <summary>True when the directive only names a connection (no server, auth, or
+    /// other shaping flags): use the registered/config-loaded spec of that name —
+    /// binding its variable and optionally making it the default — instead of
+    /// registering a new, empty one over it.</summary>
+    public bool IsReference { get; }
 
     /// <summary>The C# identifier to bind this connection to for later <c>#!csharp</c>
     /// cells (a <c>SqlDatabase</c>), or null when none applies. Comes from

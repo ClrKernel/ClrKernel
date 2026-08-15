@@ -3,7 +3,7 @@ using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Language.Mermaid;
 /// <summary>
@@ -63,7 +63,10 @@ public static class MermaidRenderer {
     /// rendered diagram and a <c>text/plain</c> source fallback.
     /// </summary>
     public static DisplayData Render(string source) {
-        return new DisplayData(source ?? string.Empty, RenderHtml(source));
+        var data = new DisplayData();
+        data.Data["text/plain"] = source ?? string.Empty;
+        data.Data["text/html"] = RenderHtml(source);
+        return data;
     }
 
     private static string InitScript(string id, string svgId) {

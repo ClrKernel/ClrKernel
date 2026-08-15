@@ -4,6 +4,7 @@ using ClrKernel.Language.Dax;
 using ClrKernel.Language.Http;
 using ClrKernel.Language.Mermaid;
 using ClrKernel.Language.PowerShell;
+using ClrKernel.Language.Shell;
 using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -22,10 +23,14 @@ namespace ClrKernel.UnitTest;
 public static class TestCellLanguages {
     [AssemblyInitialize]
     public static void Register(TestContext context) {
+        // Languages emit display concepts; without the render registrations their
+        // output has no text/html at all, so the suite mirrors this too.
+        ClrKernel.Formatting.Html.HtmlFormatters.RegisterDefaults();
         CellLanguageRegistry.Default = new CellLanguageRegistry(new Func<ICellLanguage>[] {
             () => new HttpCellLanguage(),
             () => new MermaidCellLanguage(),
             () => new PowerShellCellLanguage(),
+            () => new ShellCellLanguage(),
             () => new SqlCellLanguage(),
             () => new DaxCellLanguage(),
         });

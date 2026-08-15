@@ -4,6 +4,7 @@ using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Data.SqlClient;
@@ -124,12 +125,10 @@ public sealed partial class SqlSession {
     public DisplayData ExecuteMerge(string directiveLine) {
         var d = SqlEtlDirectives.ParseMerge(directiveLine);
         var result = Merge(d.Connection, d.Spec);
-        var text = $"{d.Spec.Target}: {result}";
-        var html =
-            "<div style=\"font:12px/1.5 -apple-system,Segoe UI,sans-serif;color:#57606a\">" +
-            $"<span style=\"display:inline-block;padding:1px 6px;border-radius:10px;background:#dafbe1;color:#1a7f37;margin-right:6px\">MERGE {Encode(d.Spec.Target)}</span>" +
-            $"inserted {result.Inserted:N0} · updated {result.Updated:N0} · deleted {result.Deleted:N0} · {result.ElapsedMs:N0} ms</div>";
-        return new DisplayData(text, html);
+        return MimeBundler.Bundle(new DisplayBadge(
+            "MERGE " + d.Spec.Target,
+            $"inserted {result.Inserted:N0} · updated {result.Updated:N0} · deleted {result.Deleted:N0} · {result.ElapsedMs:N0} ms",
+            DisplayBadge.Success));
     }
 
     private static IReadOnlyList<string> IntrospectColumns(SqlConnection connection, string target) {

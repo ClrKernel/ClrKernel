@@ -56,6 +56,15 @@ public static class EntraAuth {
             new DefaultAzureCredential(includeInteractiveCredentials: false),
             new InteractiveBrowserCredential());
 
+    /// <summary>
+    /// An explicit browser sign-in <b>only</b> — no credential chain. Where the chains
+    /// silently reuse whatever identity the environment offers (an az CLI session, VS
+    /// sign-in, managed identity), this always opens the browser so the user picks the
+    /// account. For the developer who wants to choose, not be chosen for.
+    /// </summary>
+    public static TokenCredential InteractiveOnly() =>
+        new InteractiveBrowserCredential();
+
     /// <summary>An Entra service principal (client secret) credential.</summary>
     public static TokenCredential ClientSecret(string tenantId, string clientId, string clientSecret) {
         if (string.IsNullOrWhiteSpace(tenantId)) {

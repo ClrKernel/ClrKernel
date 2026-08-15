@@ -72,10 +72,14 @@ public sealed class CompletionItem {
     public string Label { get; set; }
     public int? Kind { get; set; }
     public string Detail { get; set; }
+    public MarkupContent Documentation { get; set; }
     public string InsertText { get; set; }
     public string SortText { get; set; }
     public string FilterText { get; set; }
     public TextEdit TextEdit { get; set; }
+    /// <summary>Round-tripped by the client into completionItem/resolve; the C#
+    /// path stores the item's index in the last completion list.</summary>
+    public object Data { get; set; }
 }
 
 public sealed class TextEdit {
@@ -137,6 +141,20 @@ public sealed class ServerCapabilities {
     public CompletionOptions CompletionProvider { get; set; }
     public bool HoverProvider { get; set; }
     public SignatureHelpOptions SignatureHelpProvider { get; set; }
+    public bool DefinitionProvider { get; set; }
+}
+
+public sealed class Location {
+    public string Uri { get; set; }
+    public Range Range { get; set; }
+}
+
+public sealed class LocationLink {
+    public string TargetUri { get; set; }
+    /// <summary>The region a peek frames — the whole declaration when known.</summary>
+    public Range TargetRange { get; set; }
+    /// <summary>The name token, highlighted inside the peek.</summary>
+    public Range TargetSelectionRange { get; set; }
 }
 
 public sealed class CompletionOptions {

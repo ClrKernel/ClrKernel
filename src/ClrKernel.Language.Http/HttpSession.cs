@@ -27,7 +27,7 @@ public sealed class HttpSession {
 
     /// <summary>
     /// Executes one <c>#!http</c> cell body. Each request's response card is
-    /// published through <see cref="DisplayDataEmitter"/> as it completes.
+    /// displayed as it completes.
     /// Returns the last <see cref="HttpExchange"/> (null for an empty cell).
     /// </summary>
     public async Task<HttpExchange> ExecuteAsync(string cellBody, CancellationToken cancellationToken = default) {
@@ -47,10 +47,24 @@ public sealed class HttpSession {
             }
 
             var (html, text) = HttpResponseRenderer.Render(exchange);
-            DisplayDataEmitter.Emit(new DisplayData(text, html));
+            new HttpResponseCard(html, text).Display();
             last = exchange;
         }
 
         return last;
+    }
+
+    /// <summary>
+    /// The response card as a display concept. The card is a bespoke render owned
+    /// by this language, so the language registers its own formatters for it —
+    /// nothing outside this file knows how an HTTP response looks.
+    /// </summary>
+    private sealed record HttpResponseCard(string Html, string Text) : IDisplayValue {
+        static HttpResponseCard() {
+            DisplayFormatters.Register<HttpResponseCard, DisplayHtml>(c => new DisplayHtml(c.Html));
+            DisplayFormatters.Register<HttpResponseCard, DisplayText>(c => new DisplayText(c.Text));
+        }
+
+        public object Value => Text;
     }
 }

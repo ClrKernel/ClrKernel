@@ -124,9 +124,9 @@ public static class BulkCopyRunner {
             flags |= SqlBulkCopyOptions.KeepNulls;
         }
 
-        ProgressBar progress = null;
+        DisplayProgress progress = null;
         if (options.ShowProgress) {
-            progress = new ProgressBar(options.ProgressLabel ?? ("Bulk copy → " + table), total);
+            progress = new DisplayProgress(options.ProgressLabel ?? ("Bulk copy → " + table), total: total).Show();
         }
 
         var stopwatch = Stopwatch.StartNew();

@@ -51,6 +51,11 @@ connection is ready without re-adding it. You can also hand-write the file:
 The same `connections.json` feeds the C# `Oracle.FromConfig` / `Odbc.FromConfig`
 providers, so one file can hold every kind of connection.
 
+For personal dev settings, put a **`connections.local.json`** next to the shared
+file (and git-ignore it): it loads as an overlay — same-named entries override
+the shared ones, new entries are added — so a committed sample file and your
+real servers can coexist.
+
 ## Use a connection from C#
 
 A `#!sql-connect` connection is also handed to C# cells as a variable. When the

@@ -1,5 +1,7 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { ClrKernelController } from './controller';
+import { buildDaxConnectDirective } from './directives';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
@@ -20,6 +22,20 @@ type CubeKind = 'ssas' | 'fabric' | 'azure-as';
 interface ListResult {
     defaultName?: string;
     connections: CubeInfo[];
+}
+
+interface ConfigStatusResult {
+    ok: boolean;
+    found: boolean;
+    path?: string;
+    names: string[];
+    error?: string;
+}
+
+interface SaveConfigResult {
+    ok: boolean;
+    path?: string;
+    error?: string;
 }
 
 interface AddResult {
@@ -91,10 +107,14 @@ export class DaxConnectionUi {
             return;
         }
 
+        // Bring in any saved connections.json cubes so they appear in the list, the same way the
+        // SQL picker does — otherwise a saved cube is invisible until a cell runs.
+        await this.controller.ensureConnectionsConfigLoaded(cell.notebook);
+
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -144,7 +164,7 @@ export class DaxConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -186,6 +206,45 @@ export class DaxConnectionUi {
     // Add (existing == null) and Edit (existing set) share this wizard. When editing,
     // the name is fixed and the cube type / server / model are pre-filled; re-registering
     // overwrites the cube in place. Cube connections are passwordless, so no secret.
+    /**
+     * Which credential to use for an Entra-backed cube.
+     *
+     * Both work, and which one a tenant accepts is the tenant's decision. A token fetched by the
+     * kernel comes from a generic developer application, and a tenant under conditional access may
+     * refuse it however correct its scope is. The Windows identity sidesteps that — the endpoint
+     * negotiates with the signed-in account, so no sign-in prompt and no app registration are
+     * involved — but SSPI is Windows-only, so it is offered first there and not at all elsewhere.
+     *
+     * Returns the flag to append, which is legitimately an EMPTY STRING for the Entra token (it
+     * is the default, so it needs no flag), or undefined if the user cancelled. Callers must test
+     * `=== undefined`: `if (!flag)` treats the empty string as a cancellation and silently drops
+     * the connection, which is exactly what happened when this was first written.
+     */
+    private async pickEntraAuth(what: string): Promise<string | undefined> {
+        if (process.platform !== 'win32') {
+            return ''; // no SSPI off Windows; the Entra token is the only option, and needs no flag
+        }
+        type AuthPick = vscode.QuickPickItem & { flag: string };
+        const pick = await vscode.window.showQuickPick<AuthPick>(
+            [
+                {
+                    label: '$(shield) Windows identity',
+                    description: 'Integrated Security=SSPI',
+                    detail: 'Uses your signed-in Windows account. Best on a domain- or Entra-joined machine; no sign-in prompt.',
+                    flag: ' --integrated',
+                },
+                {
+                    label: '$(key) Microsoft Entra sign-in',
+                    description: 'access token',
+                    detail: 'Signs in with your Azure identity (az login, or a browser prompt). Needed when the machine is not Entra-joined.',
+                    flag: '',
+                },
+            ],
+            { title: `${what} — how should ClrKernel authenticate?`, ignoreFocusOut: true },
+        );
+        return pick?.flag;
+    }
+
     private async runCubeWizard(cell: vscode.NotebookCell, existing?: CubeInfo): Promise<void> {
         const editing = existing !== undefined;
         const verb = editing ? 'Edit cube' : 'New cube';
@@ -240,7 +299,13 @@ export class DaxConnectionUi {
             if (!model) {
                 return;
             }
-            directive = `#!dax-connect --name ${quote(name)} --fabric --workspace ${quote(workspace)} --model ${quote(model)}`;
+            const auth = await this.pickEntraAuth('Fabric / Power BI');
+            if (auth === undefined) {
+                return; // cancelled. An empty string is a valid answer: the Entra token needs no flag.
+            }
+            directive = buildDaxConnectDirective({
+                name, kind: 'fabric', workspace, model, integrated: auth === ' --integrated',
+            });
         } else {
             const serverPrompt = typePick.cubeKind === 'azure-as'
                 ? 'Server (e.g. asazure://westus.asazure.windows.net/myserver)'
@@ -259,13 +324,24 @@ export class DaxConnectionUi {
             if (!database) {
                 return;
             }
-            const authFlag = typePick.cubeKind === 'azure-as' ? ' --azure-as' : '';
-            directive = `#!dax-connect --name ${quote(name)} --server ${quote(server)} --database ${quote(database)}${authFlag}`;
+            let integrated = false;
+            if (typePick.cubeKind === 'azure-as') {
+                const auth = await this.pickEntraAuth('Azure Analysis Services');
+                if (auth === undefined) {
+                    return; // cancelled; '' means the Entra token, which needs no flag
+                }
+                integrated = auth === ' --integrated';
+            }
+            directive = buildDaxConnectDirective({
+                name, kind: typePick.cubeKind === 'azure-as' ? 'azure-as' : 'on-prem',
+                server, database, integrated,
+            });
         }
 
         try {
             const client = await this.controller.getClient(cell.notebook);
-            const result = await client.request<AddResult>('clrkernel/connections/add', { languageId: 'dax', directive });
+            const result = await client.request<AddResult>('clrkernel/connections/add',
+                { languageId: 'dax', notebookUri: cell.notebook.uri.toString(), directive });
             if (!result.ok) {
                 void vscode.window.showErrorMessage(`Could not ${editing ? 'update' : 'add'} cube: ` + (result.error ?? 'unknown error'));
                 return;
@@ -280,6 +356,94 @@ export class DaxConnectionUi {
         }
         this.changeEmitter.fire();
         void vscode.window.showInformationMessage(editing ? `Cube '${name}' updated.` : `Cube '${name}' is ready.`);
+
+        await this.promptSaveToConfig(cell, name);
+    }
+
+    /**
+     * Offers to persist the cube to a connections.json so it reloads automatically next session.
+     * The same file the SQL connections use — entries carry a $type, so one file holds both — and
+     * as there, a password is written as a reference, never as itself.
+     */
+    private async promptSaveToConfig(cell: vscode.NotebookCell, name: string): Promise<void> {
+        let client;
+        try {
+            client = await this.controller.getClient(cell.notebook);
+        } catch {
+            return; // server not reachable — nothing to offer
+        }
+
+        const directory = path.dirname(cell.notebook.uri.fsPath);
+        let status: ConfigStatusResult;
+        try {
+            status = await client.request<ConfigStatusResult>(
+                'clrkernel/connections/configStatus',
+                { languageId: 'dax', notebookUri: cell.notebook.uri.toString(), directory });
+        } catch {
+            return; // couldn't check — don't nag
+        }
+        if (!status.ok) {
+            return;
+        }
+
+        type SavePick = vscode.QuickPickItem & { action: 'existing' | 'choose' | 'skip' };
+        const picks: SavePick[] = [];
+        if (status.found && status.path) {
+            picks.push({
+                label: '$(save) Save to this file',
+                description: status.path,
+                detail: status.names.length ? `Existing connections: ${status.names.join(', ')}` : 'No connections yet',
+                action: 'existing',
+            });
+        }
+        picks.push({
+            label: '$(new-file) Choose a file…',
+            description: status.found ? 'a different connections.json' : 'no connections.json found nearby',
+            action: 'choose',
+        });
+        picks.push({ label: "Don't save", action: 'skip' });
+
+        const pick = await vscode.window.showQuickPick(picks, {
+            title: `Save cube '${name}' to connections.json?`,
+            placeHolder: status.found ? `Found ${status.path}` : 'No connections.json found nearby — choose where to save',
+        });
+        if (!pick || pick.action === 'skip') {
+            return;
+        }
+
+        let targetPath: string | undefined;
+        if (pick.action === 'existing') {
+            targetPath = status.path;
+        } else {
+            const chosen = await vscode.window.showSaveDialog({
+                title: 'Save cube to…',
+                defaultUri: vscode.Uri.file(path.join(directory, 'connections.json')),
+                filters: { JSON: ['json'] },
+                saveLabel: 'Save cube',
+            });
+            if (!chosen) {
+                return;
+            }
+            targetPath = chosen.fsPath;
+        }
+
+        try {
+            const result = await client.request<SaveConfigResult>('clrkernel/connections/saveConfig', {
+                languageId: 'dax',
+                notebookUri: cell.notebook.uri.toString(),
+                name,
+                filePath: targetPath,
+            });
+            if (!result.ok) {
+                void vscode.window.showErrorMessage('Could not save cube: ' + (result.error ?? 'unknown error'));
+                return;
+            }
+            void vscode.window.showInformationMessage(
+                `Saved '${name}' to ${result.path} — it will load automatically next session.`,
+            );
+        } catch (e) {
+            void vscode.window.showErrorMessage('Could not save cube: ' + errorText(e));
+        }
     }
 }
 
@@ -322,10 +486,6 @@ async function applyCube(cell: vscode.NotebookCell, name: string): Promise<void>
         edit.insert(doc.uri, new vscode.Position(0, 0), selectorLine + '\n');
     }
     await vscode.workspace.applyEdit(edit);
-}
-
-function quote(value: string): string {
-    return /\s|"/.test(value) ? '"' + value.replace(/"/g, '') + '"' : value;
 }
 
 function errorText(e: unknown): string {

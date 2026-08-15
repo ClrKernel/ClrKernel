@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="../ClrKernel.Core.Scripting/ClrKernel.Core.Scripting.csproj" />
     <ProjectReference Include="../ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
     <ProjectReference Include="../ClrKernel.Database.Provider.AnalysisServices/ClrKernel.Database.Provider.AnalysisServices.csproj" />
   </ItemGroup>
 

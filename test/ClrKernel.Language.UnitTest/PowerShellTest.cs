@@ -1,7 +1,6 @@
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Language.PowerShell;
 using Microsoft.Extensions.Logging.Abstractions;

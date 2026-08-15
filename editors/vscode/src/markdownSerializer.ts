@@ -3,12 +3,13 @@ import * as vscode from 'vscode';
 /**
  * Executable markdown <-> notebook. Fenced code blocks tagged csharp/c#/cs
  * become C# code cells, http fences HTTP (.http) cells, mermaid fences Mermaid
- * cells, and powershell/pwsh/ps1 fences PowerShell cells;
+ * cells, powershell/pwsh/ps1 fences PowerShell cells, and bash/zsh/sh/shell
+ * fences shell cells;
  * everything between them becomes markup cells. The same files run headlessly
  * via ClrKernel's `#!import` and in CI, so serialization round-trips cleanly.
  */
 export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
-    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*(csharp|c#|cs|http|mermaid|powershell|pwsh|ps1|sql|tsql|dax)\s*$/i;
+    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*(csharp|c#|cs|http|mermaid|powershell|pwsh|ps1|sql|tsql|dax|bash|zsh|sh|shell)\s*$/i;
 
     // Cell languageId for a fence tag; also the tag emitted when serializing.
     private static languageForTag(tag: string): string {
@@ -18,6 +19,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         if (t === 'powershell' || t === 'pwsh' || t === 'ps1') { return 'powershell'; }
         if (t === 'sql' || t === 'tsql') { return 'sql'; }
         if (t === 'dax') { return 'dax'; }
+        if (t === 'bash' || t === 'zsh' || t === 'sh' || t === 'shell') { return 'shellscript'; }
         // A dedicated C# language id (not 'csharp') so other C# tooling — C# Dev Kit,
         // the Roslyn language server — doesn't attach to notebook cells and emit
         // duplicate completions or non-script 'syntax error' squiggles. It's shown as
@@ -27,6 +29,9 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
     }
 
     deserializeNotebook(content: Uint8Array): vscode.NotebookData {
+        const withSelector = (value: string, selector: string | null): string =>
+            selector && !/^\s*#!/.test(value) ? selector + '\n' + value : value;
+
         const text = new TextDecoder().decode(content);
         const cells: vscode.NotebookCellData[] = [];
 
@@ -34,6 +39,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         let code: string[] | null = null;
         let closingFence = '';
         let language = 'csharp-script';
+        let pendingSelector: string | null = null;
 
         const flushMarkup = () => {
             const value = markup.join('\n').trim();
@@ -51,19 +57,23 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
                     code = [];
                     closingFence = match[1];
                     language = MarkdownNotebookSerializer.languageForTag(match[2]);
+                    // bash is the shell default; a zsh/sh fence keeps its shell via an
+                    // explicit selector line, which is also what the headless importer does.
+                    pendingSelector = /^(zsh|sh)$/i.test(match[2]) ? '#!' + match[2].toLowerCase() : null;
                 } else {
                     markup.push(line);
                 }
             } else if (line.trim() === closingFence) {
-                cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code.join('\n'), language));
+                cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, withSelector(code.join('\n'), pendingSelector), language));
                 code = null;
+                pendingSelector = null;
             } else {
                 code.push(line);
             }
         }
         if (code !== null) {
             // unterminated fence: keep the content as a code cell rather than losing it
-            cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code.join('\n'), language));
+            cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, withSelector(code.join('\n'), pendingSelector), language));
         }
         flushMarkup();
 
@@ -74,11 +84,16 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         const parts: string[] = [];
         for (const cell of data.cells) {
             if (cell.kind === vscode.NotebookCellKind.Code) {
+                const shellTag = () => {
+                    const selector = /^\s*#!(bash|zsh|sh|shell)\b/i.exec(cell.value);
+                    return selector && selector[1].toLowerCase() !== 'shell' ? selector[1].toLowerCase() : 'bash';
+                };
                 const tag = cell.languageId === 'http' ? 'http'
                     : cell.languageId === 'mermaid' ? 'mermaid'
                     : cell.languageId === 'powershell' ? 'powershell'
                     : cell.languageId === 'sql' ? 'sql'
-                    : cell.languageId === 'dax' ? 'dax' : 'csharp';
+                    : cell.languageId === 'dax' ? 'dax'
+                    : cell.languageId === 'shellscript' ? shellTag() : 'csharp';
                 parts.push('```' + tag + '\n' + cell.value.replace(/\s+$/, '') + '\n```');
             } else {
                 parts.push(cell.value.replace(/\s+$/, ''));

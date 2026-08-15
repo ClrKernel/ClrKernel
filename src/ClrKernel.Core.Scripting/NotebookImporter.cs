@@ -30,7 +30,7 @@ public class NotebookImporter {
 
     // Lines that separate sections in a .dib file. Any other #! line is cell content.
     private static readonly Regex _dibSectionPattern = new(
-        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|dax|kql)\s*$",
+        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|dax|kql|bash|zsh|sh|shell)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly string[] _csharpSectionNames = { "csharp", "c#" };
@@ -195,11 +195,13 @@ public class NotebookImporter {
                 } else if (section == "mermaid") {
                     blocks.Add(_mermaidSelector + "\n" + text);
                 } else if (_pwshSectionNames.Contains(section)) {
-                    blocks.Add(_pwshSelector + "\n" + text);
+                    blocks.Add(PwshBlock(text));
                 } else if (section == "sql") {
                     blocks.Add(SqlBlock(text));
                 } else if (section == "dax") {
                     blocks.Add(DaxBlock(text));
+                } else if (_shellFenceTags.Contains(section)) {
+                    blocks.Add(ShellBlock(text, section));
                 }
             }
             current.Clear();
@@ -222,10 +224,11 @@ public class NotebookImporter {
     // Fence opener for executable markdown: ``` or ~~~ followed by an executable
     // language tag (C#, http, mermaid, or PowerShell).
     private static readonly Regex _markdownFencePattern = new(
-        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs|http|mermaid|pwsh|powershell|ps1|sql|tsql|dax)\s*$",
+        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs|http|mermaid|pwsh|powershell|ps1|sql|tsql|dax|bash|zsh|sh|shell)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly string[] _pwshFenceTags = { "pwsh", "powershell", "ps1" };
+    private static readonly string[] _shellFenceTags = { "bash", "zsh", "sh", "shell" };
     private static readonly string[] _sqlFenceTags = { "sql", "tsql" };
     private static readonly string[] _daxFenceTags = { "dax" };
 
@@ -236,6 +239,23 @@ public class NotebookImporter {
         text.TrimStart().StartsWith("#!sql", StringComparison.OrdinalIgnoreCase)
             ? text
             : _sqlSelector + "\n" + text;
+
+    // A PowerShell block already carrying a #!pwsh selector (e.g. #!pwsh-connect)
+    // passes through; a bare script gets #!pwsh prepended.
+    private static string PwshBlock(string text) =>
+        text.TrimStart().StartsWith("#!pwsh", StringComparison.OrdinalIgnoreCase)
+            ? text
+            : _pwshSelector + "\n" + text;
+
+    // A shell block already carrying its selector passes through; a bare script
+    // gets the selector matching its fence tag ("shell" means bash).
+    private static string ShellBlock(string text, string tag) {
+        if (text.TrimStart().StartsWith("#!", StringComparison.Ordinal)) {
+            return text;
+        }
+        var shell = tag.Equals("shell", StringComparison.OrdinalIgnoreCase) ? "bash" : tag.ToLowerInvariant();
+        return "#!" + shell + "\n" + text;
+    }
 
     private static string DaxBlock(string text) =>
         text.TrimStart().StartsWith("#!dax", StringComparison.OrdinalIgnoreCase)
@@ -257,6 +277,7 @@ public class NotebookImporter {
         var isPwsh = false;
         var isSql = false;
         var isDax = false;
+        string shellTag = null;
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (current == null) {
@@ -269,15 +290,19 @@ public class NotebookImporter {
                     isPwsh = _pwshFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
                     isSql = _sqlFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
                     isDax = _daxFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
+                    shellTag = _shellFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant())
+                        ? match.Groups["lang"].Value.ToLowerInvariant()
+                        : null;
                 }
             } else if (line.Trim() == closingFence) {
                 var text = string.Join("\n", current).Trim();
                 if (text.Length > 0) {
                     blocks.Add(isHttp ? _httpSelector + "\n" + text
                         : isMermaid ? _mermaidSelector + "\n" + text
-                        : isPwsh ? _pwshSelector + "\n" + text
+                        : isPwsh ? PwshBlock(text)
                         : isSql ? SqlBlock(text)
                         : isDax ? DaxBlock(text)
+                        : shellTag != null ? ShellBlock(text, shellTag)
                         : text);
                 }
                 current = null;

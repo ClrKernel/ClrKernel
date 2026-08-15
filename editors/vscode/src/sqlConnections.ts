@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ClrKernelController } from './controller';
+import { buildSqlConnectDirective } from './directives';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
@@ -115,7 +116,7 @@ export class SqlConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -174,7 +175,7 @@ export class SqlConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -312,7 +313,7 @@ export class SqlConnectionUi {
             }
         }
 
-        const directive = buildConnectDirective({
+        const directive = buildSqlConnectDirective({
             name,
             server,
             database: database.trim(),
@@ -328,6 +329,7 @@ export class SqlConnectionUi {
             // writes the secret when a non-empty one is sent), so blank on edit keeps it.
             const result = await client.request<AddResult>('clrkernel/connections/add', {
                 languageId: 'sql',
+                notebookUri: cell.notebook.uri.toString(),
                 directive,
                 secret: secret ?? '',
             });
@@ -367,7 +369,8 @@ export class SqlConnectionUi {
         const directory = path.dirname(cell.notebook.uri.fsPath);
         let status: ConfigStatusResult;
         try {
-            status = await client.request<ConfigStatusResult>('clrkernel/connections/configStatus', { languageId: 'sql', directory });
+            status = await client.request<ConfigStatusResult>('clrkernel/connections/configStatus',
+                { languageId: 'sql', notebookUri: cell.notebook.uri.toString(), directory });
         } catch {
             return; // couldn't check — don't nag
         }
@@ -418,6 +421,7 @@ export class SqlConnectionUi {
         try {
             const result = await client.request<SaveConfigResult>('clrkernel/connections/saveConfig', {
                 languageId: 'sql',
+                notebookUri: cell.notebook.uri.toString(),
                 name,
                 filePath: targetPath,
             });
@@ -472,36 +476,6 @@ async function applyConnection(cell: vscode.NotebookCell, name: string): Promise
         edit.insert(doc.uri, new vscode.Position(0, 0), selectorLine + '\n');
     }
     await vscode.workspace.applyEdit(edit);
-}
-
-function buildConnectDirective(opts: {
-    name: string;
-    server: string;
-    database?: string;
-    auth: string;
-    user?: string;
-    encrypt?: boolean;
-    trustCert?: boolean;
-}): string {
-    const parts = ['#!sql-connect', '--name', quote(opts.name), '--server', quote(opts.server)];
-    if (opts.database) {
-        parts.push('--database', quote(opts.database));
-    }
-    parts.push('--auth', opts.auth);
-    if (opts.user) {
-        parts.push('--user', quote(opts.user));
-    }
-    if (opts.encrypt === false) {
-        parts.push('--encrypt', 'false');
-    }
-    if (opts.trustCert) {
-        parts.push('--trust-cert');
-    }
-    return parts.join(' ');
-}
-
-function quote(value: string): string {
-    return /\s|"/.test(value) ? '"' + value.replace(/"/g, '') + '"' : value;
 }
 
 function errorText(e: unknown): string {

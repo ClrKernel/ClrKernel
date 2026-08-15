@@ -1,13 +1,17 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
+import { toOutputItemData } from './outputItems';
 import { DisplayNotification, ServerClient } from './serverClient';
+import { SingleFlight } from './singleFlight';
 import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 
 /**
  * NotebookController that executes C# cells through ClrKernel.Core.ExtensionServer. One
- * server process per VS Code window; REPL state is shared across notebooks in
- * that window (matching how a Jupyter kernel session behaves).
+ * server process per VS Code window, but the server keeps a SEPARATE session per
+ * notebook (keyed by the notebook path in each cell's URI) — variables,
+ * connections and completion state never leak between notebooks, and Restart
+ * Kernel clears only the active notebook's session.
  */
 export class ClrKernelController {
     private readonly controller: vscode.NotebookController;
@@ -15,6 +19,8 @@ export class ClrKernelController {
     // One version notice per window; a restart is what re-arms it.
     private warnedKernelVersion = false;
     private client: ServerClient | undefined;
+    // One server per window, even when several notebooks ask at once — see SingleFlight.
+    private readonly starting = new SingleFlight<ServerClient>();
 
     // Routing tables for streaming output.
     private readonly activeExecutions = new Map<string, vscode.NotebookCellExecution>();
@@ -32,7 +38,7 @@ export class ClrKernelController {
         // tooling from attaching). Plain 'csharp' is intentionally NOT listed: it would
         // add a second "C#" entry to the cell language picker, and the serializer already
         // maps every ```csharp fence to 'csharp-script' on load, so no cell is 'csharp'.
-        this.controller.supportedLanguages = ['csharp-script', 'http', 'mermaid', 'powershell', 'sql', 'dax'];
+        this.controller.supportedLanguages = ['csharp-script', 'http', 'mermaid', 'powershell', 'shellscript', 'sql', 'dax'];
         this.controller.supportsExecutionOrder = true;
         this.controller.executeHandler = (cells) => this.executeCells(cells);
     }
@@ -40,6 +46,15 @@ export class ClrKernelController {
     private executionOrder = 0;
 
     private async ensureClient(notebook: vscode.NotebookDocument): Promise<ServerClient> {
+        if (this.client?.running) {
+            return this.client;
+        }
+        // Restoring a window opens every notebook at once, and a cell run can race the connection
+        // button. Without this each of them starts its own server and all but the last are leaked.
+        return this.starting.run(() => this.startForNotebook(notebook));
+    }
+
+    private async startForNotebook(notebook: vscode.NotebookDocument): Promise<ServerClient> {
         if (this.client?.running) {
             return this.client;
         }
@@ -214,6 +229,9 @@ export class ClrKernelController {
         if (cell.document.languageId === 'powershell' && !/^\s*#!(pwsh|powershell)\b/i.test(text)) {
             return '#!pwsh\n' + text;
         }
+        if (cell.document.languageId === 'shellscript' && !/^\s*#!(bash|zsh|sh|shell)\b/i.test(text)) {
+            return '#!bash\n' + text;
+        }
         if (cell.document.languageId === 'sql' && !/^\s*#!sql\b/i.test(text)) {
             return '#!sql\n' + text;
         }
@@ -221,6 +239,19 @@ export class ClrKernelController {
             return '#!dax\n' + text;
         }
         return text;
+    }
+
+    /**
+     * Decompiled source for a metadata symbol, fetched from the running server.
+     * Definition results only ever point at this scheme when the server is up,
+     * so a missing client just explains itself.
+     */
+    async metadataSource(key: string): Promise<string> {
+        if (!this.client?.running) {
+            return '// The ClrKernel server is not running - use Go to Definition again.';
+        }
+        const result = await this.client.request<{ text: string }>('clrkernel/metadataSource', { key });
+        return result?.text ?? '';
     }
 
     /**
@@ -233,9 +264,10 @@ export class ClrKernelController {
     }
 
     /**
-     * Registers any SqlServer entries from a connections.json at/above the notebook's
-     * folder into the session, once per notebook, so saved connections resolve when a
-     * cell runs — without the user re-adding them. Best-effort: never blocks execution.
+     * Registers saved connections from a connections.json at/above the notebook's folder
+     * into the session, once per notebook, so they resolve when a cell runs without the
+     * user re-adding them. Both kinds are loaded — SqlServer and AnalysisServices entries
+     * live in the same file, told apart by $type. Best-effort: never blocks execution.
      */
     async ensureConnectionsConfigLoaded(notebook: vscode.NotebookDocument): Promise<void> {
         const key = notebook.uri.toString();
@@ -246,13 +278,57 @@ export class ClrKernelController {
         try {
             const client = await this.ensureClient(notebook);
             const directory = path.dirname(notebook.uri.fsPath);
-            await client.request('clrkernel/connections/loadConfig', { languageId: 'sql', directory });
+            // Each language takes only its own $type; a language with nothing saved is a no-op.
+            for (const languageId of ['sql', 'dax']) {
+                await client.request('clrkernel/connections/loadConfig',
+                    { languageId, notebookUri: notebook.uri.toString(), directory });
+            }
         } catch (error) {
             // A missing/unreadable config or an unstarted server must not block the run.
             this.loadedConfigNotebooks.delete(key); // allow a later retry
             this.output.appendLine(
                 'connections.json auto-load skipped: ' + (error instanceof Error ? error.message : String(error)));
         }
+    }
+
+    /**
+     * Restarts the ACTIVE notebook's session — its variables, connections and language
+     * runspaces — leaving other notebooks' sessions untouched. The server process stays up;
+     * the next cell run starts that notebook a fresh engine.
+     *
+     * With no active notebook (or a kernel too old to know clrkernel/restart) it falls back
+     * to stopping the whole server process, which resets every notebook in the window.
+     */
+    async restart(notebook?: vscode.NotebookDocument): Promise<void> {
+        const target = notebook ?? vscode.window.activeNotebookEditor?.notebook;
+        if (target && this.client?.running) {
+            try {
+                await this.client.request('clrkernel/restart', { notebookUri: target.uri.toString() });
+                this.loadedConfigNotebooks.delete(target.uri.toString());
+                this.output.appendLine(`session restarted for ${target.uri.fsPath}`);
+                return;
+            } catch (e) {
+                // An older kernel has no clrkernel/restart — fall through to a process restart.
+                this.output.appendLine('per-notebook restart unavailable, restarting the server: ' + String(e));
+            }
+        }
+
+        const client = this.client;
+        this.client = undefined;
+        // Session-scoped state goes with the session: connection config is auto-loaded once per
+        // notebook, and a stale entry here would skip the reload against the new process.
+        this.loadedConfigNotebooks.clear();
+        this.displayOutputs.clear();
+        this.warnedKernelVersion = false;
+
+        if (client) {
+            try {
+                await client.dispose();
+            } catch (e) {
+                this.output.appendLine('error stopping the kernel: ' + String(e));
+            }
+        }
+        this.output.appendLine('kernel stopped; the next cell run starts a fresh one');
     }
 
     dispose(): void {
@@ -263,13 +339,8 @@ export class ClrKernelController {
 }
 
 function toOutputItems(data: Record<string, unknown>): vscode.NotebookCellOutputItem[] {
-    const items: vscode.NotebookCellOutputItem[] = [];
-    for (const [mime, value] of Object.entries(data ?? {})) {
-        const text = typeof value === 'string' ? value : JSON.stringify(value);
-        items.push(vscode.NotebookCellOutputItem.text(text, mime));
-    }
-    if (items.length === 0) {
-        items.push(vscode.NotebookCellOutputItem.text('', 'text/plain'));
-    }
-    return items;
+    return toOutputItemData(data).map(item =>
+        item.bytes
+            ? new vscode.NotebookCellOutputItem(item.bytes, item.mime)
+            : vscode.NotebookCellOutputItem.text(item.text ?? '', item.mime));
 }

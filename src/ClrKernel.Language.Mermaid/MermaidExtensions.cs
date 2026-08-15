@@ -6,7 +6,7 @@ namespace ClrKernel.Language.Mermaid;
 /// cells via the <c>ClrKernel.Language.Mermaid</c> namespace import, so a diagram
 /// built programmatically can be shown with
 /// <c>mermaidSource.DisplayMermaid()</c> — mirroring the display helpers in
-/// <see cref="DisplayExtensions"/>.
+/// <see cref="DisplayValues"/>.
 /// </summary>
 public static class MermaidExtensions {
     /// <summary>
@@ -14,7 +14,7 @@ public static class MermaidExtensions {
     /// updatable display handle (e.g.
     /// <c>"graph TD; A--&gt;B".DisplayMermaid()</c>).
     /// </summary>
-    public static DisplayedValue DisplayMermaid(this string source) {
-        return MermaidRenderer.RenderHtml(source).DisplayAs("text/html");
+    public static DisplayCell DisplayMermaid(this string source) {
+        return MermaidRenderer.RenderHtml(source).DisplayHtml();
     }
 }

@@ -4,6 +4,7 @@ using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.SqlServer;
 using ClrKernel.DataEngineering;
 
@@ -42,13 +43,13 @@ public sealed partial class SqlSession {
                 "No pipeline steps are registered. Run the -- step cells first, then #!sql-run.");
         }
 
-        DisplayedValue view = null;
+        DisplayCell view = null;
         void Board(IReadOnlyList<StepStatus> statuses) {
             var html = PipelineBoard.Render(statuses);
             if (view == null) {
-                view = html.DisplayAs("text/html");
+                view = html.DisplayHtml();
             } else {
-                view.Update(html);
+                view.UpdateHtml(html);
             }
         }
 
@@ -125,13 +126,13 @@ public sealed partial class SqlSession {
     public DisplayData ExecuteDeploy(string directiveLine) {
         var d = SqlOrchestrationDirectives.ParseDeploy(directiveLine);
 
-        DisplayedValue view = null;
+        DisplayCell view = null;
         void Board(IReadOnlyList<DeployFileResult> files) {
             var html = DeployBoard.Render(files, d.Options.DryRun);
             if (view == null) {
-                view = html.DisplayAs("text/html");
+                view = html.DisplayHtml();
             } else {
-                view.Update(html);
+                view.UpdateHtml(html);
             }
         }
 

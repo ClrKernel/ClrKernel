@@ -136,9 +136,33 @@ public class FabricEngineWiringTest {
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);
         // Bare "Fabric" resolves to the imported helper type (no ClrKernel.Database.Provider.Fabric prefix needed).
         var result = await engine.ExecuteAsync("#!csharp\nnameof(Fabric)");
-        var text = result is ClrKernel.Core.Primitives.DisplayData d && d.Data.TryGetValue("text/plain", out var t)
+        var text = result is ClrKernel.Core.Scripting.DisplayData d && d.Data.TryGetValue("text/plain", out var t)
             ? t?.ToString()
             : result?.ToString();
         StringAssert.Contains(text, "Fabric");
+    }
+}
+
+[TestClass]
+public class FabricFactoryTest {
+    [TestMethod]
+    public void Interactive_uses_the_browser_only_credential() {
+        // Constructing the credential never prompts; only a token request would.
+        var connection = ClrKernel.Database.Provider.Fabric.Fabric.Interactive();
+        Assert.IsNotNull(connection);
+    }
+
+    [TestMethod]
+    public void WithCredential_rejects_null() {
+        Assert.ThrowsExactly<ArgumentNullException>(
+            () => ClrKernel.Database.Provider.Fabric.Fabric.WithCredential(null));
+    }
+
+    [TestMethod]
+    public void InteractiveOnly_is_a_bare_browser_credential_not_a_chain() {
+        Assert.IsInstanceOfType(
+            ClrKernel.Database.Entra.EntraAuth.InteractiveOnly(),
+            typeof(Azure.Identity.InteractiveBrowserCredential),
+            "no chain: the browser must always be the one asked");
     }
 }

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using ClrKernel.Database;
 using ClrKernel.Database.Provider.SqlServer;
@@ -28,17 +27,19 @@ public sealed partial class SqlSession {
     /// unless none is set yet.
     /// </summary>
     public IReadOnlyList<string> LoadFromConfig(string startDirectory = null) {
-        var file = ConnectionConfig.FindFile(startDirectory);
-        if (file == null) {
-            return Array.Empty<string>();
-        }
         var loaded = new List<string>();
-        foreach (var node in ConnectionConfig.LoadAllRaw(file)) {
-            if (!node.IsType(SqlConnectionConfig.TypeName)) {
-                continue;
+        // Base file first, then the .local overlay: Register replaces by name,
+        // so a personal connections.local.json entry wins over the shared one.
+        foreach (var file in ConnectionConfig.FindFiles(startDirectory)) {
+            foreach (var node in ConnectionConfig.LoadAllRaw(file)) {
+                if (!node.IsType(SqlConnectionConfig.TypeName)) {
+                    continue;
+                }
+                _registry.Register(SqlConnectionConfig.FromNode(node));
+                if (!loaded.Contains(node.Name)) {
+                    loaded.Add(node.Name);
+                }
             }
-            _registry.Register(SqlConnectionConfig.FromNode(node));
-            loaded.Add(node.Name);
         }
         return loaded;
     }
