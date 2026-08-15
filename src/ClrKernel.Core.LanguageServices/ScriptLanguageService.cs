@@ -42,25 +42,6 @@ public sealed class ScriptLanguageService {
         return MefHostServices.Create(assemblies);
     }
 
-    // Directive lines are dropped from replayed submissions: the resolved
-    // references are supplied directly, and Roslyn's default resolver doesn't
-    // understand `#r "nuget:"`. Keep everything else (usings, code, classes).
-    private static bool IsDirectiveLine(string line) {
-        var t = line.TrimStart();
-        return t.StartsWith("#r", StringComparison.Ordinal)
-            || t.StartsWith("#i", StringComparison.Ordinal)
-            || t.StartsWith("#load", StringComparison.Ordinal)
-            || t.StartsWith("#!", StringComparison.Ordinal);
-    }
-
-    private static string StripDirectives(string submission) {
-        if (submission.IndexOf('#') < 0) {
-            return submission;
-        }
-        var kept = submission.Replace("\r\n", "\n").Split('\n').Where(l => !IsDirectiveLine(l));
-        return string.Join("\n", kept);
-    }
-
     /// <summary>
     /// Builds a single script document = imports + replayed prior submissions +
     /// the current code, and returns it with the caret mapped into that document.
@@ -74,8 +55,11 @@ public sealed class ScriptLanguageService {
         foreach (var ns in snapshot.Imports) {
             sb.Append("using ").Append(ns).Append(";\n");
         }
+        // Directive lines are dropped from replayed submissions: the resolved
+        // references are supplied directly, and Roslyn's default resolver
+        // doesn't understand `#r "nuget:"`.
         foreach (var submission in snapshot.Submissions) {
-            sb.Append(StripDirectives(submission)).Append('\n');
+            sb.Append(InteractiveScriptEngine.StripDirectives(submission)).Append('\n');
         }
         var prefixLength = sb.Length;
         sb.Append(code);
@@ -107,43 +91,12 @@ public sealed class ScriptLanguageService {
     }
 
     /// <summary>
-    /// References for the completion compilation: the loaded runtime assemblies
-    /// (BCL + ClrKernel + any nuget already loaded by execution) unioned with the
-    /// engine's explicit references, deduped by file path. Loaded assemblies give
-    /// completion the same surface execution sees once a cell has run.
+    /// References for the completion compilation — the same reference surface
+    /// execution uses (see <see cref="InteractiveScriptEngine.ReferencePaths"/>,
+    /// the one home of the dedupe policy), with XML documentation attached.
     /// </summary>
-    private static IReadOnlyList<MetadataReference> BuildReferences(ScriptStateSnapshot snapshot) {
-        // Keyed by assembly FILE NAME, not path: the same assembly loaded from two
-        // places (the host's copy and a nuget-restored one, or two package versions)
-        // would otherwise put duplicate identities into the compilation, and symbol
-        // resolution for every type they touch silently fails.
-        var byName = new Dictionary<string, MetadataReference>(System.StringComparer.OrdinalIgnoreCase);
-
-        foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies()) {
-            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location)) {
-                continue;
-            }
-            var fileName = Path.GetFileName(assembly.Location);
-            // Cell-compiled libraries stay loaded after being superseded by a
-            // re-run; only the engine's references (below) know the live one.
-            if (fileName.StartsWith(InteractiveScriptEngine.CellLibraryPrefix, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            byName.TryAdd(fileName, ReferenceFor(assembly.Location));
-        }
-
-        // The engine's explicit references WIN over loaded assemblies — they are
-        // the versions cell execution actually uses. Only resolvable file-based
-        // references are valid in a fresh compilation; by-name/unresolved ones
-        // (framework refs) are already covered above by the loaded assemblies.
-        foreach (var reference in snapshot.References) {
-            if (reference is PortableExecutableReference pe && !string.IsNullOrEmpty(pe.FilePath)) {
-                byName[Path.GetFileName(pe.FilePath)] = ReferenceFor(pe.FilePath);
-            }
-        }
-
-        return byName.Values.ToArray();
-    }
+    private static IReadOnlyList<MetadataReference> BuildReferences(ScriptStateSnapshot snapshot) =>
+        InteractiveScriptEngine.ReferencePaths(snapshot.References).Select(ReferenceFor).ToArray();
 
     // References cached per path with XML documentation attached, so hover,
     // completion and signature help can show /// summaries. Nuget packages and
@@ -213,22 +166,36 @@ public sealed class ScriptLanguageService {
         // Kept so completionItem/resolve can lazily fetch one item's description
         // (signature + /// summary) by its index, IDE-style, without paying that
         // cost for the whole list up front.
-        _lastCompletion = (document, service, completions.ItemsList);
+        _lastCompletion = (_lastCompletion.Generation + 1, document, completions.ItemsList);
 
         // Span of existing text being replaced, mapped back to cell coordinates.
         var replaceStart = Math.Max(0, completions.Span.Start - prefix);
         return new CompletionResultDto(replaceStart, completions.Span.Length, items);
     }
 
-    private (Document Document, CompletionService Service, IReadOnlyList<CompletionItem> Items) _lastCompletion;
+    private (int Generation, Document Document, IReadOnlyList<CompletionItem> Items) _lastCompletion;
+
+    /// <summary>
+    /// Identifies the list produced by the most recent <see cref="GetCompletionsAsync"/>.
+    /// Paired with an item index it makes a resolve token that can't accidentally
+    /// read a newer list (completion re-fires on most keystrokes, and a queued
+    /// resolve for the old list would otherwise show another symbol's docs).
+    /// </summary>
+    public int LastCompletionGeneration => _lastCompletion.Generation;
 
     /// <summary>
     /// The description (signature and documentation) of item <paramref name="index"/>
-    /// from the most recent <see cref="GetCompletionsAsync"/> call, or null.
+    /// from completion list <paramref name="generation"/>, or null when that list
+    /// has been superseded.
     /// </summary>
-    public async Task<string> GetCompletionDocumentationAsync(int index, CancellationToken cancellationToken = default) {
-        var (document, service, items) = _lastCompletion;
-        if (document == null || items == null || index < 0 || index >= items.Count) {
+    public async Task<string> GetCompletionDocumentationAsync(
+        int generation, int index, CancellationToken cancellationToken = default) {
+        var (current, document, items) = _lastCompletion;
+        if (document == null || items == null || generation != current || index < 0 || index >= items.Count) {
+            return null;
+        }
+        var service = CompletionService.GetService(document);
+        if (service == null) {
             return null;
         }
         var description = await service.GetDescriptionAsync(document, items[index], cancellationToken)
@@ -269,7 +236,8 @@ public sealed class ScriptLanguageService {
         // A namespace (F12 on a using directive) has no single definition; peek
         // an overview of its public types instead.
         if (symbol is INamespaceSymbol ns) {
-            return new DefinitionResultDto(Array.Empty<DefinitionLocationDto>(), DecompiledSource.ForNamespace(ns));
+            return new DefinitionResultDto(
+                Array.Empty<DefinitionLocationDto>(), DecompiledSource.ForNamespace(ns, cancellationToken));
         }
 
         var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
@@ -324,19 +292,12 @@ public sealed class ScriptLanguageService {
         if (lineEnd < 0) {
             lineEnd = code.Length;
         }
-        var line = code.Substring(lineStart, lineEnd - lineStart).Trim().TrimEnd(';').Trim();
-        if (!line.StartsWith("using ", StringComparison.Ordinal)) {
-            return null;
-        }
-        var name = line.Substring("using ".Length).Trim();
-        if (name.StartsWith("static ", StringComparison.Ordinal)) {
-            name = name.Substring("static ".Length).Trim();
-        }
-        var equals = name.IndexOf('=');
-        if (equals >= 0) {
-            name = name.Substring(equals + 1).Trim();
-        }
-        if (name.Length == 0 || !name.All(c => char.IsLetterOrDigit(c) || c == '.' || c == '_')) {
+        var line = code.Substring(lineStart, lineEnd - lineStart);
+        // Roslyn parses the lone line (handling `static`, aliases, `global`,
+        // tabs, and trailing comments for free); resolving the dotted name
+        // against the compilation is the only part left to do by hand.
+        var directive = SyntaxFactory.ParseCompilationUnit(line).Usings.FirstOrDefault();
+        if (directive?.Name == null) {
             return null;
         }
 
@@ -344,7 +305,7 @@ public sealed class ScriptLanguageService {
         if (compilation == null) {
             return null;
         }
-        var parts = name.Split('.');
+        var parts = directive.Name.ToString().Split('.').Select(p => p.Trim()).ToArray();
         INamespaceSymbol ns = compilation.GlobalNamespace;
         for (var i = 0; i < parts.Length - 1 && ns != null; i++) {
             ns = ns.GetNamespaceMembers().FirstOrDefault(n => n.Name == parts[i]);

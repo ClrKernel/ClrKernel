@@ -206,8 +206,23 @@ public class DefinitionTest {
         var result = await _svc.GetCompletionsAsync(engine.SnapshotState(), code, code.Length);
         var index = result.Items.ToList().FindIndex(i => i.Label == "WriteLine");
         Assert.IsTrue(index >= 0);
-        var text = await _svc.GetCompletionDocumentationAsync(index);
+        var text = await _svc.GetCompletionDocumentationAsync(_svc.LastCompletionGeneration, index);
         Assert.IsNotNull(text);
         StringAssert.Contains(text, "WriteLine");
+
+        // A resolve for a superseded list must return nothing rather than
+        // another symbol's documentation.
+        var stale = _svc.LastCompletionGeneration;
+        await _svc.GetCompletionsAsync(engine.SnapshotState(), "Math.", 5);
+        Assert.IsNull(await _svc.GetCompletionDocumentationAsync(stale, index));
+    }
+
+    [TestMethod]
+    public async Task A_using_line_with_a_trailing_comment_still_peeks() {
+        var engine = await EngineWithAsync();
+        const string code = "using System.Text; // build strings";
+        var result = await _svc.GetDefinitionsAsync(engine.SnapshotState(), code, code.IndexOf("Text") + 1);
+        Assert.IsNotNull(result.Metadata, "a trailing comment must not disable the namespace peek");
+        StringAssert.Contains(result.Metadata.Text, "namespace System.Text;");
     }
 }

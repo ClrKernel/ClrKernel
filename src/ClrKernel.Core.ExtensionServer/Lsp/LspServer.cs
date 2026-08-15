@@ -46,18 +46,33 @@ public sealed class ConnectionParams {
 
     /// <summary>Target file, for saveConfig.</summary>
     public string FilePath { get; set; }
+
+    /// <summary>The notebook whose session holds the connections.</summary>
+    public string NotebookUri { get; set; }
 }
 
 /// <summary>
 /// The unified ClrKernel language server (Option A): standard LSP language
 /// features (completion, hover, signature help) and cell execution
-/// (clrkernel/execute + clrkernel/display notifications) over one connection,
-/// backed by a single <see cref="InteractiveScriptEngine"/> so completion sees
-/// the live REPL state — prior-cell symbols, #r "nuget:" types, and imports.
+/// (clrkernel/execute + clrkernel/display notifications) over one connection.
+/// Each NOTEBOOK gets its own <see cref="InteractiveScriptEngine"/> session —
+/// keyed by the notebook path carried in every cell URI — so completion sees
+/// that notebook's live REPL state (prior-cell symbols, #r "nuget:" types,
+/// imports) and never another notebook's variables.
 /// </summary>
 public sealed class LspServer {
-    private readonly InteractiveScriptEngine _engine;
-    private readonly ScriptLanguageService _language = new();
+    // One engine + language service per notebook. A cell URI is
+    // "vscode-notebook-cell:/path/to/nb.md#cellId": the path identifies the
+    // notebook, and the extension's cellId IS the cell URI, so every request
+    // that matters can be routed without protocol changes.
+    private sealed class NotebookSession {
+        public InteractiveScriptEngine Engine;
+        public ScriptLanguageService Language;
+    }
+
+    private readonly ConcurrentDictionary<string, NotebookSession> _sessions =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
 
     // Full-sync document store: uri -> current text (notebook cells and files).
@@ -75,8 +90,54 @@ public sealed class LspServer {
     public JsonRpc Rpc { get; set; }
 
     public LspServer(ILoggerFactory loggerFactory) {
-        _engine = new InteractiveScriptEngine(Environment.CurrentDirectory, loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
+        _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger(nameof(LspServer));
+    }
+
+    /// <summary>
+    /// The notebook identity behind a cell/document URI or a notebook URI: the
+    /// file path when one can be parsed (a cell URI and the notebook's own URI
+    /// differ only in scheme and fragment), the fragment-stripped URI otherwise.
+    /// </summary>
+    internal static string NotebookKeyFor(string uri) {
+        if (string.IsNullOrEmpty(uri)) {
+            return string.Empty;
+        }
+        var hash = uri.IndexOf('#');
+        var trimmed = hash < 0 ? uri : uri[..hash];
+        try {
+            var path = new Uri(trimmed).LocalPath;
+            if (!string.IsNullOrEmpty(path)) {
+                // A Windows cell URI parses to "/C:/…" where a file URI gives "C:\…".
+                if (path.Length >= 3 && path[0] == '/' && path[2] == ':') {
+                    path = path[1..];
+                }
+                return path.Replace('\\', '/');
+            }
+        } catch (UriFormatException) {
+            // Not a URI (test harnesses send bare ids) — the raw string is the key.
+        }
+        return trimmed;
+    }
+
+    private NotebookSession SessionFor(string uri) =>
+        _sessions.GetOrAdd(NotebookKeyFor(uri), key => new NotebookSession {
+            Engine = new InteractiveScriptEngine(
+                DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine))),
+            Language = new ScriptLanguageService(),
+        });
+
+    // The notebook's own folder, so #load and relative paths resolve beside it.
+    private static string DirectoryFor(string notebookKey) {
+        try {
+            var directory = System.IO.Path.GetDirectoryName(notebookKey);
+            if (!string.IsNullOrEmpty(directory) && System.IO.Directory.Exists(directory)) {
+                return directory;
+            }
+        } catch (ArgumentException) {
+            // Invalid path characters — fall through to the process directory.
+        }
+        return Environment.CurrentDirectory;
     }
 
     // --- Lifecycle ---------------------------------------------------------
@@ -160,7 +221,7 @@ public sealed class LspServer {
         if (!_languages.TryGetValue(uri, out var lang)) {
             return;
         }
-        var services = _engine.Languages.ById(lang)?.Services;
+        var services = SessionFor(uri).Engine.Languages.ById(lang)?.Services;
         if (services == null) {
             return;
         }
@@ -195,14 +256,16 @@ public sealed class LspServer {
         if (p?.TextDocument?.Uri == null || !_languages.TryGetValue(p.TextDocument.Uri, out var lang)) {
             return null;
         }
-        return _engine.Languages.ById(lang)?.Services;
+        return SessionFor(p.TextDocument.Uri).Engine.Languages.ById(lang)?.Services;
     }
 
-    // Every open cell of one language, so completion can see sibling cells.
-    private LanguageServiceContext ContextFor(string languageId) {
+    // Every open cell of one language IN THE SAME NOTEBOOK, so completion can
+    // see sibling cells without leaking another notebook's.
+    private LanguageServiceContext ContextFor(string languageId, string notebookKey) {
         var open = new List<string>();
         foreach (var kv in _languages) {
             if (kv.Value.Equals(languageId, StringComparison.OrdinalIgnoreCase)
+                && NotebookKeyFor(kv.Key).Equals(notebookKey, StringComparison.OrdinalIgnoreCase)
                 && _documents.TryGetValue(kv.Key, out var text)) {
                 open.Add(text);
             }
@@ -224,10 +287,13 @@ public sealed class LspServer {
             return await LanguageCompletion(services, p, code, offset).ConfigureAwait(false);
         }
 
+        var session = SessionFor(p.TextDocument.Uri);
         await _gate.WaitAsync().ConfigureAwait(false);
         CompletionResultDto result;
+        int generation;
         try {
-            result = await _language.GetCompletionsAsync(_engine.SnapshotState(), code, offset).ConfigureAwait(false);
+            result = await session.Language.GetCompletionsAsync(session.Engine.SnapshotState(), code, offset).ConfigureAwait(false);
+            generation = session.Language.LastCompletionGeneration;
         } finally {
             _gate.Release();
         }
@@ -243,7 +309,7 @@ public sealed class LspServer {
                 SortText = item.SortText,
                 FilterText = item.FilterText,
                 InsertText = item.InsertText,
-                Data = list.Items.Count,
+                Data = $"{generation}:{list.Items.Count}:{NotebookKeyFor(p.TextDocument.Uri)}",
                 TextEdit = new TextEdit {
                     Range = new Range { Start = startPos, End = endPos },
                     NewText = item.InsertText,
@@ -257,14 +323,24 @@ public sealed class LspServer {
     // IDE-style. Items without Data — the non-C# language cells — pass through.
     [JsonRpcMethod("completionItem/resolve", UseSingleObjectParameterDeserialization = true)]
     public async Task<CompletionItem> ResolveCompletionItem(CompletionItem item) {
-        if (item?.Data == null || !int.TryParse(item.Data.ToString(), out var index)) {
+        // Data is "<generation>:<index>:<notebookKey>": the key routes to the
+        // notebook's session, and the generation pins the index to the list
+        // that produced it, so a resolve queued behind a newer completion
+        // can't serve another symbol's documentation.
+        var parts = item?.Data?.ToString().Split(':', 3);
+        if (parts is not { Length: 3 }
+            || !int.TryParse(parts[0], out var generation)
+            || !int.TryParse(parts[1], out var index)
+            || !_sessions.TryGetValue(parts[2], out var session)) {
             return item;
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
         string text;
         try {
-            text = await _language.GetCompletionDocumentationAsync(index).ConfigureAwait(false);
+            text = await session.Language.GetCompletionDocumentationAsync(generation, index).ConfigureAwait(false);
+        } catch {
+            text = null; // documentation is cosmetic — never fault the RPC channel for it
         } finally {
             _gate.Release();
         }
@@ -282,16 +358,17 @@ public sealed class LspServer {
     }
 
     [JsonRpcMethod("textDocument/definition", UseSingleObjectParameterDeserialization = true)]
-    public async Task<List<LocationLink>> Definition(TextDocumentPositionParams p) {
+    public async Task<List<LocationLink>> Definition(TextDocumentPositionParams p, CancellationToken cancellationToken = default) {
         var (code, offset) = Resolve(p);
         if (code == null || ServicesFor(p) != null) {
             return new List<LocationLink>(); // only C# cells carry definitions today
         }
 
-        await _gate.WaitAsync().ConfigureAwait(false);
+        var session = SessionFor(p.TextDocument.Uri);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         ClrKernel.Core.LanguageServices.DefinitionResultDto result;
         try {
-            result = await _language.GetDefinitionsAsync(_engine.SnapshotState(), code, offset)
+            result = await session.Language.GetDefinitionsAsync(session.Engine.SnapshotState(), code, offset, cancellationToken)
                 .ConfigureAwait(false);
         } finally {
             _gate.Release();
@@ -316,13 +393,15 @@ public sealed class LspServer {
 
         // Candidate cells for prior-submission definitions: the current cell first
         // (a definition executed from it still lives there), then every other open
-        // cell of the same language.
+        // cell of the same language in the same notebook.
         var currentUri = p.TextDocument.Uri;
+        var notebookKey = NotebookKeyFor(currentUri);
         var language = _languages.TryGetValue(currentUri, out var l) ? l : "csharp";
         var candidates = new List<(string Uri, string Text)> { (currentUri, code) };
         foreach (var kv in _languages) {
             if (kv.Key != currentUri
                 && kv.Value.Equals(language, StringComparison.OrdinalIgnoreCase)
+                && NotebookKeyFor(kv.Key).Equals(notebookKey, StringComparison.OrdinalIgnoreCase)
                 && _documents.TryGetValue(kv.Key, out var text)) {
                 candidates.Add((kv.Key, text));
             }
@@ -448,10 +527,11 @@ public sealed class LspServer {
         }
 
 
+        var session = SessionFor(p.TextDocument.Uri);
         await _gate.WaitAsync().ConfigureAwait(false);
         HoverDto hover;
         try {
-            hover = await _language.GetHoverAsync(_engine.SnapshotState(), code, offset).ConfigureAwait(false);
+            hover = await session.Language.GetHoverAsync(session.Engine.SnapshotState(), code, offset).ConfigureAwait(false);
         } finally {
             _gate.Release();
         }
@@ -485,10 +565,11 @@ public sealed class LspServer {
         }
 
 
+        var session = SessionFor(p.TextDocument.Uri);
         await _gate.WaitAsync().ConfigureAwait(false);
         SignatureHelpDto help;
         try {
-            help = await _language.GetSignatureHelpAsync(_engine.SnapshotState(), code, offset).ConfigureAwait(false);
+            help = await session.Language.GetSignatureHelpAsync(session.Engine.SnapshotState(), code, offset).ConfigureAwait(false);
         } finally {
             _gate.Release();
         }
@@ -523,7 +604,8 @@ public sealed class LspServer {
         CompletionResult completion;
         try {
             var languageId = _languages[p.TextDocument.Uri];
-            completion = await services.CompleteAsync(code, offset, ContextFor(languageId)).ConfigureAwait(false);
+            completion = await services.CompleteAsync(
+                code, offset, ContextFor(languageId, NotebookKeyFor(p.TextDocument.Uri))).ConfigureAwait(false);
         } catch (Exception e) {
             _logger.LogWarning(e, "completion failed");
             return new CompletionList();
@@ -694,8 +776,18 @@ public sealed class LspServer {
     public object ConnectionsSaveConfig(ConnectionParams p) =>
         GuardedConfig(p, config => new { ok = true, path = config.SaveToConfig(p?.Name ?? string.Empty, p?.FilePath ?? string.Empty) });
 
+    // Connections live in the notebook's session. The UI sends the notebook's
+    // URI; when an older extension doesn't, a lone session is unambiguous.
     private IConnectionCatalog CatalogFor(ConnectionParams p) =>
-        _engine.Languages.ById(p?.LanguageId ?? string.Empty)?.Connections;
+        SessionForConnections(p)?.Engine.Languages.ById(p?.LanguageId ?? string.Empty)?.Connections;
+
+    private NotebookSession SessionForConnections(ConnectionParams p) {
+        if (!string.IsNullOrEmpty(p?.NotebookUri)) {
+            return SessionFor(p.NotebookUri);
+        }
+        var all = _sessions.Values;
+        return all.Count == 1 ? System.Linq.Enumerable.First(all) : null;
+    }
 
     private static string NoCatalog(ConnectionParams p) =>
         $"No connection support for language '{p?.LanguageId}'.";
@@ -729,11 +821,30 @@ public sealed class LspServer {
 
     // --- Execution (custom methods) ---------------------------------------
 
+    public sealed class RestartParams {
+        public string NotebookUri { get; set; }
+    }
+
+    /// <summary>
+    /// Drops ONE notebook's session — variables, connections, cell libraries,
+    /// language runspaces — leaving every other notebook's state untouched. The
+    /// next request from that notebook starts a fresh engine.
+    /// </summary>
+    [JsonRpcMethod("clrkernel/restart", UseSingleObjectParameterDeserialization = true)]
+    public object Restart(RestartParams p) {
+        var key = NotebookKeyFor(p?.NotebookUri);
+        var restarted = key.Length > 0 && _sessions.TryRemove(key, out _);
+        _logger.LogInformation("session restart for {Notebook}: {Restarted}", key, restarted);
+        return new { ok = true, restarted };
+    }
+
     [JsonRpcMethod("clrkernel/execute", UseSingleObjectParameterDeserialization = true)]
     public async Task<object> Execute(ExecuteParams p) {
         var cellId = p?.CellId;
         var code = p?.Code ?? string.Empty;
 
+        // The cellId is the cell's URI, so it routes to the notebook's session.
+        var session = SessionFor(cellId);
         await _gate.WaitAsync().ConfigureAwait(false);
         try {
             void Notify(string method, DisplayData data) =>
@@ -745,7 +856,7 @@ public sealed class LspServer {
             object result = null;
             using (var consoleProxy = new ConsoleProxy(line => Notify("clrkernel/display", new DisplayData(line)))) {
                 consoleProxy.StartRedirect();
-                result = await _engine.ExecuteAsync(code).ConfigureAwait(false);
+                result = await session.Engine.ExecuteAsync(code).ConfigureAwait(false);
             }
 
             return new {

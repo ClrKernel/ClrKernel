@@ -251,11 +251,12 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         await EnsureScriptStateAsync();
         try {
             _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
-        } catch (CompilationErrorException e) when (e.Diagnostics.Any(d => d.Id == "CS1109")) {
+        } catch (CompilationErrorException e) when (e.Diagnostics.Any(d => d.Id is "CS1109" or "CS7021")) {
             // CS1109: script mode nests a cell's classes inside the submission
-            // type, which makes `this` extension methods illegal. Compile the
-            // cell as a real class library instead — project mode — and
-            // reference it, so its extension methods work everywhere.
+            // type, which makes `this` extension methods illegal. CS7021: a
+            // namespace declaration is illegal in script code at all. Compile
+            // the cell as a real class library instead — project mode — and
+            // reference it, so its types work everywhere.
             CompileCellAsLibrary(statement);
             return null;
         }
@@ -298,9 +299,64 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     /// tooling can tell a superseded cell library from a live one.</summary>
     public const string CellLibraryPrefix = "clrkernel-cell-";
 
-    // Which emitted library currently declares each cell-defined type name;
-    // re-declaring a type swaps the old library out of the references.
+    // Which emitted library currently declares each cell-defined type name
+    // (namespace-qualified); re-declaring a type swaps the old library out of
+    // the references. _cellLibraryImports remembers the namespaces each library
+    // contributed to the session imports, so they leave with it.
     private readonly Dictionary<string, MetadataReference> _cellLibraryByType = new();
+    private readonly Dictionary<MetadataReference, string[]> _cellLibraryImports = new();
+    private System.Runtime.Loader.AssemblyLoadContext _cellLoadContext;
+
+    /// <summary>
+    /// True for a line that is a script directive (<c>#r</c>, <c>#load</c>,
+    /// <c>#i</c>) or a cell magic (<c>#!…</c>) rather than C# code.
+    /// </summary>
+    public static bool IsDirectiveLine(string line) {
+        var t = line.TrimStart();
+        return t.StartsWith("#r", StringComparison.Ordinal)
+            || t.StartsWith("#i", StringComparison.Ordinal)
+            || t.StartsWith("#load", StringComparison.Ordinal)
+            || t.StartsWith("#!", StringComparison.Ordinal);
+    }
+
+    /// <summary>Drops directive lines, keeping everything else (usings, code, classes).</summary>
+    public static string StripDirectives(string submission) {
+        if (submission.IndexOf('#') < 0) {
+            return submission;
+        }
+        return string.Join("\n", submission.Replace("\r\n", "\n").Split('\n').Where(l => !IsDirectiveLine(l)));
+    }
+
+    /// <summary>
+    /// The reference file paths execution and IntelliSense share: file-backed
+    /// loaded assemblies (minus superseded cell libraries) overlaid by the
+    /// engine's explicit references. Keyed by assembly FILE NAME, not path — the
+    /// same assembly loaded from two places would otherwise put duplicate
+    /// identities into a compilation, and symbol resolution for every type it
+    /// touches silently fails. The engine's references WIN: they are the
+    /// versions cell execution actually uses.
+    /// </summary>
+    public static IEnumerable<string> ReferencePaths(IEnumerable<MetadataReference> engineReferences) {
+        var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()) {
+            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location)) {
+                continue;
+            }
+            var file = Path.GetFileName(assembly.Location);
+            // Cell-compiled libraries stay loaded after being superseded by a
+            // re-run; only the engine's references know the live one.
+            if (file.StartsWith(CellLibraryPrefix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            byName.TryAdd(file, assembly.Location);
+        }
+        foreach (var reference in engineReferences) {
+            if (reference is PortableExecutableReference pe && !string.IsNullOrEmpty(pe.FilePath)) {
+                byName[Path.GetFileName(pe.FilePath)] = pe.FilePath;
+            }
+        }
+        return byName.Values;
+    }
 
     private static bool IsLoadedType(string fullName) =>
         AppDomain.CurrentDomain.GetAssemblies().Any(a => {
@@ -312,6 +368,9 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         });
 
     private void CompileCellAsLibrary(string code) {
+        // #r/#load lines were already resolved by the script path; in the
+        // regular-mode parse below they'd be illegal (CS7010), so drop them.
+        code = StripDirectives(code);
         var parseOptions = new CSharpParseOptions(languageVersion: LanguageVersion.Preview);
         var cellRoot = CSharpSyntaxTree.ParseText(code, parseOptions).GetCompilationUnitRoot();
         if (cellRoot.Members.Any(m => m is GlobalStatementSyntax)) {
@@ -328,31 +387,16 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             + "\n" + code;
         var tree = CSharpSyntaxTree.ParseText(source, parseOptions);
 
-        // Same reference surface as execution: loaded assemblies plus the
-        // engine's explicit references — skipping superseded cell libraries.
-        var references = new Dictionary<string, MetadataReference>(StringComparer.OrdinalIgnoreCase);
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()) {
-            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location)) {
-                continue;
-            }
-            var file = Path.GetFileName(assembly.Location);
-            if (file.StartsWith(CellLibraryPrefix, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            references.TryAdd(file, MetadataReference.CreateFromFile(assembly.Location));
-        }
-        foreach (var reference in _scriptOptions.MetadataReferences) {
-            if (reference is PortableExecutableReference pe && !string.IsNullOrEmpty(pe.FilePath)) {
-                references[Path.GetFileName(pe.FilePath)] = pe;
-            }
-        }
+        // Same reference surface as execution — the shared dedupe policy.
+        var referencePaths = ReferencePaths(_scriptOptions.MetadataReferences).ToList();
 
-        // Content-hashed assembly name: an edited cell gets a NEW identity (so
-        // the runtime can't unify it with the superseded version), and an
-        // unchanged re-run reuses the already-emitted file.
+        // Content-hashed assembly name over source AND references: an edited
+        // cell (or the same cell against different package versions) gets a NEW
+        // identity, and an unchanged re-run reuses the already-emitted file.
         string hash;
         using (var sha = System.Security.Cryptography.SHA256.Create()) {
-            hash = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(source))).Substring(0, 12);
+            var cacheKey = source + "\n" + string.Join("\n", referencePaths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase));
+            hash = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(cacheKey))).Substring(0, 12);
         }
         var name = CellLibraryPrefix + hash;
         var directory = Path.Combine(Path.GetTempPath(), "clrkernel", "cell-libraries");
@@ -360,7 +404,8 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         var dllPath = Path.Combine(directory, name + ".dll");
 
         if (!File.Exists(dllPath)) {
-            var compilation = CSharpCompilation.Create(name, new[] { tree }, references.Values,
+            var compilation = CSharpCompilation.Create(name, new[] { tree },
+                referencePaths.Select(p => MetadataReference.CreateFromFile(p)),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
             using var pe = new MemoryStream();
             using var xml = new MemoryStream();
@@ -369,24 +414,47 @@ public class InteractiveScriptEngine : ICellExecutionContext {
                 throw new InvalidOperationException("The cell failed to compile as a class library:\n" + string.Join("\n",
                     emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString())));
             }
-            File.WriteAllBytes(dllPath, pe.ToArray());
             // The XML docs beside the dll give hover/completion the /// summaries.
+            // Docs first, dll moved into place last: the dll's existence is the
+            // cache check, so a torn write (kernel killed mid-emit, concurrent
+            // kernel racing the same path) is never mistaken for a complete one.
             File.WriteAllBytes(Path.ChangeExtension(dllPath, ".xml"), xml.ToArray());
+            var staging = dllPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllBytes(staging, pe.ToArray());
+            File.Move(staging, dllPath, overwrite: true);
         }
 
-        Assembly.LoadFrom(dllPath);
+        // Cell libraries load into their own context. A library's dependency (a
+        // #r'd package, say) can be a NEWER version of an assembly the kernel
+        // itself ships — the default context's simple-name slot is then taken by
+        // the kernel's copy (TPA) and can never satisfy the newer request. The
+        // last-chance hook loads such dependencies here from the engine's
+        // reference paths; framework and kernel-shipped assemblies always unify
+        // with the default context (a second copy would split type identity).
+        if (_cellLoadContext == null) {
+            _cellLoadContext = new System.Runtime.Loader.AssemblyLoadContext("clrkernel-cell-libraries");
+            var frameworkDir = Path.GetDirectoryName(typeof(object).Assembly.Location) ?? string.Empty;
+            var appBase = AppContext.BaseDirectory ?? string.Empty;
+            AppDomain.CurrentDomain.AssemblyResolve += (_, args) => {
+                var requested = new AssemblyName(args.Name).Name;
+                var path = ReferencePaths(_scriptOptions.MetadataReferences).FirstOrDefault(p =>
+                    Path.GetFileNameWithoutExtension(p).Equals(requested, StringComparison.OrdinalIgnoreCase));
+                if (path == null
+                    || path.StartsWith(frameworkDir, StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWith(appBase, StringComparison.OrdinalIgnoreCase)) {
+                    return null;
+                }
+                return _cellLoadContext.LoadFromAssemblyPath(path);
+            };
+        }
+
+        _cellLoadContext.LoadFromAssemblyPath(dllPath);
         var newReference = MetadataReference.CreateFromFile(dllPath);
 
-        var typeNames = cellRoot.DescendantNodes()
-            .OfType<MemberDeclarationSyntax>()
-            .Select(m => m switch {
-                BaseTypeDeclarationSyntax t => t.Identifier.Text,
-                DelegateDeclarationSyntax d => d.Identifier.Text,
-                _ => null,
-            })
-            .Where(n => n != null)
-            .Distinct()
-            .ToList();
+        // Namespace-qualified names of the cell's TOP-LEVEL types only:
+        // descending into type bodies would let unrelated cells' nested helper
+        // names (Options, Builder, …) evict each other's libraries.
+        var typeNames = DeclaredTypeNames(cellRoot.Members, "").Distinct().ToList();
         var superseded = typeNames
             .Where(_cellLibraryByType.ContainsKey)
             .Select(t => _cellLibraryByType[t])
@@ -394,14 +462,36 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             .ToList();
         _scriptOptions = _scriptOptions.WithReferences(
             _scriptOptions.MetadataReferences.Where(r => !superseded.Contains(r)).Append(newReference));
+        // Dropping a library orphans every OTHER name it declared too; clear
+        // those map entries so they don't point at a dead reference.
+        foreach (var stale in _cellLibraryByType.Where(kv => superseded.Contains(kv.Value)).Select(kv => kv.Key).ToList()) {
+            _cellLibraryByType.Remove(stale);
+        }
         foreach (var typeName in typeNames) {
             _cellLibraryByType[typeName] = newReference;
         }
 
         // Namespaces declared in the cell become session imports, so other
-        // cells use the types unqualified.
-        foreach (var ns in cellRoot.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>()
-                     .Select(n => n.Name.ToString()).Distinct()) {
+        // cells use the types unqualified — and a superseded library's imports
+        // leave with it, because an import no live library resolves any more
+        // would fail every later submission until a kernel restart.
+        var declared = cellRoot.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>()
+            .Select(n => n.Name.ToString()).Distinct().ToList();
+        var alive = _cellLibraryImports.Where(kv => !superseded.Contains(kv.Key))
+            .SelectMany(kv => kv.Value).Concat(declared).ToHashSet();
+        var removedImports = superseded
+            .SelectMany(r => _cellLibraryImports.TryGetValue(r, out var imports) ? imports : Array.Empty<string>())
+            .Where(ns => !alive.Contains(ns))
+            .Distinct()
+            .ToList();
+        foreach (var reference in superseded) {
+            _cellLibraryImports.Remove(reference);
+        }
+        _cellLibraryImports[newReference] = declared.ToArray();
+        if (removedImports.Count > 0) {
+            _scriptOptions = _scriptOptions.WithImports(_scriptOptions.Imports.Where(i => !removedImports.Contains(i)));
+        }
+        foreach (var ns in declared) {
             if (!_scriptOptions.Imports.Contains(ns)) {
                 _scriptOptions = _scriptOptions.AddImports(ns);
             }
@@ -409,6 +499,24 @@ public class InteractiveScriptEngine : ICellExecutionContext {
 
         _logger.LogInformation(
             $"cell compiled as class library {name}.dll ({string.Join(", ", typeNames)})");
+    }
+
+    private static IEnumerable<string> DeclaredTypeNames(IEnumerable<MemberDeclarationSyntax> members, string prefix) {
+        foreach (var member in members) {
+            switch (member) {
+                case BaseNamespaceDeclarationSyntax ns:
+                    foreach (var nested in DeclaredTypeNames(ns.Members, prefix + ns.Name + ".")) {
+                        yield return nested;
+                    }
+                    break;
+                case BaseTypeDeclarationSyntax type:
+                    yield return prefix + type.Identifier.Text;
+                    break;
+                case DelegateDeclarationSyntax d:
+                    yield return prefix + d.Identifier.Text;
+                    break;
+            }
+        }
     }
 
     // Initializes the persistent C# script state (default usings + any #r/#load

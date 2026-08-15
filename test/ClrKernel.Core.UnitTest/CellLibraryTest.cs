@@ -50,6 +50,34 @@ public class CellLibraryTest {
     }
 
     [TestMethod]
+    public async Task An_extension_cell_with_a_directive_line_compiles() {
+        // #r/#load lines are legal in the script parse but not in the library
+        // compile; they must be stripped, not surfaced as CS7010.
+        InteractiveScriptEngine.RefsFilePath = null;
+        var engine = new InteractiveScriptEngine(System.IO.Path.GetTempPath(), NullLogger.Instance);
+        var dll = typeof(NullLogger).Assembly.Location;
+        await engine.ExecuteAsync(
+            $"#r \"{dll}\"\npublic static class RefExt {{ public static int Thrice(this int x) => x * 3; }}");
+        var result = (DisplayData)await engine.ExecuteAsync("7.Thrice()");
+        Assert.AreEqual("21", result.Data["text/plain"]?.ToString());
+    }
+
+    [TestMethod]
+    public async Task A_superseded_library_takes_its_namespace_imports_with_it() {
+        // The first cell's library contributed the LibB import; superseding it
+        // must remove that import, or every later submission fails to bind.
+        InteractiveScriptEngine.RefsFilePath = null;
+        var engine = new InteractiveScriptEngine(System.IO.Path.GetTempPath(), NullLogger.Instance);
+        await engine.ExecuteAsync(
+            "namespace LibA { public static class NsExt { public static int Tw(this int x) => x * 2; } }\n" +
+            "namespace LibB { public class Marker { } }");
+        await engine.ExecuteAsync(
+            "namespace LibA { public static class NsExt { public static int Tw(this int x) => x * 3; } }");
+        var result = (DisplayData)await engine.ExecuteAsync("21.Tw()");
+        Assert.AreEqual("63", result.Data["text/plain"]?.ToString());
+    }
+
+    [TestMethod]
     public async Task The_extension_method_completes_and_has_definition() {
         var engine = await EngineAsync();
         var svc = new ScriptLanguageService();

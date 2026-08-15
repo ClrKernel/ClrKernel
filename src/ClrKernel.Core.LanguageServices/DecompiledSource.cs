@@ -62,13 +62,19 @@ public static class DecompiledSource {
         }
     }
 
+    // A namespace like System merges thousands of public types across every
+    // reference, each paying an XML-doc parse — and the caller holds the LSP
+    // gate, stalling completion in every cell. A capped listing keeps the peek
+    // instant; F12 on a type name still reaches anything not shown.
+    private const int _maxNamespaceTypes = 300;
+
     /// <summary>
     /// An overview "peek" for a namespace symbol (F12 on a using directive): its
     /// public types across every referenced assembly, each with its /// summary,
     /// plus child namespaces. Not decompilation — a namespace has no single source —
     /// but enough to browse what it offers and F12 onward from a type name.
     /// </summary>
-    public static MetadataSourceDto ForNamespace(INamespaceSymbol ns) {
+    public static MetadataSourceDto ForNamespace(INamespaceSymbol ns, CancellationToken cancellationToken = default) {
         var name = ns.IsGlobalNamespace ? "<global>" : ns.ToDisplayString();
         var sb = new StringBuilder();
         sb.Append("// Namespace ").Append(name).Append(" — public types visible to this session.\n");
@@ -87,13 +93,18 @@ public static class DecompiledSource {
             .Where(t => t.DeclaredAccessibility == Accessibility.Public)
             .OrderBy(t => t.Name).ThenBy(t => t.Arity)
             .ToList();
-        foreach (var type in types) {
+        foreach (var type in types.Take(_maxNamespaceTypes)) {
+            cancellationToken.ThrowIfCancellationRequested();
             var summary = XmlDocs.Summary(type);
             if (summary != null) {
                 sb.Append("/// <summary>").Append(summary).Append("</summary>\n");
             }
             sb.Append("public ").Append(Modifiers(type)).Append(KindKeyword(type)).Append(' ')
                 .Append(type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)).Append(";\n\n");
+        }
+        if (types.Count > _maxNamespaceTypes) {
+            sb.Append("// …and ").Append(types.Count - _maxNamespaceTypes)
+                .Append(" more public types not shown. F12 on a type name in your cell to open one.\n");
         }
         if (types.Count == 0) {
             sb.Append("// (no public types)\n");
