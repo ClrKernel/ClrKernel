@@ -13,8 +13,8 @@ import {
 describe('compareKernelVersion', () => {
     it('accepts the supported line, however many parts the version has', () => {
         // The server reports an assembly version (four parts) though the package has three.
-        expect(compareKernelVersion('0.9.0.0')).toBe('ok');
-        expect(compareKernelVersion('0.9.0')).toBe('ok');
+        expect(compareKernelVersion('0.9.1.0')).toBe('ok');
+        expect(compareKernelVersion('0.9.1')).toBe('ok');
     });
 
     it('treats a patch release of the same line as compatible', () => {
@@ -57,7 +57,7 @@ describe('kernelVersionWarning', () => {
     });
 
     it('stays quiet when the pair is fine or unknown', () => {
-        expect(kernelVersionWarning('ok', '0.9.0.0')).toBeUndefined();
+        expect(kernelVersionWarning('ok', '0.9.1.0')).toBeUndefined();
         expect(kernelVersionWarning('unknown', undefined)).toBeUndefined();
     });
 });

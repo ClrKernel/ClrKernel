@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.6.0] - 2026-08-15
+
+Pairs with **kernel 0.9.x** (`ClrKernel` 0.9.1). Installing through the
+extension pins `--version 0.9.*`, and a mismatched pair warns with the exact
+command to get back in step, the same guard as before. Against a plain 0.9.0
+kernel everything still works — the per-notebook features below simply fall
+back to the old whole-server behavior.
+
+- **Each notebook is its own session.** Variables, connections, loaded packages
+  and language state no longer leak between notebooks open in the same window —
+  every notebook gets its own kernel session inside the one server process, and
+  IntelliSense sees only its own notebook's state. **Restart Kernel** now
+  restarts just the active notebook's session and leaves the others running
+  (against an older kernel it falls back to restarting the whole server).
+- **Documentation everywhere, like an IDE.** Hover, completion, and signature
+  help now show `///` summaries — from nuget packages (their bundled XML docs),
+  the .NET base library (ref-pack docs), and ClrKernel's own API (the packages
+  now ship XML documentation). Completion fetches each item's documentation
+  lazily as you move through the list, so the list itself stays fast.
+- **Peek a namespace from its `using` line.** Go to Definition on
+  `using System.Text;` opens a browsable overview of the namespace's public
+  types with their summaries (capped at 300 types); F12 on a type name in a
+  cell still opens its full decompiled source. The using line resolves wherever
+  the caret sits — trailing comments, tabs, `global`/`static`/alias forms, and
+  cells that start with `#r` lines all work.
+- **Define extension methods in a cell.** A cell containing extension-method
+  classes (or namespace declarations) — which Roslyn's script mode cannot host —
+  now compiles as a real class library behind the scenes: it executes,
+  re-running an edited cell replaces the previous definition, the methods
+  complete with their `///` docs, and Go to Definition shows their source.
+  Works with `#r "nuget: …"` in the same cell, including a package version
+  newer than one the kernel itself ships.
+- **Go to Definition no longer works "sometimes".** Fixed the causes of
+  intermittent failures: duplicate assembly identities poisoning symbol
+  resolution, caret-position strictness, and using directives being mangled by
+  the merged-document parse. Completion documentation can also no longer show
+  the wrong symbol's text when a newer completion list arrives mid-resolve.
+- **`Fabric.Interactive()`** connects to Microsoft Fabric with an explicit
+  browser sign-in that always prompts for the account — for when you want to
+  pick, rather than have `Fabric.Connect()`'s credential chain silently reuse
+  an ambient az CLI or Visual Studio session.
+
 ## [0.5.0] - 2026-08-11
 
 - **Go to Definition / Peek Definition in C# cells.** Right-click a symbol (or

@@ -2,7 +2,9 @@
 
 Run **C# notebooks in VS Code** on [ClrKernel](https://github.com/ClrKernel/ClrKernel) —
 no Python, no Jupyter. C# is the core, and cells can also be **SQL, DAX,
-PowerShell, HTTP, or Mermaid** in the same notebook, sharing one session.
+PowerShell, shell, HTTP, or Mermaid** in the same notebook, sharing one session.
+Each notebook gets its **own session** — variables and connections never leak
+between notebooks open in the same window.
 
 Files matching `*.nb.md` open as notebooks: fenced ` ```csharp ` blocks are code
 cells (` ```sql `, ` ```dax `, ` ```powershell `, etc. select the other
@@ -18,7 +20,21 @@ three lives.
 - **IntelliSense that knows your session** — completion, hover, and signature
   help from a built-in language server (no C# Dev Kit needed). Completions
   reflect the live session: variables from cells you've run, types from
-  `#r "nuget:"` packages, and your imports.
+  `#r "nuget:"` packages, and your imports — with `///` documentation on hover,
+  on each completion item as you move through the list, and on signature
+  parameters, sourced from nuget packages, the .NET base library, and
+  ClrKernel's own API.
+- **Go to Definition / Peek Definition** — F12 (or ⌥F12 to peek) jumps to a
+  symbol defined in your cells, opens readable decompiled C# for everything
+  else (the BCL, nuget packages, ClrKernel itself), and on a `using` line opens
+  a browsable overview of that namespace's public types with their summaries.
+- **Extension methods defined in cells** — a cell of extension-method classes
+  (or namespace declarations) compiles as a real class library behind the
+  scenes, so defining, re-defining, calling, completing, and F12 all behave
+  like an IDE; `#r "nuget: …"` in the same cell works.
+- **One session per notebook** — each notebook has its own variables,
+  connections, and loaded packages, and **Restart Kernel** resets only the
+  active notebook, leaving the others running.
 - **NuGet packages in cells** — `#r "nuget: PackageName, Version"`, plus custom
   feeds via `#i "nuget:<feed-url>"`.
 - **HTTP request cells** — set a cell's language to **HTTP** (or use a
@@ -62,6 +78,15 @@ three lives.
   with state shared across cells and native IntelliSense — completion, hover, and
   signature help (cmdlets, parameters, paths, and session variables). No separate
   PowerShell install required.
+- **Shell cells** — set a cell's language to **Shell Script** (or ` ```bash `,
+  ` ```zsh `, ` ```sh ` fences) to run shell commands like one terminal session:
+  the working directory and exported environment persist across cells, ANSI
+  colour renders, and a non-zero exit fails the cell with its exit code.
+- **Remote cells over SSH / PSRemoting** — register a target with
+  `#!shell-connect --name web01 --host … --user …` (SSH keys/agent) or
+  `#!pwsh-connect --name srv --host …` (SSH by default, or `--winrm`), then run
+  any shell or PowerShell cell on it with `--connection <name>`. Passwords come
+  from the OS credential store, never a file.
 - **Executable markdown** — notebooks that render as plain markdown everywhere
   else and diff cleanly in pull requests.
 
@@ -156,10 +181,12 @@ The server's log (including anything it writes to stderr) is in the
 
 The extension spawns `clrkernel lsp` — a Language Server over stdio — and talks
 to it with a single connection that carries both cell execution and the language
-features (completion, hover, signature help). Because execution and IntelliSense
-share one process and one `ClrKernel.Core.Scripting` engine, completions reflect exactly
-what you've run. One server runs per VS Code window; REPL state is shared across
-notebooks in that window, like a Jupyter kernel session.
+features (completion, hover, signature help). Execution and IntelliSense share
+one `ClrKernel.Core.Scripting` engine per notebook, so completions reflect
+exactly what that notebook has run. One server process runs per VS Code window,
+holding a separate session for each notebook — variables and connections never
+leak between notebooks, and **Restart Kernel** drops just the active notebook's
+session.
 
 ## Requirements
 

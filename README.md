@@ -4,9 +4,10 @@
 
 A Jupyter kernel for .NET. C# cells are evaluated with Roslyn's scripting engine
 ([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
-with more CLR languages (PowerShell, F#) on the roadmap. Notebooks run
-interactively in JupyterLab / VS Code (Jupyter extension) and headlessly via
-`nbconvert` or `papermill` — including from schedulers like SQL Server Agent.
+and cells can also be **SQL, DAX, PowerShell, shell (bash/zsh/sh), HTTP, or
+Mermaid** in the same session. Notebooks run interactively in JupyterLab / VS
+Code (Jupyter extension) and headlessly via `nbconvert` or `papermill` —
+including from schedulers like SQL Server Agent.
 
 ClrKernel is a maintained fork of
 [SciSharp/ICSharpCore](https://github.com/SciSharp/ICSharpCore), created after
@@ -32,6 +33,13 @@ Pick the **ClrKernel (C#)** kernel in JupyterLab or VS Code. Cells support
 `#r "nuget: Package, Version"` and `#r "path/to/local.dll"` references, with
 REPL-style state persisting across cells.
 
+Cells can even define **extension methods** (or namespaces) — declarations
+Roslyn's script mode can't host. Such a cell is compiled as a real class
+library behind the scenes and referenced by the session: it executes, an edited
+re-run replaces the previous definition, and the methods appear in completion
+(with their `///` docs) and Go to Definition like any referenced package.
+`#r` lines in the same cell work.
+
 ### Importing shared libraries
 
 `#!import` loads C# code from another file into the session — use it to share
@@ -49,6 +57,24 @@ once per session — re-importing is a no-op unless you pass `--force`
 (`#!import --force "lib.dib"`), which is handy while iterating on the library
 itself. Imported files can use `#r` directives, including `#r "nuget: ..."`,
 and can `#!import` further files.
+
+### Shell & PowerShell cells — local and remote
+
+`#!bash` / `#!zsh` / `#!sh` cells run shell commands like one persistent
+terminal session: the working directory and exported environment carry across
+cells, ANSI colour renders, and a non-zero exit fails the cell with its exit
+code. `#!pwsh` cells run PowerShell in a persistent in-process runspace — no
+separate PowerShell install needed.
+
+Both can run on another machine. Register a target with
+`#!shell-connect --name web01 --host … --user …` (key auth via your SSH
+keys/agent/config) or `#!pwsh-connect --name srv --host …` (`--ssh` by default,
+or `--winrm --user … --secret <ref>` with the password from the OS credential
+store, never a file), then add `--connection <name>` to any cell. Remote
+PowerShell state lives in a persistent remote runspace; remote shell cells keep
+their working directory per target. Targets can be saved in `connections.json`.
+See [samples/Shell.nb.md](samples/Shell.nb.md) and
+[samples/PowerShell.nb.md](samples/PowerShell.nb.md).
 
 ### SQL cells
 
@@ -274,7 +300,10 @@ var results = wh.ReloadBatch(
 results.DisplayTable();
 ```
 
-For a service principal, use `Fabric.ClientSecret(tenantId, clientId, secret)`. See
+For a service principal, use `Fabric.ClientSecret(tenantId, clientId, secret)`.
+`Fabric.Interactive()` always opens a browser sign-in so you pick the account,
+instead of `Fabric.Connect()`'s credential chain silently reusing an ambient
+az CLI or Visual Studio session. See
 [samples/FabricWarehouse.nb.md](samples/FabricWarehouse.nb.md). (Fabric execution
 needs a live tenant, so validate against your own workspace.)
 
