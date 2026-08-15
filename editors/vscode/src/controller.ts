@@ -8,8 +8,10 @@ import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
 
 /**
  * NotebookController that executes C# cells through ClrKernel.Core.ExtensionServer. One
- * server process per VS Code window; REPL state is shared across notebooks in
- * that window (matching how a Jupyter kernel session behaves).
+ * server process per VS Code window, but the server keeps a SEPARATE session per
+ * notebook (keyed by the notebook path in each cell's URI) — variables,
+ * connections and completion state never leak between notebooks, and Restart
+ * Kernel clears only the active notebook's session.
  */
 export class ClrKernelController {
     private readonly controller: vscode.NotebookController;
@@ -278,7 +280,8 @@ export class ClrKernelController {
             const directory = path.dirname(notebook.uri.fsPath);
             // Each language takes only its own $type; a language with nothing saved is a no-op.
             for (const languageId of ['sql', 'dax']) {
-                await client.request('clrkernel/connections/loadConfig', { languageId, directory });
+                await client.request('clrkernel/connections/loadConfig',
+                    { languageId, notebookUri: notebook.uri.toString(), directory });
             }
         } catch (error) {
             // A missing/unreadable config or an unstarted server must not block the run.
@@ -289,17 +292,27 @@ export class ClrKernelController {
     }
 
     /**
-     * Stops the server and drops the session, so the next run starts a fresh one.
+     * Restarts the ACTIVE notebook's session — its variables, connections and language
+     * runspaces — leaving other notebooks' sessions untouched. The server process stays up;
+     * the next cell run starts that notebook a fresh engine.
      *
-     * A REPL keeps every variable, open connection and PowerShell runspace from every cell that
-     * has run in this window, which is exactly what you want until it isn't — a wedged connection,
-     * a variable you'd rather forget, a module you want reloaded. There is no way to reach that
-     * from the notebook UI otherwise; the process only ends when the window closes.
-     *
-     * Deliberately does not start a replacement. The next cell run does that, which keeps restart
-     * cheap for someone who is closing up rather than carrying on.
+     * With no active notebook (or a kernel too old to know clrkernel/restart) it falls back
+     * to stopping the whole server process, which resets every notebook in the window.
      */
-    async restart(): Promise<void> {
+    async restart(notebook?: vscode.NotebookDocument): Promise<void> {
+        const target = notebook ?? vscode.window.activeNotebookEditor?.notebook;
+        if (target && this.client?.running) {
+            try {
+                await this.client.request('clrkernel/restart', { notebookUri: target.uri.toString() });
+                this.loadedConfigNotebooks.delete(target.uri.toString());
+                this.output.appendLine(`session restarted for ${target.uri.fsPath}`);
+                return;
+            } catch (e) {
+                // An older kernel has no clrkernel/restart — fall through to a process restart.
+                this.output.appendLine('per-notebook restart unavailable, restarting the server: ' + String(e));
+            }
+        }
+
         const client = this.client;
         this.client = undefined;
         // Session-scoped state goes with the session: connection config is auto-loaded once per

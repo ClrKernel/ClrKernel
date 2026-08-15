@@ -19,9 +19,11 @@ export function activate(context: vscode.ExtensionContext): void {
         controller,
         vscode.commands.registerCommand('clrkernel.newNotebook', createNewNotebook),
         vscode.commands.registerCommand('clrkernel.restartKernel', async () => {
-            await controller.restart();
-            void vscode.window.showInformationMessage(
-                'ClrKernel restarted. Variables, connections and PowerShell state are cleared; the next cell run starts a fresh kernel.');
+            const notebook = vscode.window.activeNotebookEditor?.notebook;
+            await controller.restart(notebook);
+            void vscode.window.showInformationMessage(notebook
+                ? `ClrKernel restarted for ${notebook.uri.path.split('/').pop()}. Its variables, connections and PowerShell state are cleared; other notebooks are untouched.`
+                : 'ClrKernel restarted. Variables, connections and PowerShell state are cleared; the next cell run starts a fresh kernel.');
         }),
     );
 

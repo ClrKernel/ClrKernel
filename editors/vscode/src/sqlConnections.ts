@@ -116,7 +116,7 @@ export class SqlConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -175,7 +175,7 @@ export class SqlConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'sql', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -329,6 +329,7 @@ export class SqlConnectionUi {
             // writes the secret when a non-empty one is sent), so blank on edit keeps it.
             const result = await client.request<AddResult>('clrkernel/connections/add', {
                 languageId: 'sql',
+                notebookUri: cell.notebook.uri.toString(),
                 directive,
                 secret: secret ?? '',
             });
@@ -368,7 +369,8 @@ export class SqlConnectionUi {
         const directory = path.dirname(cell.notebook.uri.fsPath);
         let status: ConfigStatusResult;
         try {
-            status = await client.request<ConfigStatusResult>('clrkernel/connections/configStatus', { languageId: 'sql', directory });
+            status = await client.request<ConfigStatusResult>('clrkernel/connections/configStatus',
+                { languageId: 'sql', notebookUri: cell.notebook.uri.toString(), directory });
         } catch {
             return; // couldn't check — don't nag
         }
@@ -419,6 +421,7 @@ export class SqlConnectionUi {
         try {
             const result = await client.request<SaveConfigResult>('clrkernel/connections/saveConfig', {
                 languageId: 'sql',
+                notebookUri: cell.notebook.uri.toString(),
                 name,
                 filePath: targetPath,
             });

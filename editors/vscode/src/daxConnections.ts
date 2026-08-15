@@ -114,7 +114,7 @@ export class DaxConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -164,7 +164,7 @@ export class DaxConnectionUi {
         let list: ListResult;
         try {
             const client = await this.controller.getClient(cell.notebook);
-            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax' });
+            list = await client.request<ListResult>('clrkernel/connections/list', { languageId: 'dax', notebookUri: cell.notebook.uri.toString() });
         } catch (e) {
             void vscode.window.showErrorMessage('Could not reach the ClrKernel server: ' + errorText(e));
             return;
@@ -340,7 +340,8 @@ export class DaxConnectionUi {
 
         try {
             const client = await this.controller.getClient(cell.notebook);
-            const result = await client.request<AddResult>('clrkernel/connections/add', { languageId: 'dax', directive });
+            const result = await client.request<AddResult>('clrkernel/connections/add',
+                { languageId: 'dax', notebookUri: cell.notebook.uri.toString(), directive });
             if (!result.ok) {
                 void vscode.window.showErrorMessage(`Could not ${editing ? 'update' : 'add'} cube: ` + (result.error ?? 'unknown error'));
                 return;
@@ -376,7 +377,8 @@ export class DaxConnectionUi {
         let status: ConfigStatusResult;
         try {
             status = await client.request<ConfigStatusResult>(
-                'clrkernel/connections/configStatus', { languageId: 'dax', directory });
+                'clrkernel/connections/configStatus',
+                { languageId: 'dax', notebookUri: cell.notebook.uri.toString(), directory });
         } catch {
             return; // couldn't check — don't nag
         }
@@ -428,6 +430,7 @@ export class DaxConnectionUi {
         try {
             const result = await client.request<SaveConfigResult>('clrkernel/connections/saveConfig', {
                 languageId: 'dax',
+                notebookUri: cell.notebook.uri.toString(),
                 name,
                 filePath: targetPath,
             });
