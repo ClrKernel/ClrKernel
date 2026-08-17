@@ -1,8 +1,8 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
-  "version": "0.6.1",
+  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "version": "0.6.2",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
@@ -15,7 +15,7 @@
   "categories": [
     "Notebooks"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": [],
   "contributes": {
     "notebooks": [
@@ -148,12 +148,12 @@
       },
       {
         "command": "clrkernel.sql.addConnection",
-        "title": "SQL: Add Connection\u2026",
+        "title": "SQL: Add Connection…",
         "category": "ClrKernel"
       },
       {
         "command": "clrkernel.sql.editConnection",
-        "title": "SQL: Edit Connection\u2026",
+        "title": "SQL: Edit Connection…",
         "category": "ClrKernel"
       },
       {
@@ -163,12 +163,12 @@
       },
       {
         "command": "clrkernel.dax.addConnection",
-        "title": "DAX: Add Cube\u2026",
+        "title": "DAX: Add Cube…",
         "category": "ClrKernel"
       },
       {
         "command": "clrkernel.dax.editConnection",
-        "title": "DAX: Edit Cube\u2026",
+        "title": "DAX: Edit Cube…",
         "category": "ClrKernel"
       },
       {
@@ -198,20 +198,21 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
-    "vscode:prepublish": "npm run compile",
+    "bundle": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "bundle:dev": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "vscode:prepublish": "npm run compile && npm run bundle",
     "package": "vsce package",
     "changelog": "node scripts/changelog.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "vscode-languageclient": "^9.0.1"
-  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.5.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "vscode-languageclient": "^9.0.1"
   },
   "icon": "images/icon.png",
   "keywords": [

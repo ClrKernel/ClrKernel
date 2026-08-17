@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.2] - 2026-08-17
+
+- **Smaller, faster extension.** The extension is now bundled (esbuild): 17
+  files in the package instead of 344, and activation no longer walks a
+  `node_modules` tree. No functional changes.
+
 ## [0.6.1] - 2026-08-17
 
 Fixes the two ways an upgrade could leave you on the wrong kernel.

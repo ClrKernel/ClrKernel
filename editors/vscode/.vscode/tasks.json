@@ -17,6 +17,12 @@
       "type": "npm",
       "script": "compile",
       "problemMatcher": "$tsc"
+    },
+    {
+      "label": "bundle: dev",
+      "type": "npm",
+      "script": "bundle:dev",
+      "problemMatcher": []
     }
   ]
 }

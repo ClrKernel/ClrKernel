@@ -10,9 +10,11 @@
         "${workspaceFolder}/../../samples"
       ],
       "outFiles": [
-        "${workspaceFolder}/out/**/*.js"
+        "${workspaceFolder}/dist/**/*.js"
       ],
-      "preLaunchTask": "npm: watch"
+      // Bundles once (with sourcemaps) before launch; after editing, relaunch
+      // F5 — or keep `npm run watch` running separately for type feedback.
+      "preLaunchTask": "bundle: dev"
     }
   ]
 }

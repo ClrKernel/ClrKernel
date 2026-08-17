@@ -1,8 +1,10 @@
 .vscode/**
 src/**
+out/**
+node_modules/**
 scripts/**
+samples/**
 tsconfig.json
-node_modules/@types/**
 **/*.map
 *.vsix
 test/**

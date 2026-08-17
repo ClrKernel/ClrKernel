@@ -343,6 +343,7 @@ publish/
 
 # vscode extension build output
 editors/vscode/out/
+editors/vscode/dist/
 editors/vscode/node_modules/
 
 # Dotnet.Script restore scratch (defensive; the engine now keeps this in temp)
