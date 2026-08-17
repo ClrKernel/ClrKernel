@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     SUPPORTED_KERNEL_LABEL,
+    SUPPORTED_KERNEL_MIN,
     SUPPORTED_KERNEL_RANGE,
     compareKernelVersion,
     kernelVersionWarning,
@@ -29,6 +30,11 @@ describe('compareKernelVersion', () => {
     it('flags an older kernel', () => {
         expect(compareKernelVersion('0.8.0.0')).toBe('older');
         expect(compareKernelVersion('0.7.9.0')).toBe('older');
+    });
+
+    it('flags a same-line kernel below the minimum patch — 0.9.0 lacks RPCs this build calls', () => {
+        expect(compareKernelVersion('0.9.0.0')).toBe('older');
+        expect(compareKernelVersion('0.9.0')).toBe('older');
     });
 
     it('says nothing useful rather than guessing when the version is missing or junk', () => {
@@ -63,10 +69,15 @@ describe('kernelVersionWarning', () => {
 });
 
 describe('the pin and the check agree', () => {
-    it('a kernel matching the install range is one the extension accepts', () => {
+    it('the minimum kernel is one the extension accepts', () => {
         // If these drift, the extension installs a kernel it then warns about.
-        const line = SUPPORTED_KERNEL_RANGE.replace('*', '0');
-        expect(compareKernelVersion(line)).toBe('ok');
-        expect(SUPPORTED_KERNEL_LABEL.replace('x', '0')).toBe(line);
+        expect(compareKernelVersion(SUPPORTED_KERNEL_MIN)).toBe('ok');
+    });
+
+    it('the minimum lives inside the install range and the label', () => {
+        // The floating range installs the newest patch of the line, which is >= the minimum.
+        const [major, minor] = SUPPORTED_KERNEL_MIN.split('.');
+        expect(SUPPORTED_KERNEL_RANGE).toBe(`${major}.${minor}.*`);
+        expect(SUPPORTED_KERNEL_LABEL).toBe(`${major}.${minor}.x`);
     });
 });

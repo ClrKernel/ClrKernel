@@ -4,7 +4,7 @@ import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
 import { toOutputItemData } from './outputItems';
 import { DisplayNotification, ServerClient } from './serverClient';
 import { SingleFlight } from './singleFlight';
-import { offerServerInstall, resolveGlobalToolPath } from './serverSetup';
+import { offerServerInstall, resolveGlobalToolPath, updateServerTool } from './serverSetup';
 
 /**
  * NotebookController that executes C# cells through ClrKernel.Core.ExtensionServer. One
@@ -113,17 +113,42 @@ export class ClrKernelController {
             return;
         }
         const version = client.kernelVersion;
-        const warning = kernelVersionWarning(compareKernelVersion(version), version);
+        const compatibility = compareKernelVersion(version);
+        const warning = kernelVersionWarning(compatibility, version);
         if (!warning) {
             return;
         }
         this.warnedKernelVersion = true;
         this.output.appendLine(warning);
-        void vscode.window.showWarningMessage(warning, 'Show Output').then((pick) => {
+        const actions = compatibility === 'older' ? ['Update Kernel', 'Show Output'] : ['Show Output'];
+        void vscode.window.showWarningMessage(warning, ...actions).then((pick) => {
             if (pick === 'Show Output') {
                 this.output.show(true);
             }
+            if (pick === 'Update Kernel') {
+                void this.updateKernel();
+            }
         });
+    }
+
+    /**
+     * Stops this window's server, then updates the global tool to the supported
+     * line. The order is the point: on Windows `dotnet tool update` cannot
+     * replace clrkernel.exe while it runs, so updating around a live server
+     * always fails — which is how an old kernel wedges itself in place.
+     */
+    private async updateKernel(): Promise<void> {
+        await this.stopServer();
+        const ok = await updateServerTool((message) => this.output.appendLine(message));
+        if (ok) {
+            void vscode.window.showInformationMessage(
+                'ClrKernel updated. The next cell run starts the new kernel.');
+        } else {
+            this.output.show(true);
+            void vscode.window.showErrorMessage(
+                'Updating ClrKernel failed. If another VS Code window has a ClrKernel notebook open, ' +
+                'its kernel keeps clrkernel locked — close it and try Update Kernel again.');
+        }
     }
 
     private reportStartError(error: unknown): void {
@@ -313,6 +338,11 @@ export class ClrKernelController {
             }
         }
 
+        await this.stopServer();
+    }
+
+    /** Stops the whole server process and drops session-scoped state; the next cell run starts fresh. */
+    private async stopServer(): Promise<void> {
         const client = this.client;
         this.client = undefined;
         // Session-scoped state goes with the session: connection config is auto-loaded once per

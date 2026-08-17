@@ -14,8 +14,14 @@ export const SUPPORTED_KERNEL_RANGE = '0.9.*';
 /** How to say it to a human. */
 export const SUPPORTED_KERNEL_LABEL = '0.9.x';
 
+/** The lowest kernel in the line that carries every RPC this build calls
+ *  (0.9.1 added clrkernel/restart and per-notebook sessions). A kernel below
+ *  this within the same line reads as 'older', so the update flow triggers. */
+export const SUPPORTED_KERNEL_MIN = '0.9.1';
+
 const SUPPORTED_MAJOR = 0;
 const SUPPORTED_MINOR = 9;
+const SUPPORTED_PATCH_MIN = 1;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
 
@@ -36,7 +42,10 @@ export function compareKernelVersion(reported: string | undefined): KernelCompat
     }
     const [major, minor] = parts;
     if (major === SUPPORTED_MAJOR && minor === SUPPORTED_MINOR) {
-        return 'ok';
+        // Same line, but before the patch that carries this build's RPCs → 'older',
+        // so the update flow fires instead of silently degrading.
+        const patch = parts.length > 2 && !Number.isNaN(parts[2]) ? parts[2] : 0;
+        return patch >= SUPPORTED_PATCH_MIN ? 'ok' : 'older';
     }
     return major > SUPPORTED_MAJOR || (major === SUPPORTED_MAJOR && minor > SUPPORTED_MINOR)
         ? 'newer'
@@ -63,8 +72,9 @@ export function kernelVersionWarning(
             );
         case 'older':
             return (
-                `This ClrKernel extension needs kernel ${SUPPORTED_KERNEL_LABEL}, but ${reported} is installed. ` +
-                `Update it with: dotnet tool update --global ClrKernel --version ${SUPPORTED_KERNEL_RANGE}`
+                `This ClrKernel extension needs kernel ${SUPPORTED_KERNEL_MIN} or newer, but ${reported} is installed. ` +
+                'Use "Update Kernel" (it stops the running kernel first — a manual ' +
+                '`dotnet tool update` fails while any notebook window keeps clrkernel running).'
             );
         default:
             return undefined;

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.1] - 2026-08-17
+
+Fixes the two ways an upgrade could leave you on the wrong kernel.
+
+- **A 0.9.0 kernel is now flagged, not silently accepted.** The version check
+  compared only major.minor, so 0.9.0 counted as a supported kernel and nothing
+  suggested 0.9.1 — you kept the old kernel and got the fallback behaviors
+  (whole-server restart instead of per-notebook). The check now knows the
+  minimum patch this build's RPCs need (0.9.1) and treats anything below it as
+  out of date.
+- **One-click "Update Kernel" that actually works on Windows.** The out-of-date
+  warning now offers **Update Kernel**, which stops this window's kernel
+  *before* running `dotnet tool update` — the manual command the old warning
+  suggested always failed on Windows, because the running `clrkernel.exe` keeps
+  the tool locked while any notebook window has it open. If another window
+  still holds a kernel, the error now says so instead of failing cryptically.
+
 ## [0.6.0] - 2026-08-15
 
 Pairs with **kernel 0.9.x** (`ClrKernel` 0.9.1). Installing through the

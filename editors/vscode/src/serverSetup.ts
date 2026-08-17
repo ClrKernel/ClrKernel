@@ -45,6 +45,25 @@ async function isDotnetAvailable(log: Logger): Promise<boolean> {
 }
 
 /**
+ * Updates the global tool to the supported line. The caller MUST have stopped
+ * its server first: on Windows, `dotnet tool update` cannot replace a running
+ * clrkernel.exe, which is exactly how an old kernel wedges itself in place.
+ */
+export async function updateServerTool(log: Logger): Promise<boolean> {
+    return vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Updating ClrKernel…', cancellable: false },
+        async () => {
+            const result = await run(
+                'dotnet',
+                ['tool', 'update', '--global', TOOL_PACKAGE, '--version', SUPPORTED_KERNEL_RANGE],
+                log,
+            );
+            return result.code === 0;
+        },
+    );
+}
+
+/**
  * Called when the server couldn't be launched with the default command
  * (i.e. the user hasn't overridden it and the global tool isn't on PATH).
  * Diagnoses why and offers a one-click fix, mirroring how first-class
