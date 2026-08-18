@@ -57,12 +57,11 @@ ENV CLRKERNEL_JOBS_NOTEBOOKS=/notebooks \
 EXPOSE 5000
 VOLUME ["/data"]
 
-# Non-root. A named volume inherits this ownership; a bind-mounted host directory
-# does not, so `chown 1654 <dir>` on the host (or --user) if you bind-mount /data.
-RUN useradd --uid 1654 --create-home jobs \
-    && mkdir -p /data /notebooks \
-    && chown -R jobs /data
-USER jobs
+# Runs as the non-root `app` user the .NET images already provide (uid 1654). A
+# named volume inherits this ownership; a bind-mounted host directory does not, so
+# `chown 1654 <dir>` on the host (or pass --user) if you bind-mount /data.
+RUN mkdir -p /data /notebooks && chown -R app /data /notebooks
+USER app
 
 # The API answers /api/health without an API key precisely so this works.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \

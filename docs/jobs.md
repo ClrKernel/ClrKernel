@@ -202,6 +202,10 @@ docker run -p 5000:5000 \
 The image carries both the job runner and the matching kernel. Mount your notebooks
 at `/notebooks` and a writable volume at `/data`.
 
+It runs as the non-root `app` user (uid 1654). A named volume picks up that
+ownership automatically; if you bind-mount a host directory at `/data` instead,
+either `chown 1654` it first or pass `--user`.
+
 ## Configuration reference
 
 Every setting takes a CLI flag, an environment variable, or a key in
