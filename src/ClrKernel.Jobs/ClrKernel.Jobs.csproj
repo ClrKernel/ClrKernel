@@ -6,6 +6,9 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>clrkernel-jobs</ToolCommandName>
     <PackageId>ClrKernel.Jobs</PackageId>
+    <!-- Microsoft.NET.Sdk.Web disables packaging by default; without this the
+         release pack step produces no package at all, only a warning. -->
+    <IsPackable>true</IsPackable>
     <Description>Preview: notebook job scheduler for ClrKernel. Runs .nb.md/.ipynb/.dib notebooks as jobs — scheduled (cron), manual, or DAG-chained — with per-cell progress, run history, and a web dashboard. Each run executes in an isolated `clrkernel serve` process.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
@@ -57,6 +60,8 @@
   <ItemGroup>
     <Content Remove="webapp/**" />
     <None Remove="webapp/**" />
-    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="tools/any/wwwroot/" />
+    <!-- CopyToOutputDirectory is what carries it into the tool package too: a tool
+         packs its publish output, so wwwroot lands beside the binary. -->
+    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

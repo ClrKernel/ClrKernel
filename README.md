@@ -317,6 +317,25 @@ papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p ru
 A failing cell exits non-zero (job schedulers see the failure); papermill also
 persists the partially-executed output notebook as a diagnostic artifact.
 
+### Scheduling notebooks — ClrKernel Jobs (preview)
+
+`ClrKernel.Jobs` is a companion dotnet tool that runs notebooks as scheduled jobs
+and serves a web dashboard, so you don't need an external scheduler:
+
+```bash
+dotnet tool install --global ClrKernel.Jobs
+clrkernel-jobs serve --notebooks ./notebooks     # http://localhost:5000
+```
+
+Jobs are `*.jobs.yaml` files beside the notebooks (several jobs per notebook, each
+with its own cron and parameters), chained with `dependsOn`. Every run executes in
+an isolated kernel process, cell by cell, with live progress and an executed
+`.ipynb` kept as the artifact. Run history goes to SQLite, SQL Server, PostgreSQL,
+or plain files; failures notify over webhooks or SMTP — with passwords resolved from
+secret references, never stored in config. Also ships as a Docker image.
+
+See [docs/jobs.md](docs/jobs.md).
+
 ## Build & test
 
 A cross-platform task runner (built on [Nuke](https://nuke.build)) drives build,

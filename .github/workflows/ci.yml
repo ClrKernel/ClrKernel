@@ -80,6 +80,31 @@ jobs:
         run: npm test
         working-directory: src/ClrKernel.Jobs/webapp
 
+  jobs-image:
+    name: Jobs Docker image (build + smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The Dockerfile builds the SPA and both tools from this commit, so this is
+      # also the check that a from-scratch build of the whole thing works.
+      - name: Build image
+        run: docker build -f src/ClrKernel.Jobs/Dockerfile -t clrkernel-jobs .
+
+      - name: Run a notebook job in the container
+        run: |
+          mkdir -p smoke && cat > smoke/hello.nb.md <<'EOF'
+          ```csharp
+          $"docker says {1 + 1}"
+          ```
+          EOF
+          cat > smoke/hello.jobs.yaml <<'EOF'
+          notebook: ./hello.nb.md
+          jobs:
+            - name: hello
+          EOF
+          docker run --rm -v "$PWD/smoke:/notebooks:ro" clrkernel-jobs run hello
+
   notebook-smoke:
     name: Headless notebook smoke test
     runs-on: ubuntu-latest
