@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ClrKernel.Jobs</RootNamespace>
+    <AssemblyName>ClrKernel.Jobs</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>clrkernel-jobs</ToolCommandName>
+    <PackageId>ClrKernel.Jobs</PackageId>
+    <Description>Preview: notebook job scheduler for ClrKernel. Runs .nb.md/.ipynb/.dib notebooks as jobs — scheduled (cron), manual, or DAG-chained — with per-cell progress, run history, and a web dashboard. Each run executes in an isolated `clrkernel serve` process.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Notebook,Jobs,Scheduler,Cron,C#,CSharp,dotnet,papermill</PackageTags>
+    <!-- NU1608: EF Design's Workspaces.MSBuild pins Roslyn 4.8 exactly while the engine
+         uses 5.6 — design-time only, deliberately lifted above. -->
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- EF Design pins Roslyn Workspaces 4.8.0 (exact Common 4.8.0), which conflicts with
+         the Roslyn 5.6.0 the scripting engine brings in transitively. Lift Workspaces to
+         match; design-time only, so keep it out of the package graph. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Notebook parsing (NotebookDocument), artifact writing (IpynbWriter) and the
+         papermill parameters cell (RunnerParameters). Core.Scripting/Primitives arrive
+         transitively. The kernel itself is NOT referenced — runs spawn `clrkernel serve`. -->
+    <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.Jobs.UnitTest" />
+  </ItemGroup>
+</Project>
