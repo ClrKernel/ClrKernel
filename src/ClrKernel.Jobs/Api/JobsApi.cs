@@ -131,6 +131,10 @@ public static class JobsApi {
 
         api.MapGet("/stats", async (IRunStore store, int? days) =>
             Results.Ok(await store.GetStatsAsync(TimeSpan.FromDays(Math.Clamp(days ?? 7, 1, 365)))));
+
+        // A mistyped API route must answer 404 JSON, not fall through to the SPA's
+        // index.html fallback (which would hand a client 200 text/html).
+        api.MapFallback(() => Results.NotFound(new { error = "No such API endpoint." }));
     }
 
     private static int Clamp(int? limit) => Math.Clamp(limit ?? 50, 1, 500);

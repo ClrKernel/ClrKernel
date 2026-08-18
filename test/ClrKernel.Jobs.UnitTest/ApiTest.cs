@@ -203,6 +203,13 @@ public class ApiTest {
     }
 
     [TestMethod]
+    public async Task An_unknown_api_route_is_a_json_404_not_the_spa_shell() {
+        var response = await _client.GetAsync("/api/nope");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        StringAssert.Contains(response.Content.Headers.ContentType?.MediaType, "json");
+    }
+
+    [TestMethod]
     public async Task Triggering_an_unknown_job_is_a_404_and_cancel_needs_an_active_run() {
         Assert.AreEqual(HttpStatusCode.NotFound, (await _client.PostAsync("/api/jobs/nope/run", null)).StatusCode);
         await _client.PostAsJsonAsync("/api/jobs", NewJob("idle"));

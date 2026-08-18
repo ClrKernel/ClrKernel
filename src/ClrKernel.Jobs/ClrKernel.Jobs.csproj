@@ -45,4 +45,13 @@
   <ItemGroup>
     <InternalsVisibleTo Include="ClrKernel.Jobs.UnitTest" />
   </ItemGroup>
+
+  <!-- The SPA build output (webapp/ -> wwwroot/, built by `./build.sh Web` or CI).
+       The Web SDK already globs wwwroot; this just makes it travel with the tool.
+       webapp/ itself (sources, node_modules) is never part of the project. -->
+  <ItemGroup>
+    <Content Remove="webapp/**" />
+    <None Remove="webapp/**" />
+    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="tools/any/wwwroot/" />
+  </ItemGroup>
 </Project>

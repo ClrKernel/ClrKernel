@@ -6,7 +6,9 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Jobs;
@@ -158,6 +160,23 @@ public static class Program {
         var app = builder.Build();
         app.UseMiddleware<ApiKeyMiddleware>();
         app.MapJobsApi();
+
+        // The SPA, when it has been built (webapp/ -> wwwroot/). Absent in a
+        // source build that skipped npm, and the API still works without it.
+        var wwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        if (Directory.Exists(wwwroot)) {
+            app.UseDefaultFiles(new DefaultFilesOptions {
+                FileProvider = new PhysicalFileProvider(wwwroot),
+            });
+            app.UseStaticFiles(new StaticFileOptions {
+                FileProvider = new PhysicalFileProvider(wwwroot),
+            });
+            // Client-side routes (/jobs/x, /runs/id) are served the shell; /api is
+            // already handled above and must not fall through to it.
+            app.MapFallbackToFile("index.html", new StaticFileOptions {
+                FileProvider = new PhysicalFileProvider(wwwroot),
+            });
+        }
         return app;
     }
 

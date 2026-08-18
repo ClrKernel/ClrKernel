@@ -357,3 +357,6 @@ editors/vscode/*.vsix
 CLAUDE.md
 
 connections.local.json
+# ClrKernel.Jobs web app: npm deps and the Vite build output (built by ./build.sh Web).
+src/ClrKernel.Jobs/webapp/node_modules/
+src/ClrKernel.Jobs/wwwroot/
