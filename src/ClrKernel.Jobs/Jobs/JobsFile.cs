@@ -24,6 +24,32 @@ public sealed class JobsFile {
         .IgnoreUnmatchedProperties()
         .Build();
 
+    private static readonly ISerializer _serializer = new SerializerBuilder()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitEmptyCollections)
+        .Build();
+
+    /// <summary>Reads a jobs file without flattening (for editing it).</summary>
+    public static JobsFile Read(string path) =>
+        _deserializer.Deserialize<JobsFile>(File.ReadAllText(path)) ?? new JobsFile();
+
+    /// <summary>
+    /// Writes a jobs file. Round-trips through <see cref="Load"/> first so an edit
+    /// that would produce an unloadable file fails before touching the disk.
+    /// </summary>
+    public static void Write(string path, JobsFile file, string notebooksRoot) {
+        var yaml = _serializer.Serialize(file);
+        var staging = path + ".tmp";
+        File.WriteAllText(staging, yaml);
+        try {
+            Load(staging, notebooksRoot);
+        } catch {
+            File.Delete(staging);
+            throw;
+        }
+        File.Move(staging, path, overwrite: true);
+    }
+
     /// <summary>
     /// Parses a jobs file and flattens each entry into a <see cref="JobDefinition"/>
     /// with the defaults merged in. Throws on yaml errors or a missing/empty jobs list.
@@ -59,6 +85,7 @@ public sealed class JobsFile {
         return new JobDefinition {
             Name = entry.Name,
             SourceFile = Path.GetFullPath(sourceFile),
+            SourceFileRelative = Path.GetRelativePath(notebooksRoot, Path.GetFullPath(sourceFile)).Replace('\\', '/'),
             NotebookPath = notebookPath,
             NotebookRelative = Path.GetRelativePath(notebooksRoot, notebookPath).Replace('\\', '/'),
             Cron = entry.Cron ?? defaults.Cron,
@@ -96,6 +123,8 @@ public sealed class JobDefinition {
     public string Name { get; set; }
     /// <summary>Absolute path of the *.jobs.yaml this job came from.</summary>
     public string SourceFile { get; set; }
+    /// <summary>That file's path relative to the notebooks root (what the API returns).</summary>
+    public string SourceFileRelative { get; set; }
     /// <summary>Absolute path of the notebook to run.</summary>
     public string NotebookPath { get; set; }
     /// <summary>Notebook path relative to the notebooks root (display + run rows).</summary>

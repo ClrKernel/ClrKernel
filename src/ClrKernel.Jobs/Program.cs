@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Jobs;
@@ -38,6 +39,11 @@ public static class Program {
                                      PATH, then ~/.dotnet/tools).
           --store <kind>             Run-history store: sqlite (default).
           --connection-string <cs>   Connection string for non-sqlite stores.
+          --urls <urls>              serve: listen address
+                                     (default http://localhost:5000).
+          --api-key <key>            serve: require this key in the X-Api-Key
+                                     header on /api/* (or CLRKERNEL_JOBS_APIKEY).
+          --max-parallelism <n>      serve: concurrent runs (default 4).
           -h, --help                 Show this help.
 
         Jobs are *.jobs.yaml files beside your notebooks. Example:
@@ -117,19 +123,42 @@ public static class Program {
         var store = new EfRunStore(EfRunStore.SqliteOptions(options.DefaultSqlitePath));
         store.Migrate();
 
-        var builder = Host.CreateApplicationBuilder();
+        var app = BuildApp(options, catalog, store);
+        var urls = options.Urls ?? "http://localhost:5000";
+        if (options.ApiKey == null && !urls.Contains("localhost") && !urls.Contains("127.0.0.1")) {
+            Console.Error.WriteLine(
+                "  ! Listening beyond localhost with no API key. Set --api-key (or CLRKERNEL_JOBS_APIKEY).");
+        }
+        Console.WriteLine($"API on {urls}{(options.ApiKey != null ? " (X-Api-Key required)" : string.Empty)}");
+        await app.RunAsync(urls);
+        return 0;
+    }
+
+    /// <summary>The scheduler + API host. Shared with the integration tests.</summary>
+    internal static WebApplication BuildApp(JobsOptions options, JobCatalog catalog, IRunStore store) {
+        var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
         builder.Logging.SetMinimumLevel(LogLevel.Information);
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+
+        // Statuses and triggers go over the wire as their names, matching how they
+        // are stored and keeping the SPA free of magic numbers.
+        builder.Services.ConfigureHttpJsonOptions(json =>
+            json.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(catalog);
-        builder.Services.AddSingleton<IRunStore>(store);
+        builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(provider => new JobExecutor(
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>()));
-        builder.Services.AddHostedService<SchedulerService>();
+        builder.Services.AddSingleton<SchedulerService>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 
-        await builder.Build().RunAsync();
-        return 0;
+        var app = builder.Build();
+        app.UseMiddleware<ApiKeyMiddleware>();
+        app.MapJobsApi();
+        return app;
     }
 
     private static int List(JobCatalog catalog) {

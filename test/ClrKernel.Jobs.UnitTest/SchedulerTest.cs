@@ -38,16 +38,17 @@ public class SchedulerTest {
 
         _launched = new ConcurrentQueue<(string, RunTrigger, int)>();
         _outcome = _ => RunStatus.Succeeded;
-        _scheduler.RunJob = async (job, trigger, causedBy, attempt, ct) => {
-            _launched.Enqueue((job.Name, trigger, attempt));
+        _scheduler.RunJob = async (request, ct) => {
+            var job = request.Job;
+            _launched.Enqueue((job.Name, request.Trigger, request.Attempt));
             var run = new Run {
-                Id = Guid.NewGuid(),
+                Id = request.RunId ?? Guid.NewGuid(),
                 JobName = job.Name,
                 NotebookPath = job.NotebookRelative ?? "nb.nb.md",
                 Status = _outcome(job),
-                Trigger = trigger,
-                CausedByRunId = causedBy,
-                Attempt = attempt,
+                Trigger = request.Trigger,
+                CausedByRunId = request.CausedByRunId,
+                Attempt = request.Attempt,
                 CreatedAt = DateTime.UtcNow,
                 StartedAt = DateTime.UtcNow,
                 FinishedAt = DateTime.UtcNow,
@@ -204,6 +205,48 @@ public class SchedulerTest {
             """);
         await TickAsync(_t0, _t0.AddMinutes(1));
         Assert.AreEqual(0, _launched.Count);
+    }
+
+    [TestMethod]
+    public async Task A_manual_trigger_returns_the_run_id_it_will_use() {
+        WriteJobs("notebook: ./nb.nb.md\njobs: [{name: manual}]");
+        var job = new JobCatalog(_root).Load().Find("manual");
+
+        var runId = _scheduler.TriggerManual(job);
+        Assert.IsNotNull(runId);
+        await _scheduler.DrainAsync();
+
+        Assert.AreEqual(("manual", RunTrigger.Manual, 1), _launched.Single());
+        var run = await _store.GetRunAsync(runId.Value);
+        Assert.IsNotNull(run, "the pre-assigned id is the id the run is stored under");
+        Assert.AreEqual("manual", run.JobName);
+    }
+
+    [TestMethod]
+    public async Task Cancelling_an_in_flight_run_signals_its_token() {
+        WriteJobs("notebook: ./nb.nb.md\njobs: [{name: slow}]");
+        var job = new JobCatalog(_root).Load().Find("slow");
+
+        var started = new TaskCompletionSource();
+        var observed = new TaskCompletionSource<bool>();
+        _scheduler.RunJob = async (request, ct) => {
+            started.SetResult();
+            try {
+                await Task.Delay(Timeout.Infinite, ct);
+            } catch (OperationCanceledException) {
+                observed.SetResult(true);
+                throw;
+            }
+            return null;
+        };
+
+        _scheduler.TriggerManual(job);
+        await started.Task;
+        Assert.IsTrue(_scheduler.TryCancel("slow"));
+        Assert.IsTrue(await observed.Task, "the run observes the cancellation");
+        await _scheduler.DrainAsync();
+
+        Assert.IsFalse(_scheduler.TryCancel("slow"), "nothing in flight once it has finished");
     }
 
     private async Task<Run> Succeed(string jobName) {

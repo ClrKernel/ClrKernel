@@ -33,11 +33,12 @@ public sealed class SchedulerService : BackgroundService {
     private readonly JobsOptions _options;
     private readonly ILogger<SchedulerService> _logger;
     private readonly SemaphoreSlim _parallelism;
-    private readonly ConcurrentDictionary<string, byte> _activeJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeJobs = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, Task> _inflight = new();
+    private CancellationToken _stoppingToken = CancellationToken.None;
 
     /// <summary>How a job actually runs — the executor by default; tests script it.</summary>
-    internal Func<JobDefinition, RunTrigger, Guid?, int, CancellationToken, Task<Run>> RunJob { get; set; }
+    internal Func<RunRequest, CancellationToken, Task<Run>> RunJob { get; set; }
 
     internal TimeSpan TickInterval { get; set; } = TimeSpan.FromSeconds(10);
     internal TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(30);
@@ -50,11 +51,34 @@ public sealed class SchedulerService : BackgroundService {
         _options = options;
         _logger = logger;
         _parallelism = new SemaphoreSlim(Math.Max(1, options.MaxParallelism));
-        RunJob = (job, trigger, causedBy, attempt, ct) =>
-            executor.ExecuteAsync(job, trigger, causedBy, attempt, ct);
+        RunJob = (request, ct) => executor.ExecuteAsync(
+            request.Job, request.Trigger, request.CausedByRunId, request.Attempt, request.RunId, ct);
+    }
+
+    /// <summary>
+    /// Fires a job now (the API's run button). Returns the pre-assigned run id, or
+    /// null when the job already has an active run launched by this process.
+    /// </summary>
+    public Guid? TriggerManual(JobDefinition job) {
+        if (_activeJobs.ContainsKey(job.Name)) {
+            return null;
+        }
+        var runId = Guid.NewGuid();
+        Launch(new RunRequest(job, RunTrigger.Manual, null, runId), _stoppingToken);
+        return runId;
+    }
+
+    /// <summary>Cancels a job's in-flight run (kills its kernel). False when none is ours.</summary>
+    public bool TryCancel(string jobName) {
+        if (_activeJobs.TryGetValue(jobName, out var cancellation)) {
+            cancellation.Cancel();
+            return true;
+        }
+        return false;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
+        _stoppingToken = stoppingToken;
         var orphans = await _store.MarkOrphansFailedAsync();
         if (orphans > 0) {
             _logger.LogWarning("Marked {Count} run(s) orphaned by a previous shutdown as Failed.", orphans);
@@ -103,14 +127,14 @@ public sealed class SchedulerService : BackgroundService {
                     _logger.LogWarning("{Job} is due but still has an active run; skipping this occurrence.", job.Name);
                     continue;
                 }
-                Launch(job, RunTrigger.Schedule, null, cancellationToken);
+                Launch(new RunRequest(job, RunTrigger.Schedule, null, null), cancellationToken);
                 continue;
             }
 
             if (job.DependsOn.Count > 0) {
                 var causedBy = await DependencyReadyAsync(job);
                 if (causedBy != null && !await _store.HasActiveRunAsync(job.Name)) {
-                    Launch(job, RunTrigger.Dependency, causedBy.Id, cancellationToken);
+                    Launch(new RunRequest(job, RunTrigger.Dependency, causedBy.Id, null), cancellationToken);
                 }
             }
         }
@@ -144,24 +168,30 @@ public sealed class SchedulerService : BackgroundService {
         return newest;
     }
 
-    private void Launch(JobDefinition job, RunTrigger trigger, Guid? causedByRunId, CancellationToken cancellationToken) {
-        _activeJobs[job.Name] = 0;
+    private void Launch(RunRequest request, CancellationToken cancellationToken) {
+        var job = request.Job;
+        // One cancellation source per launch, keyed by job name (one active launch per
+        // job): TryCancel and host shutdown both flow through it into the executor.
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _activeJobs[job.Name] = cancellation;
+        var token = cancellation.Token;
         var key = Guid.NewGuid();
         _inflight[key] = Task.Run(async () => {
             try {
-                await _parallelism.WaitAsync(cancellationToken);
+                await _parallelism.WaitAsync(token);
                 try {
-                    _logger.LogInformation("{Job} starting ({Trigger}).", job.Name, trigger);
-                    var run = await RunJob(job, trigger, causedByRunId, 1, cancellationToken);
+                    _logger.LogInformation("{Job} starting ({Trigger}).", job.Name, request.Trigger);
+                    var run = await RunJob(request, token);
                     var attempt = 1;
                     while (run.Status == RunStatus.Failed && attempt <= job.RetryCount
-                           && !cancellationToken.IsCancellationRequested) {
+                           && !token.IsCancellationRequested) {
                         attempt++;
                         _logger.LogWarning(
                             "{Job} failed (attempt {Attempt} of {Total}); retrying in {Delay}s.",
                             job.Name, attempt - 1, job.RetryCount + 1, RetryDelay.TotalSeconds);
-                        await Task.Delay(RetryDelay, cancellationToken);
-                        run = await RunJob(job, RunTrigger.Retry, causedByRunId, attempt, cancellationToken);
+                        await Task.Delay(RetryDelay, token);
+                        run = await RunJob(
+                            request with { Trigger = RunTrigger.Retry, Attempt = attempt, RunId = null }, token);
                     }
                     _logger.Log(
                         run.Status == RunStatus.Succeeded ? LogLevel.Information : LogLevel.Warning,
@@ -171,17 +201,24 @@ public sealed class SchedulerService : BackgroundService {
                     _parallelism.Release();
                 }
             } catch (OperationCanceledException) {
-                // Shutdown while queued or between retries; the executor already
-                // recorded any in-flight run as Cancelled.
+                // Shutdown or cancel while queued or between retries; the executor
+                // already recorded any in-flight run as Cancelled.
             } catch (Exception e) {
                 _logger.LogError(e, "{Job} run crashed outside the executor.", job.Name);
             } finally {
                 _activeJobs.TryRemove(job.Name, out _);
                 _inflight.TryRemove(key, out _);
+                cancellation.Dispose();
             }
         }, CancellationToken.None);
     }
 
     /// <summary>Waits for every launched run to finish (shutdown, and tests).</summary>
     internal Task DrainAsync() => Task.WhenAll(_inflight.Values.ToArray());
+}
+
+/// <summary>One requested execution of a job. RunId is pre-assigned for manual
+/// triggers so the API can answer 202 with the id before the run starts.</summary>
+internal sealed record RunRequest(JobDefinition Job, RunTrigger Trigger, Guid? CausedByRunId, Guid? RunId) {
+    public int Attempt { get; init; } = 1;
 }

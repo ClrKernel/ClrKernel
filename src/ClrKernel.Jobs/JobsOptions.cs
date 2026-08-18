@@ -20,6 +20,10 @@ public sealed class JobsOptions {
     /// <summary>Explicit path to the clrkernel executable; null = probe PATH and ~/.dotnet/tools.</summary>
     public string ClrKernelPath { get; set; }
     public int MaxParallelism { get; set; } = 4;
+    /// <summary>When set, /api/* requires this key in the X-Api-Key header.</summary>
+    public string ApiKey { get; set; }
+    /// <summary>Listen urls for serve; null = http://localhost:5000.</summary>
+    public string Urls { get; set; }
 
     public string ArtifactsDir => Path.Combine(DataDir, "artifacts");
     public string DefaultSqlitePath => Path.Combine(DataDir, "jobs.db");
@@ -52,6 +56,8 @@ public sealed class JobsOptions {
             Store = Cli("store") ?? Env("CLRKERNEL_JOBS_STORE") ?? Setting("store") ?? "sqlite",
             ConnectionString = Cli("connection-string") ?? Env("CLRKERNEL_JOBS_CONNECTION") ?? Setting("connectionString"),
             ClrKernelPath = Cli("clrkernel") ?? Env("CLRKERNEL_JOBS_CLRKERNEL") ?? Setting("clrkernelPath"),
+            ApiKey = Cli("api-key") ?? Env("CLRKERNEL_JOBS_APIKEY") ?? Setting("apiKey"),
+            Urls = Cli("urls") ?? Env("CLRKERNEL_JOBS_URLS") ?? Setting("urls"),
         };
         var parallelism = Cli("max-parallelism") ?? Env("CLRKERNEL_JOBS_MAX_PARALLELISM") ?? Setting("maxParallelism");
         if (parallelism != null && int.TryParse(parallelism, out var p) && p > 0) {

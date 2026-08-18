@@ -40,9 +40,9 @@ public sealed class JobExecutor {
 
     public async Task<Run> ExecuteAsync(
         JobDefinition job, RunTrigger trigger, Guid? causedByRunId = null, int attempt = 1,
-        CancellationToken cancellationToken = default) {
+        Guid? runId = null, CancellationToken cancellationToken = default) {
         var run = new Run {
-            Id = Guid.NewGuid(),
+            Id = runId ?? Guid.NewGuid(),
             JobName = job.Name,
             NotebookPath = job.NotebookRelative,
             Status = RunStatus.Running,
