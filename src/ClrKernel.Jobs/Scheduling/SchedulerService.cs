@@ -43,11 +43,14 @@ public sealed class SchedulerService : BackgroundService {
     internal TimeSpan TickInterval { get; set; } = TimeSpan.FromSeconds(10);
     internal TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(30);
 
+    private readonly Notifier _notifier;
+
     public SchedulerService(
-        JobCatalog catalog, IRunStore store, JobExecutor executor,
+        JobCatalog catalog, IRunStore store, JobExecutor executor, Notifier notifier,
         JobsOptions options, ILogger<SchedulerService> logger) {
         _catalog = catalog;
         _store = store;
+        _notifier = notifier;
         _options = options;
         _logger = logger;
         _parallelism = new SemaphoreSlim(Math.Max(1, options.MaxParallelism));
@@ -197,6 +200,10 @@ public sealed class SchedulerService : BackgroundService {
                         run.Status == RunStatus.Succeeded ? LogLevel.Information : LogLevel.Warning,
                         "{Job} {Status}{Error}.", job.Name, run.Status,
                         run.ErrorSummary != null ? $": {run.ErrorSummary}" : string.Empty);
+
+                    // After the retry loop settles, so a job that recovers on retry
+                    // notifies success once rather than failure-then-success.
+                    await _notifier.NotifyAsync(job, run, CancellationToken.None);
                 } finally {
                     _parallelism.Release();
                 }

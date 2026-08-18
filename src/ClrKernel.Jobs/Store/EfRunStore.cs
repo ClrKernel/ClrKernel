@@ -11,44 +11,50 @@ namespace ClrKernel.Jobs;
 /// long-lived and called from concurrent runs, so no shared change tracker.
 /// </summary>
 public sealed class EfRunStore : IRunStore {
-    private readonly DbContextOptions<RunsDbContext> _options;
+    private readonly Func<RunsDbContext> _contextFactory;
 
-    public EfRunStore(DbContextOptions<RunsDbContext> options) {
-        _options = options;
+    /// <param name="contextFactory">
+    /// Creates a context for the configured provider. A fresh one per operation:
+    /// the store is long-lived and called from concurrent runs.
+    /// </param>
+    public EfRunStore(Func<RunsDbContext> contextFactory) {
+        _contextFactory = contextFactory;
     }
 
-    /// <summary>SQLite options for a database file path (the default backend).</summary>
-    public static DbContextOptions<RunsDbContext> SqliteOptions(string dbPath) =>
-        new DbContextOptionsBuilder<RunsDbContext>()
+    /// <summary>A SQLite-backed store for a database file path (the default backend).</summary>
+    public static EfRunStore Sqlite(string dbPath) {
+        var options = new DbContextOptionsBuilder<SqliteRunsDbContext>()
             .UseSqlite($"Data Source={dbPath}")
             .Options;
+        return new EfRunStore(() => new SqliteRunsDbContext(options));
+    }
 
     /// <summary>Applies pending migrations (creates the database when absent).</summary>
     public void Migrate() {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         db.Database.Migrate();
     }
 
     public async Task<Run> CreateRunAsync(Run run) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         db.Runs.Add(run);
         await db.SaveChangesAsync();
         return run;
     }
 
     public async Task UpdateRunAsync(Run run) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         db.Runs.Update(run);
         await db.SaveChangesAsync();
     }
 
     public async Task<Run> GetRunAsync(Guid id) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         return await db.Runs.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id);
     }
 
     public async Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         var runs = db.Runs.AsNoTracking();
         if (!string.IsNullOrEmpty(query.JobName)) {
             runs = runs.Where(r => r.JobName == query.JobName);
@@ -61,7 +67,7 @@ public sealed class EfRunStore : IRunStore {
     }
 
     public async Task<RunStats> GetStatsAsync(TimeSpan window) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         var since = DateTime.UtcNow - window;
         var counts = await db.Runs.AsNoTracking()
             .Where(r => r.CreatedAt >= since)
@@ -77,25 +83,25 @@ public sealed class EfRunStore : IRunStore {
     }
 
     public async Task SaveCellsAsync(Guid runId, IReadOnlyList<RunCell> cells) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         db.RunCells.AddRange(cells);
         await db.SaveChangesAsync();
     }
 
     public async Task UpdateCellAsync(RunCell cell) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         db.RunCells.Update(cell);
         await db.SaveChangesAsync();
     }
 
     public async Task<IReadOnlyList<RunCell>> GetCellsAsync(Guid runId) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         return await db.RunCells.AsNoTracking()
             .Where(c => c.RunId == runId).OrderBy(c => c.CellIndex).ToListAsync();
     }
 
     public async Task<Run> GetLastSuccessfulRunAsync(string jobName) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         return await db.Runs.AsNoTracking()
             .Where(r => r.JobName == jobName && r.Status == RunStatus.Succeeded)
             .OrderByDescending(r => r.FinishedAt)
@@ -103,19 +109,19 @@ public sealed class EfRunStore : IRunStore {
     }
 
     public async Task<bool> HasActiveRunAsync(string jobName) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         return await db.Runs.AsNoTracking().AnyAsync(r =>
             r.JobName == jobName && (r.Status == RunStatus.Pending || r.Status == RunStatus.Running));
     }
 
     public async Task<DateTime?> GetLastTriggerAsync(string jobName) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         var state = await db.JobTriggerStates.AsNoTracking().FirstOrDefaultAsync(s => s.JobName == jobName);
         return state?.LastTriggerAt;
     }
 
     public async Task SetLastTriggerAsync(string jobName, DateTime triggeredAt) {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         var state = await db.JobTriggerStates.FirstOrDefaultAsync(s => s.JobName == jobName);
         if (state == null) {
             db.JobTriggerStates.Add(new JobTriggerState { JobName = jobName, LastTriggerAt = triggeredAt });
@@ -126,7 +132,7 @@ public sealed class EfRunStore : IRunStore {
     }
 
     public async Task<int> MarkOrphansFailedAsync() {
-        using var db = new RunsDbContext(_options);
+        using var db = _contextFactory();
         var orphans = await db.Runs
             .Where(r => r.Status == RunStatus.Pending || r.Status == RunStatus.Running)
             .ToListAsync();

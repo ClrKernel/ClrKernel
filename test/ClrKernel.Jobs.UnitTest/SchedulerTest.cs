@@ -26,13 +26,15 @@ public class SchedulerTest {
     public void Setup() {
         _root = Path.Combine(Path.GetTempPath(), "clrkernel-scheduler-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        _store = new EfRunStore(EfRunStore.SqliteOptions(Path.Combine(_root, "test.db")));
+        _store = EfRunStore.Sqlite(Path.Combine(_root, "test.db"));
         _store.Migrate();
 
         var options = new JobsOptions { DataDir = _root, NotebooksRoot = _root };
         var catalog = new JobCatalog(_root);
         var executor = new JobExecutor(_store, options, NullLogger.Instance);
-        _scheduler = new SchedulerService(catalog, _store, executor, options, NullLogger<SchedulerService>.Instance) {
+        var notifier = new Notifier(options, NullLogger.Instance);
+        _scheduler = new SchedulerService(
+            catalog, _store, executor, notifier, options, NullLogger<SchedulerService>.Instance) {
             RetryDelay = TimeSpan.Zero,
         };
 

@@ -26,7 +26,7 @@ public class JobExecutorTest {
         _dir = Path.Combine(Path.GetTempPath(), "clrkernel-executor-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
         _options = new JobsOptions { DataDir = _dir, NotebooksRoot = _dir };
-        _store = new EfRunStore(EfRunStore.SqliteOptions(Path.Combine(_dir, "test.db")));
+        _store = EfRunStore.Sqlite(Path.Combine(_dir, "test.db"));
         _store.Migrate();
     }
 

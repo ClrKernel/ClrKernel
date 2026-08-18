@@ -6,7 +6,6 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
@@ -122,8 +121,7 @@ public static class Program {
         PrintErrors(result.Errors);
 
         Directory.CreateDirectory(options.DataDir);
-        var store = new EfRunStore(EfRunStore.SqliteOptions(options.DefaultSqlitePath));
-        store.Migrate();
+        var store = RunStoreFactory.Create(options);
 
         var app = BuildApp(options, catalog, store);
         var urls = options.Urls ?? "http://localhost:5000";
@@ -154,6 +152,8 @@ public static class Program {
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(provider => new JobExecutor(
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>()));
+        builder.Services.AddSingleton(provider => new Notifier(
+            options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>()));
         builder.Services.AddSingleton<SchedulerService>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 
@@ -224,8 +224,7 @@ public static class Program {
         PrintErrors(result.Errors);
 
         Directory.CreateDirectory(options.DataDir);
-        var store = new EfRunStore(EfRunStore.SqliteOptions(options.DefaultSqlitePath));
-        store.Migrate();
+        var store = RunStoreFactory.Create(options);
 
         using var loggerFactory = LoggerFactory.Create(builder => {
             builder.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
@@ -265,6 +264,10 @@ public static class Program {
         }
         Console.WriteLine($"  artifact: {Path.Combine(options.DataDir, run.ArtifactPath)}");
         Console.WriteLine($"  log:      {Path.Combine(options.DataDir, run.LogPath)}");
+
+        // A one-shot CLI run notifies too — this is how someone driving jobs from
+        // their own cron/systemd instead of `serve` still gets alerts.
+        await new Notifier(options, loggerFactory.CreateLogger<Notifier>()).NotifyAsync(job, run);
         return run.Status == RunStatus.Succeeded ? 0 : 1;
     }
 

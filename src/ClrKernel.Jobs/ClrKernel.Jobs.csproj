@@ -19,7 +19,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.8.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -40,6 +43,8 @@
          papermill parameters cell (RunnerParameters). Core.Scripting/Primitives arrive
          transitively. The kernel itself is NOT referenced — runs spawn `clrkernel serve`. -->
     <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
+    <!-- Secret *references* for SMTP/webhook credentials — never the secrets. -->
+    <ProjectReference Include="../ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
   </ItemGroup>
 
   <ItemGroup>

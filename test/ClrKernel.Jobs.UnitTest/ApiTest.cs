@@ -37,16 +37,19 @@ public class ApiTest {
         _options = new JobsOptions {
             DataDir = Path.Combine(_root, "data"),
             NotebooksRoot = Path.Combine(_root, "notebooks"),
-            ApiKey = ApiKey,
+            ApiKey = _apiKey,
         };
-        _store = new EfRunStore(EfRunStore.SqliteOptions(Path.Combine(_options.DataDir, "test.db")));
+        _store = EfRunStore.Sqlite(Path.Combine(_options.DataDir, "test.db"));
         _store.Migrate();
 
         _app = Program.BuildApp(_options, new JobCatalog(_options.NotebooksRoot), _store);
+        // An ephemeral port: the default 5000 collides with a real `serve` on the
+        // dev machine and with any other host started by the suite.
+        _app.Urls.Add("http://127.0.0.1:0");
         await _app.StartAsync();
         var address = _app.Urls.First();
         _client = new HttpClient { BaseAddress = new Uri(address) };
-        _client.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, ApiKey);
+        _client.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, _apiKey);
     }
 
     [TestCleanup]
@@ -60,7 +63,7 @@ public class ApiTest {
         Directory.Delete(_root, recursive: true);
     }
 
-    private const string ApiKey = "test-key";
+    private const string _apiKey = "test-key";
     private string NotebookPath => Path.Combine(_root, "notebooks", "etl", "nightly.nb.md");
 
     private static JobWrite NewJob(string name) => new() {

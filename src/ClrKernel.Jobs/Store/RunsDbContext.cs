@@ -8,8 +8,8 @@ namespace ClrKernel.Jobs;
 /// any DB browser. Provider selection (sqlite/sqlserver/postgres) happens where the
 /// options are built; per-provider migrations live under Store/Migrations/.
 /// </summary>
-public sealed class RunsDbContext : DbContext {
-    public RunsDbContext(DbContextOptions<RunsDbContext> options) : base(options) { }
+public abstract class RunsDbContext : DbContext {
+    protected RunsDbContext(DbContextOptions options) : base(options) { }
 
     public DbSet<Run> Runs => Set<Run>();
     public DbSet<RunCell> RunCells => Set<RunCell>();
@@ -39,11 +39,38 @@ public sealed class RunsDbContext : DbContext {
     }
 }
 
-/// <summary>Design-time factory so `dotnet ef migrations` never boots the app host.</summary>
-public sealed class RunsDbContextFactory : IDesignTimeDbContextFactory<RunsDbContext> {
-    public RunsDbContext CreateDbContext(string[] args) {
-        var builder = new DbContextOptionsBuilder<RunsDbContext>();
-        builder.UseSqlite("Data Source=design-time.db");
-        return new RunsDbContext(builder.Options);
-    }
+// One context per provider: EF ties a migration to the context that generated it,
+// and the SQL differs per dialect. The model above is shared by all three.
+
+public sealed class SqliteRunsDbContext : RunsDbContext {
+    public SqliteRunsDbContext(DbContextOptions<SqliteRunsDbContext> options) : base(options) { }
+}
+
+public sealed class SqlServerRunsDbContext : RunsDbContext {
+    public SqlServerRunsDbContext(DbContextOptions<SqlServerRunsDbContext> options) : base(options) { }
+}
+
+public sealed class PostgresRunsDbContext : RunsDbContext {
+    public PostgresRunsDbContext(DbContextOptions<PostgresRunsDbContext> options) : base(options) { }
+}
+
+// Design-time factories so `dotnet ef migrations add` never boots the app host.
+// The connection strings are placeholders — migrations only need the dialect.
+
+public sealed class SqliteDesignTimeFactory : IDesignTimeDbContextFactory<SqliteRunsDbContext> {
+    public SqliteRunsDbContext CreateDbContext(string[] args) =>
+        new(new DbContextOptionsBuilder<SqliteRunsDbContext>()
+            .UseSqlite("Data Source=design-time.db").Options);
+}
+
+public sealed class SqlServerDesignTimeFactory : IDesignTimeDbContextFactory<SqlServerRunsDbContext> {
+    public SqlServerRunsDbContext CreateDbContext(string[] args) =>
+        new(new DbContextOptionsBuilder<SqlServerRunsDbContext>()
+            .UseSqlServer("Server=design-time;Database=clrkernel_jobs;Trusted_Connection=True").Options);
+}
+
+public sealed class PostgresDesignTimeFactory : IDesignTimeDbContextFactory<PostgresRunsDbContext> {
+    public PostgresRunsDbContext CreateDbContext(string[] args) =>
+        new(new DbContextOptionsBuilder<PostgresRunsDbContext>()
+            .UseNpgsql("Host=design-time;Database=clrkernel_jobs").Options);
 }

@@ -16,7 +16,7 @@ public class RunStoreTest {
     public void Setup() {
         _dir = Path.Combine(Path.GetTempPath(), "clrkernel-store-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
-        _store = new EfRunStore(EfRunStore.SqliteOptions(Path.Combine(_dir, "test.db")));
+        _store = EfRunStore.Sqlite(Path.Combine(_dir, "test.db"));
         _store.Migrate();
     }
 

@@ -132,6 +132,44 @@ public static class JobsApi {
         api.MapGet("/stats", async (IRunStore store, int? days) =>
             Results.Ok(await store.GetStatsAsync(TimeSpan.FromDays(Math.Clamp(days ?? 7, 1, 365)))));
 
+        // --- notification channels -------------------------------------------
+
+        api.MapGet("/channels", (JobCatalog catalog) => {
+            var channels = NotificationChannels.Load(catalog.NotebooksRoot);
+            return Results.Ok(new {
+                // Secret *references* are safe to show; the secrets never leave the host.
+                channels = channels.Channels.Select(c => new {
+                    c.Name,
+                    c.Type,
+                    c.Url,
+                    c.Host,
+                    c.Port,
+                    c.From,
+                    c.To,
+                    c.User,
+                    c.BearerSecretRef,
+                    c.PasswordSecretRef,
+                }),
+                errors = channels.Validate(),
+            });
+        });
+
+        api.MapPost("/channels/{name}/test", async (JobCatalog catalog, Notifier notifier, string name) => {
+            var channel = NotificationChannels.Load(catalog.NotebooksRoot).Find(name);
+            if (channel == null) {
+                return Results.NotFound(new {
+                    error = $"No channel named '{name}' in {NotificationChannels.FileName}.",
+                });
+            }
+            try {
+                await notifier.SendAsync(channel, Notifier.Message.Test(channel.Name));
+                return Results.Ok(new { sent = true });
+            } catch (Exception e) {
+                // The point of a test button is seeing why it failed.
+                return Results.BadRequest(new { error = e.Message });
+            }
+        });
+
         // A mistyped API route must answer 404 JSON, not fall through to the SPA's
         // index.html fallback (which would hand a client 200 text/html).
         api.MapFallback(() => Results.NotFound(new { error = "No such API endpoint." }));
