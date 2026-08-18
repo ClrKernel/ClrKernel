@@ -25,10 +25,12 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
             modelBuilder.Entity("ClrKernel.Jobs.JobTriggerState", b =>
                 {
                     b.Property<string>("JobName")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("job_name");
 
                     b.Property<DateTime>("LastTriggerAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_trigger_at");
 
                     b.HasKey("JobName");
 
@@ -39,49 +41,65 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<string>("ArtifactPath")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("artifact_path");
 
                     b.Property<int>("Attempt")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
 
                     b.Property<Guid?>("CausedByRunId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("caused_by_run_id");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
 
                     b.Property<string>("ErrorSummary")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("error_summary");
 
                     b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
 
                     b.Property<string>("JobName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("job_name");
 
                     b.Property<string>("LogPath")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("log_path");
 
                     b.Property<string>("NotebookPath")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("notebook_path");
 
                     b.Property<DateTime?>("ScheduledFor")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_for");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
 
                     b.Property<string>("Trigger")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("trigger_type");
 
                     b.HasKey("Id");
 
@@ -95,26 +113,34 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
             modelBuilder.Entity("ClrKernel.Jobs.RunCell", b =>
                 {
                     b.Property<Guid>("RunId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
 
                     b.Property<int>("CellIndex")
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("cell_index");
 
                     b.Property<string>("ErrorSummary")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("error_summary");
 
                     b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
 
                     b.Property<string>("SourcePreview")
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("source_preview");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
 
                     b.HasKey("RunId", "CellIndex");
 

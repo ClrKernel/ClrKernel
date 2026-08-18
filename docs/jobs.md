@@ -176,6 +176,24 @@ clrkernel-jobs serve --store sqlserver  --connection-string "Server=…;Database
 directory can be archived or copied whole. The relational backends create their
 schema on first start.
 
+The history is meant to be queried directly — tables and columns are snake_case and
+statuses are stored as their names, so this works as-is in any client:
+
+```sql
+select job_name, status, trigger_type, started_at, finished_at
+from runs
+where status <> 'Succeeded'
+order by created_at desc;
+
+select cell_index, status, source_preview
+from run_cells
+where run_id = '…'
+order by cell_index;
+```
+
+(The trigger column is `trigger_type` because `trigger` is a reserved word in
+T-SQL and would need bracketing.)
+
 ## API
 
 Everything the UI does is available over HTTP under `/api` — `health`, `notebooks`,

@@ -20,10 +20,12 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
             modelBuilder.Entity("ClrKernel.Jobs.JobTriggerState", b =>
                 {
                     b.Property<string>("JobName")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("job_name");
 
                     b.Property<DateTime>("LastTriggerAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_trigger_at");
 
                     b.HasKey("JobName");
 
@@ -34,49 +36,65 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
 
                     b.Property<string>("ArtifactPath")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("artifact_path");
 
                     b.Property<int>("Attempt")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("attempt");
 
                     b.Property<Guid?>("CausedByRunId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("caused_by_run_id");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
 
                     b.Property<string>("ErrorSummary")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("error_summary");
 
                     b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("finished_at");
 
                     b.Property<string>("JobName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("job_name");
 
                     b.Property<string>("LogPath")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("log_path");
 
                     b.Property<string>("NotebookPath")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("notebook_path");
 
                     b.Property<DateTime?>("ScheduledFor")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("scheduled_for");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("status");
 
                     b.Property<string>("Trigger")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("trigger_type");
 
                     b.HasKey("Id");
 
@@ -90,26 +108,34 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
             modelBuilder.Entity("ClrKernel.Jobs.RunCell", b =>
                 {
                     b.Property<Guid>("RunId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("run_id");
 
                     b.Property<int>("CellIndex")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("cell_index");
 
                     b.Property<string>("ErrorSummary")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("error_summary");
 
                     b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("finished_at");
 
                     b.Property<string>("SourcePreview")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_preview");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("status");
 
                     b.HasKey("RunId", "CellIndex");
 
