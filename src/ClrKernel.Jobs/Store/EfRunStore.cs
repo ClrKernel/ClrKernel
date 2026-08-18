@@ -94,11 +94,18 @@ public sealed class EfRunStore : IRunStore {
             .Where(c => c.RunId == runId).OrderBy(c => c.CellIndex).ToListAsync();
     }
 
-    public async Task<DateTime?> GetLastSuccessAsync(string jobName) {
+    public async Task<Run> GetLastSuccessfulRunAsync(string jobName) {
         using var db = new RunsDbContext(_options);
         return await db.Runs.AsNoTracking()
             .Where(r => r.JobName == jobName && r.Status == RunStatus.Succeeded)
-            .MaxAsync(r => (DateTime?)r.FinishedAt);
+            .OrderByDescending(r => r.FinishedAt)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<bool> HasActiveRunAsync(string jobName) {
+        using var db = new RunsDbContext(_options);
+        return await db.Runs.AsNoTracking().AnyAsync(r =>
+            r.JobName == jobName && (r.Status == RunStatus.Pending || r.Status == RunStatus.Running));
     }
 
     public async Task<DateTime?> GetLastTriggerAsync(string jobName) {

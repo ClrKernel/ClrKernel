@@ -59,6 +59,9 @@ public sealed class JobExecutor {
         var logPath = Path.Combine(runDir, "run.log");
         run.ArtifactPath = Path.GetRelativePath(_options.DataDir, artifactPath).Replace('\\', '/');
         run.LogPath = Path.GetRelativePath(_options.DataDir, logPath).Replace('\\', '/');
+        // Every run — scheduled, manual, or chained — moves the job's trigger clock,
+        // which is what the dependency freshness rule compares successes against.
+        await _store.SetLastTriggerAsync(job.Name, DateTime.UtcNow);
         await _store.CreateRunAsync(run);
 
         using var log = new StreamWriter(logPath) { AutoFlush = true };

@@ -79,6 +79,13 @@ public sealed class JobCatalog {
             if (!File.Exists(job.NotebookPath)) {
                 errors.Add($"{Relative(job.SourceFile)}: job '{job.Name}' notebook not found: {job.NotebookRelative}");
             }
+            if (job.Cron != null) {
+                try {
+                    Cronos.CronExpression.Parse(job.Cron);
+                } catch (Cronos.CronFormatException e) {
+                    errors.Add($"{Relative(job.SourceFile)}: job '{job.Name}' has an invalid cron '{job.Cron}': {e.Message}");
+                }
+            }
         }
         errors.AddRange(new JobGraph(byName.Values).Validate());
 

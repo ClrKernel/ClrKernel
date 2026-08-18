@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Jobs;
@@ -21,6 +23,8 @@ public static class Program {
         Usage: clrkernel-jobs <command> [options]
 
         Commands:
+          serve           Run the scheduler: cron jobs fire on time, dependent jobs
+                          fire when everything they need has freshly succeeded.
           run <job>       Run one job now and print per-cell progress.
           list            List the jobs found under the notebooks root.
           validate        Parse and validate every *.jobs.yaml; exit 1 on problems.
@@ -86,6 +90,8 @@ public static class Program {
 
         var catalog = new JobCatalog(options.NotebooksRoot);
         switch (command) {
+            case "serve":
+                return await ServeAsync(catalog, options);
             case "list":
                 return List(catalog);
             case "validate":
@@ -100,6 +106,30 @@ public static class Program {
                 Console.Error.WriteLine($"Unknown command: {command}. See `clrkernel-jobs --help`.");
                 return 2;
         }
+    }
+
+    private static async Task<int> ServeAsync(JobCatalog catalog, JobsOptions options) {
+        var result = catalog.Load();
+        Console.WriteLine($"clrkernel-jobs scheduler — {result.Jobs.Count} job(s) under {catalog.NotebooksRoot}");
+        PrintErrors(result.Errors);
+
+        Directory.CreateDirectory(options.DataDir);
+        var store = new EfRunStore(EfRunStore.SqliteOptions(options.DefaultSqlitePath));
+        store.Migrate();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
+        builder.Logging.SetMinimumLevel(LogLevel.Information);
+        builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton(catalog);
+        builder.Services.AddSingleton<IRunStore>(store);
+        builder.Services.AddSingleton(provider => new JobExecutor(
+            store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>()));
+        builder.Services.AddHostedService<SchedulerService>();
+
+        await builder.Build().RunAsync();
+        return 0;
     }
 
     private static int List(JobCatalog catalog) {

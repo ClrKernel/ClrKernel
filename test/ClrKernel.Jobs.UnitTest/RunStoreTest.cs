@@ -75,13 +75,16 @@ public class RunStoreTest {
 
     [TestMethod]
     public async Task Last_success_and_last_trigger_track_per_job() {
-        Assert.IsNull(await _store.GetLastSuccessAsync("a"));
+        Assert.IsNull(await _store.GetLastSuccessfulRunAsync("a"));
         Assert.IsNull(await _store.GetLastTriggerAsync("a"));
 
+        var older = NewRun("a", RunStatus.Succeeded);
+        older.FinishedAt = DateTime.UtcNow.AddMinutes(-10);
+        await _store.CreateRunAsync(older);
         var run = NewRun("a", RunStatus.Succeeded);
         run.FinishedAt = DateTime.UtcNow;
         await _store.CreateRunAsync(run);
-        Assert.IsNotNull(await _store.GetLastSuccessAsync("a"));
+        Assert.AreEqual(run.Id, (await _store.GetLastSuccessfulRunAsync("a")).Id, "newest success wins");
 
         var triggered = DateTime.UtcNow;
         await _store.SetLastTriggerAsync("a", triggered);
@@ -90,6 +93,15 @@ public class RunStoreTest {
         var later = triggered.AddMinutes(5);
         await _store.SetLastTriggerAsync("a", later);
         Assert.AreEqual(later, await _store.GetLastTriggerAsync("a"), "upsert replaces");
+    }
+
+    [TestMethod]
+    public async Task Active_run_detection_sees_pending_and_running_only() {
+        Assert.IsFalse(await _store.HasActiveRunAsync("a"));
+        await _store.CreateRunAsync(NewRun("a", RunStatus.Succeeded));
+        Assert.IsFalse(await _store.HasActiveRunAsync("a"));
+        await _store.CreateRunAsync(NewRun("a", RunStatus.Running));
+        Assert.IsTrue(await _store.HasActiveRunAsync("a"));
     }
 
     [TestMethod]

@@ -20,7 +20,10 @@ public interface IRunStore {
     Task UpdateCellAsync(RunCell cell);
     Task<IReadOnlyList<RunCell>> GetCellsAsync(Guid runId);
 
-    Task<DateTime?> GetLastSuccessAsync(string jobName);
+    /// <summary>The most recent Succeeded run of a job, or null (chain freshness + lineage).</summary>
+    Task<Run> GetLastSuccessfulRunAsync(string jobName);
+    /// <summary>True when the job has a Pending or Running run (schedule overlap skip).</summary>
+    Task<bool> HasActiveRunAsync(string jobName);
     Task<DateTime?> GetLastTriggerAsync(string jobName);
     Task SetLastTriggerAsync(string jobName, DateTime triggeredAt);
 
