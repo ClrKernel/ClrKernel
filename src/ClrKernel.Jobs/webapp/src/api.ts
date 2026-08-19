@@ -67,6 +67,26 @@ export interface Channel {
   passwordSecretRef?: string | null;
 }
 
+export interface SettingField {
+  name: string;
+  label: string;
+  type: 'string' | 'int' | 'bool' | 'secret' | string;
+  value?: unknown;
+  isSet?: boolean | null;
+  source: string;
+  webWritable: boolean;
+  restartRequired: boolean;
+  help?: string | null;
+}
+
+export interface SettingsSection {
+  key: string;
+  title: string;
+  description?: string | null;
+  linkTo?: string | null;
+  fields: SettingField[];
+}
+
 export interface Stats {
   total: number;
   succeeded: number;
@@ -157,6 +177,13 @@ export const api = {
     ),
 
   notebooks: () => request<TreeNode>('/notebooks'),
+
+  settings: () => request<{ sections: SettingsSection[] }>('/settings'),
+  saveSettings: (section: string, values: Record<string, unknown>) =>
+    request<{ saved: boolean; restartRequired: boolean }>(`/settings/${encodeURIComponent(section)}`, {
+      method: 'PUT',
+      body: JSON.stringify(values),
+    }),
 
   channels: () => request<{ channels: Channel[]; errors: string[] }>('/channels'),
   saveChannels: (channels: Channel[]) =>

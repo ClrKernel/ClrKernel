@@ -209,6 +209,19 @@ public static class JobsApi {
             }
         });
 
+        // --- settings ---------------------------------------------------------
+
+        api.MapGet("/settings", (SettingsRegistry registry) =>
+            Results.Ok(new { sections = registry.Sections }));
+
+        api.MapPut("/settings/{section}", (SettingsRegistry registry, string section,
+            Dictionary<string, JsonElement> values) => {
+                var error = registry.Write(section, values);
+                return error == null
+                    ? Results.Ok(new { saved = true, restartRequired = true })
+                    : Results.BadRequest(new { error });
+            });
+
         // A mistyped API route must answer 404 JSON, not fall through to the SPA's
         // index.html fallback (which would hand a client 200 text/html).
         api.MapFallback(() => Results.NotFound(new { error = "No such API endpoint." }));

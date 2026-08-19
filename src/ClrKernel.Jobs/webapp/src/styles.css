@@ -551,3 +551,15 @@ textarea {
   color: var(--ok);
   border-color: var(--ok);
 }
+
+.settings-section {
+  margin-bottom: 2rem;
+}
+
+.settings-label {
+  min-width: 14rem;
+}
+
+.small {
+  font-size: 0.8rem;
+}

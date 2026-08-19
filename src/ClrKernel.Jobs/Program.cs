@@ -184,6 +184,7 @@ public static class Program {
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton(store);
+        builder.Services.AddSingleton(SettingsRegistry.CreateDefault(options));
         builder.Services.AddSingleton(provider => new JobExecutor(
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>()));
         builder.Services.AddSingleton(provider => new Notifier(

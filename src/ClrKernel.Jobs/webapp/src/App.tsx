@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
 import { Notebooks } from './pages/Notebooks';
+import { Settings } from './pages/Settings';
 import { RunDetail } from './pages/RunDetail';
 
 /** Lets the user store the API key when the server requires one. */
@@ -45,6 +46,7 @@ export function App() {
         <NavLink to="/jobs">Jobs</NavLink>
         <NavLink to="/notebooks">Notebooks</NavLink>
         <NavLink to="/channels">Channels</NavLink>
+        <NavLink to="/settings">Settings</NavLink>
         <div className="spacer" />
         <ApiKeyBox />
       </nav>
@@ -56,6 +58,7 @@ export function App() {
           <Route path="/jobs/:name" element={<JobDetail />} />
           <Route path="/notebooks" element={<Notebooks />} />
           <Route path="/channels" element={<Channels />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/runs/:id" element={<RunDetail />} />
           <Route path="*" element={<p className="muted">Not found.</p>} />
         </Routes>

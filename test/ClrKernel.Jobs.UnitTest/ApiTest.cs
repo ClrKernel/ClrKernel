@@ -274,6 +274,25 @@ public class ApiTest {
     }
 
     [TestMethod]
+    public async Task Settings_are_readable_and_the_writable_ones_persist() {
+        var settings = await _client.GetFromJsonAsync<JsonElement>("/api/settings");
+        var sections = settings.GetProperty("sections");
+        Assert.IsTrue(sections.GetArrayLength() >= 3);
+        Assert.IsFalse(settings.GetRawText().Contains(_apiKey),
+            "the configured API key must never appear in the settings payload");
+
+        var saved = await _client.PutAsJsonAsync("/api/settings/general",
+            new Dictionary<string, object> { ["maxParallelism"] = 7 });
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+        var json = File.ReadAllText(Path.Combine(_options.DataDir, "settings.json"));
+        StringAssert.Contains(json, "\"maxParallelism\": 7");
+
+        var refused = await _client.PutAsJsonAsync("/api/settings/security",
+            new Dictionary<string, object> { ["apiKey"] = "hijack" });
+        Assert.AreEqual(HttpStatusCode.BadRequest, refused.StatusCode);
+    }
+
+    [TestMethod]
     public async Task An_unknown_api_route_is_a_json_404_not_the_spa_shell() {
         var response = await _client.GetAsync("/api/nope");
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
