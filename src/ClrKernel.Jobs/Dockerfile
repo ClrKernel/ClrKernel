@@ -41,15 +41,17 @@ RUN dotnet publish src/ClrKernel/ClrKernel.csproj -c Release -o /app/kernel
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 
-# curl is here for the health check below; it is also what you reach for when
-# debugging the API from inside the container.
+# curl serves the health check below; git powers the dev→prod workflow
+# (`clrkernel-jobs git init` on the mounted workspace).
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends curl \
+    && apt-get install --yes --no-install-recommends curl git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/ ./
 
-# Notebooks are mounted read-only; /data holds the run history and artifacts.
+# /data holds the run history and artifacts. Notebooks can be mounted read-only
+# for plain scheduling; the git workflow needs /notebooks writable (and owned by
+# uid 1654) since edits and promotions commit there.
 # The store must be explicit for serve — the image says sqlite; override the env
 # (e.g. in compose) for postgres/sqlserver, together with CLRKERNEL_JOBS_CONNECTION.
 ENV CLRKERNEL_JOBS_NOTEBOOKS=/notebooks \

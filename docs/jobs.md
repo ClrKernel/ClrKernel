@@ -228,6 +228,49 @@ Set `--api-key <key>` (or `CLRKERNEL_JOBS_APIKEY`) to require an `X-Api-Key` hea
 on `/api/*`; `/api/health` stays open for probes. With no key configured the server
 binds localhost only — if you widen `--urls`, set a key.
 
+## Dev → prod with git
+
+Opt in with one command on your notebooks folder (stop `serve` first):
+
+```bash
+clrkernel-jobs git init --notebooks ./notebooks
+```
+
+The folder becomes a **workspace**: a bare repo at `.repo.git` and two folders backed
+by branches — `dev/` (branch `dev`, where you edit) and `prod/` (branch `main`, what
+the scheduler runs). Existing notebooks are adopted into dev and promoted, so
+everything keeps working. `gitEnabled: true` is written to settings.json.
+
+The loop:
+
+1. **Edit** in the web UI (dev notebooks get an *edit* link in the tree) or in your
+   own editor inside `dev/`. Every UI save is a commit on the dev branch.
+2. **Run** the notebook's jobs in dev — manually or via the API. Dev jobs never run
+   on a schedule; cron and chaining fire only in prod. Each run records the dev
+   commit it executed and whether the tree was dirty.
+3. **Promote** from the editor page. The button unlocks only when *every* enabled
+   job on the notebook has a latest dev run that succeeded, as written (no ad-hoc
+   parameter overrides, no uncommitted content), with the files unchanged since that
+   run — and only if the promotion would leave prod's dependency graph valid.
+   Blocked promotions list every reason. Promotion is one commit on `main` naming
+   the evidence runs; the prod scheduler picks it up on its next tick.
+
+Deleting a notebook in dev is promotable the same way (it removes the files and the
+jobs from prod). Promotion carries the notebook **and** its jobs files as a unit —
+sibling jobs share the notebook, so nothing smaller would be honest.
+
+To mirror the workspace elsewhere, set a push remote (Settings → Git workflow, or
+`--git-push-remote`). Pushes are best-effort after each commit/promotion — a failing
+remote never blocks a promotion, but the last push status shows in `/api/health`.
+Credentials come from the environment (ssh agent, token in the url); the server
+stores none.
+
+Notes: `notifications.yaml` and `settings.json` stay at the workspace root,
+unversioned — they are runtime config. Environments are part of run history keys, so
+dev and prod runs of the same job never mix. In Docker, mount `/notebooks` writable
+(owned by uid 1654) when git is enabled; worktree paths are repaired automatically
+when the volume is mounted at a different path.
+
 ## Docker
 
 ```bash
@@ -332,6 +375,15 @@ Every setting takes a CLI flag, an environment variable, or a key in
 | `--urls <urls>` | `CLRKERNEL_JOBS_URLS` | `http://localhost:5000` |
 | `--api-key <key>` | `CLRKERNEL_JOBS_APIKEY` | none (localhost only) |
 | `--max-parallelism <n>` | `CLRKERNEL_JOBS_MAX_PARALLELISM` | 4 |
+
+## Settings
+
+The **Settings** page shows every server setting with where it came from (flag, env
+var, settings.json, or default). Web-editable values persist to settings.json;
+anything pinned by a flag or environment variable is locked in the UI. Security and
+execution settings (API key, kernel path, store, connection string, roots) are
+host-only by design — a browser can never change what the server executes or lock
+you out.
 
 ## Not there yet
 
