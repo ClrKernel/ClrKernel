@@ -279,6 +279,25 @@ dotnet test ClrKernel.slnx --filter ClassName~SchedulerTest
 rm -rf dev/data                                         # reset run history
 ```
 
+### Testing the SQL backends
+
+The run-store contract suite covers sqlite and files everywhere. To run the same
+tests against real servers, bring them up and point the tests at them:
+
+```bash
+docker compose -f dev/docker-compose.dbs.yml up -d postgres sqlserver
+
+CLRKERNEL_TEST_REQUIRE_LIVE=1 \
+CLRKERNEL_JOBS_TEST_POSTGRES="Host=localhost;Port=55432;Database=clrkernel_jobs;Username=postgres;Password=devonly" \
+CLRKERNEL_JOBS_TEST_SQLSERVER="Server=localhost,51433;Database=clrkernel_jobs;User Id=sa;Password=DevOnly!Passw0rd;TrustServerCertificate=True" \
+dotnet test test/ClrKernel.Jobs.UnitTest/ClrKernel.Jobs.UnitTest.csproj --filter ClassName~RunStoreContractTest
+```
+
+Without those variables the SQL cases are skipped; `CLRKERNEL_TEST_REQUIRE_LIVE=1`
+turns a missing server into a failure, so a run meant to verify them cannot report
+success without touching a database. **The databases are scratch** — every test
+empties the tables first. CI runs exactly this against service containers.
+
 Two gotchas worth knowing:
 
 - **Paths must be absolute.** `dotnet run --project` sets the app's working

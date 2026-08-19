@@ -19,4 +19,10 @@
     <ProjectReference Include="..\..\src\ClrKernel.Jobs\ClrKernel.Jobs.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Shared, not copied: the gate carries the reasoning for why a skipped live
+         test must be able to fail loudly (HANDOFF-17 §5), and one copy cannot drift. -->
+    <Compile Include="..\ClrKernel.Database.UnitTest\LiveTestGate.cs" Link="LiveTestGate.cs" />
+  </ItemGroup>
+
 </Project>

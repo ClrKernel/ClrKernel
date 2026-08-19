@@ -2,16 +2,26 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using ClrKernel.UnitTest;   // LiveTestGate, shared with the database test project
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.Jobs.UnitTest;
 
 /// <summary>
 /// One suite, every backend: the scheduler and API depend on these behaviours
-/// regardless of which store is configured, so a new backend must satisfy the same
-/// contract. SQL Server and PostgreSQL use the same EfRunStore code as SQLite (only
-/// the provider and migrations differ), so they are covered by the sqlite run here
-/// plus a live database, not by a second in-memory fake.
+/// whichever store is configured, so a new backend must satisfy the same contract.
+/// <para>
+/// sqlite and files run everywhere. PostgreSQL and SQL Server run against a real
+/// server when <c>CLRKERNEL_JOBS_TEST_POSTGRES</c> / <c>CLRKERNEL_JOBS_TEST_SQLSERVER</c>
+/// hold a connection string, and are skipped otherwise — set
+/// <c>CLRKERNEL_TEST_REQUIRE_LIVE=1</c> (as CI does) to turn a missing server into a
+/// failure instead, so a verification run cannot report success without touching one.
+/// <c>dev/docker-compose.dbs.yml</c> brings both up locally.
+/// </para>
+/// <para>
+/// The relational databases are scratch: every test empties the tables first, and the
+/// suite must run on a single target framework so two TFMs cannot share one database.
+/// </para>
 /// </summary>
 [TestClass]
 public class RunStoreContractTest {
@@ -29,6 +39,12 @@ public class RunStoreContractTest {
         Directory.Delete(_dir, recursive: true);
     }
 
+    private static string LiveConnectionString(string kind) => kind switch {
+        "postgres" => Environment.GetEnvironmentVariable("CLRKERNEL_JOBS_TEST_POSTGRES"),
+        "sqlserver" => Environment.GetEnvironmentVariable("CLRKERNEL_JOBS_TEST_SQLSERVER"),
+        _ => null,
+    };
+
     private IRunStore StoreFor(string kind) {
         var options = new JobsOptions {
             DataDir = Path.Combine(_dir, kind),
@@ -36,6 +52,22 @@ public class RunStoreContractTest {
             Store = kind,
         };
         Directory.CreateDirectory(options.DataDir);
+
+        if (kind is "postgres" or "sqlserver") {
+            var variable = kind == "postgres"
+                ? "CLRKERNEL_JOBS_TEST_POSTGRES"
+                : "CLRKERNEL_JOBS_TEST_SQLSERVER";
+            var connectionString = LiveConnectionString(kind);
+            LiveTestGate.Require(connectionString, variable, $"the {kind} run-store contract tests");
+            options.ConnectionString = connectionString;
+
+            var store = (EfRunStore)RunStoreFactory.Create(options);
+            // A shared scratch database: start from empty so counts mean what the
+            // assertions think they mean.
+            store.ClearForTests();
+            return store;
+        }
+
         return RunStoreFactory.Create(options);
     }
 
@@ -53,6 +85,8 @@ public class RunStoreContractTest {
     [TestMethod]
     [DataRow("sqlite")]
     [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
     public async Task Runs_round_trip_and_query(string kind) {
         var store = StoreFor(kind);
 
@@ -74,6 +108,8 @@ public class RunStoreContractTest {
     [TestMethod]
     [DataRow("sqlite")]
     [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
     public async Task Cells_are_saved_and_updated_in_order(string kind) {
         var store = StoreFor(kind);
         var run = await store.CreateRunAsync(NewRun("a", RunStatus.Running));
@@ -101,6 +137,8 @@ public class RunStoreContractTest {
     [TestMethod]
     [DataRow("sqlite")]
     [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
     public async Task Scheduler_state_survives_the_round_trip(string kind) {
         var store = StoreFor(kind);
 
@@ -125,6 +163,8 @@ public class RunStoreContractTest {
     [TestMethod]
     [DataRow("sqlite")]
     [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
     public async Task Stats_and_orphan_cleanup_agree(string kind) {
         var store = StoreFor(kind);
         await store.CreateRunAsync(NewRun("a", RunStatus.Succeeded, DateTime.UtcNow));

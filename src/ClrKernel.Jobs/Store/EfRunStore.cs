@@ -35,6 +35,18 @@ public sealed class EfRunStore : IRunStore {
         db.Database.Migrate();
     }
 
+    /// <summary>
+    /// Empties every table. Test support: the contract suite runs against a scratch
+    /// database that must start clean, and each backend needs the same guarantee
+    /// without the tests knowing which provider they are on.
+    /// </summary>
+    internal void ClearForTests() {
+        using var db = _contextFactory();
+        db.Database.ExecuteSqlRaw("DELETE FROM run_cells");
+        db.Database.ExecuteSqlRaw("DELETE FROM runs");
+        db.Database.ExecuteSqlRaw("DELETE FROM job_trigger_state");
+    }
+
     public async Task<Run> CreateRunAsync(Run run) {
         using var db = _contextFactory();
         db.Runs.Add(run);
