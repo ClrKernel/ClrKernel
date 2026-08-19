@@ -114,8 +114,8 @@ public class Notifier {
         // StartTls upgrades a plaintext connection; anything else negotiates by port
         // (implicit TLS on 465, plain otherwise) — SmtpClient handles the choice.
         await client.ConnectAsync(
-            channel.Host, channel.Port,
-            channel.StartTls ? SecureSocketOptions.StartTlsWhenAvailable : SecureSocketOptions.Auto,
+            channel.Host, channel.Port ?? 587,
+            channel.StartTls ?? true ? SecureSocketOptions.StartTlsWhenAvailable : SecureSocketOptions.Auto,
             cancellationToken);
         if (password != null) {
             await client.AuthenticateAsync(channel.User, password, cancellationToken);

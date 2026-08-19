@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { apiKey, setApiKey } from './api';
+import { Channels } from './pages/Channels';
 import { Dashboard } from './pages/Dashboard';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
@@ -43,6 +44,7 @@ export function App() {
         <NavLink to="/">Dashboard</NavLink>
         <NavLink to="/jobs">Jobs</NavLink>
         <NavLink to="/notebooks">Notebooks</NavLink>
+        <NavLink to="/channels">Channels</NavLink>
         <div className="spacer" />
         <ApiKeyBox />
       </nav>
@@ -53,6 +55,7 @@ export function App() {
           <Route path="/jobs/new" element={<JobDetail />} />
           <Route path="/jobs/:name" element={<JobDetail />} />
           <Route path="/notebooks" element={<Notebooks />} />
+          <Route path="/channels" element={<Channels />} />
           <Route path="/runs/:id" element={<RunDetail />} />
           <Route path="*" element={<p className="muted">Not found.</p>} />
         </Routes>

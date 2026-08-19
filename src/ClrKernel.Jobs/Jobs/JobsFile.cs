@@ -136,4 +136,23 @@ public sealed class JobDefinition {
     public IReadOnlyDictionary<string, object> Parameters { get; set; } = new Dictionary<string, object>();
     public IReadOnlyList<string> DependsOn { get; set; } = new List<string>();
     public NotifyRules Notify { get; set; } = new();
+
+    /// <summary>
+    /// A copy with different parameters, for a one-off run with overrides. The job
+    /// on disk is unchanged — only this execution sees them.
+    /// </summary>
+    public JobDefinition With(IReadOnlyDictionary<string, object> parameters) => new() {
+        Name = Name,
+        SourceFile = SourceFile,
+        SourceFileRelative = SourceFileRelative,
+        NotebookPath = NotebookPath,
+        NotebookRelative = NotebookRelative,
+        Cron = Cron,
+        Enabled = Enabled,
+        TimeoutSeconds = TimeoutSeconds,
+        RetryCount = RetryCount,
+        Parameters = parameters,
+        DependsOn = DependsOn,
+        Notify = Notify,
+    };
 }

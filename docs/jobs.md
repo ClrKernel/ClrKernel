@@ -147,6 +147,10 @@ channels:
     passwordSecretRef: smtp-password       # -> CLRKERNEL_SECRET_SMTP_PASSWORD
 ```
 
+Channels can also be managed from the **Channels** tab in the web UI, which writes
+this same file (and validates before it does). Jobs pick their channels with the
+**Notify** checkboxes in the job editor.
+
 The webhook payload is JSON: job, notebook, status, success, trigger, attempt,
 runId, timings, error, artifactPath. Test a channel without waiting for a failure:
 
@@ -199,7 +203,17 @@ T-SQL and would need bracketing.)
 Everything the UI does is available over HTTP under `/api` — `health`, `notebooks`,
 `jobs` (including create/update/delete, which edit the yaml files), `jobs/{name}/run`
 and `/cancel`, `runs` with per-cell progress, `runs/{id}/artifact` and `/log`,
-`stats`, and `channels`.
+`stats`, and `channels` (GET/PUT, plus `channels/{name}/test`).
+
+A run can take one-off parameters that override the job's own for that run only —
+the `*.jobs.yaml` is untouched. The same thing is behind "Run with parameters…" in
+the job editor:
+
+```bash
+curl -X POST http://localhost:5000/api/jobs/nightly-us/run \
+  -H 'Content-Type: application/json' \
+  -d '{"parameters": {"region": "eu", "backfillDate": "2026-08-01"}}'
+```
 
 Set `--api-key <key>` (or `CLRKERNEL_JOBS_APIKEY`) to require an `X-Api-Key` header
 on `/api/*`; `/api/health` stays open for probes. With no key configured the server

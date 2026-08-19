@@ -53,6 +53,20 @@ export interface TreeNode {
   children: TreeNode[] | null;
 }
 
+export interface Channel {
+  name: string;
+  type: 'webhook' | 'email' | string;
+  url?: string | null;
+  host?: string | null;
+  port?: number | null;
+  from?: string | null;
+  to?: string[] | null;
+  user?: string | null;
+  /** A reference resolved on the server — never the secret itself. */
+  bearerSecretRef?: string | null;
+  passwordSecretRef?: string | null;
+}
+
 export interface Stats {
   total: number;
   succeeded: number;
@@ -121,8 +135,14 @@ export const api = {
   updateJob: (name: string, job: Partial<Job>) =>
     request<Job>(`/jobs/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(job) }),
   deleteJob: (name: string) => request<void>(`/jobs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
-  runJob: (name: string) =>
-    request<{ runId: string }>(`/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' }),
+  /** Optional parameters apply to this run only; the job's yaml is untouched. */
+  runJob: (name: string, parameters?: Record<string, unknown>) =>
+    request<{ runId: string }>(`/jobs/${encodeURIComponent(name)}/run`, {
+      method: 'POST',
+      ...(parameters && Object.keys(parameters).length > 0
+        ? { body: JSON.stringify({ parameters }) }
+        : {}),
+    }),
   cancelJob: (name: string) =>
     request<{ cancelled: boolean }>(`/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
   jobRuns: (name: string, limit = 25) =>
@@ -137,6 +157,12 @@ export const api = {
     ),
 
   notebooks: () => request<TreeNode>('/notebooks'),
+
+  channels: () => request<{ channels: Channel[]; errors: string[] }>('/channels'),
+  saveChannels: (channels: Channel[]) =>
+    request<{ channels: number }>('/channels', { method: 'PUT', body: JSON.stringify({ channels }) }),
+  testChannel: (name: string) =>
+    request<{ sent: boolean }>(`/channels/${encodeURIComponent(name)}/test`, { method: 'POST' }),
 };
 
 export function isActive(status: RunStatus): boolean {

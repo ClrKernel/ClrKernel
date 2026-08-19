@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -15,6 +16,8 @@ namespace ClrKernel.Jobs;
 /// client-supplied path goes through <see cref="NotebookTree.SafeResolve"/>.
 /// </summary>
 public static class JobsApi {
+    private static readonly JsonSerializerOptions _bodyJson = new(JsonSerializerDefaults.Web);
+
     public static void MapJobsApi(this IEndpointRouteBuilder app) {
         var api = app.MapGroup("/api");
 
@@ -77,16 +80,40 @@ public static class JobsApi {
             return Results.NoContent();
         });
 
-        api.MapPost("/jobs/{name}/run", (JobCatalog catalog, SchedulerService scheduler, string name) => {
-            var job = catalog.Load().Find(name);
-            if (job == null) {
-                return Results.NotFound(new { error = $"No job named '{name}'." });
-            }
-            var runId = scheduler.TriggerManual(job);
-            return runId == null
-                ? Results.Conflict(new { error = $"{job.Name} already has a run in flight." })
-                : Results.Accepted($"/api/runs/{runId}", new { runId });
-        });
+        // The body is read by hand rather than bound: a [FromBody] parameter adds a
+        // content-type constraint to route matching, which makes a plain
+        // `curl -X POST …/run` (no body, no headers) miss the route entirely.
+        api.MapPost("/jobs/{name}/run", async (
+            HttpContext context, JobCatalog catalog, SchedulerService scheduler, string name) => {
+                var job = catalog.Load().Find(name);
+                if (job == null) {
+                    return Results.NotFound(new { error = $"No job named '{name}'." });
+                }
+
+                RunOverrides overrides = null;
+                if (context.Request.ContentLength is > 0) {
+                    try {
+                        overrides = await JsonSerializer.DeserializeAsync<RunOverrides>(
+                            context.Request.Body, _bodyJson);
+                    } catch (JsonException e) {
+                        return Results.BadRequest(new { error = $"Body is not valid JSON: {e.Message}" });
+                    }
+                }
+
+                // Ad-hoc parameters merge over the job's own for this run only; the
+                // *.jobs.yaml is untouched.
+                if (overrides?.Parameters is { Count: > 0 } extra) {
+                    var merged = new Dictionary<string, object>(job.Parameters, StringComparer.Ordinal);
+                    foreach (var kv in JsonValues.ToPlain(extra)) {
+                        merged[kv.Key] = kv.Value;
+                    }
+                    job = job.With(merged);
+                }
+                var runId = scheduler.TriggerManual(job);
+                return runId == null
+                    ? Results.Conflict(new { error = $"{job.Name} already has a run in flight." })
+                    : Results.Accepted($"/api/runs/{runId}", new { runId });
+            });
 
         api.MapPost("/jobs/{name}/cancel", (SchedulerService scheduler, string name) =>
             scheduler.TryCancel(name)
@@ -152,6 +179,18 @@ public static class JobsApi {
                 }),
                 errors = channels.Validate(),
             });
+        });
+
+        api.MapPut("/channels", (JobCatalog catalog, NotificationChannels channels) => {
+            if (channels?.Channels == null) {
+                return Results.BadRequest(new { error = "Expected a channels list." });
+            }
+            try {
+                NotificationChannels.Save(catalog.NotebooksRoot, channels);
+            } catch (InvalidDataException e) {
+                return Results.BadRequest(new { error = e.Message });
+            }
+            return Results.Ok(new { channels = channels.Channels.Count });
         });
 
         api.MapPost("/channels/{name}/test", async (JobCatalog catalog, Notifier notifier, string name) => {
@@ -291,6 +330,11 @@ public sealed class JobView {
         DependsOn = job.DependsOn,
         Notify = job.Notify,
     };
+}
+
+/// <summary>Optional body for an ad-hoc run: parameters for this run only.</summary>
+public sealed class RunOverrides {
+    public Dictionary<string, object> Parameters { get; set; }
 }
 
 /// <summary>The create/update body for a job.</summary>

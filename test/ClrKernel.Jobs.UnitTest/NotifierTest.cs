@@ -193,6 +193,39 @@ public class NotifierTest {
     }
 
     [TestMethod]
+    public void Saving_channels_writes_only_real_configuration() {
+        NotificationChannels.Save(_root, new NotificationChannels {
+            Channels = {
+                new ChannelConfig { Name = "ops", Type = "webhook", Url = "https://example.com/hook" },
+            },
+        });
+
+        var yaml = File.ReadAllText(Path.Combine(_root, NotificationChannels.FileName));
+        // The file is committed alongside notebooks, so it must not accumulate
+        // computed properties or SMTP defaults that have no meaning for a webhook.
+        Assert.IsFalse(yaml.Contains("isWebhook"), yaml);
+        Assert.IsFalse(yaml.Contains("isEmail"), yaml);
+        Assert.IsFalse(yaml.Contains("port"), yaml);
+        Assert.IsFalse(yaml.Contains("startTls"), yaml);
+        StringAssert.Contains(yaml, "url: https://example.com/hook");
+
+        // And it round-trips.
+        var reloaded = NotificationChannels.Load(_root).Find("ops");
+        Assert.AreEqual("https://example.com/hook", reloaded.Url);
+        Assert.IsTrue(reloaded.IsWebhook);
+    }
+
+    [TestMethod]
+    public void Saving_an_invalid_channel_set_throws_before_writing() {
+        var e = Assert.ThrowsExactly<InvalidDataException>(() =>
+            NotificationChannels.Save(_root, new NotificationChannels {
+                Channels = { new ChannelConfig { Name = "broken", Type = "webhook" } },
+            }));
+        StringAssert.Contains(e.Message, "url");
+        Assert.IsFalse(File.Exists(Path.Combine(_root, NotificationChannels.FileName)));
+    }
+
+    [TestMethod]
     public void An_absent_channels_file_is_an_empty_set_not_an_error() {
         var channels = NotificationChannels.Load(_root);
         Assert.AreEqual(0, channels.Channels.Count);

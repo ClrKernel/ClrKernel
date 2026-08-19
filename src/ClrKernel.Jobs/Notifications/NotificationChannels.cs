@@ -26,6 +26,32 @@ public sealed class NotificationChannels {
         .IgnoreUnmatchedProperties()
         .Build();
 
+    private static readonly ISerializer _serializer = new SerializerBuilder()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitEmptyCollections)
+        .Build();
+
+    /// <summary>
+    /// Writes the channels file. Validates first, so an edit that would break every
+    /// notification never reaches the disk, and writes via a staging file so a crash
+    /// mid-write cannot truncate it.
+    /// <para>
+    /// There is nothing to redact here: channels hold secret <em>references</em>
+    /// only, which is what keeps the file safe to commit.
+    /// </para>
+    /// </summary>
+    public static void Save(string notebooksRoot, NotificationChannels channels) {
+        var errors = channels.Validate();
+        if (errors.Count > 0) {
+            throw new InvalidDataException(string.Join(" ", errors));
+        }
+
+        var path = Path.Combine(notebooksRoot, FileName);
+        var staging = path + ".tmp";
+        File.WriteAllText(staging, _serializer.Serialize(channels));
+        File.Move(staging, path, overwrite: true);
+    }
+
     /// <summary>Loads the channels file, or an empty set when there is none.</summary>
     public static NotificationChannels Load(string notebooksRoot) {
         var path = Path.Combine(notebooksRoot, FileName);
@@ -86,14 +112,19 @@ public sealed class ChannelConfig {
 
     // --- email ---
     public string Host { get; set; }
-    public int Port { get; set; } = 587;
-    public bool StartTls { get; set; } = true;
+    // Nullable so an unset value is omitted when the file is written rather than
+    // stamping SMTP defaults onto, say, a webhook channel.
+    public int? Port { get; set; }
+    public bool? StartTls { get; set; }
     public string From { get; set; }
     public List<string> To { get; set; }
     public string User { get; set; }
     /// <summary>Secret key holding the SMTP password. Never the password itself.</summary>
     public string PasswordSecretRef { get; set; }
 
+    [YamlIgnore]
     public bool IsWebhook => string.Equals(Type, "webhook", StringComparison.OrdinalIgnoreCase);
+
+    [YamlIgnore]
     public bool IsEmail => string.Equals(Type, "email", StringComparison.OrdinalIgnoreCase);
 }

@@ -206,6 +206,74 @@ public class ApiTest {
     }
 
     [TestMethod]
+    public async Task An_ad_hoc_run_can_override_parameters_without_touching_the_yaml() {
+        await _client.PostAsJsonAsync("/api/jobs", NewJob("adhoc"));
+
+        var response = await _client.PostAsJsonAsync("/api/jobs/adhoc/run",
+            new { parameters = new Dictionary<string, object> { ["region"] = "eu", ["extra"] = 7 } });
+        Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode);
+
+        // The stored job keeps its own parameters — the override was for that run only.
+        var job = await _client.GetFromJsonAsync<JobView>("/api/jobs/adhoc", _json);
+        Assert.AreEqual("us", job.Parameters["region"].ToString());
+        Assert.IsFalse(job.Parameters.ContainsKey("extra"));
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(_root, "notebooks", "etl", "nightly.jobs.yaml")), "region: us");
+    }
+
+    [TestMethod]
+    public async Task A_run_without_a_body_still_works() {
+        await _client.PostAsJsonAsync("/api/jobs", NewJob("plain"));
+        var response = await _client.PostAsync("/api/jobs/plain/run", null);
+        Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode,
+            await response.Content.ReadAsStringAsync());
+    }
+
+    [TestMethod]
+    public async Task Channels_can_be_read_and_written_through_the_api() {
+        var empty = await _client.GetFromJsonAsync<JsonElement>("/api/channels");
+        Assert.AreEqual(0, empty.GetProperty("channels").GetArrayLength());
+
+        var write = await _client.PutAsJsonAsync("/api/channels", new {
+            channels = new object[] {
+                new { name = "ops", type = "webhook", url = "https://example.com/hook", bearerSecretRef = "ops-token" },
+                new {
+                    name = "mail", type = "email", host = "smtp.example.com", port = 587,
+                    from = "jobs@example.com", to = new[] { "oncall@example.com" },
+                    user = "jobs@example.com", passwordSecretRef = "smtp-password",
+                },
+            },
+        });
+        Assert.AreEqual(HttpStatusCode.OK, write.StatusCode);
+
+        var yaml = File.ReadAllText(Path.Combine(_root, "notebooks", NotificationChannels.FileName));
+        StringAssert.Contains(yaml, "bearerSecretRef: ops-token");
+        StringAssert.Contains(yaml, "passwordSecretRef: smtp-password");
+
+        var read = await _client.GetFromJsonAsync<JsonElement>("/api/channels");
+        Assert.AreEqual(2, read.GetProperty("channels").GetArrayLength());
+        Assert.AreEqual(0, read.GetProperty("errors").GetArrayLength());
+    }
+
+    [TestMethod]
+    public async Task An_invalid_channel_set_is_refused_and_the_old_file_survives() {
+        await _client.PutAsJsonAsync("/api/channels", new {
+            channels = new object[] {
+                new { name = "ops", type = "webhook", url = "https://example.com/hook" },
+            },
+        });
+
+        var bad = await _client.PutAsJsonAsync("/api/channels", new {
+            channels = new object[] { new { name = "broken", type = "webhook" } },   // no url
+        });
+        Assert.AreEqual(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var yaml = File.ReadAllText(Path.Combine(_root, "notebooks", NotificationChannels.FileName));
+        StringAssert.Contains(yaml, "ops", "the previous channels are still on disk");
+        Assert.IsFalse(yaml.Contains("broken"));
+    }
+
+    [TestMethod]
     public async Task An_unknown_api_route_is_a_json_404_not_the_spa_shell() {
         var response = await _client.GetAsync("/api/nope");
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);

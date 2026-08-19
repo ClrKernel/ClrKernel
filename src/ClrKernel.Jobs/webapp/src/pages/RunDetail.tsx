@@ -53,6 +53,21 @@ export function RunDetail() {
   );
   const run = data?.run;
   const live = run ? isActive(run.status) : true;
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  async function cancel() {
+    setCancelError(null);
+    setCancelling(true);
+    try {
+      // Cancellation is per job: the scheduler kills that job's running kernel.
+      await api.cancelJob(run!.jobName);
+    } catch (e) {
+      setCancelError((e as Error).message);
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   // Artifact and log are written when the run finishes; fetch once it settles.
   useEffect(() => {
@@ -80,8 +95,16 @@ export function RunDetail() {
           <Link to={`/jobs/${encodeURIComponent(run.jobName)}`}>{run.jobName}</Link>{' '}
           <StatusBadge status={run.status} />
         </h1>
-        {live && <span className="muted">live · refreshing</span>}
+        {live && (
+          <div className="row-gap">
+            <span className="muted">live · refreshing</span>
+            <button className="button button-danger" onClick={cancel} disabled={cancelling}>
+              {cancelling ? 'Cancelling…' : 'Cancel run'}
+            </button>
+          </div>
+        )}
       </div>
+      <ErrorBanner error={cancelError} />
 
       <div className="meta">
         <span>{run.notebookPath}</span>
