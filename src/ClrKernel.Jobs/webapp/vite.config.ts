@@ -11,8 +11,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Points at a locally running `clrkernel-jobs serve`. Override when it is on
+    // another port: CLRKERNEL_JOBS_API=http://localhost:5099 npm run dev
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': process.env.CLRKERNEL_JOBS_API ?? 'http://localhost:5000',
     },
   },
 });

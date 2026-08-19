@@ -360,3 +360,6 @@ connections.local.json
 # ClrKernel.Jobs web app: npm deps and the Vite build output (built by ./build.sh Web).
 src/ClrKernel.Jobs/webapp/node_modules/
 src/ClrKernel.Jobs/wwwroot/
+
+# ClrKernel.Jobs local dev run history (dev/jobs-dev.sh writes here).
+dev/data/

@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MailKit" Version="4.8.0" />
+    <PackageReference Include="MailKit" Version="4.17.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
@@ -60,6 +60,10 @@
   <ItemGroup>
     <Content Remove="webapp/**" />
     <None Remove="webapp/**" />
+    <!-- `dotnet watch` otherwise restarts the API every time a .tsx is saved (and
+         on each file Vite writes); the UI has its own hot reload. -->
+    <Watch Remove="webapp/**" />
+    <Watch Remove="wwwroot/**" />
     <!-- CopyToOutputDirectory is what carries it into the tool package too: a tool
          packs its publish output, so wwwroot lands beside the binary. -->
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />

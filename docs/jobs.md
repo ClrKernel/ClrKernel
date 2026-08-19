@@ -224,6 +224,57 @@ It runs as the non-root `app` user (uid 1654). A named volume picks up that
 ownership automatically; if you bind-mount a host directory at `/data` instead,
 either `chown 1654` it first or pass `--user`.
 
+## Local development
+
+One command brings up both halves with live reload:
+
+```bash
+./dev/jobs-dev.sh                    # sample notebooks in dev/notebooks
+./dev/jobs-dev.sh ~/my-notebooks     # your own tree
+```
+
+Open **<http://localhost:5173>** — the Vite dev server, which proxies `/api` to the
+backend, so the whole app works from that one URL. Ctrl+C stops both.
+
+- **Edit a `.tsx`/`.css`** → the browser updates in place (Vite HMR), no reload.
+- **Edit a `.cs`** → `dotnet watch` applies it live ("Hot reload succeeded"); edits
+  it can't hot-patch restart the API instead. Either way, refresh and it's there.
+- **Edit a notebook or a `*.jobs.yaml`** → picked up on the next scheduler tick
+  (10s) or the next API request; nothing to restart.
+
+Prefer two terminals? That's all the script does:
+
+```bash
+# terminal 1 — API + scheduler, restarts on C# edits
+dotnet watch --project src/ClrKernel.Jobs run -- serve \
+  --notebooks "$PWD/dev/notebooks" --data-dir "$PWD/dev/data" \
+  --clrkernel "$PWD/src/ClrKernel/bin/Debug/net8.0/ClrKernel"
+
+# terminal 2 — the UI, hot reload
+npm --prefix src/ClrKernel.Jobs/webapp run dev
+```
+
+Point `--clrkernel` at your local build (as above) when you are changing the kernel
+too; drop the flag to use the installed `clrkernel` tool.
+
+Useful while iterating:
+
+```bash
+npm --prefix src/ClrKernel.Jobs/webapp run test:watch   # renderer unit tests
+dotnet test ClrKernel.slnx --filter ClassName~SchedulerTest
+rm -rf dev/data                                         # reset run history
+```
+
+Two gotchas worth knowing:
+
+- **Paths must be absolute.** `dotnet run --project` sets the app's working
+  directory to the *project* folder, so `--notebooks ./dev/notebooks` resolves under
+  `src/ClrKernel.Jobs/`. Use `"$PWD/…"`, as the script does.
+- **On macOS, `localhost:5000` is also AirPlay Receiver.** The app binds fine, but
+  when it is *not* running you get a `403` from AirPlay instead of a connection
+  error — which looks like a broken API. Use `API_PORT=5099 ./dev/jobs-dev.sh` (or
+  turn AirPlay Receiver off in System Settings → General → AirDrop & Handoff).
+
 ## Configuration reference
 
 Every setting takes a CLI flag, an environment variable, or a key in

@@ -1,0 +1,6 @@
+notebook: ./demo.nb.md
+jobs:
+  - name: demo
+    parameters: {who: local}
+  - name: demo-minutely
+    cron: "* * * * *"
