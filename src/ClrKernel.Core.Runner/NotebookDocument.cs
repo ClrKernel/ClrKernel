@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Core.Runner;
 
@@ -13,7 +14,7 @@ public enum CellKind {
     Code,
 }
 
-/// <summary>An input cell: markdown prose or an executable C# code block.</summary>
+/// <summary>An input cell: markdown prose or an executable code block.</summary>
 public sealed class NotebookCell {
     public CellKind Kind { get; init; }
     public string Source { get; init; } = string.Empty;
@@ -31,35 +32,39 @@ public sealed class NotebookCell {
 /// structure (prose included), unlike <c>NotebookImporter.ExtractCSharpBlocks</c>
 /// which returns only the C#. Used by the runner to write a faithful executed
 /// .ipynb. Supports .nb.md / .md (executable markdown), .ipynb, .dib, and .csx.
+/// <para>
+/// Which fence tags and .dib sections execute is decided by the
+/// <see cref="LanguageDescriptor"/> list a caller passes — the kernel passes its
+/// registry, a remote client (Jobs) passes what the kernel's initialize reply
+/// declared. C# is always executable; with no descriptors every other fence
+/// stays markdown, so a process with no languages registered degrades safely.
+/// </para>
 /// </summary>
 public static class NotebookDocument {
     private static readonly Regex _markdownFence = new(
         @"^(?<fence>`{3,}|~{3,})\s*(?<lang>[^\s`~]*)\s*$",
         RegexOptions.Compiled);
 
-    private static readonly Regex _dibSection = new(
-        @"^#!(?<kind>csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|kql)\s*$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     private static readonly HashSet<string> _csharpLangs =
         new(StringComparer.OrdinalIgnoreCase) { "csharp", "cs", "c#" };
 
-    private static readonly HashSet<string> _pwshLangs =
-        new(StringComparer.OrdinalIgnoreCase) { "pwsh", "powershell", "ps1" };
+    // .dib section names recognized as cell boundaries even when no language
+    // descriptor claims them — prose, other kernels' cells, and the well-known
+    // language names. A name a descriptor claims becomes code; these stay text.
+    private static readonly HashSet<string> _dibProseSections =
+        new(StringComparer.OrdinalIgnoreCase) {
+            "fsharp", "f#", "html", "javascript", "js", "markdown", "md", "meta", "value", "kql",
+            "pwsh", "powershell", "http", "mermaid", "sql",
+        };
 
-    // Non-C# fences/sections become code cells carrying a selector so the engine
-    // routes each to its handler.
-    private const string _httpSelector = "#!http";
-    private const string _mermaidSelector = "#!mermaid";
-    private const string _pwshSelector = "#!pwsh";
-
-    public static IReadOnlyList<NotebookCell> Parse(string path) {
+    public static IReadOnlyList<NotebookCell> Parse(
+        string path, IReadOnlyList<LanguageDescriptor> languages = null) {
         var extension = Path.GetExtension(path).ToLowerInvariant();
         var content = File.ReadAllText(path);
         return extension switch {
             ".ipynb" => ParseIpynb(content),
-            ".dib" => ParseDib(content),
-            ".md" or ".markdown" => ParseMarkdown(content),
+            ".dib" => ParseDib(content, languages),
+            ".md" or ".markdown" => ParseMarkdown(content, languages),
             ".csx" or ".cs" => new[] { new NotebookCell(CellKind.Code, content.Trim()) },
             _ => throw new NotSupportedException(
                 $"Unsupported notebook type '{extension}' (supported: .nb.md, .md, .ipynb, .dib, .csx)."),
@@ -67,18 +72,20 @@ public static class NotebookDocument {
     }
 
     /// <summary>
-    /// Splits executable markdown: csharp/cs/c# fenced blocks become code cells;
-    /// everything else (prose, and fences in other languages) stays markdown.
+    /// Splits executable markdown: csharp/cs/c# fenced blocks and fences tagged
+    /// with a registered language's tag become code cells; everything else
+    /// (prose, and fences of unknown languages) stays markdown.
     /// </summary>
-    public static IReadOnlyList<NotebookCell> ParseMarkdown(string content) {
+    public static IReadOnlyList<NotebookCell> ParseMarkdown(
+        string content, IReadOnlyList<LanguageDescriptor> languages = null) {
+        var byTag = LanguageDescriptor.ByTag(languages);
         var cells = new List<NotebookCell>();
         var markdown = new List<string>();
         List<string> code = null;
         string closingFence = null;
         var codeIsCSharp = false;
-        var codeIsHttp = false;
-        var codeIsMermaid = false;
-        var codeIsPwsh = false;
+        LanguageDescriptor codeLanguage = null;
+        string codeTag = null;
 
         void FlushMarkdown() {
             var text = string.Join("\n", markdown).Trim();
@@ -94,33 +101,30 @@ public static class NotebookDocument {
                 if (match.Success) {
                     code = new List<string>();
                     closingFence = new string(match.Groups["fence"].Value[0], match.Groups["fence"].Value.Length);
-                    codeIsCSharp = _csharpLangs.Contains(match.Groups["lang"].Value);
-                    codeIsHttp = match.Groups["lang"].Value.Equals("http", StringComparison.OrdinalIgnoreCase);
-                    codeIsMermaid = match.Groups["lang"].Value.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
-                    codeIsPwsh = _pwshLangs.Contains(match.Groups["lang"].Value);
-                    if (!codeIsCSharp && !codeIsHttp && !codeIsMermaid && !codeIsPwsh) {
-                        // Keep other-language fences verbatim inside the markdown cell.
+                    codeTag = match.Groups["lang"].Value;
+                    codeIsCSharp = _csharpLangs.Contains(codeTag);
+                    codeLanguage = codeIsCSharp ? null : byTag.GetValueOrDefault(codeTag);
+                    if (!codeIsCSharp && codeLanguage == null) {
+                        // Keep unknown-language fences verbatim inside the markdown cell.
                         markdown.Add(line);
                     }
                 } else {
                     markdown.Add(line);
                 }
             } else if (line.TrimEnd() == closingFence || line.StartsWith(closingFence, StringComparison.Ordinal)) {
-                if (codeIsCSharp || codeIsHttp || codeIsMermaid || codeIsPwsh) {
+                if (codeIsCSharp || codeLanguage != null) {
                     var text = string.Join("\n", code).Trim();
                     if (text.Length > 0) {
                         FlushMarkdown();
-                        cells.Add(new NotebookCell(CellKind.Code, codeIsHttp ? _httpSelector + "\n" + text
-                            : codeIsMermaid ? _mermaidSelector + "\n" + text
-                            : codeIsPwsh ? _pwshSelector + "\n" + text
-                            : text));
+                        cells.Add(new NotebookCell(CellKind.Code,
+                            codeLanguage == null ? text : codeLanguage.BlockForTag(codeTag, text)));
                     }
                 } else {
                     markdown.Add(line);
                 }
                 code = null;
             } else {
-                if (codeIsCSharp || codeIsHttp || codeIsMermaid || codeIsPwsh) {
+                if (codeIsCSharp || codeLanguage != null) {
                     code.Add(line);
                 } else {
                     markdown.Add(line);
@@ -132,37 +136,34 @@ public static class NotebookDocument {
         return cells;
     }
 
-    /// <summary>Splits a .dib document into markdown and csharp cells by #! section markers.</summary>
-    public static IReadOnlyList<NotebookCell> ParseDib(string content) {
+    /// <summary>Splits a .dib document into cells by #! section markers. C# and
+    /// registered-language sections execute; other kernels' sections stay prose.</summary>
+    public static IReadOnlyList<NotebookCell> ParseDib(
+        string content, IReadOnlyList<LanguageDescriptor> languages = null) {
+        var byTag = LanguageDescriptor.ByTag(languages);
         var cells = new List<NotebookCell>();
         var current = new List<string>();
         var kind = CellKind.Code; // leading content defaults to C#
-        var httpSection = false;
-        var mermaidSection = false;
-        var pwshSection = false;
+        LanguageDescriptor sectionLanguage = null;
+        string sectionTag = null;
 
         void Flush() {
             var text = string.Join("\n", current).Trim();
             if (text.Length > 0) {
-                cells.Add(new NotebookCell(kind, httpSection ? _httpSelector + "\n" + text
-                    : mermaidSection ? _mermaidSelector + "\n" + text
-                    : pwshSection ? _pwshSelector + "\n" + text
-                    : text));
+                cells.Add(new NotebookCell(kind,
+                    sectionLanguage == null ? text : sectionLanguage.BlockForTag(sectionTag, text)));
             }
             current.Clear();
         }
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
-            var match = _dibSection.Match(line);
-            if (match.Success) {
+            var section = DibSectionName(line);
+            if (section != null &&
+                (_csharpLangs.Contains(section) || _dibProseSections.Contains(section) || byTag.ContainsKey(section))) {
                 Flush();
-                var section = match.Groups["kind"].Value.ToLowerInvariant();
-                kind = section is "csharp" or "c#" or "http" or "mermaid" or "pwsh" or "powershell" ? CellKind.Code
-                    : section is "markdown" or "md" ? CellKind.Markdown
-                    : CellKind.Markdown; // other kernels: keep as prose, not executed
-                httpSection = section == "http";
-                mermaidSection = section == "mermaid";
-                pwshSection = section is "pwsh" or "powershell";
+                sectionLanguage = byTag.GetValueOrDefault(section);
+                sectionTag = section;
+                kind = _csharpLangs.Contains(section) || sectionLanguage != null ? CellKind.Code : CellKind.Markdown;
             } else {
                 current.Add(line);
             }
@@ -192,5 +193,16 @@ public static class NotebookDocument {
             }
         }
         return cells;
+    }
+
+    // A bare "#!name" line is a .dib section marker; a line with arguments
+    // ("#!sql-connect --name x") is a directive that belongs to its cell.
+    private static string DibSectionName(string line) {
+        var trimmed = line.Trim();
+        if (!trimmed.StartsWith("#!", StringComparison.Ordinal) || trimmed.Length <= 2) {
+            return null;
+        }
+        var name = trimmed.Substring(2);
+        return name.Any(char.IsWhiteSpace) ? null : name;
     }
 }

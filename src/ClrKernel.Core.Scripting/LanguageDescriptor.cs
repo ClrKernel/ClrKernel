@@ -50,4 +50,34 @@ public sealed class LanguageDescriptor {
     public string SelectorForTag(string tag) =>
         Selectors.FirstOrDefault(s => string.Equals(s, "#!" + tag, StringComparison.OrdinalIgnoreCase))
             ?? DefaultSelector;
+
+    /// <summary>True when the text already leads with one of this language's selectors
+    /// as a whole token (e.g. a fence whose body is a <c>#!sql-connect</c> line).</summary>
+    public bool StartsWithSelector(string text) {
+        var lead = (text ?? string.Empty).TrimStart();
+        return Selectors.Any(s =>
+            lead.StartsWith(s, StringComparison.OrdinalIgnoreCase) &&
+            (lead.Length == s.Length || char.IsWhiteSpace(lead[s.Length])));
+    }
+
+    /// <summary>An executable block for a fence of this language: the tag's selector is
+    /// prepended so the engine routes it, unless the text is already selectored.</summary>
+    public string BlockForTag(string tag, string text) {
+        if (StartsWithSelector(text)) {
+            return text;
+        }
+        var selector = SelectorForTag(tag);
+        return selector == null ? text : selector + "\n" + text;
+    }
+
+    /// <summary>Fence-tag → descriptor lookup over a descriptor list (first claim wins).</summary>
+    public static Dictionary<string, LanguageDescriptor> ByTag(IEnumerable<LanguageDescriptor> languages) {
+        var byTag = new Dictionary<string, LanguageDescriptor>(StringComparer.OrdinalIgnoreCase);
+        foreach (var language in languages ?? Array.Empty<LanguageDescriptor>()) {
+            foreach (var tag in language.LanguageTags ?? Array.Empty<string>()) {
+                byTag.TryAdd(tag, language);
+            }
+        }
+        return byTag;
+    }
 }

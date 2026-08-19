@@ -124,6 +124,9 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         IEnumerable<ScriptContribution> extraContributions) {
         Current = this;
         _languages = (languages ?? CellLanguageRegistry.Default).CreateSet();
+        // #!import routes non-C# blocks with this session's own language set, so
+        // languages added mid-session are honored inside imported files too.
+        _importer.Languages = () => _languages.Describe();
         _contributions = _languages.ScriptContributions
             .Concat(extraContributions ?? Enumerable.Empty<ScriptContribution>())
             .ToList();

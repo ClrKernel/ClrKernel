@@ -40,8 +40,31 @@ public class JobExecutorTest {
     private sealed class FakeKernel {
         public JsonRpc Rpc { get; set; }
 
+        /// <summary>The camelCase wire shape `clrkernel serve` emits for a language.</summary>
+        public static readonly ClrKernel.Core.Scripting.LanguageDescriptor SqlDescriptor = new() {
+            Id = "sql",
+            DisplayName = "SQL",
+            DefaultSelector = "#!sql",
+            Selectors = new[] { "#!sql", "#!sql-connect" },
+            LanguageTags = new[] { "sql", "tsql" },
+        };
+
         [JsonRpcMethod("initialize")]
-        public object Initialize() => new { name = "fake-kernel", version = "9.9.9" };
+        public object Initialize() => new {
+            name = "fake-kernel",
+            version = "9.9.9",
+            languages = new[] {
+                new {
+                    id = SqlDescriptor.Id,
+                    displayName = SqlDescriptor.DisplayName,
+                    defaultSelector = SqlDescriptor.DefaultSelector,
+                    selectors = SqlDescriptor.Selectors,
+                    languageTags = SqlDescriptor.LanguageTags,
+                    hasConnections = true,
+                    configBacked = true,
+                },
+            },
+        };
 
         [JsonRpcMethod("execute")]
         public async Task<object> Execute(string cellId, string code) {
@@ -218,5 +241,40 @@ public class JobExecutorTest {
         StringAssert.Contains(cell, "var rate = 0.5;");
         StringAssert.Contains(cell, "var on = true;");
         StringAssert.Contains(cell, "var name = \"abc\";");
+    }
+
+    [TestMethod]
+    public async Task Initialize_reply_carries_the_kernel_language_descriptors() {
+        var (clientStream, serverStream) = FullDuplexStream.CreatePair();
+        var fake = new FakeKernel();
+        using var serverRpc = JsonRpc.Attach(serverStream, fake);
+        fake.Rpc = serverRpc;
+        using var client = new KernelClient(clientStream, clientStream);
+
+        var reply = await client.InitializeAsync();
+
+        Assert.AreEqual("fake-kernel", reply.Name);
+        var sql = reply.Languages.Single();
+        Assert.AreEqual("sql", sql.Id);
+        Assert.AreEqual("#!sql", sql.DefaultSelector);
+        CollectionAssert.AreEqual(new[] { "sql", "tsql" }, sql.LanguageTags.ToList());
+    }
+
+    [TestMethod]
+    public void BuildPlan_executes_the_fences_the_kernel_declared() {
+        var notebookPath = Path.Combine(_dir, "sqlnb.nb.md");
+        File.WriteAllText(notebookPath, "# T\n\n```sql\nSELECT 1\n```\n\n```csharp\nvar x = 1;\n```\n");
+        var executor = new JobExecutor(_store, _options,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var job = new JobDefinition { Name = "s", NotebookPath = notebookPath };
+
+        // Without descriptors (an old kernel): the sql fence stays markdown.
+        Assert.AreEqual(1, executor.BuildPlan(job).Count(p => p.CodeIndex >= 0));
+
+        // With the kernel-declared descriptor it becomes an executable cell.
+        var plan = executor.BuildPlan(job, new[] { FakeKernel.SqlDescriptor });
+        var code = plan.Where(p => p.CodeIndex >= 0).ToList();
+        Assert.AreEqual(2, code.Count);
+        Assert.AreEqual("#!sql\nSELECT 1", code[0].Cell.Source);
     }
 }

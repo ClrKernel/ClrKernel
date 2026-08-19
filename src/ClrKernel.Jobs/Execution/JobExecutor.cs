@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Runner;
+using ClrKernel.Core.Scripting;
 using Microsoft.Extensions.Logging;
 using YamlDotNet.Serialization;
 
@@ -96,11 +97,7 @@ public sealed class JobExecutor {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
 
         try {
-            var plan = BuildPlan(job);
-            var cells = SeedCells(run.Id, plan);
-            await _store.SaveCellsAsync(run.Id, cells);
-
-            await RunCellsAsync(job, run, plan, cells, artifactPath, Log, linked.Token);
+            await RunCellsAsync(job, run, artifactPath, Log, linked.Token);
         } catch (OperationCanceledException) {
             run.Status = timeout.IsCancellationRequested ? RunStatus.TimedOut : RunStatus.Cancelled;
             run.ErrorSummary = run.Status == RunStatus.TimedOut
@@ -128,8 +125,8 @@ public sealed class JobExecutor {
         public int CodeIndex { get; set; } = -1;
     }
 
-    internal List<PlanCell> BuildPlan(JobDefinition job) {
-        var parsed = NotebookDocument.Parse(job.NotebookPath);
+    internal List<PlanCell> BuildPlan(JobDefinition job, IReadOnlyList<LanguageDescriptor> languages = null) {
+        var parsed = NotebookDocument.Parse(job.NotebookPath, languages);
         var plan = parsed.Select(c => new PlanCell { Cell = c }).ToList();
 
         var injected = RenderParametersCell(job.Parameters);
@@ -179,7 +176,7 @@ public sealed class JobExecutor {
     // --- execution --------------------------------------------------------------
 
     private async Task RunCellsAsync(
-        JobDefinition job, Run run, List<PlanCell> plan, List<RunCell> cells,
+        JobDefinition job, Run run,
         string artifactPath, Action<string> log, CancellationToken cancellationToken) {
         var clrkernel = ClrKernelLocator.Find(_options.ClrKernelPath);
         using var process = new Process {
@@ -206,9 +203,29 @@ public sealed class JobExecutor {
         try {
             using var client = new KernelClient(
                 process.StandardInput.BaseStream, process.StandardOutput.BaseStream);
+            // The notebook is parsed with the languages THIS kernel declares, so
+            // sql/dax/shell fences execute exactly when the kernel can run them.
+            // ExecuteCellsAsync initializes again for its banner — initialize is
+            // a pure info call, so the extra round trip is harmless.
+            var info = await InitializeWithTimeoutAsync(client, cancellationToken);
+            var plan = BuildPlan(job, info.Languages);
+            var cells = SeedCells(run.Id, plan);
+            await _store.SaveCellsAsync(run.Id, cells);
             await ExecuteCellsAsync(client, run, plan, cells, artifactPath, log, cancellationToken);
         } finally {
             KillIfRunning(process, log);
+        }
+    }
+
+    // A kernel that never answers initialize would otherwise hang an untimed job forever.
+    private static async Task<InitializeReply> InitializeWithTimeoutAsync(
+        KernelClient client, CancellationToken cancellationToken) {
+        using var initTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        initTimeout.CancelAfter(TimeSpan.FromSeconds(60));
+        try {
+            return await client.InitializeAsync(initTimeout.Token);
+        } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+            throw new InvalidOperationException("The kernel did not answer initialize within 60s.");
         }
     }
 
@@ -219,16 +236,7 @@ public sealed class JobExecutor {
     internal async Task ExecuteCellsAsync(
         KernelClient client, Run run, List<PlanCell> plan, List<RunCell> cells,
         string artifactPath, Action<string> log, CancellationToken cancellationToken) {
-        // A kernel that never answers initialize would otherwise hang an
-        // untimed job forever.
-        using var initTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        initTimeout.CancelAfter(TimeSpan.FromSeconds(60));
-        InitializeReply info;
-        try {
-            info = await client.InitializeAsync(initTimeout.Token);
-        } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
-            throw new InvalidOperationException("The kernel did not answer initialize within 60s.");
-        }
+        var info = await InitializeWithTimeoutAsync(client, cancellationToken);
         log($"Kernel ready: {info.Name} {info.Version}");
 
         // Notifications carry the cellId we executed with ("cell-<index>"), so each

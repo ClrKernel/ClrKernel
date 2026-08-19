@@ -34,7 +34,10 @@ public class NotebookServer {
         return new {
             name = "ClrKernel.Core.ExtensionServer",
             version = typeof(NotebookServer).Assembly.GetName().Version?.ToString(),
-            languages = new[] { "csharp" },
+            // The full descriptor list: a client parses notebooks with exactly
+            // the languages this kernel can execute (C# is implicit — it is the
+            // unmatched fallthrough, not a registered language).
+            languages = _engine.Languages.Describe(),
         };
     }
 

@@ -156,12 +156,32 @@ public sealed class LspServer {
                     TriggerCharacters = new List<string> { "(", "," },
                 },
                 DefinitionProvider = true,
+                // The registered cell languages ride the handshake so the client
+                // needs no extra round trip; clrkernel/languages re-queries a
+                // live session (whose set can grow via runtime plugins).
+                Experimental = new {
+                    clrkernel = new { languages = CellLanguageRegistry.Default.CreateSet().Describe() },
+                },
             },
             ServerInfo = new ServerInfo {
                 Name = "ClrKernel",
                 Version = typeof(LspServer).Assembly.GetName().Version?.ToString(),
             },
         };
+    }
+
+    /// <summary>
+    /// The cell languages available to a notebook's session — the same shape as
+    /// the initialize handshake's experimental payload. With a notebookUri, the
+    /// answer reflects that session's live set (runtime-registered languages
+    /// included); without one, the process registry.
+    /// </summary>
+    [JsonRpcMethod("clrkernel/languages", UseSingleObjectParameterDeserialization = true)]
+    public object Languages(RestartParams p) {
+        var languages = string.IsNullOrEmpty(p?.NotebookUri)
+            ? CellLanguageRegistry.Default.CreateSet().Describe()
+            : SessionFor(p.NotebookUri).Engine.Languages.Describe();
+        return new { languages };
     }
 
     [JsonRpcMethod("initialized")]

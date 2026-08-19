@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using StreamJsonRpc;
@@ -32,8 +34,15 @@ public static class ServerHost {
         });
         var logger = loggerFactory.CreateLogger("ClrKernel.Core.ExtensionServer");
 
+        // Same camelCase System.Text.Json wire shape as the LSP host, so the
+        // LanguageDescriptor payload serializes identically on both surfaces.
+        var formatter = new SystemTextJsonFormatter();
+        formatter.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        formatter.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        formatter.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+
         var server = new NotebookServer(loggerFactory);
-        using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stdout, stdin), server);
+        using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stdout, stdin, formatter), server);
         server.Rpc = rpc;
         rpc.StartListening();
 

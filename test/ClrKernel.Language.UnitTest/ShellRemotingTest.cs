@@ -99,8 +99,8 @@ public class ShellRemotingTest {
         var blocks = NotebookImporter.ParseMarkdown(
             "```powershell\n#!pwsh-connect --name srv --host x\n```\n\n```powershell\nGet-Date\n```\n");
         Assert.AreEqual(2, blocks.Count);
-        StringAssert.StartsWith(blocks[0], "#!pwsh-connect", "the selector must not be buried under a prepended #!pwsh");
-        StringAssert.StartsWith(blocks[1], "#!pwsh\n");
+        StringAssert.StartsWith(blocks[0], "#!pwsh-connect", "the selector must not be buried under a prepended selector");
+        StringAssert.StartsWith(blocks[1], "#!powershell\n", "a tag with its own selector keeps it");
     }
 
     [TestMethod]

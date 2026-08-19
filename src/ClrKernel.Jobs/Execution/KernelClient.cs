@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ClrKernel.Core.Scripting;
 using StreamJsonRpc;
 
 namespace ClrKernel.Jobs;
@@ -24,7 +25,12 @@ public sealed class KernelClient : IDisposable {
     /// <param name="sendingStream">Stream requests are written to (the child's stdin).</param>
     /// <param name="receivingStream">Stream replies are read from (the child's stdout).</param>
     public KernelClient(Stream sendingStream, Stream receivingStream) {
-        var handler = new HeaderDelimitedMessageHandler(sendingStream, receivingStream, new SystemTextJsonFormatter());
+        // Mirrors the kernel hosts' wire shape: camelCase names, so the
+        // LanguageDescriptor payload in the initialize reply binds directly.
+        var formatter = new SystemTextJsonFormatter();
+        formatter.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        formatter.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        var handler = new HeaderDelimitedMessageHandler(sendingStream, receivingStream, formatter);
         _rpc = new JsonRpc(handler);
         _rpc.AddLocalRpcTarget(new NotificationSink(this));
         _rpc.StartListening();
@@ -64,6 +70,12 @@ public sealed class InitializeReply {
     public string Name { get; set; }
     [JsonPropertyName("version")]
     public string Version { get; set; }
+
+    /// <summary>The cell languages this kernel executes — used to parse the
+    /// notebook so exactly those fences become code cells. Null/empty (an old
+    /// kernel) degrades to C#-only parsing.</summary>
+    [JsonPropertyName("languages")]
+    public List<LanguageDescriptor> Languages { get; set; }
 }
 
 /// <summary>A display/updateDisplay notification: a mime bundle for a cell.</summary>
