@@ -46,7 +46,7 @@ public class DataSourceQuery {
     /// </summary>
     public DataResults Results(int limit = 1000) {
         //use a DataSet that doesn't enforce constraints to avoid issues when loading results (null/pk/fk violations)
-        using var ds    = new DataSet() { EnforceConstraints = false };
+        using var ds = new DataSet() { EnforceConstraints = false };
         using var reader = OpenReader();
         var table = new DataTable();
         ds.Tables.Add(table);
