@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.SqlServer;
 
 namespace ClrKernel.Language.Sql;
@@ -26,44 +27,83 @@ public sealed class MergeDirective {
 
 /// <summary>Parses the <c>#!sql-bulk</c> and <c>#!sql-merge</c> magics.</summary>
 public static class SqlEtlDirectives {
+    /// <summary>The declarative shape of <c>#!sql-bulk</c>.</summary>
+    public static readonly DirectiveDefinition BulkDefinition = new() {
+        Selector = "#!sql-bulk",
+        Description = "Bulk-copies rows between connections.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--from", Required = true, Description = "Source connection name." },
+            new() { Name = "--to", Description = "Destination connection (defaults to --from)." },
+            new() { Name = "--query", Aliases = new[] { "-q" }, Description = "Source SELECT." },
+            new() { Name = "--from-table", Description = "Source table (SELECT * alternative to --query)." },
+            new() { Name = "--table", Aliases = new[] { "--to-table" }, Required = true, Description = "Destination table." },
+            new() { Name = "--batch-size", Description = "Rows per batch." },
+            new() { Name = "--timeout", Description = "Bulk-copy timeout in seconds." },
+            new() { Name = "--notify-after", Description = "Progress notification interval in rows." },
+            new() { Name = "--truncate", Kind = DirectiveParameterKind.Flag, Description = "Truncate the destination first." },
+            new() { Name = "--create", Aliases = new[] { "--create-if-missing" }, Kind = DirectiveParameterKind.Flag, Description = "Create the destination table when missing." },
+            new() { Name = "--no-lock", Kind = DirectiveParameterKind.Flag, Description = "Skip the table lock." },
+            new() { Name = "--keep-identity", Kind = DirectiveParameterKind.Flag, Description = "Preserve identity values." },
+            new() { Name = "--keep-nulls", Kind = DirectiveParameterKind.Flag, Description = "Preserve NULLs over column defaults." },
+            new() { Name = "--no-progress", Kind = DirectiveParameterKind.Flag, Description = "Suppress the progress bar." },
+            new() { Name = "--map", Kind = DirectiveParameterKind.KeyValue, Repeatable = true, KeyValueHint = "source=dest", Description = "Column mapping (source=dest)." },
+        },
+    };
+
+    /// <summary>The declarative shape of <c>#!sql-merge</c>.</summary>
+    public static readonly DirectiveDefinition MergeDefinition = new() {
+        Selector = "#!sql-merge",
+        Description = "MERGEs a source table or query into a target table.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connection", Aliases = new[] { "-c" }, Description = "Connection name." },
+            new() { Name = "--target", Required = true, Description = "Target table." },
+            new() { Name = "--source", Required = true, Description = "Source table (or query with --source-is-query)." },
+            new() { Name = "--on", Required = true, RequiredLabel = "--on <key[,key...]>", Description = "Key columns (comma-separated)." },
+            new() { Name = "--update", Description = "Columns to update (comma-separated)." },
+            new() { Name = "--insert", Description = "Columns to insert (comma-separated)." },
+            new() { Name = "--delete", Kind = DirectiveParameterKind.Flag, Description = "Delete target rows not matched by source." },
+            new() { Name = "--source-is-query", Kind = DirectiveParameterKind.Flag, Description = "Treat --source as a query." },
+        },
+    };
+
     public static BulkDirective ParseBulk(string line) {
-        var tokens = Tokenize(line, "#!sql-bulk");
-        var d = new BulkDirective();
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--from": d.FromConnection = Next(); break;
-                case "--to": d.ToConnection = Next(); break;
-                case "--query": case "-q": d.Query = Next(); break;
-                case "--from-table": d.FromTable = Next(); break;
-                case "--table": case "--to-table": d.Table = Next(); break;
-                case "--batch-size": d.Options.BatchSize = ParseInt(Next(), t); break;
-                case "--timeout": d.Options.TimeoutSeconds = ParseInt(Next(), t); break;
-                case "--notify-after": d.Options.NotifyAfter = ParseInt(Next(), t); break;
-                case "--truncate": d.Options.TruncateFirst = true; break;
-                case "--create": case "--create-if-missing": d.Options.CreateIfMissing = true; break;
-                case "--no-lock": d.Options.TableLock = false; break;
-                case "--keep-identity": d.Options.KeepIdentity = true; break;
-                case "--keep-nulls": d.Options.KeepNulls = true; break;
-                case "--no-progress": d.Options.ShowProgress = false; break;
-                case "--map": {
-                        var kv = Next();
-                        var eq = kv.IndexOf('=');
-                        if (eq <= 0) {
-                            throw new FormatException($"--map expects source=dest, got '{kv}'.");
-                        }
-                        d.Options.ColumnMappings[kv.Substring(0, eq)] = kv.Substring(eq + 1);
-                        break;
-                    }
-                default: throw new FormatException($"Unknown #!sql-bulk flag '{t}'.");
-            }
+        var args = DirectiveParser.Parse(BulkDefinition, line);
+        var d = new BulkDirective {
+            FromConnection = args.Get("--from"),
+            ToConnection = args.Get("--to"),
+            Query = args.Get("--query"),
+            FromTable = args.Get("--from-table"),
+            Table = args.Get("--table"),
+        };
+        if (args.Has("--batch-size")) {
+            d.Options.BatchSize = ParseInt(args.Get("--batch-size"), "--batch-size");
         }
-        if (string.IsNullOrWhiteSpace(d.FromConnection)) {
-            throw new FormatException("#!sql-bulk requires --from.");
+        if (args.Has("--timeout")) {
+            d.Options.TimeoutSeconds = ParseInt(args.Get("--timeout"), "--timeout");
         }
-        if (string.IsNullOrWhiteSpace(d.Table)) {
-            throw new FormatException("#!sql-bulk requires --table.");
+        if (args.Has("--notify-after")) {
+            d.Options.NotifyAfter = ParseInt(args.Get("--notify-after"), "--notify-after");
+        }
+        if (args.Has("--truncate")) {
+            d.Options.TruncateFirst = true;
+        }
+        if (args.Has("--create")) {
+            d.Options.CreateIfMissing = true;
+        }
+        if (args.Has("--no-lock")) {
+            d.Options.TableLock = false;
+        }
+        if (args.Has("--keep-identity")) {
+            d.Options.KeepIdentity = true;
+        }
+        if (args.Has("--keep-nulls")) {
+            d.Options.KeepNulls = true;
+        }
+        if (args.Has("--no-progress")) {
+            d.Options.ShowProgress = false;
+        }
+        foreach (var kv in args.KeyValues("--map")) {
+            d.Options.ColumnMappings[kv.Key] = kv.Value;
         }
         if (string.IsNullOrWhiteSpace(d.Query) && string.IsNullOrWhiteSpace(d.FromTable)) {
             throw new FormatException("#!sql-bulk requires --query or --from-table.");
@@ -75,41 +115,23 @@ public static class SqlEtlDirectives {
     }
 
     public static MergeDirective ParseMerge(string line) {
-        var tokens = Tokenize(line, "#!sql-merge");
-        var d = new MergeDirective();
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--connection": case "-c": d.Connection = Next(); break;
-                case "--target": d.Spec.Target = Next(); break;
-                case "--source": d.Spec.Source = Next(); break;
-                case "--on": d.Spec.KeyColumns = SplitList(Next()); break;
-                case "--update": d.Spec.UpdateColumns = SplitList(Next()); break;
-                case "--insert": d.Spec.InsertColumns = SplitList(Next()); break;
-                case "--delete": d.Spec.DeleteNotMatchedBySource = true; break;
-                case "--source-is-query": d.Spec.SourceIsQuery = true; break;
-                default: throw new FormatException($"Unknown #!sql-merge flag '{t}'.");
-            }
-        }
-        if (string.IsNullOrWhiteSpace(d.Spec.Target)) {
-            throw new FormatException("#!sql-merge requires --target.");
-        }
-        if (string.IsNullOrWhiteSpace(d.Spec.Source)) {
-            throw new FormatException("#!sql-merge requires --source.");
-        }
-        if (d.Spec.KeyColumns == null || d.Spec.KeyColumns.Count == 0) {
+        var args = DirectiveParser.Parse(MergeDefinition, line);
+        var d = new MergeDirective { Connection = args.Get("--connection") };
+        d.Spec.Target = args.Get("--target");
+        d.Spec.Source = args.Get("--source");
+        d.Spec.KeyColumns = SplitList(args.Get("--on"));
+        if (d.Spec.KeyColumns.Count == 0) {
             throw new FormatException("#!sql-merge requires --on <key[,key...]>.");
         }
-        return d;
-    }
-
-    private static List<string> Tokenize(string line, string selector) {
-        var trimmed = (line ?? string.Empty).TrimStart();
-        if (trimmed.StartsWith(selector, StringComparison.OrdinalIgnoreCase)) {
-            trimmed = trimmed.Substring(selector.Length);
+        if (args.Has("--update")) {
+            d.Spec.UpdateColumns = SplitList(args.Get("--update"));
         }
-        return SqlDirectives.Tokenize(trimmed);
+        if (args.Has("--insert")) {
+            d.Spec.InsertColumns = SplitList(args.Get("--insert"));
+        }
+        d.Spec.DeleteNotMatchedBySource = args.Has("--delete");
+        d.Spec.SourceIsQuery = args.Has("--source-is-query");
+        return d;
     }
 
     private static List<string> SplitList(string value) =>

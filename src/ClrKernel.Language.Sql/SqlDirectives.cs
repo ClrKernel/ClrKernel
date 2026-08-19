@@ -1,12 +1,47 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.SqlServer;
 
 namespace ClrKernel.Language.Sql;
 /// <summary>Parses the <c>#!sql-connect</c> magic and the per-cell connection selector.</summary>
 public static class SqlDirectives {
+    /// <summary>The declarative shape of <c>#!sql-connect</c> — the single source of
+    /// truth for parsing, completions, and the RPC-served language descriptor.</summary>
+    public static readonly DirectiveDefinition ConnectDefinition = new() {
+        Selector = "#!sql-connect",
+        Description = "Registers a named SQL Server connection for #!sql cells.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--name", Aliases = new[] { "-n" }, Required = true, Description = "Connection name." },
+            new() { Name = "--server", Aliases = new[] { "--host", "-s" }, Description = "Server host name." },
+            new() { Name = "--database", Aliases = new[] { "-d" }, Description = "Database to open." },
+            new() { Name = "--user", Aliases = new[] { "--username", "-u" }, Description = "Login user name." },
+            new() { Name = "--secret", Aliases = new[] { "--secret-ref" }, Description = "Secret reference for the password (credential store / CLRKERNEL_SECRET_*)." },
+            new() { Name = "--connection-string", Aliases = new[] { "--cs" }, Description = "Raw connection string (carries its own auth)." },
+            new() { Name = "--provider", Description = "ADO.NET provider override." },
+            new() { Name = "--encrypt", EnumValues = new[] { "true", "false" }, Description = "Encrypt the connection (default true)." },
+            new() { Name = "--trust-cert", Aliases = new[] { "--trust-server-certificate" }, Kind = DirectiveParameterKind.Flag, Description = "Trust the server certificate." },
+            new() { Name = "--default", Kind = DirectiveParameterKind.Flag, Description = "Make this the default connection." },
+            new() { Name = "--var", Aliases = new[] { "--variable", "--as" }, Description = "C# identifier to bind the connection to." },
+            new() { Name = "--no-var", Aliases = new[] { "--no-variable" }, Kind = DirectiveParameterKind.Flag, Description = "Suppress the automatic C# variable binding." },
+            new() { Name = "--auth", Aliases = new[] { "-a" },
+                EnumValues = new[] { "sql", "integrated", "entra", "entra-password", "entra-interactive" },
+                Description = "Authentication mode." },
+            new() { Name = "--option", Kind = DirectiveParameterKind.KeyValue, Repeatable = true, Description = "Extra connection-string option (key=value)." },
+            new() { Name = "--password", Aliases = new[] { "-p" }, Kind = DirectiveParameterKind.Forbidden,
+                ForbiddenMessage = "Passwords must not be placed in notebook cells. Store the password from the " +
+                    "SQL connection panel (or a --secret reference / environment variable) instead." },
+        },
+    };
+
+    // Flags that *shape* a connection: a directive carrying none of them merely
+    // references an existing (registered / config-loaded) connection by name.
+    private static readonly string[] _shapingFlags = {
+        "--server", "--database", "--user", "--secret", "--connection-string",
+        "--provider", "--encrypt", "--trust-cert", "--auth", "--option",
+    };
+
     /// <summary>
     /// Parses a <c>#!sql-connect</c> line into a spec. Supported flags:
     /// <c>--name</c>, <c>--server</c>/<c>--host</c>, <c>--database</c>,
@@ -16,60 +51,40 @@ public static class SqlDirectives {
     /// <c>--option k=v</c>. A committed <c>--password</c> is rejected on purpose.
     /// </summary>
     public static SqlConnectDirective ParseConnect(string line) {
-        var body = StripLeadingSelector(line, "#!sql-connect");
-        var tokens = Tokenize(body);
-        var spec = new SqlConnectionSpec();
-        bool isDefault = false;
-        bool authExplicit = false;
-        string explicitVariable = null;
-        bool variableFlagSeen = false;
-        bool specFlagSeen = false; // any flag that *shapes* a connection (vs. referencing one)
-
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--name": case "-n": spec.Name = Next(); break;
-                case "--server": case "--host": case "-s": case "-S": spec.Server = Next(); specFlagSeen = true; break;
-                case "--database": case "-d": case "-D": spec.Database = Next(); specFlagSeen = true; break;
-                case "--user": case "--username": case "-u": case "-U": spec.User = Next(); specFlagSeen = true; break;
-                case "--secret": case "--secret-ref": spec.SecretRef = Next(); specFlagSeen = true; break;
-                case "--connection-string": case "--cs": spec.RawConnectionString = Next(); specFlagSeen = true; break;
-                case "--provider": spec.Provider = Next(); specFlagSeen = true; break;
-                case "--encrypt": spec.Encrypt = ParseBool(Next()); specFlagSeen = true; break;
-                case "--trust-cert": case "--trust-server-certificate": spec.TrustServerCertificate = true; specFlagSeen = true; break;
-                case "--default": isDefault = true; break;
-                case "--var":
-                case "--variable":
-                case "--as":
-                    explicitVariable = Next();
-                    variableFlagSeen = true;
-                    break;
-                case "--no-var": case "--no-variable": variableFlagSeen = true; break;
-                case "--auth": case "-a": spec.Auth = ParseAuth(Next()); authExplicit = true; specFlagSeen = true; break;
-                case "--option": {
-                        var kv = Next();
-                        var eq = kv.IndexOf('=');
-                        if (eq <= 0) {
-                            throw new FormatException($"--option expects key=value, got '{kv}'.");
-                        }
-                        spec.ExtraOptions[kv.Substring(0, eq)] = kv.Substring(eq + 1);
-                        specFlagSeen = true;
-                        break;
-                    }
-                case "--password":
-                case "-p":
-                    throw new FormatException(
-                        "Passwords must not be placed in notebook cells. Store the password from the " +
-                        "SQL connection panel (or a --secret reference / environment variable) instead.");
-                default:
-                    throw new FormatException($"Unknown #!sql-connect flag '{t}'.");
-            }
+        var args = DirectiveParser.Parse(ConnectDefinition, line);
+        var spec = new SqlConnectionSpec { Name = args.Get("--name") };
+        if (args.Has("--server")) {
+            spec.Server = args.Get("--server");
+        }
+        if (args.Has("--database")) {
+            spec.Database = args.Get("--database");
+        }
+        if (args.Has("--user")) {
+            spec.User = args.Get("--user");
+        }
+        if (args.Has("--secret")) {
+            spec.SecretRef = args.Get("--secret");
+        }
+        if (args.Has("--connection-string")) {
+            spec.RawConnectionString = args.Get("--connection-string");
+        }
+        if (args.Has("--provider")) {
+            spec.Provider = args.Get("--provider");
+        }
+        if (args.Has("--encrypt")) {
+            spec.Encrypt = ParseBool(args.Get("--encrypt"));
+        }
+        if (args.Has("--trust-cert")) {
+            spec.TrustServerCertificate = true;
+        }
+        foreach (var kv in args.KeyValues("--option")) {
+            spec.ExtraOptions[kv.Key] = kv.Value;
+        }
+        var authExplicit = args.Has("--auth");
+        if (authExplicit) {
+            spec.Auth = ParseAuth(args.Get("--auth"));
         }
 
-        if (string.IsNullOrWhiteSpace(spec.Name)) {
-            throw new FormatException("#!sql-connect requires --name.");
-        }
         // Default auth: a raw connection string carries its own auth; else a SQL
         // login if a user was named; otherwise Integrated.
         if (!authExplicit) {
@@ -79,11 +94,11 @@ public static class SqlDirectives {
                 spec.Auth = SqlAuthMode.SqlPassword;
             }
         }
-        var variable = ResolveVariable(explicitVariable, variableFlagSeen, spec.Name);
+        var variable = ResolveVariable(args.Get("--var"), args.HasAny("--var", "--no-var"), spec.Name);
         // Only --name (plus --default/--var) means "reference an existing connection"
         // — one loaded from connections.json or registered earlier — rather than
         // "define a new one". Registering the bare spec would clobber the real one.
-        return new SqlConnectDirective(spec, isDefault, variable, isReference: !specFlagSeen);
+        return new SqlConnectDirective(spec, args.Has("--default"), variable, isReference: !args.HasAny(_shapingFlags));
     }
 
     // Decides the C# variable to bind: an explicit --var (validated), else the
@@ -205,60 +220,8 @@ public static class SqlDirectives {
     /// selector line, or null when absent.</summary>
     public static string SelectorConnection(string selectorLine) => ExtractConnectionFlag(selectorLine ?? string.Empty);
 
-    private static string ExtractConnectionFlag(string line) {
-        var tokens = Tokenize(StripLeadingSelector(line, "#!sql"));
-        for (var i = 0; i < tokens.Count - 1; i++) {
-            var t = tokens[i].ToLowerInvariant();
-            if (t == "--connections" || t == "--connection" || t == "-c") {
-                return tokens[i + 1];
-            }
-        }
-        return null;
-    }
-
-    private static string StripLeadingSelector(string line, string selector) {
-        var t = (line ?? string.Empty).TrimStart();
-        return t.StartsWith(selector, StringComparison.OrdinalIgnoreCase)
-            ? t.Substring(selector.Length)
-            : t;
-    }
-
-    /// <summary>Splits a flag line into tokens, honoring double and single quotes.</summary>
-    internal static List<string> Tokenize(string input) {
-        var tokens = new List<string>();
-        if (string.IsNullOrWhiteSpace(input)) {
-            return tokens;
-        }
-        var sb = new StringBuilder();
-        char quote = '\0';
-        bool inToken = false;
-        foreach (var c in input) {
-            if (quote != '\0') {
-                if (c == quote) {
-                    quote = '\0';
-                } else {
-                    sb.Append(c);
-                }
-                inToken = true;
-            } else if (c == '"' || c == '\'') {
-                quote = c;
-                inToken = true;
-            } else if (char.IsWhiteSpace(c)) {
-                if (inToken) {
-                    tokens.Add(sb.ToString());
-                    sb.Clear();
-                    inToken = false;
-                }
-            } else {
-                sb.Append(c);
-                inToken = true;
-            }
-        }
-        if (inToken) {
-            tokens.Add(sb.ToString());
-        }
-        return tokens;
-    }
+    private static string ExtractConnectionFlag(string line) =>
+        DirectiveParser.FindValue(line, "--connections", "--connection", "-c");
 }
 
 /// <summary>A parsed <c>#!sql-connect</c>: the spec plus whether it is the default.</summary>
