@@ -579,3 +579,9 @@ textarea {
   font-size: 0.85rem;
   line-height: 1.5;
 }
+
+.button-small {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.8rem;
+  margin-left: 0.4rem;
+}

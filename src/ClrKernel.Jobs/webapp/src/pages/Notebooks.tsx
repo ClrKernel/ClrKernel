@@ -41,17 +41,24 @@ function Node({
     );
   }
 
+  const editable = env === 'dev' && node.kind === 'notebook';
   return (
     <li className="tree-file">
-      <span className="tree-name">{node.name}</span>
+      {editable ? (
+        <Link className="tree-name" to={`/edit?path=${encodeURIComponent(node.path)}`}>
+          {node.name}
+        </Link>
+      ) : (
+        <span className="tree-name">{node.name}</span>
+      )}
       {node.jobs?.map((job) => (
         <Link key={job} className="chip" to={`/jobs/${env}/${encodeURIComponent(job)}`}>
           {job}
         </Link>
       ))}
-      {env === 'dev' && node.kind === 'notebook' && (
-        <Link className="link-button" to={`/edit?path=${encodeURIComponent(node.path)}`}>
-          edit
+      {editable && (
+        <Link className="button button-small" to={`/edit?path=${encodeURIComponent(node.path)}`}>
+          Edit
         </Link>
       )}
       <button className="link-button" onClick={() => onCreate(node.path)}>
@@ -64,6 +71,7 @@ function Node({
 export function Notebooks() {
   const navigate = useNavigate();
   const { data, error } = usePolling(() => api.notebooks(), null);
+  const { data: health } = usePolling(() => api.health(), null);
 
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   return (
@@ -73,6 +81,15 @@ export function Notebooks() {
       <p className="muted">
         Every <code>*.jobs.yaml</code> found here defines jobs. Pick a notebook to add one.
       </p>
+      {health && !health.gitEnabled && (
+        <div className="banner banner-warn">
+          Editing notebooks in the browser needs the dev→prod git workflow, so every save is a
+          commit. Enable it once (stop the server first):
+          <pre className="output-text">clrkernel-jobs git init --notebooks &lt;your notebooks folder&gt;</pre>
+          Then restart — dev notebooks get an <strong>Edit</strong> button, and changes promote to
+          production after a green run.
+        </div>
+      )}
       {environments.length === 0 ? (
         <p className="muted">No notebooks under the notebooks root.</p>
       ) : (
