@@ -571,3 +571,11 @@ textarea {
 .env-prod {
   color: var(--ok);
 }
+
+.editor {
+  width: 100%;
+  min-height: 28rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}

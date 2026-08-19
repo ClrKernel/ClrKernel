@@ -108,10 +108,14 @@ public static class Program {
             return GitCommand(options, jobName);
         }
 
-        var catalog = new JobCatalog(options.NotebooksRoot, options.GitEnabled);
+        var git = options.GitEnabled ? GitFor(options) : null;
+        if (git is { LayoutExists: true }) {
+            git.Repair(); // worktree gitdir pointers are absolute; volumes move
+        }
+        var catalog = new JobCatalog(options.NotebooksRoot, options.GitEnabled, git);
         switch (command) {
             case "serve":
-                return await ServeAsync(catalog, options);
+                return await ServeAsync(catalog, options, git);
             case "list":
                 return List(catalog);
             case "validate":
@@ -181,7 +185,7 @@ public static class Program {
             (One-shot commands like `run` still default to sqlite.)
             """;
 
-    private static async Task<int> ServeAsync(JobCatalog catalog, JobsOptions options) {
+    private static async Task<int> ServeAsync(JobCatalog catalog, JobsOptions options, GitService git) {
         if (MissingStoreError(options) is { } missingStore) {
             Console.Error.WriteLine(missingStore);
             return 2;
@@ -202,7 +206,7 @@ public static class Program {
             return 2;
         }
 
-        var app = BuildApp(options, catalog, store);
+        var app = BuildApp(options, catalog, store, git);
         var urls = options.Urls ?? "http://localhost:5000";
         if (options.ApiKey == null && !urls.Contains("localhost") && !urls.Contains("127.0.0.1")) {
             Console.Error.WriteLine(
@@ -214,7 +218,8 @@ public static class Program {
     }
 
     /// <summary>The scheduler + API host. Shared with the integration tests.</summary>
-    internal static WebApplication BuildApp(JobsOptions options, JobCatalog catalog, IRunStore store) {
+    internal static WebApplication BuildApp(
+        JobsOptions options, JobCatalog catalog, IRunStore store, GitService git = null) {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
@@ -230,15 +235,6 @@ public static class Program {
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton(store);
 
-        GitService git = null;
-        if (options.GitEnabled) {
-            git = new GitService(options.NotebooksRoot,
-                LoggerFactory.Create(b => b.AddConsole()).CreateLogger<GitService>(),
-                options.GitAuthorName, options.GitAuthorEmail);
-            if (git.LayoutExists) {
-                git.Repair(); // worktree gitdir pointers are absolute; volumes move
-            }
-        }
         if (git != null) {
             builder.Services.AddSingleton(git);
         }

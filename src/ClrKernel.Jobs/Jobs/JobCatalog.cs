@@ -41,10 +41,15 @@ public sealed class JobCatalog {
         new(StringComparer.Ordinal);
     private readonly object _lock = new();
 
+    private readonly GitService _git;
+
     /// <param name="gitLayout">Scan &lt;root&gt;/dev and &lt;root&gt;/prod as environments.</param>
-    public JobCatalog(string notebooksRoot, bool gitLayout = false) {
+    /// <param name="git">When present, scans run inside the git lock so a tick can
+    /// never observe a promotion half-applied to the prod worktree.</param>
+    public JobCatalog(string notebooksRoot, bool gitLayout = false, GitService git = null) {
         _notebooksRoot = Path.GetFullPath(notebooksRoot);
         _gitLayout = gitLayout;
+        _git = git;
     }
 
     public string NotebooksRoot => _notebooksRoot;
@@ -59,6 +64,10 @@ public sealed class JobCatalog {
 
     /// <summary>Rescans every environment and returns the current jobs and problems.</summary>
     public CatalogResult Load() {
+        return _git == null ? LoadCore() : _git.WithLock(LoadCore);
+    }
+
+    private CatalogResult LoadCore() {
         var jobs = new List<JobDefinition>();
         var errors = new List<string>();
 

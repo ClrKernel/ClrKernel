@@ -70,6 +70,81 @@ public static class JobsApi {
                 : Results.NotFound(new { error = $"No such file: {path}" });
         });
 
+        api.MapPut("/envs/{env}/notebooks/content", async (
+            HttpContext context, JobCatalog catalog, string env, string path) => {
+                if (!catalog.GitLayout) {
+                    return Results.BadRequest(new {
+                        error = "Editing needs the git workflow — run `clrkernel-jobs git init`.",
+                    });
+                }
+                if (env != "dev") {
+                    return Results.BadRequest(new { error = "prod is read-only — edit in dev and promote." });
+                }
+                // Rooted at the dev worktree: the workspace root would resolve prod/… too.
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                if (resolved == null) {
+                    return Results.BadRequest(new { error = "Path is outside the dev area." });
+                }
+                if (!NotebookTree.IsNotebook(resolved) && !resolved.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)) {
+                    return Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
+                }
+                if (context.Request.ContentLength is > 2_000_000) {
+                    return Results.BadRequest(new { error = "File too large (2 MB limit)." });
+                }
+                using var reader = new StreamReader(context.Request.Body);
+                var content = await reader.ReadToEndAsync();
+
+                var git = context.RequestServices.GetService(typeof(GitService)) as GitService;
+                git!.WithLock(() => {
+                    Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
+                    File.WriteAllText(resolved, content);
+                    git.Commit("dev", $"edit {path} via web UI", path);
+                });
+                return Results.Ok(new { saved = true, commitSha = git.HeadSha("dev") });
+            });
+
+        api.MapGet("/envs/dev/notebooks/promotion", async (
+            HttpContext context, JobCatalog catalog, IRunStore store, string path) => {
+                var git = GitOf(context);
+                if (git == null || !catalog.GitLayout) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
+                    return Results.BadRequest(new { error = "Path is outside the dev area." });
+                }
+                return Results.Ok(await Promotion.CheckAsync(catalog, git, store, path));
+            });
+
+        api.MapPost("/envs/dev/notebooks/promote", async (
+            HttpContext context, JobCatalog catalog, IRunStore store, JobsOptions options, string path) => {
+                var git = GitOf(context);
+                if (git == null || !catalog.GitLayout) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
+                    return Results.BadRequest(new { error = "Path is outside the dev area." });
+                }
+                // Re-check inside the request: the button may be stale.
+                var eligibility = await Promotion.CheckAsync(catalog, git, store, path);
+                if (!eligibility.Eligible) {
+                    return Results.Conflict(new { error = "Not eligible.", reasons = eligibility.Reasons });
+                }
+                var sha = Promotion.Apply(git, eligibility, path);
+                git.TryPush(options.GitPushRemote);
+                return Results.Ok(new { promoted = true, commitSha = sha, paths = eligibility.Paths });
+            });
+
+        api.MapGet("/git/diff", (HttpContext context, JobCatalog catalog, string path) => {
+            var git = context.RequestServices.GetService(typeof(GitService)) as GitService;
+            if (git == null || !catalog.GitLayout) {
+                return Results.BadRequest(new { error = "The git workflow is not enabled." });
+            }
+            if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
+                return Results.BadRequest(new { error = "Path is outside the dev area." });
+            }
+            return Results.Text(git.UnifiedDiff(path), "text/plain");
+        });
+
         // --- jobs -----------------------------------------------------------
 
         api.MapGet("/jobs", (JobCatalog catalog) => {
@@ -83,27 +158,37 @@ public static class JobsApi {
                 : Results.Ok(JobView.From(job));
         });
 
-        api.MapPost("/envs/{env}/jobs", (JobCatalog catalog, string env, JobWrite write) =>
-            Upsert(catalog, env, null, write));
+        api.MapPost("/envs/{env}/jobs", (HttpContext context, JobCatalog catalog, string env, JobWrite write) =>
+            Upsert(catalog, GitOf(context), env, null, write));
 
-        api.MapPut("/envs/{env}/jobs/{name}", (JobCatalog catalog, string env, string name, JobWrite write) =>
-            Upsert(catalog, env, name, write));
+        api.MapPut("/envs/{env}/jobs/{name}", (
+            HttpContext context, JobCatalog catalog, string env, string name, JobWrite write) =>
+            Upsert(catalog, GitOf(context), env, name, write));
 
-        api.MapDelete("/envs/{env}/jobs/{name}", (JobCatalog catalog, string env, string name) => {
+        api.MapDelete("/envs/{env}/jobs/{name}", (HttpContext context, JobCatalog catalog, string env, string name) => {
             var job = catalog.Load().Find(env, name);
             if (job == null) {
                 return Results.NotFound(new { error = $"No job named '{name}'." });
             }
-            var file = JobsFile.Read(job.SourceFile);
-            file.Jobs.RemoveAll(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
             if (catalog.GitLayout && env != "dev") {
                 return Results.BadRequest(new { error = "prod is read-only — delete in dev and promote." });
             }
-            if (file.Jobs.Count == 0) {
-                // A jobs file with an empty list can't be loaded; remove it instead.
-                File.Delete(job.SourceFile);
+            var git = GitOf(context);
+            void Mutate() {
+                var file = JobsFile.Read(job.SourceFile);
+                file.Jobs.RemoveAll(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (file.Jobs.Count == 0) {
+                    // A jobs file with an empty list can't be loaded; remove it instead.
+                    File.Delete(job.SourceFile);
+                } else {
+                    JobsFile.Write(job.SourceFile, file, catalog.RootFor(env));
+                }
+                git?.Commit("dev", $"delete job {name} via web UI", job.SourceFileRelative);
+            }
+            if (git != null && catalog.GitLayout) {
+                git.WithLock(Mutate);
             } else {
-                JobsFile.Write(job.SourceFile, file, catalog.RootFor(env));
+                Mutate();
             }
             return Results.NoContent();
         });
@@ -260,6 +345,9 @@ public static class JobsApi {
 
     private static int Clamp(int? limit) => Math.Clamp(limit ?? 50, 1, 500);
 
+    private static GitService GitOf(HttpContext context) =>
+        context.RequestServices.GetService(typeof(GitService)) as GitService;
+
     private static async Task<IResult> ServeRunFile(
         IRunStore store, JobsOptions options, Guid id, Func<Run, string> select, string contentType) {
         var run = await store.GetRunAsync(id);
@@ -275,7 +363,8 @@ public static class JobsApi {
             : Results.NotFound(new { error = "No such artifact for this run (it may not have been written yet)." });
     }
 
-    private static IResult Upsert(JobCatalog catalog, string env, string existingName, JobWrite write) {
+    private static IResult Upsert(
+        JobCatalog catalog, GitService git, string env, string existingName, JobWrite write) {
         if (!catalog.Environments.Contains(env)) {
             return Results.NotFound(new { error = $"No environment '{env}'." });
         }
@@ -345,7 +434,15 @@ public static class JobsApi {
         entry.Notify = write.Notify;
 
         try {
-            JobsFile.Write(targetFile, file, catalog.RootFor(env));
+            if (git != null && catalog.GitLayout) {
+                var relative = Path.GetRelativePath(catalog.RootFor(env), targetFile).Replace('\\', '/');
+                git.WithLock(() => {
+                    JobsFile.Write(targetFile, file, catalog.RootFor(env));
+                    git.Commit("dev", $"edit job {write.Name} via web UI", relative);
+                });
+            } else {
+                JobsFile.Write(targetFile, file, catalog.RootFor(env));
+            }
         } catch (Exception e) {
             return Results.BadRequest(new { error = $"Job is not valid: {e.Message}" });
         }

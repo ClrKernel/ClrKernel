@@ -194,6 +194,32 @@ export const api = {
   notebooks: () =>
     request<{ environments: { name: string; tree: TreeNode | null }[] }>('/notebooks'),
 
+  notebookContent: (env: string, path: string) =>
+    fetch(`/api/envs/${env}/notebooks/content?path=${encodeURIComponent(path)}`, {
+      headers: apiKey() ? { 'X-Api-Key': apiKey() } : {},
+    }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
+  saveNotebookContent: (path: string, content: string) =>
+    request<{ saved: boolean; commitSha: string }>(
+      `/envs/dev/notebooks/content?path=${encodeURIComponent(path)}`,
+      { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
+    ),
+  gitDiff: (path: string) =>
+    fetch(`/api/git/diff?path=${encodeURIComponent(path)}`, {
+      headers: apiKey() ? { 'X-Api-Key': apiKey() } : {},
+    }).then((r) => (r.ok ? r.text() : '')),
+  promotionStatus: (path: string) =>
+    request<{
+      eligible: boolean;
+      reasons: string[];
+      paths: string[];
+      isDeletion: boolean;
+    }>(`/envs/dev/notebooks/promotion?path=${encodeURIComponent(path)}`),
+  promote: (path: string) =>
+    request<{ promoted: boolean; commitSha: string }>(
+      `/envs/dev/notebooks/promote?path=${encodeURIComponent(path)}`,
+      { method: 'POST' },
+    ),
+
   settings: () => request<{ sections: SettingsSection[] }>('/settings'),
   saveSettings: (section: string, values: Record<string, unknown>) =>
     request<{ saved: boolean; restartRequired: boolean }>(`/settings/${encodeURIComponent(section)}`, {

@@ -95,6 +95,9 @@ public sealed class GitService {
         var psi = new ProcessStartInfo {
             FileName = "git",
             WorkingDirectory = workdir,
+            // stdin is redirected and closed immediately: commands that read it
+            // (mktree with no input) must see EOF, not inherit a terminal and hang.
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -131,6 +134,7 @@ public sealed class GitService {
             throw new GitException(
                 "git is not installed or not on PATH — the dev/prod workflow needs it. " + e.Message);
         }
+        process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

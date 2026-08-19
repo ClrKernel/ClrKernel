@@ -3,7 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, type TreeNode } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
 
-function Node({ node, onCreate }: { node: TreeNode; onCreate: (path: string) => void }) {
+function Node({
+  node,
+  env,
+  onCreate,
+}: {
+  node: TreeNode;
+  env: string;
+  onCreate: (path: string) => void;
+}) {
   const [open, setOpen] = useState(true);
 
   if (node.isDirectory) {
@@ -16,7 +24,7 @@ function Node({ node, onCreate }: { node: TreeNode; onCreate: (path: string) => 
         {open && children.length > 0 && (
           <ul>
             {children.map((child) => (
-              <Node key={child.path} node={child} onCreate={onCreate} />
+              <Node key={child.path} node={child} env={env} onCreate={onCreate} />
             ))}
           </ul>
         )}
@@ -37,10 +45,15 @@ function Node({ node, onCreate }: { node: TreeNode; onCreate: (path: string) => 
     <li className="tree-file">
       <span className="tree-name">{node.name}</span>
       {node.jobs?.map((job) => (
-        <Link key={job} className="chip" to={`/jobs/${encodeURIComponent(job)}`}>
+        <Link key={job} className="chip" to={`/jobs/${env}/${encodeURIComponent(job)}`}>
           {job}
         </Link>
       ))}
+      {env === 'dev' && node.kind === 'notebook' && (
+        <Link className="link-button" to={`/edit?path=${encodeURIComponent(node.path)}`}>
+          edit
+        </Link>
+      )}
       <button className="link-button" onClick={() => onCreate(node.path)}>
         + job
       </button>
@@ -76,6 +89,7 @@ export function Notebooks() {
                 <Node
                   key={`${environment.name}/${child.path}`}
                   node={child}
+                  env={environment.name}
                   onCreate={(path) =>
                     navigate(`/jobs/${environment.name}/new?notebook=${encodeURIComponent(path)}`)
                   }

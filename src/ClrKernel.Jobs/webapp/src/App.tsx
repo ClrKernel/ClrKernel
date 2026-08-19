@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
 import { Notebooks } from './pages/Notebooks';
+import { Editor } from './pages/Editor';
 import { Settings } from './pages/Settings';
 import { RunDetail } from './pages/RunDetail';
 
@@ -59,6 +60,7 @@ export function App() {
           <Route path="/notebooks" element={<Notebooks />} />
           <Route path="/channels" element={<Channels />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/edit" element={<Editor />} />
           <Route path="/runs/:id" element={<RunDetail />} />
           <Route path="*" element={<p className="muted">Not found.</p>} />
         </Routes>
