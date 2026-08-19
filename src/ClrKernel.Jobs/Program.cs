@@ -38,8 +38,10 @@ public static class Program {
                                      or CLRKERNEL_JOBS_DATA).
           --clrkernel <path>         Path to the clrkernel executable (default:
                                      PATH, then ~/.dotnet/tools).
-          --store <kind>             Run-history store: sqlite (default).
-          --connection-string <cs>   Connection string for non-sqlite stores.
+          --store <kind>             Run-history store: sqlite | sqlserver |
+                                     postgres | files. Required for serve;
+                                     one-shot commands default to sqlite.
+          --connection-string <cs>   Connection string for sqlserver/postgres.
           --urls <urls>              serve: listen address
                                      (default http://localhost:5000).
           --api-key <key>            serve: require this key in the X-Api-Key
@@ -115,13 +117,45 @@ public static class Program {
         }
     }
 
+    /// <summary>
+    /// The serve precondition: the store must be chosen, not defaulted. A server
+    /// that silently lands on sqlite looks fine until the run history turns up in
+    /// the wrong place. Returns the error message, or null when configured.
+    /// </summary>
+    internal static string MissingStoreError(JobsOptions options) =>
+        options.IsExplicit("store") ? null :
+            """
+            serve needs an explicit run-history store.
+
+              --store sqlite       zero config; the database lives in the data dir
+              --store files        no database; run.json beside each run's artifacts
+              --store postgres     needs --connection-string (or CLRKERNEL_JOBS_CONNECTION)
+              --store sqlserver    needs --connection-string (or CLRKERNEL_JOBS_CONNECTION)
+
+            Set it with --store, CLRKERNEL_JOBS_STORE, or "store" in settings.json.
+            (One-shot commands like `run` still default to sqlite.)
+            """;
+
     private static async Task<int> ServeAsync(JobCatalog catalog, JobsOptions options) {
+        if (MissingStoreError(options) is { } missingStore) {
+            Console.Error.WriteLine(missingStore);
+            return 2;
+        }
+
         var result = catalog.Load();
         Console.WriteLine($"clrkernel-jobs scheduler — {result.Jobs.Count} job(s) under {catalog.NotebooksRoot}");
         PrintErrors(result.Errors);
 
         Directory.CreateDirectory(options.DataDir);
-        var store = RunStoreFactory.Create(options);
+        IRunStore store;
+        try {
+            // Prove the store works before binding the port: a half-configured
+            // server should exit with guidance, not serve 500s.
+            store = RunStoreFactory.Create(options, waitForDatabase: true, log: Console.Error.WriteLine);
+        } catch (Exception e) when (e is InvalidOperationException or ArgumentException) {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
 
         var app = BuildApp(options, catalog, store);
         var urls = options.Urls ?? "http://localhost:5000";
@@ -224,7 +258,13 @@ public static class Program {
         PrintErrors(result.Errors);
 
         Directory.CreateDirectory(options.DataDir);
-        var store = RunStoreFactory.Create(options);
+        IRunStore store;
+        try {
+            store = RunStoreFactory.Create(options);
+        } catch (Exception e) when (e is InvalidOperationException or ArgumentException) {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
 
         using var loggerFactory = LoggerFactory.Create(builder => {
             builder.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);

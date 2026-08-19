@@ -167,14 +167,23 @@ Run history and artifacts default to `~/.clrkernel/jobs` (`--data-dir`, or
 `CLRKERNEL_JOBS_DATA`). Artifacts always live on disk:
 `artifacts/<job>/<run-id>/output.ipynb` plus `run.log`.
 
-The history itself goes wherever you point it:
+The history itself goes wherever you point it — and **`serve` requires the choice to
+be explicit** (flag, `CLRKERNEL_JOBS_STORE`, or `store` in settings.json; the Docker
+image sets `sqlite` via env so it works out of the box). A server that silently
+defaulted its store would put your run history somewhere you didn't choose:
 
 ```bash
-clrkernel-jobs serve --store sqlite                     # default, zero config
+clrkernel-jobs serve --store sqlite                     # zero config
 clrkernel-jobs serve --store files                      # no database at all
 clrkernel-jobs serve --store postgres   --connection-string "Host=…;Database=clrkernel_jobs;…"
 clrkernel-jobs serve --store sqlserver  --connection-string "Server=…;Database=clrkernel_jobs;…"
 ```
+
+The store is validated **before the port binds**: a missing or wrong connection
+string exits with a message naming where each value came from, instead of a server
+that answers 500s. Database stores get ~30 seconds of retries first, so
+`docker compose up` works even though the database container is slower to start.
+One-shot commands (`run`, `list`, `validate`) still default to sqlite.
 
 `files` keeps a self-describing `run.json` beside each run's artifacts, so a run
 directory can be archived or copied whole. The relational backends create their

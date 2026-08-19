@@ -50,10 +50,13 @@ RUN apt-get update \
 COPY --from=build /app/ ./
 
 # Notebooks are mounted read-only; /data holds the run history and artifacts.
+# The store must be explicit for serve — the image says sqlite; override the env
+# (e.g. in compose) for postgres/sqlserver, together with CLRKERNEL_JOBS_CONNECTION.
 ENV CLRKERNEL_JOBS_NOTEBOOKS=/notebooks \
     CLRKERNEL_JOBS_DATA=/data \
     CLRKERNEL_JOBS_CLRKERNEL=/app/kernel/ClrKernel \
-    CLRKERNEL_JOBS_URLS=http://0.0.0.0:5000
+    CLRKERNEL_JOBS_URLS=http://0.0.0.0:5000 \
+    CLRKERNEL_JOBS_STORE=sqlite
 EXPOSE 5000
 VOLUME ["/data"]
 
