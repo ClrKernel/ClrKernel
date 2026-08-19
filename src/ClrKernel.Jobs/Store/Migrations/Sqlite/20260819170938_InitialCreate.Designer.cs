@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ClrKernel.Jobs.Store.Migrations.Sqlite
 {
     [DbContext(typeof(SqliteRunsDbContext))]
-    [Migration("20260818225230_InitialCreate")]
+    [Migration("20260819170938_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -22,6 +22,11 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
 
             modelBuilder.Entity("ClrKernel.Jobs.JobTriggerState", b =>
                 {
+                    b.Property<string>("Environment")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("environment");
+
                     b.Property<string>("JobName")
                         .HasColumnType("TEXT")
                         .HasColumnName("job_name");
@@ -30,7 +35,7 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("last_trigger_at");
 
-                    b.HasKey("JobName");
+                    b.HasKey("Environment", "JobName");
 
                     b.ToTable("job_trigger_state", (string)null);
                 });
@@ -54,9 +59,20 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("caused_by_run_id");
 
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("commit_sha");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("environment");
 
                     b.Property<string>("ErrorSummary")
                         .HasColumnType("TEXT")
@@ -65,6 +81,10 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("finished_at");
+
+                    b.Property<bool>("HadOverrides")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("had_overrides");
 
                     b.Property<string>("JobName")
                         .IsRequired()
@@ -99,11 +119,15 @@ namespace ClrKernel.Jobs.Store.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("trigger_type");
 
+                    b.Property<bool>("WasDirty")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("was_dirty");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("JobName");
+                    b.HasIndex("Environment", "JobName");
 
                     b.ToTable("runs", (string)null);
                 });

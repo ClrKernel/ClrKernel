@@ -21,11 +21,11 @@ public interface IRunStore {
     Task<IReadOnlyList<RunCell>> GetCellsAsync(Guid runId);
 
     /// <summary>The most recent Succeeded run of a job, or null (chain freshness + lineage).</summary>
-    Task<Run> GetLastSuccessfulRunAsync(string jobName);
+    Task<Run> GetLastSuccessfulRunAsync(string environment, string jobName);
     /// <summary>True when the job has a Pending or Running run (schedule overlap skip).</summary>
-    Task<bool> HasActiveRunAsync(string jobName);
-    Task<DateTime?> GetLastTriggerAsync(string jobName);
-    Task SetLastTriggerAsync(string jobName, DateTime triggeredAt);
+    Task<bool> HasActiveRunAsync(string environment, string jobName);
+    Task<DateTime?> GetLastTriggerAsync(string environment, string jobName);
+    Task SetLastTriggerAsync(string environment, string jobName, DateTime triggeredAt);
 
     /// <summary>Marks rows stuck in Pending/Running (from a crash) as Failed. Returns the count.</summary>
     Task<int> MarkOrphansFailedAsync();

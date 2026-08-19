@@ -93,21 +93,21 @@ public class ApiTest {
 
     [TestMethod]
     public async Task A_job_can_be_created_read_updated_and_deleted_through_the_yaml() {
-        var created = await _client.PostAsJsonAsync("/api/jobs", NewJob("nightly-us"));
+        var created = await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("nightly-us"));
         Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
 
         var yamlPath = Path.Combine(_root, "notebooks", "etl", "nightly.jobs.yaml");
         Assert.IsTrue(File.Exists(yamlPath), "the job is persisted as a jobs file next to its notebook");
         StringAssert.Contains(File.ReadAllText(yamlPath), "nightly-us");
 
-        var fetched = await _client.GetFromJsonAsync<JobView>("/api/jobs/nightly-us", _json);
+        var fetched = await _client.GetFromJsonAsync<JobView>("/api/envs/default/jobs/nightly-us", _json);
         Assert.AreEqual("etl/nightly.nb.md", fetched.Notebook);
         Assert.AreEqual("0 2 * * *", fetched.Cron);
         Assert.AreEqual("us", fetched.Parameters["region"].ToString());
 
         // A second job on the same notebook joins the same file.
         Assert.AreEqual(HttpStatusCode.Created,
-            (await _client.PostAsJsonAsync("/api/jobs", NewJob("nightly-eu"))).StatusCode);
+            (await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("nightly-eu"))).StatusCode);
         var list = await _client.GetFromJsonAsync<JsonElement>("/api/jobs");
         Assert.AreEqual(2, list.GetProperty("jobs").GetArrayLength());
         Assert.AreEqual(0, list.GetProperty("errors").GetArrayLength());
@@ -115,15 +115,15 @@ public class ApiTest {
         var update = NewJob("nightly-us");
         update.Cron = "30 3 * * *";
         update.Enabled = false;
-        var updated = await _client.PutAsJsonAsync("/api/jobs/nightly-us", update);
+        var updated = await _client.PutAsJsonAsync("/api/envs/default/jobs/nightly-us", update);
         Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
-        var reread = await _client.GetFromJsonAsync<JobView>("/api/jobs/nightly-us", _json);
+        var reread = await _client.GetFromJsonAsync<JobView>("/api/envs/default/jobs/nightly-us", _json);
         Assert.AreEqual("30 3 * * *", reread.Cron);
         Assert.IsFalse(reread.Enabled);
 
         Assert.AreEqual(HttpStatusCode.NoContent,
-            (await _client.DeleteAsync("/api/jobs/nightly-us")).StatusCode);
-        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.GetAsync("/api/jobs/nightly-us")).StatusCode);
+            (await _client.DeleteAsync("/api/envs/default/jobs/nightly-us")).StatusCode);
+        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.GetAsync("/api/envs/default/jobs/nightly-us")).StatusCode);
         StringAssert.Contains(File.ReadAllText(yamlPath), "nightly-eu", "the sibling job survives");
     }
 
@@ -132,35 +132,39 @@ public class ApiTest {
         var noNotebook = NewJob("ghost");
         noNotebook.Notebook = "etl/missing.nb.md";
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.PostAsJsonAsync("/api/jobs", noNotebook)).StatusCode);
+            (await _client.PostAsJsonAsync("/api/envs/default/jobs", noNotebook)).StatusCode);
 
         var traversal = NewJob("escape");
         traversal.Notebook = "../../etc/passwd";
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.PostAsJsonAsync("/api/jobs", traversal)).StatusCode);
+            (await _client.PostAsJsonAsync("/api/envs/default/jobs", traversal)).StatusCode);
 
         var badCron = NewJob("bad-cron");
         badCron.Cron = "not a cron";
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.PostAsJsonAsync("/api/jobs", badCron)).StatusCode,
+            (await _client.PostAsJsonAsync("/api/envs/default/jobs", badCron)).StatusCode,
             "an unloadable job never reaches the disk");
 
-        await _client.PostAsJsonAsync("/api/jobs", NewJob("taken"));
+        await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("taken"));
         Assert.AreEqual(HttpStatusCode.Conflict,
-            (await _client.PostAsJsonAsync("/api/jobs", NewJob("taken"))).StatusCode);
+            (await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("taken"))).StatusCode);
     }
 
     [TestMethod]
     public async Task The_notebook_tree_and_content_respect_the_root() {
-        var tree = await _client.GetFromJsonAsync<TreeNode>("/api/notebooks", _json);
+        var payload = await _client.GetFromJsonAsync<JsonElement>("/api/notebooks");
+        var envs = payload.GetProperty("environments");
+        Assert.AreEqual(1, envs.GetArrayLength(), "no git workflow: one default environment");
+        var tree = JsonSerializer.Deserialize<TreeNode>(
+            envs[0].GetProperty("tree").GetRawText(), _json);
         var etl = tree.Children.Single(c => c.IsDirectory);
         Assert.AreEqual("etl/nightly.nb.md", etl.Children.Single(c => c.Kind == "notebook").Path);
 
-        var content = await _client.GetAsync("/api/notebooks/content?path=etl/nightly.nb.md");
+        var content = await _client.GetAsync("/api/envs/default/notebooks/content?path=etl/nightly.nb.md");
         StringAssert.Contains(await content.Content.ReadAsStringAsync(), "1+1");
 
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.GetAsync("/api/notebooks/content?path=../../../etc/passwd")).StatusCode);
+            (await _client.GetAsync("/api/envs/default/notebooks/content?path=../../../etc/passwd")).StatusCode);
     }
 
     [TestMethod]
@@ -207,14 +211,14 @@ public class ApiTest {
 
     [TestMethod]
     public async Task An_ad_hoc_run_can_override_parameters_without_touching_the_yaml() {
-        await _client.PostAsJsonAsync("/api/jobs", NewJob("adhoc"));
+        await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("adhoc"));
 
-        var response = await _client.PostAsJsonAsync("/api/jobs/adhoc/run",
+        var response = await _client.PostAsJsonAsync("/api/envs/default/jobs/adhoc/run",
             new { parameters = new Dictionary<string, object> { ["region"] = "eu", ["extra"] = 7 } });
         Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode);
 
         // The stored job keeps its own parameters — the override was for that run only.
-        var job = await _client.GetFromJsonAsync<JobView>("/api/jobs/adhoc", _json);
+        var job = await _client.GetFromJsonAsync<JobView>("/api/envs/default/jobs/adhoc", _json);
         Assert.AreEqual("us", job.Parameters["region"].ToString());
         Assert.IsFalse(job.Parameters.ContainsKey("extra"));
         StringAssert.Contains(
@@ -223,8 +227,8 @@ public class ApiTest {
 
     [TestMethod]
     public async Task A_run_without_a_body_still_works() {
-        await _client.PostAsJsonAsync("/api/jobs", NewJob("plain"));
-        var response = await _client.PostAsync("/api/jobs/plain/run", null);
+        await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("plain"));
+        var response = await _client.PostAsync("/api/envs/default/jobs/plain/run", null);
         Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode,
             await response.Content.ReadAsStringAsync());
     }
@@ -301,8 +305,8 @@ public class ApiTest {
 
     [TestMethod]
     public async Task Triggering_an_unknown_job_is_a_404_and_cancel_needs_an_active_run() {
-        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.PostAsync("/api/jobs/nope/run", null)).StatusCode);
-        await _client.PostAsJsonAsync("/api/jobs", NewJob("idle"));
-        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.PostAsync("/api/jobs/idle/cancel", null)).StatusCode);
+        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.PostAsync("/api/envs/default/jobs/nope/run", null)).StatusCode);
+        await _client.PostAsJsonAsync("/api/envs/default/jobs", NewJob("idle"));
+        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.PostAsync("/api/envs/default/jobs/idle/cancel", null)).StatusCode);
     }
 }

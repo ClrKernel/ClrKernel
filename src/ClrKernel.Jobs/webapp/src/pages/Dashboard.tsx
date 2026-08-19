@@ -27,7 +27,10 @@ export function RunTable({ runs, showJob = true }: { runs: Run[]; showJob?: bool
             </td>
             {showJob && (
               <td>
-                <Link to={`/jobs/${encodeURIComponent(run.jobName)}`}>{run.jobName}</Link>
+                <Link to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}>{run.jobName}</Link>
+                {run.environment !== 'default' && (
+                  <span className={`chip env-${run.environment}`}>{run.environment}</span>
+                )}
               </td>
             )}
             <td className="muted">{run.trigger}</td>

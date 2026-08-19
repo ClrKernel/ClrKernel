@@ -30,6 +30,14 @@ public sealed class JobsOptions {
     public string ApiKey { get; set; }
     /// <summary>Listen urls for serve; null = http://localhost:5000.</summary>
     public string Urls { get; set; }
+    /// <summary>Dev→prod workflow: the notebooks root is a git workspace with dev/prod worktrees.</summary>
+    public bool GitEnabled { get; set; }
+    public string GitAuthorName { get; set; }
+    public string GitAuthorEmail { get; set; }
+    /// <summary>Remote name/url to push after commits and promotions; empty = local only.</summary>
+    public string GitPushRemote { get; set; }
+    /// <summary>The `run` verb's target environment (--env); null = dev in git mode.</summary>
+    public string RunEnvironment { get; set; }
 
     public string ArtifactsDir => Path.Combine(DataDir, "artifacts");
     public string DefaultSqlitePath => Path.Combine(DataDir, "jobs.db");
@@ -104,6 +112,16 @@ public sealed class JobsOptions {
         if (parallelism != null && int.TryParse(parallelism, out var p) && p > 0) {
             options.MaxParallelism = p;
         }
+
+        var gitEnabled = Pick("gitEnabled", "git", "CLRKERNEL_JOBS_GIT", Setting("gitEnabled"), null);
+        options.GitEnabled = gitEnabled != null && bool.TryParse(gitEnabled, out var g) && g;
+        options.GitAuthorName = Pick(
+            "gitAuthorName", "git-author-name", "CLRKERNEL_JOBS_GIT_AUTHOR", Setting("gitAuthorName"), null);
+        options.GitAuthorEmail = Pick(
+            "gitAuthorEmail", "git-author-email", "CLRKERNEL_JOBS_GIT_EMAIL", Setting("gitAuthorEmail"), null);
+        options.GitPushRemote = Pick(
+            "gitPushRemote", "git-push-remote", "CLRKERNEL_JOBS_GIT_REMOTE", Setting("gitPushRemote"), null);
+        options.RunEnvironment = Cli("env");
         return options;
     }
 }

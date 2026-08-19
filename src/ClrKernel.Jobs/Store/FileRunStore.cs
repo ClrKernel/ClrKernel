@@ -45,7 +45,7 @@ public sealed class FileRunStore : IRunStore {
     }
 
     private string DirectoryFor(Run run) =>
-        Path.Combine(_root, run.JobName, run.Id.ToString("N"));
+        Path.Combine(_root, run.Environment ?? "default", run.JobName, run.Id.ToString("N"));
 
     private string PathFor(Run run) => Path.Combine(DirectoryFor(run), "run.json");
 
@@ -108,6 +108,9 @@ public sealed class FileRunStore : IRunStore {
 
     public Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
         var runs = AllRecords().Select(r => r.Run);
+        if (!string.IsNullOrEmpty(query.Environment)) {
+            runs = runs.Where(r => string.Equals(r.Environment, query.Environment, StringComparison.OrdinalIgnoreCase));
+        }
         if (!string.IsNullOrEmpty(query.JobName)) {
             runs = runs.Where(r => string.Equals(r.JobName, query.JobName, StringComparison.OrdinalIgnoreCase));
         }
@@ -156,17 +159,20 @@ public sealed class FileRunStore : IRunStore {
         Task.FromResult<IReadOnlyList<RunCell>>(
             (Find(runId)?.Cells ?? new List<RunCell>()).OrderBy(c => c.CellIndex).ToList());
 
-    public Task<Run> GetLastSuccessfulRunAsync(string jobName) =>
+    private static bool Matches(Run run, string environment, string jobName) =>
+        string.Equals(run.Environment ?? "default", environment, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(run.JobName, jobName, StringComparison.OrdinalIgnoreCase);
+
+    public Task<Run> GetLastSuccessfulRunAsync(string environment, string jobName) =>
         Task.FromResult(AllRecords()
             .Select(r => r.Run)
-            .Where(r => string.Equals(r.JobName, jobName, StringComparison.OrdinalIgnoreCase)
-                && r.Status == RunStatus.Succeeded)
+            .Where(r => Matches(r, environment, jobName) && r.Status == RunStatus.Succeeded)
             .OrderByDescending(r => r.FinishedAt)
             .FirstOrDefault());
 
-    public Task<bool> HasActiveRunAsync(string jobName) =>
+    public Task<bool> HasActiveRunAsync(string environment, string jobName) =>
         Task.FromResult(AllRecords().Any(r =>
-            string.Equals(r.Run.JobName, jobName, StringComparison.OrdinalIgnoreCase)
+            Matches(r.Run, environment, jobName)
             && r.Run.Status is RunStatus.Pending or RunStatus.Running));
 
     // --- trigger state (one small shared file) ------------------------------
@@ -183,13 +189,14 @@ public sealed class FileRunStore : IRunStore {
         }
     }
 
-    public Task<DateTime?> GetLastTriggerAsync(string jobName) =>
-        Task.FromResult(ReadTriggers().TryGetValue(jobName, out var at) ? at : (DateTime?)null);
+    public Task<DateTime?> GetLastTriggerAsync(string environment, string jobName) =>
+        Task.FromResult(ReadTriggers().TryGetValue($"{environment}/{jobName}", out var at)
+            ? at : (DateTime?)null);
 
-    public async Task SetLastTriggerAsync(string jobName, DateTime triggeredAt) {
+    public async Task SetLastTriggerAsync(string environment, string jobName, DateTime triggeredAt) {
         using var _ = await _triggerLock.EnterAsync();
         var triggers = ReadTriggers();
-        triggers[jobName] = triggeredAt;
+        triggers[$"{environment}/{jobName}"] = triggeredAt;
         Directory.CreateDirectory(Path.GetDirectoryName(_triggersPath)!);
         var staging = _triggersPath + ".tmp";
         await File.WriteAllTextAsync(staging, JsonSerializer.Serialize(triggers, _json));

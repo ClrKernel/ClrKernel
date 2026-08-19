@@ -3,16 +3,16 @@ using System;
 using ClrKernel.Jobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace ClrKernel.Jobs.Store.Migrations.SqlServer
+namespace ClrKernel.Jobs.Store.Migrations.Postgres
 {
-    [DbContext(typeof(SqlServerRunsDbContext))]
-    [Migration("20260818225232_InitialCreate")]
+    [DbContext(typeof(PostgresRunsDbContext))]
+    [Migration("20260819170943_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -21,21 +21,26 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "9.0.9")
-                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("ClrKernel.Jobs.JobTriggerState", b =>
                 {
+                    b.Property<string>("Environment")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("environment");
+
                     b.Property<string>("JobName")
-                        .HasColumnType("nvarchar(450)")
+                        .HasColumnType("text")
                         .HasColumnName("job_name");
 
                     b.Property<DateTime>("LastTriggerAt")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_trigger_at");
 
-                    b.HasKey("JobName");
+                    b.HasKey("Environment", "JobName");
 
                     b.ToTable("job_trigger_state", (string)null);
                 });
@@ -44,71 +49,90 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<string>("ArtifactPath")
-                        .HasColumnType("nvarchar(max)")
+                        .HasColumnType("text")
                         .HasColumnName("artifact_path");
 
                     b.Property<int>("Attempt")
-                        .HasColumnType("int")
+                        .HasColumnType("integer")
                         .HasColumnName("attempt");
 
                     b.Property<Guid?>("CausedByRunId")
-                        .HasColumnType("uniqueidentifier")
+                        .HasColumnType("uuid")
                         .HasColumnName("caused_by_run_id");
 
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commit_sha");
+
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("environment");
+
                     b.Property<string>("ErrorSummary")
-                        .HasColumnType("nvarchar(max)")
+                        .HasColumnType("text")
                         .HasColumnName("error_summary");
 
                     b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("finished_at");
+
+                    b.Property<bool>("HadOverrides")
+                        .HasColumnType("boolean")
+                        .HasColumnName("had_overrides");
 
                     b.Property<string>("JobName")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)")
+                        .HasColumnType("text")
                         .HasColumnName("job_name");
 
                     b.Property<string>("LogPath")
-                        .HasColumnType("nvarchar(max)")
+                        .HasColumnType("text")
                         .HasColumnName("log_path");
 
                     b.Property<string>("NotebookPath")
-                        .HasColumnType("nvarchar(max)")
+                        .HasColumnType("text")
                         .HasColumnName("notebook_path");
 
                     b.Property<DateTime?>("ScheduledFor")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_for");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)")
+                        .HasColumnType("character varying(16)")
                         .HasColumnName("status");
 
                     b.Property<string>("Trigger")
                         .IsRequired()
                         .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)")
+                        .HasColumnType("character varying(16)")
                         .HasColumnName("trigger_type");
+
+                    b.Property<bool>("WasDirty")
+                        .HasColumnType("boolean")
+                        .HasColumnName("was_dirty");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("JobName");
+                    b.HasIndex("Environment", "JobName");
 
                     b.ToTable("runs", (string)null);
                 });
@@ -116,33 +140,33 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
             modelBuilder.Entity("ClrKernel.Jobs.RunCell", b =>
                 {
                     b.Property<Guid>("RunId")
-                        .HasColumnType("uniqueidentifier")
+                        .HasColumnType("uuid")
                         .HasColumnName("run_id");
 
                     b.Property<int>("CellIndex")
-                        .HasColumnType("int")
+                        .HasColumnType("integer")
                         .HasColumnName("cell_index");
 
                     b.Property<string>("ErrorSummary")
-                        .HasColumnType("nvarchar(max)")
+                        .HasColumnType("text")
                         .HasColumnName("error_summary");
 
                     b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("finished_at");
 
                     b.Property<string>("SourcePreview")
-                        .HasColumnType("nvarchar(max)")
+                        .HasColumnType("text")
                         .HasColumnName("source_preview");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("datetime2")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)")
+                        .HasColumnType("character varying(16)")
                         .HasColumnName("status");
 
                     b.HasKey("RunId", "CellIndex");

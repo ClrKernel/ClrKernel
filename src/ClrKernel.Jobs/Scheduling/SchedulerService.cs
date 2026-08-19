@@ -55,30 +55,34 @@ public sealed class SchedulerService : BackgroundService {
         _logger = logger;
         _parallelism = new SemaphoreSlim(Math.Max(1, options.MaxParallelism));
         RunJob = (request, ct) => executor.ExecuteAsync(
-            request.Job, request.Trigger, request.CausedByRunId, request.Attempt, request.RunId, ct);
+            request.Job, request.Trigger, request.CausedByRunId, request.Attempt, request.RunId,
+            request.HadOverrides, ct);
     }
 
     /// <summary>
     /// Fires a job now (the API's run button). Returns the pre-assigned run id, or
     /// null when the job already has an active run launched by this process.
     /// </summary>
-    public Guid? TriggerManual(JobDefinition job) {
-        if (_activeJobs.ContainsKey(job.Name)) {
+    public Guid? TriggerManual(JobDefinition job, bool hadOverrides = false) {
+        if (_activeJobs.ContainsKey(KeyOf(job))) {
             return null;
         }
         var runId = Guid.NewGuid();
-        Launch(new RunRequest(job, RunTrigger.Manual, null, runId), _stoppingToken);
+        Launch(new RunRequest(job, RunTrigger.Manual, null, runId) { HadOverrides = hadOverrides },
+            _stoppingToken);
         return runId;
     }
 
     /// <summary>Cancels a job's in-flight run (kills its kernel). False when none is ours.</summary>
-    public bool TryCancel(string jobName) {
-        if (_activeJobs.TryGetValue(jobName, out var cancellation)) {
+    public bool TryCancel(string environment, string jobName) {
+        if (_activeJobs.TryGetValue($"{environment}:{jobName}", out var cancellation)) {
             cancellation.Cancel();
             return true;
         }
         return false;
     }
+
+    private static string KeyOf(JobDefinition job) => $"{job.Environment}:{job.Name}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         _stoppingToken = stoppingToken;
@@ -120,13 +124,16 @@ public sealed class SchedulerService : BackgroundService {
             _logger.LogWarning("Catalog: {Error}", error);
         }
 
-        foreach (var job in catalog.Jobs.Where(j => j.Enabled)) {
-            if (_activeJobs.ContainsKey(job.Name)) {
+        // Automatic triggers fire only where the scheduler owns execution: prod in
+        // the git workflow, or the single default environment without it. Dev runs
+        // are always deliberate (manual / API).
+        foreach (var job in catalog.Jobs.Where(j => j.Enabled && j.Environment is "prod" or "default")) {
+            if (_activeJobs.ContainsKey(KeyOf(job))) {
                 continue;
             }
 
             if (job.Cron != null && IsDue(job.Cron, fromUtc, toUtc)) {
-                if (await _store.HasActiveRunAsync(job.Name)) {
+                if (await _store.HasActiveRunAsync(job.Environment, job.Name)) {
                     _logger.LogWarning("{Job} is due but still has an active run; skipping this occurrence.", job.Name);
                     continue;
                 }
@@ -136,7 +143,7 @@ public sealed class SchedulerService : BackgroundService {
 
             if (job.DependsOn.Count > 0) {
                 var causedBy = await DependencyReadyAsync(job);
-                if (causedBy != null && !await _store.HasActiveRunAsync(job.Name)) {
+                if (causedBy != null && !await _store.HasActiveRunAsync(job.Environment, job.Name)) {
                     Launch(new RunRequest(job, RunTrigger.Dependency, causedBy.Id, null), cancellationToken);
                 }
             }
@@ -157,10 +164,11 @@ public sealed class SchedulerService : BackgroundService {
         if (job.DependsOn.Count == 0) {
             return null;
         }
-        var lastTrigger = await _store.GetLastTriggerAsync(job.Name) ?? DateTime.MinValue;
+        var lastTrigger = await _store.GetLastTriggerAsync(job.Environment, job.Name) ?? DateTime.MinValue;
         Run newest = null;
         foreach (var dependency in job.DependsOn) {
-            var success = await _store.GetLastSuccessfulRunAsync(dependency);
+            // Dependencies resolve within the same environment only.
+            var success = await _store.GetLastSuccessfulRunAsync(job.Environment, dependency);
             if (success?.FinishedAt is not { } finished || finished <= lastTrigger) {
                 return null;
             }
@@ -176,7 +184,7 @@ public sealed class SchedulerService : BackgroundService {
         // One cancellation source per launch, keyed by job name (one active launch per
         // job): TryCancel and host shutdown both flow through it into the executor.
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _activeJobs[job.Name] = cancellation;
+        _activeJobs[KeyOf(job)] = cancellation;
         var token = cancellation.Token;
         var key = Guid.NewGuid();
         _inflight[key] = Task.Run(async () => {
@@ -213,7 +221,7 @@ public sealed class SchedulerService : BackgroundService {
             } catch (Exception e) {
                 _logger.LogError(e, "{Job} run crashed outside the executor.", job.Name);
             } finally {
-                _activeJobs.TryRemove(job.Name, out _);
+                _activeJobs.TryRemove(KeyOf(job), out _);
                 _inflight.TryRemove(key, out _);
                 cancellation.Dispose();
             }
@@ -228,4 +236,5 @@ public sealed class SchedulerService : BackgroundService {
 /// triggers so the API can answer 202 with the id before the run starts.</summary>
 internal sealed record RunRequest(JobDefinition Job, RunTrigger Trigger, Guid? CausedByRunId, Guid? RunId) {
     public int Attempt { get; init; } = 1;
+    public bool HadOverrides { get; init; }
 }

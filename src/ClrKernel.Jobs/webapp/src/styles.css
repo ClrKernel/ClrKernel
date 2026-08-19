@@ -563,3 +563,11 @@ textarea {
 .small {
   font-size: 0.8rem;
 }
+
+.env-dev {
+  color: var(--warn);
+}
+
+.env-prod {
+  color: var(--ok);
+}

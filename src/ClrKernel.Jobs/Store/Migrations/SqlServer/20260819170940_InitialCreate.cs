@@ -11,11 +11,12 @@ public partial class InitialCreate : Migration {
         migrationBuilder.CreateTable(
             name: "job_trigger_state",
             columns: table => new {
+                environment = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                 job_name = table.Column<string>(type: "nvarchar(450)", nullable: false),
                 last_trigger_at = table.Column<DateTime>(type: "datetime2", nullable: false)
             },
             constraints: table => {
-                table.PrimaryKey("PK_job_trigger_state", x => x.job_name);
+                table.PrimaryKey("PK_job_trigger_state", x => new { x.environment, x.job_name });
             });
 
         migrationBuilder.CreateTable(
@@ -37,6 +38,7 @@ public partial class InitialCreate : Migration {
             name: "runs",
             columns: table => new {
                 id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                environment = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                 job_name = table.Column<string>(type: "nvarchar(450)", nullable: false),
                 notebook_path = table.Column<string>(type: "nvarchar(max)", nullable: true),
                 status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
@@ -49,7 +51,10 @@ public partial class InitialCreate : Migration {
                 finished_at = table.Column<DateTime>(type: "datetime2", nullable: true),
                 error_summary = table.Column<string>(type: "nvarchar(max)", nullable: true),
                 artifact_path = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                log_path = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                log_path = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                commit_sha = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                was_dirty = table.Column<bool>(type: "bit", nullable: false),
+                had_overrides = table.Column<bool>(type: "bit", nullable: false)
             },
             constraints: table => {
                 table.PrimaryKey("PK_runs", x => x.id);
@@ -61,9 +66,9 @@ public partial class InitialCreate : Migration {
             column: "created_at");
 
         migrationBuilder.CreateIndex(
-            name: "IX_runs_job_name",
+            name: "IX_runs_environment_job_name",
             table: "runs",
-            column: "job_name");
+            columns: new[] { "environment", "job_name" });
     }
 
     /// <inheritdoc />

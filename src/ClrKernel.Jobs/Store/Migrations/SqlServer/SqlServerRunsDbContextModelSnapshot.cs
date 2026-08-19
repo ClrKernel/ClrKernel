@@ -24,6 +24,11 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
 
             modelBuilder.Entity("ClrKernel.Jobs.JobTriggerState", b =>
                 {
+                    b.Property<string>("Environment")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("environment");
+
                     b.Property<string>("JobName")
                         .HasColumnType("nvarchar(450)")
                         .HasColumnName("job_name");
@@ -32,7 +37,7 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                         .HasColumnType("datetime2")
                         .HasColumnName("last_trigger_at");
 
-                    b.HasKey("JobName");
+                    b.HasKey("Environment", "JobName");
 
                     b.ToTable("job_trigger_state", (string)null);
                 });
@@ -56,9 +61,20 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("caused_by_run_id");
 
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("commit_sha");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("environment");
 
                     b.Property<string>("ErrorSummary")
                         .HasColumnType("nvarchar(max)")
@@ -67,6 +83,10 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("finished_at");
+
+                    b.Property<bool>("HadOverrides")
+                        .HasColumnType("bit")
+                        .HasColumnName("had_overrides");
 
                     b.Property<string>("JobName")
                         .IsRequired()
@@ -101,11 +121,15 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                         .HasColumnType("nvarchar(16)")
                         .HasColumnName("trigger_type");
 
+                    b.Property<bool>("WasDirty")
+                        .HasColumnType("bit")
+                        .HasColumnName("was_dirty");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("JobName");
+                    b.HasIndex("Environment", "JobName");
 
                     b.ToTable("runs", (string)null);
                 });

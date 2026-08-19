@@ -54,8 +54,8 @@ export function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/jobs" element={<Jobs />} />
-          <Route path="/jobs/new" element={<JobDetail />} />
-          <Route path="/jobs/:name" element={<JobDetail />} />
+          <Route path="/jobs/:env/new" element={<JobDetail />} />
+          <Route path="/jobs/:env/:name" element={<JobDetail />} />
           <Route path="/notebooks" element={<Notebooks />} />
           <Route path="/channels" element={<Channels />} />
           <Route path="/settings" element={<Settings />} />

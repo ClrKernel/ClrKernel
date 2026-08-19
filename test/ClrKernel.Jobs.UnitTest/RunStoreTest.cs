@@ -75,8 +75,8 @@ public class RunStoreTest {
 
     [TestMethod]
     public async Task Last_success_and_last_trigger_track_per_job() {
-        Assert.IsNull(await _store.GetLastSuccessfulRunAsync("a"));
-        Assert.IsNull(await _store.GetLastTriggerAsync("a"));
+        Assert.IsNull(await _store.GetLastSuccessfulRunAsync("default", "a"));
+        Assert.IsNull(await _store.GetLastTriggerAsync("default", "a"));
 
         var older = NewRun("a", RunStatus.Succeeded);
         older.FinishedAt = DateTime.UtcNow.AddMinutes(-10);
@@ -84,24 +84,24 @@ public class RunStoreTest {
         var run = NewRun("a", RunStatus.Succeeded);
         run.FinishedAt = DateTime.UtcNow;
         await _store.CreateRunAsync(run);
-        Assert.AreEqual(run.Id, (await _store.GetLastSuccessfulRunAsync("a")).Id, "newest success wins");
+        Assert.AreEqual(run.Id, (await _store.GetLastSuccessfulRunAsync("default", "a")).Id, "newest success wins");
 
         var triggered = DateTime.UtcNow;
-        await _store.SetLastTriggerAsync("a", triggered);
-        Assert.AreEqual(triggered, await _store.GetLastTriggerAsync("a"));
+        await _store.SetLastTriggerAsync("default", "a", triggered);
+        Assert.AreEqual(triggered, await _store.GetLastTriggerAsync("default", "a"));
 
         var later = triggered.AddMinutes(5);
-        await _store.SetLastTriggerAsync("a", later);
-        Assert.AreEqual(later, await _store.GetLastTriggerAsync("a"), "upsert replaces");
+        await _store.SetLastTriggerAsync("default", "a", later);
+        Assert.AreEqual(later, await _store.GetLastTriggerAsync("default", "a"), "upsert replaces");
     }
 
     [TestMethod]
     public async Task Active_run_detection_sees_pending_and_running_only() {
-        Assert.IsFalse(await _store.HasActiveRunAsync("a"));
+        Assert.IsFalse(await _store.HasActiveRunAsync("default", "a"));
         await _store.CreateRunAsync(NewRun("a", RunStatus.Succeeded));
-        Assert.IsFalse(await _store.HasActiveRunAsync("a"));
+        Assert.IsFalse(await _store.HasActiveRunAsync("default", "a"));
         await _store.CreateRunAsync(NewRun("a", RunStatus.Running));
-        Assert.IsTrue(await _store.HasActiveRunAsync("a"));
+        Assert.IsTrue(await _store.HasActiveRunAsync("default", "a"));
     }
 
     [TestMethod]

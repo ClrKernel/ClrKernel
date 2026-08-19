@@ -6,6 +6,8 @@ export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipp
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
 
 export interface Job {
+  /** dev | prod, or "default" when the git workflow is off. */
+  environment: string;
   name: string;
   notebook: string;
   jobsFile: string;
@@ -20,6 +22,7 @@ export interface Job {
 
 export interface Run {
   id: string;
+  environment: string;
   jobName: string;
   notebookPath: string;
   status: RunStatus;
@@ -146,27 +149,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ status: string; jobs: number; notebooksRoot: string; errors: string[] }>('/health'),
+  health: () =>
+    request<{
+      status: string;
+      jobs: number;
+      notebooksRoot: string;
+      environments: string[];
+      gitEnabled: boolean;
+      errors: string[];
+    }>('/health'),
   stats: (days = 7) => request<Stats>(`/stats?days=${days}`),
 
   jobs: () => request<{ jobs: Job[]; errors: string[] }>('/jobs'),
-  job: (name: string) => request<Job>(`/jobs/${encodeURIComponent(name)}`),
-  createJob: (job: Partial<Job>) => request<Job>('/jobs', { method: 'POST', body: JSON.stringify(job) }),
-  updateJob: (name: string, job: Partial<Job>) =>
-    request<Job>(`/jobs/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(job) }),
-  deleteJob: (name: string) => request<void>(`/jobs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  job: (env: string, name: string) => request<Job>(`/envs/${env}/jobs/${encodeURIComponent(name)}`),
+  createJob: (env: string, job: Partial<Job>) =>
+    request<Job>(`/envs/${env}/jobs`, { method: 'POST', body: JSON.stringify(job) }),
+  updateJob: (env: string, name: string, job: Partial<Job>) =>
+    request<Job>(`/envs/${env}/jobs/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(job) }),
+  deleteJob: (env: string, name: string) =>
+    request<void>(`/envs/${env}/jobs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   /** Optional parameters apply to this run only; the job's yaml is untouched. */
-  runJob: (name: string, parameters?: Record<string, unknown>) =>
-    request<{ runId: string }>(`/jobs/${encodeURIComponent(name)}/run`, {
+  runJob: (env: string, name: string, parameters?: Record<string, unknown>) =>
+    request<{ runId: string }>(`/envs/${env}/jobs/${encodeURIComponent(name)}/run`, {
       method: 'POST',
       ...(parameters && Object.keys(parameters).length > 0
         ? { body: JSON.stringify({ parameters }) }
         : {}),
     }),
-  cancelJob: (name: string) =>
-    request<{ cancelled: boolean }>(`/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
-  jobRuns: (name: string, limit = 25) =>
-    request<Run[]>(`/jobs/${encodeURIComponent(name)}/runs?limit=${limit}`),
+  cancelJob: (env: string, name: string) =>
+    request<{ cancelled: boolean }>(`/envs/${env}/jobs/${encodeURIComponent(name)}/cancel`, {
+      method: 'POST',
+    }),
+  jobRuns: (env: string, name: string, limit = 25) =>
+    request<Run[]>(`/envs/${env}/jobs/${encodeURIComponent(name)}/runs?limit=${limit}`),
 
   runs: (limit = 25) => request<Run[]>(`/runs?limit=${limit}`),
   run: (id: string) => request<{ run: Run; cells: RunCell[] }>(`/runs/${id}`),
@@ -176,7 +191,8 @@ export const api = {
       r.ok ? r.text() : '',
     ),
 
-  notebooks: () => request<TreeNode>('/notebooks'),
+  notebooks: () =>
+    request<{ environments: { name: string; tree: TreeNode | null }[] }>('/notebooks'),
 
   settings: () => request<{ sections: SettingsSection[] }>('/settings'),
   saveSettings: (section: string, values: Record<string, unknown>) =>

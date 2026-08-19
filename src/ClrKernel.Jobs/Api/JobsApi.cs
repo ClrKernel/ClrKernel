@@ -21,12 +21,21 @@ public static class JobsApi {
     public static void MapJobsApi(this IEndpointRouteBuilder app) {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/health", (JobCatalog catalog) => {
+        api.MapGet("/health", (HttpContext context, JobCatalog catalog) => {
             var result = catalog.Load();
+            var git = context.RequestServices.GetService(typeof(GitService)) as GitService;
             return Results.Ok(new {
                 status = result.Errors.Count == 0 ? "ok" : "degraded",
                 jobs = result.Jobs.Count,
                 notebooksRoot = catalog.NotebooksRoot,
+                environments = catalog.Environments,
+                gitEnabled = git != null,
+                // A push that can never succeed must not be silent divergence.
+                lastPush = git?.LastPush.At == null ? null : new {
+                    at = git.LastPush.At,
+                    ok = git.LastPush.Ok,
+                    error = git.LastPush.Error,
+                },
                 errors = result.Errors,
                 version = typeof(JobsApi).Assembly.GetName().Version?.ToString(),
             });
@@ -34,11 +43,25 @@ public static class JobsApi {
 
         // --- notebooks ------------------------------------------------------
 
-        api.MapGet("/notebooks", (JobCatalog catalog) =>
-            Results.Ok(NotebookTree.Build(catalog.NotebooksRoot, catalog.Load())));
+        api.MapGet("/notebooks", (JobCatalog catalog) => {
+            var result = catalog.Load();
+            return Results.Ok(new {
+                environments = catalog.Environments.Select(env => new {
+                    name = env,
+                    tree = Directory.Exists(catalog.RootFor(env))
+                        ? NotebookTree.Build(catalog.RootFor(env), result, env)
+                        : null,
+                }),
+            });
+        });
 
-        api.MapGet("/notebooks/content", (JobCatalog catalog, string path) => {
-            var resolved = NotebookTree.SafeResolve(catalog.NotebooksRoot, path);
+        api.MapGet("/envs/{env}/notebooks/content", (JobCatalog catalog, string env, string path) => {
+            if (!catalog.Environments.Contains(env)) {
+                return Results.NotFound(new { error = $"No environment '{env}'." });
+            }
+            // Rooted at the environment's own tree — resolving against the workspace
+            // would happily reach across into the other worktree.
+            var resolved = NotebookTree.SafeResolve(catalog.RootFor(env), path);
             if (resolved == null) {
                 return Results.BadRequest(new { error = "Path is outside the notebooks root." });
             }
@@ -54,28 +77,33 @@ public static class JobsApi {
             return Results.Ok(new { jobs = result.Jobs.Select(JobView.From), errors = result.Errors });
         });
 
-        api.MapGet("/jobs/{name}", (JobCatalog catalog, string name) => {
-            var job = catalog.Load().Find(name);
-            return job == null ? Results.NotFound(new { error = $"No job named '{name}'." })
+        api.MapGet("/envs/{env}/jobs/{name}", (JobCatalog catalog, string env, string name) => {
+            var job = catalog.Load().Find(env, name);
+            return job == null ? Results.NotFound(new { error = $"No job named '{name}' in {env}." })
                 : Results.Ok(JobView.From(job));
         });
 
-        api.MapPost("/jobs", (JobCatalog catalog, JobWrite write) => Upsert(catalog, null, write));
+        api.MapPost("/envs/{env}/jobs", (JobCatalog catalog, string env, JobWrite write) =>
+            Upsert(catalog, env, null, write));
 
-        api.MapPut("/jobs/{name}", (JobCatalog catalog, string name, JobWrite write) => Upsert(catalog, name, write));
+        api.MapPut("/envs/{env}/jobs/{name}", (JobCatalog catalog, string env, string name, JobWrite write) =>
+            Upsert(catalog, env, name, write));
 
-        api.MapDelete("/jobs/{name}", (JobCatalog catalog, string name) => {
-            var job = catalog.Load().Find(name);
+        api.MapDelete("/envs/{env}/jobs/{name}", (JobCatalog catalog, string env, string name) => {
+            var job = catalog.Load().Find(env, name);
             if (job == null) {
                 return Results.NotFound(new { error = $"No job named '{name}'." });
             }
             var file = JobsFile.Read(job.SourceFile);
             file.Jobs.RemoveAll(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (catalog.GitLayout && env != "dev") {
+                return Results.BadRequest(new { error = "prod is read-only — delete in dev and promote." });
+            }
             if (file.Jobs.Count == 0) {
                 // A jobs file with an empty list can't be loaded; remove it instead.
                 File.Delete(job.SourceFile);
             } else {
-                JobsFile.Write(job.SourceFile, file, catalog.NotebooksRoot);
+                JobsFile.Write(job.SourceFile, file, catalog.RootFor(env));
             }
             return Results.NoContent();
         });
@@ -83,11 +111,11 @@ public static class JobsApi {
         // The body is read by hand rather than bound: a [FromBody] parameter adds a
         // content-type constraint to route matching, which makes a plain
         // `curl -X POST …/run` (no body, no headers) miss the route entirely.
-        api.MapPost("/jobs/{name}/run", async (
-            HttpContext context, JobCatalog catalog, SchedulerService scheduler, string name) => {
-                var job = catalog.Load().Find(name);
+        api.MapPost("/envs/{env}/jobs/{name}/run", async (
+            HttpContext context, JobCatalog catalog, SchedulerService scheduler, string env, string name) => {
+                var job = catalog.Load().Find(env, name);
                 if (job == null) {
-                    return Results.NotFound(new { error = $"No job named '{name}'." });
+                    return Results.NotFound(new { error = $"No job named '{name}' in {env}." });
                 }
 
                 RunOverrides overrides = null;
@@ -109,19 +137,21 @@ public static class JobsApi {
                     }
                     job = job.With(merged);
                 }
-                var runId = scheduler.TriggerManual(job);
+                var runId = scheduler.TriggerManual(job, overrides?.Parameters is { Count: > 0 });
                 return runId == null
                     ? Results.Conflict(new { error = $"{job.Name} already has a run in flight." })
                     : Results.Accepted($"/api/runs/{runId}", new { runId });
             });
 
-        api.MapPost("/jobs/{name}/cancel", (SchedulerService scheduler, string name) =>
-            scheduler.TryCancel(name)
+        api.MapPost("/envs/{env}/jobs/{name}/cancel", (SchedulerService scheduler, string env, string name) =>
+            scheduler.TryCancel(env, name)
                 ? Results.Ok(new { cancelled = true })
-                : Results.NotFound(new { error = $"No in-flight run for '{name}' in this process." }));
+                : Results.NotFound(new { error = $"No in-flight run for '{name}' in {env}." }));
 
-        api.MapGet("/jobs/{name}/runs", async (IRunStore store, string name, int? limit, int? offset) =>
+        api.MapGet("/envs/{env}/jobs/{name}/runs", async (
+            IRunStore store, string env, string name, int? limit, int? offset) =>
             Results.Ok(await store.QueryRunsAsync(new RunQuery {
+                Environment = env,
                 JobName = name,
                 Limit = Clamp(limit),
                 Offset = offset ?? 0,
@@ -129,7 +159,7 @@ public static class JobsApi {
 
         // --- runs -----------------------------------------------------------
 
-        api.MapGet("/runs", async (IRunStore store, string status, int? limit, int? offset) => {
+        api.MapGet("/runs", async (IRunStore store, string status, string env, int? limit, int? offset) => {
             RunStatus? parsed = null;
             if (!string.IsNullOrEmpty(status)) {
                 if (!Enum.TryParse<RunStatus>(status, ignoreCase: true, out var value)) {
@@ -138,6 +168,7 @@ public static class JobsApi {
                 parsed = value;
             }
             return Results.Ok(await store.QueryRunsAsync(new RunQuery {
+                Environment = env,
                 Status = parsed,
                 Limit = Clamp(limit),
                 Offset = offset ?? 0,
@@ -244,7 +275,15 @@ public static class JobsApi {
             : Results.NotFound(new { error = "No such artifact for this run (it may not have been written yet)." });
     }
 
-    private static IResult Upsert(JobCatalog catalog, string existingName, JobWrite write) {
+    private static IResult Upsert(JobCatalog catalog, string env, string existingName, JobWrite write) {
+        if (!catalog.Environments.Contains(env)) {
+            return Results.NotFound(new { error = $"No environment '{env}'." });
+        }
+        if (catalog.GitLayout && env != "dev") {
+            return Results.BadRequest(new {
+                error = "prod is read-only — edit in dev and promote.",
+            });
+        }
         if (string.IsNullOrWhiteSpace(write?.Name)) {
             return Results.BadRequest(new { error = "A job needs a name." });
         }
@@ -253,16 +292,16 @@ public static class JobsApi {
         }
 
         var catalogResult = catalog.Load();
-        var existing = existingName != null ? catalogResult.Find(existingName) : null;
+        var existing = existingName != null ? catalogResult.Find(env, existingName) : null;
         if (existingName != null && existing == null) {
-            return Results.NotFound(new { error = $"No job named '{existingName}'." });
+            return Results.NotFound(new { error = $"No job named '{existingName}' in {env}." });
         }
-        var clash = catalogResult.Find(write.Name);
+        var clash = catalogResult.Find(env, write.Name);
         if (clash != null && !ReferenceEquals(clash, existing)) {
             return Results.Conflict(new { error = $"A job named '{write.Name}' already exists." });
         }
 
-        var notebook = NotebookTree.SafeResolve(catalog.NotebooksRoot, write.Notebook);
+        var notebook = NotebookTree.SafeResolve(catalog.RootFor(env), write.Notebook);
         if (notebook == null) {
             return Results.BadRequest(new { error = "Notebook path is outside the notebooks root." });
         }
@@ -306,20 +345,21 @@ public static class JobsApi {
         entry.Notify = write.Notify;
 
         try {
-            JobsFile.Write(targetFile, file, catalog.NotebooksRoot);
+            JobsFile.Write(targetFile, file, catalog.RootFor(env));
         } catch (Exception e) {
             return Results.BadRequest(new { error = $"Job is not valid: {e.Message}" });
         }
 
-        var saved = catalog.Load().Find(write.Name);
+        var saved = catalog.Load().Find(env, write.Name);
         return existing == null
-            ? Results.Created($"/api/jobs/{write.Name}", JobView.From(saved))
+            ? Results.Created($"/api/envs/{env}/jobs/{write.Name}", JobView.From(saved))
             : Results.Ok(JobView.From(saved));
     }
 }
 
 /// <summary>A job as the API returns it (absolute paths stay server-side).</summary>
 public sealed class JobView {
+    public string Environment { get; set; }
     public string Name { get; set; }
     public string Notebook { get; set; }
     public string JobsFile { get; set; }
@@ -332,6 +372,7 @@ public sealed class JobView {
     public NotifyRules Notify { get; set; }
 
     public static JobView From(JobDefinition job) => job == null ? null : new JobView {
+        Environment = job.Environment,
         Name = job.Name,
         Notebook = job.NotebookRelative,
         JobsFile = job.SourceFileRelative,

@@ -4,14 +4,17 @@ import { ErrorBanner, usePolling } from '../components/common';
 
 export function Jobs() {
   const { data, error } = usePolling<{ jobs: Job[]; errors: string[] }>(() => api.jobs(), 5000);
+  const { data: health } = usePolling(() => api.health(), null);
   const jobs = data?.jobs ?? [];
   const problems = data?.errors ?? [];
+  // New jobs are created in dev when the git workflow is on; prod is promote-only.
+  const editableEnv = health?.gitEnabled ? 'dev' : 'default';
 
   return (
     <div>
       <div className="row-between">
         <h1>Jobs</h1>
-        <Link className="button" to="/jobs/new">
+        <Link className="button" to={`/jobs/${editableEnv}/new`}>
           New job
         </Link>
       </div>
@@ -43,9 +46,12 @@ export function Jobs() {
           </thead>
           <tbody>
             {jobs.map((job) => (
-              <tr key={job.name}>
+              <tr key={`${job.environment}/${job.name}`}>
                 <td>
-                  <Link to={`/jobs/${encodeURIComponent(job.name)}`}>{job.name}</Link>
+                  <Link to={`/jobs/${job.environment}/${encodeURIComponent(job.name)}`}>{job.name}</Link>
+                  {job.environment !== 'default' && (
+                    <span className={`chip env-${job.environment}`}>{job.environment}</span>
+                  )}
                   {!job.enabled && <span className="chip chip-muted">disabled</span>}
                 </td>
                 <td className="muted">{job.notebook}</td>

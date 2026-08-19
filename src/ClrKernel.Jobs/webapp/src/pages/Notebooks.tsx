@@ -50,9 +50,9 @@ function Node({ node, onCreate }: { node: TreeNode; onCreate: (path: string) => 
 
 export function Notebooks() {
   const navigate = useNavigate();
-  const { data, error } = usePolling<TreeNode>(() => api.notebooks(), null);
+  const { data, error } = usePolling(() => api.notebooks(), null);
 
-  const children = data?.children ?? [];
+  const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   return (
     <div>
       <h1>Notebooks</h1>
@@ -60,18 +60,30 @@ export function Notebooks() {
       <p className="muted">
         Every <code>*.jobs.yaml</code> found here defines jobs. Pick a notebook to add one.
       </p>
-      {children.length === 0 ? (
+      {environments.length === 0 ? (
         <p className="muted">No notebooks under the notebooks root.</p>
       ) : (
-        <ul className="tree">
-          {children.map((child) => (
-            <Node
-              key={child.path}
-              node={child}
-              onCreate={(path) => navigate(`/jobs/new?notebook=${encodeURIComponent(path)}`)}
-            />
-          ))}
-        </ul>
+        environments.map((environment) => (
+          <section key={environment.name}>
+            {environment.name !== 'default' && (
+              <h2>
+                {environment.name}
+                {environment.name === 'prod' && <span className="chip chip-muted">read-only</span>}
+              </h2>
+            )}
+            <ul className="tree">
+              {(environment.tree!.children ?? []).map((child) => (
+                <Node
+                  key={`${environment.name}/${child.path}`}
+                  node={child}
+                  onCreate={(path) =>
+                    navigate(`/jobs/${environment.name}/new?notebook=${encodeURIComponent(path)}`)
+                  }
+                />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
     </div>
   );

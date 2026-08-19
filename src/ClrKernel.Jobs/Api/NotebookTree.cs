@@ -76,8 +76,11 @@ public static class NotebookTree {
     /// The notebooks/jobs-files tree under the root, with each notebook annotated
     /// with the jobs that run it. Directories with no notebooks are pruned.
     /// </summary>
-    public static TreeNode Build(string root, CatalogResult catalog) {
-        var jobsByNotebook = catalog.Jobs
+    public static TreeNode Build(string root, CatalogResult catalog, string environment = null) {
+        var jobs = environment == null
+            ? catalog.Jobs
+            : catalog.In(environment);
+        var jobsByNotebook = jobs
             .GroupBy(j => j.NotebookPath, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Select(j => j.Name).OrderBy(n => n).ToList(),
                 StringComparer.OrdinalIgnoreCase);
@@ -90,7 +93,7 @@ public static class NotebookTree {
 
         foreach (var sub in Directory.EnumerateDirectories(directory).OrderBy(d => d, StringComparer.OrdinalIgnoreCase)) {
             var name = Path.GetFileName(sub);
-            // Skip noise that never holds notebooks.
+            // Skip noise that never holds notebooks (.repo.git falls under the dot rule).
             if (name.StartsWith('.') || name is "bin" or "obj" or "node_modules") {
                 continue;
             }

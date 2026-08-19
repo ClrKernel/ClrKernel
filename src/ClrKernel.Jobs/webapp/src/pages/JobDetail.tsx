@@ -84,7 +84,7 @@ function NotifyPicker({
 }
 
 export function JobDetail() {
-  const { name } = useParams<{ name: string }>();
+  const { env = 'default', name } = useParams<{ env: string; name: string }>();
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const isNew = name == null;
@@ -94,12 +94,12 @@ export function JobDetail() {
   const [busy, setBusy] = useState(false);
 
   const { data: job, error, reload } = usePolling<Job | null>(
-    () => (isNew ? Promise.resolve(null) : api.job(name)),
+    () => (isNew ? Promise.resolve(null) : api.job(env, name!)),
     null,
     [name],
   );
   const { data: runs } = usePolling<Run[]>(
-    () => (isNew ? Promise.resolve([]) : api.jobRuns(name, 25)),
+    () => (isNew ? Promise.resolve([]) : api.jobRuns(env, name!, 25)),
     isNew ? null : 3000,
     [name],
   );
@@ -142,8 +142,8 @@ export function JobDetail() {
 
     setBusy(true);
     try {
-      const saved = isNew ? await api.createJob(body) : await api.updateJob(name, body);
-      navigate(`/jobs/${encodeURIComponent(saved.name)}`);
+      const saved = isNew ? await api.createJob(env, body) : await api.updateJob(env, name!, body);
+      navigate(`/jobs/${env}/${encodeURIComponent(saved.name)}`);
       reload();
     } catch (e) {
       setSaveError((e as Error).message);
@@ -173,7 +173,7 @@ export function JobDetail() {
 
     setBusy(true);
     try {
-      const { runId } = await api.runJob(name!, overrides);
+      const { runId } = await api.runJob(env, name!, overrides);
       navigate(`/runs/${runId}`);
     } catch (e) {
       setSaveError((e as Error).message);
@@ -188,7 +188,7 @@ export function JobDetail() {
     }
     setBusy(true);
     try {
-      await api.deleteJob(name!);
+      await api.deleteJob(env, name!);
       navigate('/jobs');
     } catch (e) {
       setSaveError((e as Error).message);
@@ -200,7 +200,7 @@ export function JobDetail() {
   return (
     <div>
       <div className="row-between">
-        <h1>{isNew ? 'New job' : name}</h1>
+        <h1>{isNew ? 'New job' : name}{env !== 'default' && <span className={`chip env-${env}`}>{env}</span>}</h1>
         {!isNew && (
           <div className="row-gap">
             <button className="button" onClick={() => runNow(false)} disabled={busy}>

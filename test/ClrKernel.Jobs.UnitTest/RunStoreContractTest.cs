@@ -142,22 +142,22 @@ public class RunStoreContractTest {
     public async Task Scheduler_state_survives_the_round_trip(string kind) {
         var store = StoreFor(kind);
 
-        Assert.IsNull(await store.GetLastSuccessfulRunAsync("a"));
-        Assert.IsNull(await store.GetLastTriggerAsync("a"));
-        Assert.IsFalse(await store.HasActiveRunAsync("a"));
+        Assert.IsNull(await store.GetLastSuccessfulRunAsync("default", "a"));
+        Assert.IsNull(await store.GetLastTriggerAsync("default", "a"));
+        Assert.IsFalse(await store.HasActiveRunAsync("default", "a"));
 
         await store.CreateRunAsync(NewRun("a", RunStatus.Succeeded, DateTime.UtcNow.AddMinutes(-10)));
         var newest = await store.CreateRunAsync(NewRun("a", RunStatus.Succeeded, DateTime.UtcNow));
-        Assert.AreEqual(newest.Id, (await store.GetLastSuccessfulRunAsync("a")).Id);
+        Assert.AreEqual(newest.Id, (await store.GetLastSuccessfulRunAsync("default", "a")).Id);
 
         var at = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
-        await store.SetLastTriggerAsync("a", at);
-        Assert.AreEqual(at, await store.GetLastTriggerAsync("a"));
-        await store.SetLastTriggerAsync("a", at.AddHours(1));
-        Assert.AreEqual(at.AddHours(1), await store.GetLastTriggerAsync("a"), "upsert, not insert");
+        await store.SetLastTriggerAsync("default", "a", at);
+        Assert.AreEqual(at, await store.GetLastTriggerAsync("default", "a"));
+        await store.SetLastTriggerAsync("default", "a", at.AddHours(1));
+        Assert.AreEqual(at.AddHours(1), await store.GetLastTriggerAsync("default", "a"), "upsert, not insert");
 
         await store.CreateRunAsync(NewRun("a", RunStatus.Running));
-        Assert.IsTrue(await store.HasActiveRunAsync("a"));
+        Assert.IsTrue(await store.HasActiveRunAsync("default", "a"));
     }
 
     [TestMethod]
@@ -189,7 +189,7 @@ public class RunStoreContractTest {
         var store = RunStoreFactory.Create(options);
         var run = await store.CreateRunAsync(NewRun("nightly", RunStatus.Succeeded, DateTime.UtcNow));
 
-        var expected = Path.Combine(options.ArtifactsDir, "nightly", run.Id.ToString("N"), "run.json");
+        var expected = Path.Combine(options.ArtifactsDir, "default", "nightly", run.Id.ToString("N"), "run.json");
         Assert.IsTrue(File.Exists(expected), $"expected a self-describing record at {expected}");
         StringAssert.Contains(File.ReadAllText(expected), "\"Succeeded\"", "statuses are readable, not ints");
     }

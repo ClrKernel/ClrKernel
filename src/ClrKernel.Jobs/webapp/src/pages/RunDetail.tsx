@@ -61,7 +61,7 @@ export function RunDetail() {
     setCancelling(true);
     try {
       // Cancellation is per job: the scheduler kills that job's running kernel.
-      await api.cancelJob(run!.jobName);
+      await api.cancelJob(run!.environment, run!.jobName);
     } catch (e) {
       setCancelError((e as Error).message);
     } finally {
@@ -92,8 +92,9 @@ export function RunDetail() {
     <div>
       <div className="row-between">
         <h1>
-          <Link to={`/jobs/${encodeURIComponent(run.jobName)}`}>{run.jobName}</Link>{' '}
+          <Link to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}>{run.jobName}</Link>{' '}
           <StatusBadge status={run.status} />
+          {run.environment !== 'default' && <span className={`chip env-${run.environment}`}>{run.environment}</span>}
         </h1>
         {live && (
           <div className="row-gap">

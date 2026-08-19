@@ -28,8 +28,11 @@ public static class Program {
           serve           Run the scheduler: cron jobs fire on time, dependent jobs
                           fire when everything they need has freshly succeeded.
           run <job>       Run one job now and print per-cell progress.
+                          With the git workflow: --env dev (default) or prod.
           list            List the jobs found under the notebooks root.
           validate        Parse and validate every *.jobs.yaml; exit 1 on problems.
+          git init        Turn the notebooks root into a dev/prod git workspace
+                          (adopts existing notebooks into dev and promotes them).
 
         Options:
           --notebooks <dir>          Notebooks root (default: current directory,
@@ -47,6 +50,9 @@ public static class Program {
           --api-key <key>            serve: require this key in the X-Api-Key
                                      header on /api/* (or CLRKERNEL_JOBS_APIKEY).
           --max-parallelism <n>      serve: concurrent runs (default 4).
+          --git <true|false>         Enable the dev/prod git workflow
+                                     (or CLRKERNEL_JOBS_GIT).
+          --env <dev|prod>           run: which environment (default dev).
           -h, --help                 Show this help.
 
         Jobs are *.jobs.yaml files beside your notebooks. Example:
@@ -97,7 +103,12 @@ public static class Program {
             return 2;
         }
 
-        var catalog = new JobCatalog(options.NotebooksRoot);
+        // `git init` etc: the sub-verb arrives as the bare argument.
+        if (command == "git") {
+            return GitCommand(options, jobName);
+        }
+
+        var catalog = new JobCatalog(options.NotebooksRoot, options.GitEnabled);
         switch (command) {
             case "serve":
                 return await ServeAsync(catalog, options);
@@ -114,6 +125,40 @@ public static class Program {
             default:
                 Console.Error.WriteLine($"Unknown command: {command}. See `clrkernel-jobs --help`.");
                 return 2;
+        }
+    }
+
+    private static GitService GitFor(JobsOptions options) =>
+        new(options.NotebooksRoot,
+            LoggerFactory.Create(b => b.AddConsole()).CreateLogger<GitService>(),
+            options.GitAuthorName, options.GitAuthorEmail);
+
+    private static int GitCommand(JobsOptions options, string subVerb) {
+        if (subVerb != "init") {
+            Console.Error.WriteLine("Usage: clrkernel-jobs git init [--notebooks <dir>]");
+            return 2;
+        }
+        try {
+            var message = GitFor(options).Init();
+            Console.WriteLine($"{options.NotebooksRoot}: {message}");
+            if (!options.GitEnabled) {
+                // Initializing implies wanting the workflow: persist the flag so
+                // serve/list/run pick up the dev/prod layout without extra flags.
+                var registry = new SettingsRegistry(options);
+                registry.Add(new SettingsSection {
+                    Key = "git",
+                    Title = "Git",
+                    Fields = { new SettingField { Name = "gitEnabled", Type = "bool", WebWritable = true } },
+                });
+                registry.Write("git", new Dictionary<string, System.Text.Json.JsonElement> {
+                    ["gitEnabled"] = System.Text.Json.JsonSerializer.SerializeToElement(true),
+                });
+                Console.WriteLine("gitEnabled=true written to settings.json.");
+            }
+            return 0;
+        } catch (GitException e) {
+            Console.Error.WriteLine(e.Message);
+            return 2;
         }
     }
 
@@ -184,9 +229,58 @@ public static class Program {
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton(store);
-        builder.Services.AddSingleton(SettingsRegistry.CreateDefault(options));
+
+        GitService git = null;
+        if (options.GitEnabled) {
+            git = new GitService(options.NotebooksRoot,
+                LoggerFactory.Create(b => b.AddConsole()).CreateLogger<GitService>(),
+                options.GitAuthorName, options.GitAuthorEmail);
+            if (git.LayoutExists) {
+                git.Repair(); // worktree gitdir pointers are absolute; volumes move
+            }
+        }
+        if (git != null) {
+            builder.Services.AddSingleton(git);
+        }
+
+        var settings = SettingsRegistry.CreateDefault(options);
+        settings.Add(new SettingsSection {
+            Key = "git",
+            Title = "Git workflow",
+            Description = options.GitEnabled
+                ? "Dev→prod promotion is on: edits commit to the dev branch, approvals merge to main."
+                : "Off. Run `clrkernel-jobs git init` on the notebooks root to enable dev→prod promotion.",
+            Fields = {
+                new SettingField {
+                    Name = "gitEnabled", Label = "Enabled", Type = "bool",
+                    Value = options.GitEnabled, Source = options.SourceOf("gitEnabled"),
+                    WebWritable = false, RestartRequired = true,
+                },
+                new SettingField {
+                    Name = "gitAuthorName", Label = "Commit author", Type = "string",
+                    Value = options.GitAuthorName ?? "clrkernel-jobs",
+                    Source = options.SourceOf("gitAuthorName"),
+                    WebWritable = true, RestartRequired = true,
+                },
+                new SettingField {
+                    Name = "gitAuthorEmail", Label = "Commit email", Type = "string",
+                    Value = options.GitAuthorEmail ?? "jobs@clrkernel.local",
+                    Source = options.SourceOf("gitAuthorEmail"),
+                    WebWritable = true, RestartRequired = true,
+                },
+                new SettingField {
+                    Name = "gitPushRemote", Label = "Push remote", Type = "string",
+                    Value = options.GitPushRemote ?? "",
+                    Source = options.SourceOf("gitPushRemote"),
+                    WebWritable = true, RestartRequired = true,
+                    Help = "Remote url/name to push dev and main to after commits. " +
+                        "Credentials come from the environment (ssh agent, token in the url) — never stored.",
+                },
+            },
+        });
+        builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(provider => new JobExecutor(
-            store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>()));
+            store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(), git));
         builder.Services.AddSingleton(provider => new Notifier(
             options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>()));
         builder.Services.AddSingleton<SchedulerService>();
@@ -221,11 +315,13 @@ public static class Program {
             Console.WriteLine($"No *.jobs.yaml files under {catalog.NotebooksRoot}.");
             return 0;
         }
-        foreach (var job in result.Jobs.OrderBy(j => j.Name, StringComparer.OrdinalIgnoreCase)) {
+        foreach (var job in result.Jobs
+                     .OrderBy(j => j.Environment).ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)) {
             var schedule = job.Cron != null ? $"cron '{job.Cron}'" : "manual";
             var deps = job.DependsOn.Count > 0 ? $", needs {string.Join(", ", job.DependsOn)}" : string.Empty;
             var disabled = job.Enabled ? string.Empty : " [disabled]";
-            Console.WriteLine($"  {job.Name}{disabled} — {job.NotebookRelative} ({schedule}{deps})");
+            var env = job.Environment == "default" ? string.Empty : $"[{job.Environment}] ";
+            Console.WriteLine($"  {env}{job.Name}{disabled} — {job.NotebookRelative} ({schedule}{deps})");
         }
         PrintErrors(result.Errors);
         return result.Errors.Count == 0 ? 0 : 1;
@@ -246,12 +342,16 @@ public static class Program {
     }
 
     private static async Task<int> RunAsync(JobCatalog catalog, JobsOptions options, string jobName) {
+        var environment = catalog.GitLayout
+            ? (options.RunEnvironment ?? "dev")
+            : "default";
         var result = catalog.Load();
-        var job = result.Find(jobName);
+        var job = result.Find(environment, jobName);
         if (job == null) {
             Console.Error.WriteLine(result.Jobs.Count == 0
                 ? $"No jobs found under {catalog.NotebooksRoot}."
-                : $"No job named '{jobName}'. Known jobs: {string.Join(", ", result.Jobs.Select(j => j.Name))}.");
+                : $"No job named '{jobName}' in {environment}. Known: " +
+                  string.Join(", ", result.In(environment).Select(j => j.Name)) + ".");
             PrintErrors(result.Errors);
             return 2;
         }
@@ -271,7 +371,8 @@ public static class Program {
             builder.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
             builder.SetMinimumLevel(LogLevel.Warning);
         });
-        var executor = new JobExecutor(store, options, loggerFactory.CreateLogger<JobExecutor>());
+        var executor = new JobExecutor(store, options, loggerFactory.CreateLogger<JobExecutor>(),
+            catalog.GitLayout ? GitFor(options) : null);
         executor.CellProgress += (_, cell, total) => {
             var step = $"[{cell.CellIndex + 1}/{total}]";
             switch (cell.Status) {

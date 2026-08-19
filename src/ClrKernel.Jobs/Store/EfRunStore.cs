@@ -68,6 +68,9 @@ public sealed class EfRunStore : IRunStore {
     public async Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
         using var db = _contextFactory();
         var runs = db.Runs.AsNoTracking();
+        if (!string.IsNullOrEmpty(query.Environment)) {
+            runs = runs.Where(r => r.Environment == query.Environment);
+        }
         if (!string.IsNullOrEmpty(query.JobName)) {
             runs = runs.Where(r => r.JobName == query.JobName);
         }
@@ -112,31 +115,39 @@ public sealed class EfRunStore : IRunStore {
             .Where(c => c.RunId == runId).OrderBy(c => c.CellIndex).ToListAsync();
     }
 
-    public async Task<Run> GetLastSuccessfulRunAsync(string jobName) {
+    public async Task<Run> GetLastSuccessfulRunAsync(string environment, string jobName) {
         using var db = _contextFactory();
         return await db.Runs.AsNoTracking()
-            .Where(r => r.JobName == jobName && r.Status == RunStatus.Succeeded)
+            .Where(r => r.Environment == environment && r.JobName == jobName
+                && r.Status == RunStatus.Succeeded)
             .OrderByDescending(r => r.FinishedAt)
             .FirstOrDefaultAsync();
     }
 
-    public async Task<bool> HasActiveRunAsync(string jobName) {
+    public async Task<bool> HasActiveRunAsync(string environment, string jobName) {
         using var db = _contextFactory();
         return await db.Runs.AsNoTracking().AnyAsync(r =>
-            r.JobName == jobName && (r.Status == RunStatus.Pending || r.Status == RunStatus.Running));
+            r.Environment == environment && r.JobName == jobName
+            && (r.Status == RunStatus.Pending || r.Status == RunStatus.Running));
     }
 
-    public async Task<DateTime?> GetLastTriggerAsync(string jobName) {
+    public async Task<DateTime?> GetLastTriggerAsync(string environment, string jobName) {
         using var db = _contextFactory();
-        var state = await db.JobTriggerStates.AsNoTracking().FirstOrDefaultAsync(s => s.JobName == jobName);
+        var state = await db.JobTriggerStates.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Environment == environment && s.JobName == jobName);
         return state?.LastTriggerAt;
     }
 
-    public async Task SetLastTriggerAsync(string jobName, DateTime triggeredAt) {
+    public async Task SetLastTriggerAsync(string environment, string jobName, DateTime triggeredAt) {
         using var db = _contextFactory();
-        var state = await db.JobTriggerStates.FirstOrDefaultAsync(s => s.JobName == jobName);
+        var state = await db.JobTriggerStates
+            .FirstOrDefaultAsync(s => s.Environment == environment && s.JobName == jobName);
         if (state == null) {
-            db.JobTriggerStates.Add(new JobTriggerState { JobName = jobName, LastTriggerAt = triggeredAt });
+            db.JobTriggerStates.Add(new JobTriggerState {
+                Environment = environment,
+                JobName = jobName,
+                LastTriggerAt = triggeredAt,
+            });
         } else {
             state.LastTriggerAt = triggeredAt;
         }
