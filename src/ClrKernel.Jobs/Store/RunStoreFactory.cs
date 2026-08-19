@@ -46,11 +46,18 @@ public static class RunStoreFactory {
                     $"retrying in {delays[attempt].TotalSeconds:0}s…");
                 System.Threading.Thread.Sleep(delays[attempt]);
             } catch (Exception e) {
+                // A schema from an older preview build: the migrations were
+                // regenerated, so the history table doesn't match. The database is
+                // preview data — recreating it is the intended path.
+                var hint = e.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                    ? " This looks like a database from an older preview build with a different " +
+                      "schema — run history is preview data, so drop/delete that database " +
+                      "(for sqlite: remove jobs.db in the data dir) and start again."
+                    : " Fix the connection string or choose another --store.";
                 throw new InvalidOperationException(
                     $"Could not open the {kind} run-history store: {FirstLine(e.Message)} " +
                     $"(store came from {options.SourceOf("store")}, connection string from " +
-                    $"{options.SourceOf("connectionString")}). Fix the connection string or " +
-                    "choose another --store.", e);
+                    $"{options.SourceOf("connectionString")})." + hint, e);
             }
         }
     }
