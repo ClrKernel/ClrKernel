@@ -39,15 +39,19 @@ public class DataSourceQuery {
             throw;
         }
     }
-
+    
     /// <summary>
     /// Runs the query and returns all rows. Renders as an interactive grid when it's a
     /// cell's value, and is enumerable as dynamic rows in code.
     /// </summary>
     public DataResults Results(int limit = 1000) {
+        //use a DataSet that doesn't enforce constraints to avoid issues when loading results (null/pk/fk violations)
+        using var ds    = new DataSet() { EnforceConstraints = false };
         using var reader = OpenReader();
         var table = new DataTable();
-        table.Load(reader);
+        ds.Tables.Add(table);
+        table.Load(reader, LoadOption.OverwriteChanges);
+        ds.Tables.Remove(table);
         return new DataResults(table, limit);
     }
 
