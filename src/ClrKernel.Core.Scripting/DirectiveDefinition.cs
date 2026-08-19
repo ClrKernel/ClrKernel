@@ -50,6 +50,16 @@ public sealed class DirectiveParameter {
     /// error message stays in the language's post-bind code.</summary>
     public IReadOnlyList<string> EnumValues { get; init; }
 
+    /// <summary>Names the session-provided value set this parameter takes
+    /// ("connection", "cube", "step"): completion asks the language's context for
+    /// live names instead of a static list, and the role doubles as the
+    /// completion-item kind. Null for free-form values.</summary>
+    public string ValueRole { get; init; }
+
+    /// <summary>Completion detail text for <see cref="EnumValues"/> entries
+    /// (e.g. "auth mode"). Defaults to "value".</summary>
+    public string ValueDetail { get; init; }
+
     /// <summary>Shown as completion detail and in generated UI.</summary>
     public string Description { get; init; }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Language.Dax;
 /// <summary>Hover info for a DAX token: markdown plus the covered span.</summary>
@@ -103,34 +104,16 @@ public static class DaxLanguage {
         return Build(start, offset - start, pool);
     }
 
+    // Generated from the same DirectiveDefinition tables the parser binds against
+    // — the flag vocabulary cannot drift (and --auth values complete now too).
     private static DaxCompletion CompleteMagic(string lineToCursor, int lineStart, DaxCompletionContext ctx) {
-        var leadingWs = lineToCursor.Length - lineToCursor.TrimStart().Length;
-        var afterWs = lineToCursor.Substring(leadingWs);
-        var endsWithSpace = lineToCursor.Length > 0 && char.IsWhiteSpace(lineToCursor[lineToCursor.Length - 1]);
-        var tokens = afterWs.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-
-        if (tokens.Count <= 1 && !endsWithSpace) {
-            var partial = tokens.Count == 1 ? tokens[0] : "#!";
-            var start = lineStart + lineToCursor.Length - partial.Length;
-            return Build(start, partial.Length, _magics
-                .Where(m => m.StartsWith(partial, StringComparison.OrdinalIgnoreCase))
-                .Select(m => Item(m, "magic", "cell magic")));
-        }
-
-        var magic = tokens[0].ToLowerInvariant();
-        var current = endsWithSpace ? "" : tokens[tokens.Count - 1];
-        var prev = endsWithSpace ? tokens[tokens.Count - 1] : (tokens.Count >= 2 ? tokens[tokens.Count - 2] : "");
-        var start2 = lineStart + lineToCursor.Length - current.Length;
-
-        if (_connectionFlags.Contains(prev.ToLowerInvariant())) {
-            return Build(start2, current.Length, ctx.CubeNames
-                .Where(n => n.StartsWith(current, StringComparison.OrdinalIgnoreCase))
-                .Select(n => Item(n, "cube", "cube")));
-        }
-        var flags = _magicFlags.TryGetValue(magic, out var f) ? f : Array.Empty<string>();
-        return Build(start2, current.Length, flags
-            .Where(fl => fl.StartsWith(current, StringComparison.OrdinalIgnoreCase))
-            .Select(fl => Item(fl, "flag", "flag")));
+        var generated = DirectiveCompletion.Complete(
+            DaxDirectives.AllDefinitions, lineToCursor, lineStart,
+            role => role == "cube" ? ctx.CubeNames : Enumerable.Empty<string>());
+        var completion = new DaxCompletion { ReplaceStart = generated.ReplaceStart, ReplaceLength = generated.ReplaceLength };
+        completion.Items.AddRange(generated.Items.Select(i =>
+            new DaxCompletionItem { Label = i.Label, InsertText = i.Label, Kind = i.Kind, Detail = i.Detail }));
+        return completion;
     }
 
     private static DaxCompletion CompleteDirective(string lineToCursor, int lineStart, DaxCompletionContext ctx) {
@@ -174,18 +157,7 @@ public static class DaxLanguage {
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
-    private static readonly string[] _magics = { "#!dax", "#!dax-connect" };
     private static readonly string[] _directives = { "connections", "cube" };
-    private static readonly HashSet<string> _connectionFlags = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-        "--connections", "--connection", "--cube", "-c",
-    };
-    private static readonly Dictionary<string, string[]> _magicFlags = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase) {
-        ["#!dax"] = new[] { "--connections" },
-        ["#!dax-connect"] = new[] {
-            "--name", "--server", "--database", "--auth", "--user", "--secret",
-            "--fabric", "--workspace", "--model", "--azure-as", "--connection-string", "--default",
-        },
-    };
 
     private static readonly HashSet<string> _keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
         "EVALUATE", "DEFINE", "MEASURE", "VAR", "RETURN", "ORDER", "BY", "START", "AT",

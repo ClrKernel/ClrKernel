@@ -35,7 +35,7 @@ public static class SqlOrchestrationDirectives {
         Selector = "#!sql-deploy",
         Description = "Deploys .sql files from a folder.",
         Parameters = new DirectiveParameter[] {
-            new() { Name = "--connection", Aliases = new[] { "-c" }, Description = "Connection name." },
+            new() { Name = "--connection", Aliases = new[] { "-c" }, ValueRole = "connection", Description = "Connection name." },
             new() { Name = "--path", Aliases = new[] { "--folder" }, Required = true, RequiredLabel = "--path <folder>", Description = "Folder of .sql files." },
             new() { Name = "--recurse", Aliases = new[] { "-r" }, Kind = DirectiveParameterKind.Flag, Description = "Recurse into subfolders." },
             new() { Name = "--dry-run", Kind = DirectiveParameterKind.Flag, Description = "Report without executing." },

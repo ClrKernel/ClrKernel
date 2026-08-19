@@ -7,6 +7,15 @@ using ClrKernel.Database.Provider.SqlServer;
 namespace ClrKernel.Language.Sql;
 /// <summary>Parses the <c>#!sql-connect</c> magic and the per-cell connection selector.</summary>
 public static class SqlDirectives {
+    /// <summary>The declarative shape of the bare <c>#!sql</c> selector line.</summary>
+    public static readonly DirectiveDefinition CellDefinition = new() {
+        Selector = "#!sql",
+        Description = "Runs the cell as T-SQL on a registered connection.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connections", Aliases = new[] { "--connection", "-c" }, ValueRole = "connection", Description = "Connection to run on (default connection when omitted)." },
+        },
+    };
+
     /// <summary>The declarative shape of <c>#!sql-connect</c> — the single source of
     /// truth for parsing, completions, and the RPC-served language descriptor.</summary>
     public static readonly DirectiveDefinition ConnectDefinition = new() {
@@ -27,12 +36,19 @@ public static class SqlDirectives {
             new() { Name = "--no-var", Aliases = new[] { "--no-variable" }, Kind = DirectiveParameterKind.Flag, Description = "Suppress the automatic C# variable binding." },
             new() { Name = "--auth", Aliases = new[] { "-a" },
                 EnumValues = new[] { "sql", "integrated", "entra", "entra-password", "entra-interactive" },
-                Description = "Authentication mode." },
+                ValueDetail = "auth mode", Description = "Authentication mode." },
             new() { Name = "--option", Kind = DirectiveParameterKind.KeyValue, Repeatable = true, Description = "Extra connection-string option (key=value)." },
             new() { Name = "--password", Aliases = new[] { "-p" }, Kind = DirectiveParameterKind.Forbidden,
                 ForbiddenMessage = "Passwords must not be placed in notebook cells. Store the password from the " +
                     "SQL connection panel (or a --secret reference / environment variable) instead." },
         },
+    };
+
+    /// <summary>Every SQL directive's shape, in the order pickers should list them.</summary>
+    public static IReadOnlyList<DirectiveDefinition> AllDefinitions { get; } = new[] {
+        CellDefinition, ConnectDefinition,
+        SqlEtlDirectives.BulkDefinition, SqlEtlDirectives.MergeDefinition,
+        SqlOrchestrationDirectives.RunDefinition, SqlOrchestrationDirectives.DeployDefinition,
     };
 
     // Flags that *shape* a connection: a directive carrying none of them merely

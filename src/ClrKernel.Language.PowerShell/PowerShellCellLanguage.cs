@@ -14,7 +14,13 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
 
     public string Id => "powershell";
 
+    public string DisplayName => "PowerShell";
+
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!pwsh", "#!powershell", "#!pwsh-connect" };
+
+    public IReadOnlyList<string> LanguageTags { get; } = new[] { "pwsh", "powershell", "ps1" };
+
+    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] { PwshDirectives.ConnectDefinition };
 
     public ICellLanguageServices Services => _services ??= new PowerShellCellLanguageServices(this);
 

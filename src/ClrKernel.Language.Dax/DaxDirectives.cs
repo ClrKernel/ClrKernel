@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
@@ -29,6 +30,15 @@ public sealed class DaxCellRequest {
 
 /// <summary>Parses the <c>#!dax-connect</c> magic and the per-cell cube selector.</summary>
 public static class DaxDirectives {
+    /// <summary>The declarative shape of the bare <c>#!dax</c> selector line.</summary>
+    public static readonly DirectiveDefinition CellDefinition = new() {
+        Selector = "#!dax",
+        Description = "Runs the cell as DAX against a registered cube.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connections", Aliases = new[] { "--connection", "--cube", "-c" }, ValueRole = "cube", Description = "Cube to query (default cube when omitted)." },
+        },
+    };
+
     /// <summary>The declarative shape of <c>#!dax-connect</c>.</summary>
     public static readonly DirectiveDefinition ConnectDefinition = new() {
         Selector = "#!dax-connect",
@@ -39,7 +49,7 @@ public static class DaxDirectives {
             new() { Name = "--database", Aliases = new[] { "-d" }, Description = "Database / model." },
             new() { Name = "--user", Aliases = new[] { "--username", "-u" }, Description = "User name (SQL-style auth)." },
             new() { Name = "--secret", Aliases = new[] { "--secret-ref" }, Description = "Secret reference for the password." },
-            new() { Name = "--auth", Aliases = new[] { "-a" }, EnumValues = new[] { "integrated", "sql", "user", "aad", "entra" }, Description = "Authentication mode." },
+            new() { Name = "--auth", Aliases = new[] { "-a" }, EnumValues = new[] { "integrated", "sql", "user", "aad", "entra" }, ValueDetail = "auth mode", Description = "Authentication mode." },
             new() { Name = "--workspace", Description = "Fabric / Power BI workspace." },
             new() { Name = "--model", Aliases = new[] { "--dataset" }, Description = "Fabric / Power BI semantic model." },
             new() { Name = "--connection-string", Aliases = new[] { "--cs" }, Description = "Raw ADOMD connection string." },
@@ -51,6 +61,11 @@ public static class DaxDirectives {
                 ForbiddenMessage = "Passwords must not be placed in notebook cells. Use --secret <env-var> " +
                     "(resolved from an environment variable), Integrated auth, or Entra instead." },
         },
+    };
+
+    /// <summary>Every DAX directive's shape, in the order pickers should list them.</summary>
+    public static IReadOnlyList<DirectiveDefinition> AllDefinitions { get; } = new[] {
+        CellDefinition, ConnectDefinition,
     };
 
     /// <summary>The <c>--secret</c> reference on a connect line, or null. Lets a caller put the

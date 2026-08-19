@@ -32,8 +32,8 @@ public static class SqlEtlDirectives {
         Selector = "#!sql-bulk",
         Description = "Bulk-copies rows between connections.",
         Parameters = new DirectiveParameter[] {
-            new() { Name = "--from", Required = true, Description = "Source connection name." },
-            new() { Name = "--to", Description = "Destination connection (defaults to --from)." },
+            new() { Name = "--from", Required = true, ValueRole = "connection", Description = "Source connection name." },
+            new() { Name = "--to", ValueRole = "connection", Description = "Destination connection (defaults to --from)." },
             new() { Name = "--query", Aliases = new[] { "-q" }, Description = "Source SELECT." },
             new() { Name = "--from-table", Description = "Source table (SELECT * alternative to --query)." },
             new() { Name = "--table", Aliases = new[] { "--to-table" }, Required = true, Description = "Destination table." },
@@ -55,7 +55,7 @@ public static class SqlEtlDirectives {
         Selector = "#!sql-merge",
         Description = "MERGEs a source table or query into a target table.",
         Parameters = new DirectiveParameter[] {
-            new() { Name = "--connection", Aliases = new[] { "-c" }, Description = "Connection name." },
+            new() { Name = "--connection", Aliases = new[] { "-c" }, ValueRole = "connection", Description = "Connection name." },
             new() { Name = "--target", Required = true, Description = "Target table." },
             new() { Name = "--source", Required = true, Description = "Source table (or query with --source-is-query)." },
             new() { Name = "--on", Required = true, RequiredLabel = "--on <key[,key...]>", Description = "Key columns (comma-separated)." },

@@ -11,7 +11,11 @@ namespace ClrKernel.Language.Mermaid;
 public sealed class MermaidCellLanguage : ICellLanguage {
     public string Id => "mermaid";
 
+    public string DisplayName => "Mermaid";
+
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!mermaid" };
+
+    public IReadOnlyList<string> LanguageTags { get; } = new[] { "mermaid" };
 
     public ICellLanguageServices Services => null;
 

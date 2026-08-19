@@ -20,10 +20,29 @@ public interface ICellLanguage {
     /// <summary>
     /// The <c>#!</c> selectors this language answers. A cell is routed here when
     /// its first non-blank line starts with one of these followed by whitespace
-    /// or end-of-line. Order within the list does not matter — see
-    /// <see cref="CellLanguageRegistry"/>.
+    /// or end-of-line. Order within the list does not matter for dispatch — see
+    /// <see cref="CellLanguageRegistry"/> — but the <b>first</b> entry is the
+    /// language's default selector, the one serializers prepend to a bare cell.
     /// </summary>
     IReadOnlyList<string> Selectors { get; }
+
+    /// <summary>Human-readable name for pickers and generated UI ("SQL", "PowerShell").</summary>
+    string DisplayName => Id;
+
+    /// <summary>
+    /// The fenced-code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
+    /// documents (<c>sql</c>, <c>tsql</c>; <c>bash</c>, <c>zsh</c>…). Parsers and
+    /// serializers consult these instead of hard-coding tag tables. Empty when the
+    /// language has no fence form.
+    /// </summary>
+    IReadOnlyList<string> LanguageTags => Array.Empty<string>();
+
+    /// <summary>
+    /// The declarative shapes of this language's <c>#!</c> directives — the same
+    /// tables its parsers bind against, so completion, diagnostics, and front ends
+    /// can never drift from what actually parses. Empty when it has none.
+    /// </summary>
+    IReadOnlyList<DirectiveDefinition> Directives => Array.Empty<DirectiveDefinition>();
 
     /// <summary>
     /// What this language adds to the C# scripting session — assemblies, imported
@@ -202,6 +221,10 @@ public sealed class CellLanguageSet {
     /// <summary>Every registered language's script contribution.</summary>
     public IEnumerable<ScriptContribution> ScriptContributions =>
         _languages.Select(l => l.ScriptContribution).Where(c => c != null);
+
+    /// <summary>Wire descriptors for every registered language, in registration order.</summary>
+    public IReadOnlyList<LanguageDescriptor> Describe() =>
+        _languages.Select(LanguageDescriptor.From).ToList();
 
     /// <summary>
     /// Routes a cell, or returns null when no selector matches (the cell is C#).

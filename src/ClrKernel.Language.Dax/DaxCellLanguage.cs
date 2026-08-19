@@ -19,7 +19,13 @@ public sealed class DaxCellLanguage : ICellLanguage {
 
     public string Id => "dax";
 
+    public string DisplayName => "DAX";
+
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!dax", "#!dax-connect" };
+
+    public IReadOnlyList<string> LanguageTags { get; } = new[] { "dax" };
+
+    public IReadOnlyList<DirectiveDefinition> Directives => DaxDirectives.AllDefinitions;
 
     public ICellLanguageServices Services => _services ??= new DaxCellLanguageServices(_session);
 

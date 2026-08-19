@@ -15,7 +15,11 @@ public sealed class HttpCellLanguage : ICellLanguage {
 
     public string Id => "http";
 
+    public string DisplayName => "HTTP";
+
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!http" };
+
+    public IReadOnlyList<string> LanguageTags { get; } = new[] { "http" };
 
     public ICellLanguageServices Services => null;
 

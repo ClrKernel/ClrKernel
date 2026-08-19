@@ -19,7 +19,13 @@ public sealed class ShellCellLanguage : ICellLanguage {
     /// <summary>Matches the VS Code cell languageId for shell scripts.</summary>
     public string Id => "shellscript";
 
+    public string DisplayName => "Shell";
+
     public IReadOnlyList<string> Selectors { get; } = new[] { "#!bash", "#!zsh", "#!sh", "#!shell", "#!shell-connect" };
+
+    public IReadOnlyList<string> LanguageTags { get; } = new[] { "bash", "zsh", "sh", "shell" };
+
+    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] { ShellDirectives.ConnectDefinition };
 
     public ICellLanguageServices Services => null;
 
