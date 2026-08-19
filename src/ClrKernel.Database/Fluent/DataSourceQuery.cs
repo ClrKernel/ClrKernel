@@ -39,7 +39,7 @@ public class DataSourceQuery {
             throw;
         }
     }
-    
+
     /// <summary>
     /// Runs the query and returns all rows. Renders as an interactive grid when it's a
     /// cell's value, and is enumerable as dynamic rows in code.
