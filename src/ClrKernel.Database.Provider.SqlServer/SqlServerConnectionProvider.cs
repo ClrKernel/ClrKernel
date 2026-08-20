@@ -19,6 +19,7 @@ public static class SqlServerConnectionProvider {
             new() { Name = "database", DisplayName = "Database", DirectiveFlag = "--database" },
             new() { Name = "auth", DisplayName = "Authentication", Kind = ConnectionSettingKind.Enum,
                 EnumValues = new[] { "sql", "integrated", "entra", "entra-password", "entra-interactive" },
+                CredentialValues = new[] { "sql", "entra-password" },
                 Default = "integrated", DirectiveFlag = "--auth" },
             new() { Name = "user", Aliases = new[] { "username" }, DisplayName = "User", DirectiveFlag = "--user" },
             new() { Name = "password", DisplayName = "Password", Kind = ConnectionSettingKind.SecretRef, DirectiveFlag = "--secret",

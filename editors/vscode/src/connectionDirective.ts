@@ -17,6 +17,8 @@ export interface ConnectionSetting {
     required?: boolean;
     oneOfGroup?: string | null;
     enumValues?: string[];
+    credentialValues?: string[];
+    requires?: string[];
     default?: string | null;
     directiveFlag?: string | null;
     runtimeOnly?: boolean;

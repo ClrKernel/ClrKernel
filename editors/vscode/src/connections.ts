@@ -253,7 +253,9 @@ export class ConnectionUi {
             }
         }
 
-        // One-of groups: pick the mode, then prompt only the chosen member.
+        // One-of groups: pick the mode, then prompt only the chosen member — which
+        // is required by virtue of having been chosen (a blank "server" after
+        // picking "connect by server" makes no sense).
         const grouped = provider.settings.filter((s) => s.oneOfGroup && !s.runtimeOnly);
         for (const group of [...new Set(grouped.map((s) => s.oneOfGroup))]) {
             const members = grouped.filter((s) => s.oneOfGroup === group);
@@ -264,24 +266,48 @@ export class ConnectionUi {
             if (!pick) {
                 return;
             }
-            if (!(await this.promptSetting(title, pick.setting, values, prefill(pick.setting)))) {
+            if (!(await this.promptSetting(title, pick.setting, values, prefill(pick.setting), true))) {
                 return;
             }
         }
 
-        // Everything else, in descriptor order. Secrets come last (and only when
-        // a named user makes them meaningful — matching the old wizards).
+        // Which auth values need a user + secret, per the descriptor. Once the
+        // auth enum is answered, credentials are required for those values and
+        // skipped entirely for the rest (integrated / Entra sign-in).
+        const credsEnum = provider.settings.find((s) => s.kind === 'enum' && s.credentialValues?.length);
+        const credsNeeded = (): boolean | undefined => {
+            if (!credsEnum) {
+                return undefined;
+            }
+            const chosen = values[credsEnum.name];
+            return typeof chosen === 'string' ? credsEnum.credentialValues!.includes(chosen) : undefined;
+        };
+
+        // Everything else, in descriptor order. Secrets come last.
         const rest = provider.settings.filter((s) =>
             s.name !== 'name' && !s.oneOfGroup && !s.runtimeOnly && s.kind !== 'secretRef' && s.kind !== 'keyValueBag');
         for (const setting of rest) {
-            if (!(await this.promptSetting(title, setting, values, prefill(setting)))) {
+            if (setting.name === 'user' && credsNeeded() === false) {
+                continue; // the chosen auth mode carries its own identity
+            }
+            // A setting another one declares it requires: required once that owner
+            // was given (workspace → model), skipped when the owner is an unchosen
+            // group member (no model prompt on the plain-server path).
+            const owner = provider.settings.find((s) => s.requires?.includes(setting.name));
+            if (owner && values[owner.name] === undefined && owner.oneOfGroup) {
+                continue;
+            }
+            const forceRequired = (setting.name === 'user' && credsNeeded() === true) ||
+                (owner !== undefined && values[owner.name] !== undefined);
+            if (!(await this.promptSetting(title, setting, values, prefill(setting), forceRequired))) {
                 return;
             }
         }
 
         let secret: string | undefined;
         const secretSetting = provider.settings.find((s) => s.kind === 'secretRef' && !s.runtimeOnly);
-        const userWanted = !provider.settings.some((s) => s.name === 'user') || !!values.user;
+        const userWanted = credsNeeded()
+            ?? (!provider.settings.some((s) => s.name === 'user') || !!values.user);
         if (secretSetting && userWanted) {
             secret = await vscode.window.showInputBox({
                 title,
@@ -337,7 +363,9 @@ export class ConnectionUi {
         setting: ConnectionSetting,
         values: Record<string, string | boolean | undefined>,
         prefill?: string,
+        forceRequired = false,
     ): Promise<boolean> {
+        const required = setting.required || forceRequired;
         const label = setting.displayName ?? setting.name;
         if (setting.kind === 'enum' && setting.enumValues?.length) {
             const ordered = setting.default
@@ -369,16 +397,16 @@ export class ConnectionUi {
         }
         const entered = await vscode.window.showInputBox({
             title,
-            prompt: label + (setting.required ? '' : ' (optional)') + (setting.description ? ` — ${setting.description}` : ''),
+            prompt: label + (required ? '' : ' (optional)') + (setting.description ? ` — ${setting.description}` : ''),
             value: prefill ?? setting.default ?? undefined,
             ignoreFocusOut: true,
             validateInput: setting.kind === 'int'
                 ? (v) => (v === '' || /^\d+$/.test(v) ? undefined : 'Enter a number')
-                : setting.required
+                : required
                     ? (v) => (v.trim().length > 0 ? undefined : `${label} is required`)
                     : undefined,
         });
-        if (entered === undefined) {
+        if (entered === undefined || (required && entered.trim() === '')) {
             return false;
         }
         if (entered !== '') {

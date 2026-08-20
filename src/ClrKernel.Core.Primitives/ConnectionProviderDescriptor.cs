@@ -43,6 +43,16 @@ public sealed class ConnectionSetting {
 
     public IReadOnlyList<string> EnumValues { get; init; }
 
+    /// <summary>For an auth-style enum: the values that need a user (and its secret).
+    /// A generated wizard prompts credentials only for these, requires the user name
+    /// when it does, and skips both otherwise.</summary>
+    public IReadOnlyList<string> CredentialValues { get; init; }
+
+    /// <summary>Settings that become required once this one is given — Fabric's
+    /// <c>workspace</c> requires <c>model</c>. A generated wizard also skips a
+    /// required-by setting when its group-member owner was not chosen.</summary>
+    public IReadOnlyList<string> Requires { get; init; }
+
     /// <summary>Default value as a string (Oracle port <c>1521</c>).</summary>
     public string Default { get; init; }
 

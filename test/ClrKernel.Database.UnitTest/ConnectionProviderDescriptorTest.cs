@@ -75,6 +75,31 @@ public class ConnectionProviderDescriptorTest {
     }
 
     [TestMethod]
+    public void Credential_values_and_requires_lists_reference_real_things() {
+        foreach (var descriptor in new[] {
+            SqlServerConnectionProvider.Descriptor, SsasConnectionProvider.Descriptor,
+            OracleConnectionProvider.Descriptor, OdbcConnectionProvider.Descriptor,
+        }) {
+            var names = descriptor.Settings.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var setting in descriptor.Settings) {
+                foreach (var value in setting.CredentialValues ?? Array.Empty<string>()) {
+                    CollectionAssert.Contains(setting.EnumValues.ToList(), value,
+                        $"{descriptor.Type}.{setting.Name}: credential value '{value}' is not one of its enum values");
+                }
+                foreach (var required in setting.Requires ?? Array.Empty<string>()) {
+                    Assert.IsTrue(names.Contains(required),
+                        $"{descriptor.Type}.{setting.Name}: requires unknown setting '{required}'");
+                }
+            }
+        }
+        // The pairs the wizard flows are built on.
+        var sqlAuth = SqlServerConnectionProvider.Descriptor.Settings.Single(s => s.Name == "auth");
+        CollectionAssert.AreEquivalent(new[] { "sql", "entra-password" }, sqlAuth.CredentialValues.ToList());
+        var workspace = SsasConnectionProvider.Descriptor.Settings.Single(s => s.Name == "workspace");
+        CollectionAssert.AreEqual(new[] { "model" }, workspace.Requires.ToList());
+    }
+
+    [TestMethod]
     public void Runtime_only_settings_carry_no_directive_or_config_shape() {
         var tokenProvider = SsasConnectionProvider.Descriptor.Settings.Single(s => s.Name == "tokenProvider");
         Assert.IsTrue(tokenProvider.RuntimeOnly);
