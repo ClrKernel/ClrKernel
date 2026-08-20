@@ -154,6 +154,18 @@ export function toApiCells(cells: EditorCell[]): ApiCell[] {
 }
 
 /**
+ * Re-attaches the ids of the cells just saved to what the server read back, so
+ * a save does not throw away every cell's output. Positional matching is safe
+ * here and only here: this is a round trip of the array we ourselves posted. If
+ * the server's re-parse disagrees about how many cells that is, ids are minted
+ * fresh instead — orphaned run state beats run state shown against the wrong cell.
+ */
+export function keepIds(reloaded: ApiCell[], previous: EditorCell[]): EditorCell[] {
+  const aligned = reloaded.length === previous.length;
+  return reloaded.map((cell, i) => ({ ...cell, id: aligned ? previous[i].id : newCellId() }));
+}
+
+/**
  * What a run posts. Same cells as a save, but carrying their ids: the session
  * keys each cell's outputs by the id it received, so an id-less run would file
  * everything under its position in the request — "run cell five" alone would
@@ -173,7 +185,6 @@ export interface CellRunState {
   status: string;
   executionCount: number | null;
   outputs: NotebookOutput[];
-  truncated: boolean;
   /** The cell was edited after this ran, so the output below it is no longer
    *  what the code says. Dimmed rather than dropped — the same call VS Code makes. */
   stale: boolean;
@@ -199,7 +210,8 @@ export function mergeStatus(
       status: run.status,
       executionCount: run.executionCount ?? null,
       outputs: run.outputs ?? [],
-      truncated: run.truncated ?? false,
+      // `truncated` needs no rendering: the session already appends a visible
+      // marker as the last output when it stops keeping them.
       stale: cell.id in ranSource && ranSource[cell.id] !== cell.source,
     };
   }

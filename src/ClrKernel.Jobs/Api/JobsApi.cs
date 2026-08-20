@@ -211,12 +211,10 @@ public static class JobsApi {
                     return denial;
                 }
                 var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
-                var session = sessions.Find(resolved);
-                if (session == null) {
-                    return Results.Ok(new { running = false, started = false });
-                }
                 // A scheduled run of this notebook may be in flight in its own kernel;
                 // the editor says so rather than leaving the file changing unexplained.
+                // Checked before the session lookup, because the warning is most useful
+                // when you open the file — which is before any kernel of yours exists.
                 // ponytail: Load() re-reads the jobs yaml under the git lock, and the
                 // editor polls this ~2.5×/s while a cell runs. Fine for one person's
                 // handful of files; cache it per notebook if that ever shows up.
@@ -225,7 +223,10 @@ public static class JobsApi {
                     string.Equals(j.NotebookPath, resolved, StringComparison.OrdinalIgnoreCase))) {
                     scheduled |= await store.HasActiveRunAsync(job.Environment, job.Name);
                 }
-                return Results.Ok(SessionView.From(session, scheduled));
+                var session = sessions.Find(resolved);
+                return session == null
+                    ? Results.Ok(new { running = false, started = false, scheduledRunActive = scheduled })
+                    : Results.Ok(SessionView.From(session, scheduled));
             });
 
         api.MapGet("/envs/dev/notebooks/promotion", async (

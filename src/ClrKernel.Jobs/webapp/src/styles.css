@@ -689,15 +689,28 @@ textarea {
   margin-bottom: 0.5rem;
 }
 
-/* Unlike the structural controls, the run buttons stay visible: reaching for
-   one should not require finding the cell first. */
+/* Run stays visible; above/below join it on hover, so the resting toolbar is
+   one arrow, a number and the picker rather than a row of controls. */
 .cell-run {
   display: flex;
+  align-items: center;
   gap: 0.25rem;
 }
 
 .cell-run .button-small {
   margin-left: 0;
+}
+
+.cell-run-more {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.12s ease-in-out;
+}
+
+.notebook-cell:hover .cell-run-more,
+.notebook-cell:focus-within .cell-run-more {
+  opacity: 1;
 }
 
 .chip-running {

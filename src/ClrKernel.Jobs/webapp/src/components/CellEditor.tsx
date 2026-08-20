@@ -45,6 +45,8 @@ export function CellEditor({
       <div className="cell-toolbar">
         {!isMarkdown && canRun && (
           <div className="cell-run">
+            {/* Always visible — reaching for Run should not mean finding the
+                cell first. The other two are rarer, so they wait for a hover. */}
             <button
               className="button button-small"
               onClick={() => onRun('one')}
@@ -53,24 +55,26 @@ export function CellEditor({
             >
               ▶
             </button>
-            <button
-              className="button button-small"
-              onClick={() => onRun('before')}
-              // Nothing above cell one: the server rejects an empty run, so the
-              // button says so first.
-              disabled={busy || index === 0}
-              title="Run every cell above this one"
-            >
-              ▶ above
-            </button>
-            <button
-              className="button button-small"
-              onClick={() => onRun('after')}
-              disabled={busy}
-              title="Run this cell and everything below it"
-            >
-              ▶ below
-            </button>
+            <span className="cell-run-more">
+              <button
+                className="button button-small"
+                onClick={() => onRun('before')}
+                // Nothing above cell one: the server rejects an empty run, so
+                // the button says so first.
+                disabled={busy || index === 0}
+                title="Run every cell above this one"
+              >
+                ▶ above
+              </button>
+              <button
+                className="button button-small"
+                onClick={() => onRun('after')}
+                disabled={busy}
+                title="Run this cell and everything below it"
+              >
+                ▶ below
+              </button>
+            </span>
           </div>
         )}
         <span className="cell-number">

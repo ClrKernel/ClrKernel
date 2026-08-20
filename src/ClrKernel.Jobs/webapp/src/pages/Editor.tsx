@@ -9,6 +9,7 @@ import {
   emptyCell,
   insertCell,
   isDirty,
+  keepIds,
   mergeStatus,
   moveCell,
   removeCell,
@@ -64,15 +65,20 @@ export function Editor() {
     [path],
   );
 
+  // The server is the authority in both directions. A click starts polling
+  // optimistically; landing on a notebook that is already running — a refresh
+  // mid-cell, or a second tab — has to start it too, or the buttons stay
+  // disabled with nothing left to re-enable them.
   useEffect(() => {
-    if (pollFast && session && !session.running) {
-      setPollFast(false);
+    if (session) {
+      setPollFast(session.running);
     }
-  }, [session, pollFast]);
+  }, [session]);
 
   // Execution is gated server-side (git workflow, dev only, and a key required
-  // off localhost). One rejected status call is how the editor finds out.
-  const canRun = isNotebook && sessionError == null;
+  // off localhost). A rejected status call is how the editor finds out — but a
+  // transient failure after a good answer is not that.
+  const canRun = isNotebook && !(sessionError != null && session == null);
   const running = (session?.running ?? false) || pollFast;
   const runState = mergeStatus(cells ?? [], session, ranSource.current);
 
@@ -120,7 +126,9 @@ export function Editor() {
       setSavedSource(text);
       if (isNotebook) {
         const reloaded = await api.notebookCells('dev', path);
-        setCells(withIds(reloaded.cells));
+        // Keep the ids the cells were run under: saving should not clear the
+        // outputs you just produced.
+        setCells((current) => keepIds(reloaded.cells, current ?? []));
         setSaved(reloaded.cells);
       }
       reloadPromotion();
@@ -164,12 +172,16 @@ export function Editor() {
   async function restartKernel() {
     setError(null);
     try {
-      await api.restartSession(path);
+      const { restarted } = await api.restartSession(path);
       // ponytail: outputs live only in the session, so a restart clears them.
       // Cache them client-side if keeping them across a restart ever matters.
       ranSource.current = {};
       setRestartDismissed(false);
-      setNotice('Kernel restarted — variables and cell outputs are cleared.');
+      setNotice(
+        restarted
+          ? 'Kernel restarted — variables and cell outputs are cleared.'
+          : 'No kernel was running for this notebook.',
+      );
       reloadSession();
     } catch (e) {
       setError((e as Error).message);

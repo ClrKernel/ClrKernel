@@ -3,6 +3,7 @@ import type { ApiCell, ApiLanguage, ApiSession } from './api';
 import {
   cellsToRun,
   isDirty,
+  keepIds,
   languageOptions,
   mergeStatus,
   monacoLanguage,
@@ -104,6 +105,22 @@ describe('withIds', () => {
     const reloaded = withIds([cell({ source: 'b' })]);
     expect(reloaded[0].id).not.toBe(first[0].id);
     expect(new Set(first.map((c) => c.id)).size).toBe(2);
+  });
+});
+
+describe('keepIds', () => {
+  it('carries ids across a save, so saving does not clear what just ran', () => {
+    const before = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const readBack: ApiCell[] = [cell({ source: 'a' }), cell({ source: 'b' })];
+    expect(keepIds(readBack, before).map((c) => c.id)).toEqual(before.map((c) => c.id));
+  });
+
+  it('mints fresh ids when the server re-parsed a different number of cells', () => {
+    // The alignment assumption is gone, so run state is dropped rather than
+    // shifted onto the wrong cells.
+    const before = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const merged: ApiCell[] = [cell({ source: 'a\nb' })];
+    expect(keepIds(merged, before)[0].id).not.toBe(before[0].id);
   });
 });
 
