@@ -104,7 +104,9 @@ clrkernel-jobs serve --notebooks ./notebooks
 
 Opens <http://localhost:5000> with a dashboard (recent runs and success rate), the
 job list and editor, a notebook tree, and a run view showing live cell-by-cell
-progress, the rendered notebook, and the log.
+progress, the rendered notebook, and the log. With the git workflow on, dev notebooks
+also get a cell editor that runs cells against a live kernel — see
+[The notebook editor](#the-notebook-editor).
 
 ### Scheduling rules
 
@@ -214,6 +216,13 @@ Everything the UI does is available over HTTP under `/api` — `health`, `notebo
 and `/cancel`, `runs` with per-cell progress, `runs/{id}/artifact` and `/log`,
 `stats`, and `channels` (GET/PUT, plus `channels/{name}/test`).
 
+With the git workflow on, `envs/{env}/notebooks/` adds `content` (GET any
+environment, PUT dev only), `cells` (the same file parsed into cells, and written back
+from them — the browser never needs its own copy of the `.nb.md` format), `promotion`
+and `promote`, plus the editor's session endpoints: `session` (POST to start, DELETE
+to restart), `run`, and `session/status`. `git/diff` returns a unified diff for one
+path, which is still the convenient thing over curl.
+
 A run can take one-off parameters that override the job's own for that run only —
 the `*.jobs.yaml` is untouched. The same thing is behind "Run with parameters…" in
 the job editor:
@@ -243,8 +252,10 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 
 The loop:
 
-1. **Edit** in the web UI (dev notebooks get an *edit* link in the tree) or in your
-   own editor inside `dev/`. Every UI save is a commit on the dev branch.
+1. **Edit** in the web UI (dev notebooks get an *edit* link in the tree — see
+   [The notebook editor](#the-notebook-editor), where you can also run cells against a
+   warm kernel) or in your own editor inside `dev/`. Every UI save is a commit on the
+   dev branch.
 2. **Run** the notebook's jobs in dev — manually or via the API. Dev jobs never run
    on a schedule; cron and chaining fire only in prod. Each run records the dev
    commit it executed and whether the tree was dirty.
@@ -270,6 +281,50 @@ unversioned — they are runtime config. Environments are part of run history ke
 dev and prod runs of the same job never mix. In Docker, mount `/notebooks` writable
 (owned by uid 1654) when git is enabled; worktree paths are repaired automatically
 when the volume is mounted at a different path.
+
+## The notebook editor
+
+Dev notebooks get an **edit** link in the tree. The editor is a notebook, not a text
+box: each cell is a Monaco editor with syntax highlighting, a language picker fed by
+whatever the kernel declares (so a `#!sql` cell highlights as SQL and a shell cell as
+shell), and controls to add, delete and reorder cells. A **Source** tab shows the raw
+file when you want to see exactly what is on disk, and **Diff vs production** shows
+what promoting would ship, side by side.
+
+Cells run against a **warm kernel** — one per notebook, started on the first run and
+kept alive so variables persist between cells and between runs, exactly as they do in
+VS Code. Per cell: ▶ runs it, **▶ above** runs everything before it, **▶ below** runs
+it and everything after. The toolbar adds **Run All** and **Restart kernel**.
+
+- A run stops at the first failure and marks the rest skipped — the same papermill
+  semantics a scheduled run uses, so what you see here predicts what the job will do.
+- Output appears as the kernel produces it, rendered exactly as the executed artifact
+  will be. Edit a cell and its output dims rather than disappearing: it is still what
+  ran, just no longer what the code says.
+- Sessions are dropped after **30 minutes idle**, at shutdown, and when a fifth
+  notebook needs a slot (four at a time). Restart kills the kernel and starts a fresh
+  one — it is also the only way to stop a cell that will not finish, because no kernel
+  RPC surface can cancel one mid-flight.
+- One cell at a time per notebook. A second run while one is in flight is refused
+  rather than queued.
+- A scheduled run of the same notebook is fine — it executes the committed file in its
+  own kernel, and the editor says so while it is in flight.
+
+**Runs from the editor are never promotion evidence.** They write nothing to run
+history: no run rows, no cell rows, no trigger updates. Nothing you do here can make a
+notebook look promotable, and nothing you do here can un-promote one. Promotion still
+requires a real green run of every job on the notebook, launched from the Jobs page or
+the API. This is a property of the code — the session has no access to the run store —
+not a rule someone has to remember.
+
+Saving is a commit on dev, so a save that changes nothing is skipped: a needless commit
+would invalidate the "unchanged since that run" half of the promotion check.
+
+Execution is refused unless the git workflow is on, the file is in `dev/`, and the path
+resolves inside the dev worktree. It is refused outright when `--urls` reaches beyond
+localhost and no `--api-key` is set — running arbitrary code for anyone who can reach
+the port is not a default worth having. Editing and diffing still work; only running
+is gated.
 
 ## Docker
 
