@@ -178,55 +178,17 @@ public sealed class JobExecutor {
     private async Task RunCellsAsync(
         JobDefinition job, Run run,
         string artifactPath, Action<string> log, CancellationToken cancellationToken) {
-        var clrkernel = ClrKernelLocator.Find(_options.ClrKernelPath);
-        using var process = new Process {
-            StartInfo = new ProcessStartInfo {
-                FileName = clrkernel,
-                Arguments = "serve",
-                WorkingDirectory = Path.GetDirectoryName(job.NotebookPath),
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            },
-            EnableRaisingEvents = true,
-        };
-        process.ErrorDataReceived += (_, e) => {
-            if (e.Data != null) {
-                log($"kernel: {e.Data}");
-            }
-        };
-        log($"Starting {clrkernel} serve (cwd {process.StartInfo.WorkingDirectory})");
-        process.Start();
-        process.BeginErrorReadLine();
-
-        try {
-            using var client = new KernelClient(
-                process.StandardInput.BaseStream, process.StandardOutput.BaseStream);
-            // The notebook is parsed with the languages THIS kernel declares, so
-            // sql/dax/shell blocks execute exactly when the kernel can run them.
-            // ExecuteCellsAsync initializes again for its banner — initialize is
-            // a pure info call, so the extra round trip is harmless.
-            var info = await InitializeWithTimeoutAsync(client, cancellationToken);
-            var plan = BuildPlan(job, info.Languages);
-            var cells = SeedCells(run.Id, plan);
-            await _store.SaveCellsAsync(run.Id, cells);
-            await ExecuteCellsAsync(client, run, plan, cells, artifactPath, log, cancellationToken);
-        } finally {
-            KillIfRunning(process, log);
-        }
-    }
-
-    // A kernel that never answers initialize would otherwise hang an untimed job forever.
-    private static async Task<InitializeReply> InitializeWithTimeoutAsync(
-        KernelClient client, CancellationToken cancellationToken) {
-        using var initTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        initTimeout.CancelAfter(TimeSpan.FromSeconds(60));
-        try {
-            return await client.InitializeAsync(initTimeout.Token);
-        } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
-            throw new InvalidOperationException("The kernel did not answer initialize within 60s.");
-        }
+        using var kernel = KernelProcess.Start(
+            _options.ClrKernelPath, Path.GetDirectoryName(job.NotebookPath), log);
+        // The notebook is parsed with the languages THIS kernel declares, so
+        // sql/dax/shell blocks execute exactly when the kernel can run them.
+        // ExecuteCellsAsync initializes again for its banner — initialize is
+        // a pure info call, so the extra round trip is harmless.
+        var info = await kernel.InitializeAsync(cancellationToken);
+        var plan = BuildPlan(job, info.Languages);
+        var cells = SeedCells(run.Id, plan);
+        await _store.SaveCellsAsync(run.Id, cells);
+        await ExecuteCellsAsync(kernel.Client, run, plan, cells, artifactPath, log, cancellationToken);
     }
 
     /// <summary>
@@ -236,7 +198,7 @@ public sealed class JobExecutor {
     internal async Task ExecuteCellsAsync(
         KernelClient client, Run run, List<PlanCell> plan, List<RunCell> cells,
         string artifactPath, Action<string> log, CancellationToken cancellationToken) {
-        var info = await InitializeWithTimeoutAsync(client, cancellationToken);
+        var info = await KernelProcess.InitializeWithTimeoutAsync(client, cancellationToken);
         log($"Kernel ready: {info.Name} {info.Version}");
 
         // Notifications carry the cellId we executed with ("cell-<index>"), so each

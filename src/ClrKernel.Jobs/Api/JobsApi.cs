@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ClrKernel.Core.Runner;
+using ClrKernel.Core.Scripting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -72,35 +74,66 @@ public static class JobsApi {
 
         api.MapPut("/envs/{env}/notebooks/content", async (
             HttpContext context, JobCatalog catalog, string env, string path) => {
-                if (!catalog.GitLayout) {
-                    return Results.BadRequest(new {
-                        error = "Editing needs the git workflow — run `clrkernel-jobs git init`.",
-                    });
-                }
-                if (env != "dev") {
-                    return Results.BadRequest(new { error = "prod is read-only — edit in dev and promote." });
-                }
-                // Rooted at the dev worktree: the workspace root would resolve prod/… too.
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
-                if (resolved == null) {
-                    return Results.BadRequest(new { error = "Path is outside the dev area." });
-                }
-                if (!NotebookTree.IsNotebook(resolved) && !resolved.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)) {
-                    return Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
+                if (EditableTarget(context, catalog, env, path) is not { } target) {
+                    return DevWriteError(context, catalog, env, path);
                 }
                 if (context.Request.ContentLength is > 2_000_000) {
                     return Results.BadRequest(new { error = "File too large (2 MB limit)." });
                 }
                 using var reader = new StreamReader(context.Request.Body);
-                var content = await reader.ReadToEndAsync();
+                return SaveToDev(context, target, path, await reader.ReadToEndAsync());
+            });
 
-                var git = context.RequestServices.GetService(typeof(GitService)) as GitService;
-                git!.WithLock(() => {
-                    Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
-                    File.WriteAllText(resolved, content);
-                    git.Commit("dev", $"edit {path} via web UI", path);
+        // The notebook as editable cells, with the languages the kernel can run —
+        // the shape the web editor works in. Parsing is NotebookMarkdown's, the same
+        // reader/writer `clrkernel run` and the VS Code extension agree with.
+        api.MapGet("/envs/{env}/notebooks/cells", async (
+            JobCatalog catalog, KernelLanguages kernelLanguages, string env, string path) => {
+                if (!catalog.Environments.Contains(env)) {
+                    return Results.NotFound(new { error = $"No environment '{env}'." });
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(env), path);
+                if (resolved == null) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                if (!resolved.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
+                    !resolved.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
+                    return Results.BadRequest(new { error = "Only executable markdown (.nb.md) opens as cells." });
+                }
+                if (!File.Exists(resolved)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                var languages = await kernelLanguages.GetAsync();
+                var cells = NotebookMarkdown.Parse(File.ReadAllText(resolved), languages);
+                return Results.Ok(new {
+                    cells = cells.Select((c, i) => CellView.From(c, i, languages)),
+                    languages,
                 });
-                return Results.Ok(new { saved = true, commitSha = git.HeadSha("dev") });
+            });
+
+        api.MapPut("/envs/{env}/notebooks/cells", async (
+            HttpContext context, JobCatalog catalog, KernelLanguages kernelLanguages, string env, string path) => {
+                if (EditableTarget(context, catalog, env, path) is not { } target) {
+                    return DevWriteError(context, catalog, env, path);
+                }
+                if (!target.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
+                    !target.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
+                    return Results.BadRequest(new { error = "Only executable markdown (.nb.md) saves as cells." });
+                }
+                CellWrite write;
+                try {
+                    write = await JsonSerializer.DeserializeAsync<CellWrite>(context.Request.Body, _bodyJson);
+                } catch (JsonException e) {
+                    return Results.BadRequest(new { error = "Could not read the cells: " + e.Message });
+                }
+                if (write?.Cells == null) {
+                    return Results.BadRequest(new { error = "Body must be { cells: [...] }." });
+                }
+                if (write.Cells.Count > 1000) {
+                    return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
+                }
+                var languages = await kernelLanguages.GetAsync();
+                return SaveToDev(context, target, path, NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
             });
 
         api.MapGet("/envs/dev/notebooks/promotion", async (
@@ -348,6 +381,52 @@ public static class JobsApi {
     private static GitService GitOf(HttpContext context) =>
         context.RequestServices.GetService(typeof(GitService)) as GitService;
 
+    /// <summary>
+    /// The absolute path a dev write may target, or null when it may not — the git
+    /// workflow is off, the environment is not dev, the path escapes the dev
+    /// worktree, or the file is not one we edit. <see cref="DevWriteError"/> says
+    /// which, so the two shapes of write (raw text, cells) refuse identically.
+    /// </summary>
+    private static string EditableTarget(HttpContext context, JobCatalog catalog, string env, string path) {
+        if (!catalog.GitLayout || env != "dev" || GitOf(context) == null) {
+            return null;
+        }
+        // Rooted at the dev worktree: the workspace root would resolve prod/… too.
+        var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+        if (resolved == null) {
+            return null;
+        }
+        return NotebookTree.IsNotebook(resolved) || resolved.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)
+            ? resolved
+            : null;
+    }
+
+    private static IResult DevWriteError(HttpContext context, JobCatalog catalog, string env, string path) {
+        if (!catalog.GitLayout || GitOf(context) == null) {
+            return Results.BadRequest(new {
+                error = "Editing needs the git workflow — run `clrkernel-jobs git init`.",
+            });
+        }
+        if (env != "dev") {
+            return Results.BadRequest(new { error = "prod is read-only — edit in dev and promote." });
+        }
+        return NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null
+            ? Results.BadRequest(new { error = "Path is outside the dev area." })
+            : Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
+    }
+
+    /// <summary>The one committing writer: the file lands and is committed inside a
+    /// single git-lock hold, so racing saves cannot commit each other's bytes.</summary>
+    private static IResult SaveToDev(HttpContext context, string resolved, string path, string content) {
+        var git = GitOf(context);
+        git.WithLock(() => {
+            Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
+            File.WriteAllText(resolved, content);
+            git.Commit("dev", $"edit {path} via web UI", path);
+        });
+        return Results.Ok(new { saved = true, commitSha = git.HeadSha("dev") });
+    }
+
     private static async Task<IResult> ServeRunFile(
         IRunStore store, JobsOptions options, Guid id, Func<Run, string> select, string contentType) {
         var run = await store.GetRunAsync(id);
@@ -500,4 +579,60 @@ public sealed class JobWrite {
     public Dictionary<string, object> Parameters { get; set; }
     public List<string> DependsOn { get; set; }
     public NotifyRules Notify { get; set; }
+}
+
+/// <summary>A notebook cell as the editor sees it: the body as written, the code
+/// tag it carried, and the language that tag belongs to (null for C# and prose).</summary>
+public sealed class CellView {
+    public string Id { get; set; }
+    public string Kind { get; set; }
+    public string Tag { get; set; }
+    public string LanguageId { get; set; }
+    public string Source { get; set; }
+    public int BlankLinesAfter { get; set; }
+    public bool Closed { get; set; }
+
+    public static CellView From(MarkdownCell cell, int index, IReadOnlyList<LanguageDescriptor> languages) => new() {
+        Id = "c" + index,
+        Kind = cell.Kind == CellKind.Code ? "code" : "markdown",
+        Tag = cell.Tag,
+        LanguageId = NotebookMarkdown.LanguageForTag(cell.Tag, languages)?.Id,
+        Source = cell.Source,
+        BlankLinesAfter = cell.BlankLinesAfter,
+        Closed = cell.Closed,
+    };
+}
+
+/// <summary>The editor's save: the whole notebook, as cells.</summary>
+public sealed class CellWrite {
+    public List<CellEdit> Cells { get; set; }
+}
+
+public sealed class CellEdit {
+    public string Kind { get; set; }
+    public string Tag { get; set; }
+    public string LanguageId { get; set; }
+    public string Source { get; set; }
+    public int? BlankLinesAfter { get; set; }
+    public bool? Closed { get; set; }
+
+    /// <summary>The cell to serialize. A tag the file already carried is kept as
+    /// written; only a cell whose language the user just picked (tag absent) gets
+    /// one computed, so bash/zsh/sh never collapse into one another.</summary>
+    public MarkdownCell ToCell(IReadOnlyList<LanguageDescriptor> languages) {
+        var markdown = string.Equals(Kind, "markdown", StringComparison.OrdinalIgnoreCase);
+        var tag = Tag;
+        if (!markdown && string.IsNullOrEmpty(tag)) {
+            var language = languages?.FirstOrDefault(l =>
+                string.Equals(l.Id, LanguageId, StringComparison.OrdinalIgnoreCase));
+            tag = NotebookMarkdown.TagFor(language);
+        }
+        return new MarkdownCell {
+            Kind = markdown ? CellKind.Markdown : CellKind.Code,
+            Tag = markdown ? null : tag,
+            Source = Source ?? string.Empty,
+            BlankLinesAfter = BlankLinesAfter ?? 1,
+            Closed = Closed ?? true,
+        };
+    }
 }

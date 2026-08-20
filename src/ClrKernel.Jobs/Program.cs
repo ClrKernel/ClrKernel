@@ -279,6 +279,10 @@ public static class Program {
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(), git));
         builder.Services.AddSingleton(provider => new Notifier(
             options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>()));
+        // What the kernel can run, for parsing notebooks and filling the editor's
+        // language picker. Probed lazily on first use, never at startup.
+        builder.Services.AddSingleton(provider => new KernelLanguages(
+            options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<KernelLanguages>()));
         builder.Services.AddSingleton<SchedulerService>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 

@@ -47,6 +47,30 @@ export interface RunCell {
   errorSummary: string | null;
 }
 
+/** One notebook cell as the server parses and writes it. */
+export interface ApiCell {
+  id?: string;
+  kind: 'code' | 'markdown';
+  /** The code-block tag as written ("sql", "zsh"); null for prose. Preserved on
+   *  save — one language claims several tags and rewriting one changes meaning. */
+  tag: string | null;
+  languageId?: string | null;
+  source: string;
+  blankLinesAfter?: number;
+  closed?: boolean;
+}
+
+/** A cell language the kernel declared, for the picker and syntax highlighting. */
+export interface ApiLanguage {
+  id: string;
+  displayName: string;
+  defaultSelector: string | null;
+  selectors: string[];
+  languageTags: string[];
+  hasEditorServices?: boolean;
+  hasConnections?: boolean;
+}
+
 export interface TreeNode {
   name: string;
   path: string;
@@ -207,6 +231,17 @@ export const api = {
     fetch(`/api/git/diff?path=${encodeURIComponent(path)}`, {
       headers: apiKey() ? { 'X-Api-Key': apiKey() } : {},
     }).then((r) => (r.ok ? r.text() : '')),
+  // The notebook as cells, with the languages this kernel can run — parsed and
+  // written server-side so the browser never needs its own copy of the format.
+  notebookCells: (env: string, path: string) =>
+    request<{ cells: ApiCell[]; languages: ApiLanguage[] }>(
+      `/envs/${env}/notebooks/cells?path=${encodeURIComponent(path)}`,
+    ),
+  saveNotebookCells: (path: string, cells: ApiCell[]) =>
+    request<{ saved: boolean; commitSha: string }>(
+      `/envs/dev/notebooks/cells?path=${encodeURIComponent(path)}`,
+      { method: 'PUT', body: JSON.stringify({ cells }) },
+    ),
   promotionStatus: (path: string) =>
     request<{
       eligible: boolean;
