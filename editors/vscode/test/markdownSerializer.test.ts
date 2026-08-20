@@ -40,9 +40,9 @@ describe('fence tag -> cell language', () => {
         expect(cells).toHaveLength(1);
         expect(cells[0].kind).toBe(NotebookCellKind.Code);
         expect(cells[0].languageId).toBe(languageId);
-        // zsh/sh fences keep their shell as an explicit selector line (bash is
+        // zsh/sh/shell fences keep their tag as an explicit selector line (bash is
         // the shellscript default); every other tag passes the body through.
-        const expected = tag === 'zsh' || tag === 'sh' ? '#!' + tag + '\nBODY' : 'BODY';
+        const expected = tag === 'zsh' || tag === 'sh' || tag === 'shell' ? '#!' + tag + '\nBODY' : 'BODY';
         expect(cells[0].value).toBe(expected);
     });
 
@@ -127,7 +127,9 @@ describe('shell cells', () => {
         expect(write([code('echo hi', 'shellscript')])).toBe('```bash\necho hi\n```\n');
         expect(write([code('#!zsh\necho hi', 'shellscript')])).toBe('```zsh\n#!zsh\necho hi\n```\n');
         expect(write([code('#!sh\necho hi', 'shellscript')])).toBe('```sh\n#!sh\necho hi\n```\n');
-        expect(write([code('#!shell\necho hi', 'shellscript')])).toBe('```bash\n#!shell\necho hi\n```\n');
+        // A #!shell cell keeps its own tag: 'shell means bash' at execution, but the
+        // fence round-trips stably instead of being normalized away.
+        expect(write([code('#!shell\necho hi', 'shellscript')])).toBe('```shell\n#!shell\necho hi\n```\n');
     });
 
     it('round-trips zsh cells stably', () => {

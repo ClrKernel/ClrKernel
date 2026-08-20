@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
+import { currentLanguages, onLanguagesChanged, startsWithSelector } from './languages';
 import { toOutputItemData } from './outputItems';
 import { DisplayNotification, ServerClient } from './serverClient';
 import { SingleFlight } from './singleFlight';
@@ -32,15 +33,20 @@ export class ClrKernelController {
     constructor(notebookType: string) {
         this.output = vscode.window.createOutputChannel('ClrKernel');
         this.controller = vscode.notebooks.createNotebookController('clrkernel-csharp', notebookType, 'ClrKernel');
-        // C# cells run as script; http cells run as .http requests; mermaid
-        // cells render as diagrams; powershell cells run in the runspace.
-        // C# cells use the 'csharp-script' language id (shown as "C#", keeps other C#
-        // tooling from attaching). Plain 'csharp' is intentionally NOT listed: it would
-        // add a second "C#" entry to the cell language picker, and the serializer already
-        // maps every ```csharp fence to 'csharp-script' on load, so no cell is 'csharp'.
-        this.controller.supportedLanguages = ['csharp-script', 'http', 'mermaid', 'powershell', 'shellscript', 'sql', 'dax'];
+        // The cell language picker follows the kernel's language list (bundled until
+        // the handshake, refreshed when a plugin registers mid-session). C# cells use
+        // the 'csharp-script' language id (shown as "C#", keeps other C# tooling from
+        // attaching). Plain 'csharp' is intentionally NOT listed: it would add a second
+        // "C#" entry to the picker, and the serializer already maps every ```csharp
+        // fence to 'csharp-script' on load, so no cell is 'csharp'.
+        this.applySupportedLanguages();
+        onLanguagesChanged(() => this.applySupportedLanguages());
         this.controller.supportsExecutionOrder = true;
         this.controller.executeHandler = (cells) => this.executeCells(cells);
+    }
+
+    private applySupportedLanguages(): void {
+        this.controller.supportedLanguages = ['csharp-script', ...currentLanguages().map((l) => l.id)];
     }
 
     private executionOrder = 0;
@@ -238,32 +244,18 @@ export class ClrKernelController {
     }
 
     /**
-     * The code to send for a cell. HTTP cells are prefixed with `#!http`,
-     * Mermaid cells with `#!mermaid`, and PowerShell cells with `#!pwsh`, so the
-     * engine routes them (unless the user already typed the selector). C# cells
-     * are sent verbatim.
+     * The code to send for a cell: the language's default selector is prepended
+     * so the engine routes it — unless the user already typed one of the
+     * language's selectors. C# cells are sent verbatim. Entirely descriptor-
+     * driven, so a plugged-in language routes with zero extension changes.
      */
     private cellCode(cell: vscode.NotebookCell): string {
         const text = cell.document.getText();
-        if (cell.document.languageId === 'http' && !/^\s*#!http\b/i.test(text)) {
-            return '#!http\n' + text;
+        const language = currentLanguages().find((l) => l.id === cell.document.languageId);
+        if (!language?.defaultSelector || startsWithSelector(language, text)) {
+            return text;
         }
-        if (cell.document.languageId === 'mermaid' && !/^\s*#!mermaid\b/i.test(text)) {
-            return '#!mermaid\n' + text;
-        }
-        if (cell.document.languageId === 'powershell' && !/^\s*#!(pwsh|powershell)\b/i.test(text)) {
-            return '#!pwsh\n' + text;
-        }
-        if (cell.document.languageId === 'shellscript' && !/^\s*#!(bash|zsh|sh|shell)\b/i.test(text)) {
-            return '#!bash\n' + text;
-        }
-        if (cell.document.languageId === 'sql' && !/^\s*#!sql\b/i.test(text)) {
-            return '#!sql\n' + text;
-        }
-        if (cell.document.languageId === 'dax' && !/^\s*#!dax\b/i.test(text)) {
-            return '#!dax\n' + text;
-        }
-        return text;
+        return language.defaultSelector + '\n' + text;
     }
 
     /**
@@ -303,10 +295,11 @@ export class ClrKernelController {
         try {
             const client = await this.ensureClient(notebook);
             const directory = path.dirname(notebook.uri.fsPath);
-            // Each language takes only its own $type; a language with nothing saved is a no-op.
-            for (const languageId of ['sql', 'dax']) {
+            // Every config-backed language loads its own $type entries; the list
+            // comes from the kernel, so a plugged-in language joins automatically.
+            for (const language of currentLanguages().filter((l) => l.configBacked)) {
                 await client.request('clrkernel/connections/loadConfig',
-                    { languageId, notebookUri: notebook.uri.toString(), directory });
+                    { languageId: language.id, notebookUri: notebook.uri.toString(), directory });
             }
         } catch (error) {
             // A missing/unreadable config or an unstarted server must not block the run.

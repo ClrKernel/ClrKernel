@@ -28,6 +28,10 @@ public sealed class LanguageDescriptor {
 
     public IReadOnlyList<DirectiveDefinition> Directives { get; init; } = Array.Empty<DirectiveDefinition>();
 
+    /// <summary>The language provides editor features (completion/hover/diagnostics)
+    /// — an LSP client should route its cell documents to the server.</summary>
+    public bool HasEditorServices { get; init; }
+
     /// <summary>The language has named connections (an editor may offer a connection UI).</summary>
     public bool HasConnections { get; init; }
 
@@ -41,6 +45,7 @@ public sealed class LanguageDescriptor {
         Selectors = language.Selectors ?? Array.Empty<string>(),
         LanguageTags = language.LanguageTags,
         Directives = language.Directives,
+        HasEditorServices = language.Services != null,
         HasConnections = language.Connections != null,
         ConfigBacked = language.Connections is IConfigBackedConnections,
     };

@@ -9,19 +9,20 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.9.*';
+export const SUPPORTED_KERNEL_RANGE = '0.10.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.9.x';
+export const SUPPORTED_KERNEL_LABEL = '0.10.x';
 
 /** The lowest kernel in the line that carries every RPC this build calls
- *  (0.9.1 added clrkernel/restart and per-notebook sessions). A kernel below
- *  this within the same line reads as 'older', so the update flow triggers. */
-export const SUPPORTED_KERNEL_MIN = '0.9.1';
+ *  (0.10.0 added the language-descriptor handshake, clrkernel/languages, and
+ *  clrkernel/connections/describe). A kernel below this within the same line
+ *  reads as 'older', so the update flow triggers. */
+export const SUPPORTED_KERNEL_MIN = '0.10.0';
 
 const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 9;
-const SUPPORTED_PATCH_MIN = 1;
+const SUPPORTED_MINOR = 10;
+const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
 
