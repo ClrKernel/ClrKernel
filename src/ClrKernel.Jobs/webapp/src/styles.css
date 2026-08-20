@@ -89,6 +89,17 @@ pre,
   padding: 1.5rem;
 }
 
+/* The editor is not prose: cells want room, and a side-by-side diff at 60rem is
+   two 27rem panes of wrapped code. */
+.main-wide {
+  max-width: 100rem;
+}
+
+/* Code takes the width; sentences do not — a 100rem line is unreadable. */
+.main-wide p {
+  max-width: 60rem;
+}
+
 h1 {
   font-size: 1.4rem;
 }
@@ -689,8 +700,10 @@ textarea {
   margin-bottom: 0.5rem;
 }
 
-/* Run stays visible; above/below join it on hover, so the resting toolbar is
-   one arrow, a number and the picker rather than a row of controls. */
+/* All three stay visible. Hiding two of them with opacity left their layout box
+   behind — a hole between the arrow and the cell number — and the toolbar has
+   room to spare anyway. Running a cell is the point of the page, not a
+   secondary action to go hunting for. */
 .cell-run {
   display: flex;
   align-items: center;
@@ -699,18 +712,6 @@ textarea {
 
 .cell-run .button-small {
   margin-left: 0;
-}
-
-.cell-run-more {
-  display: flex;
-  gap: 0.25rem;
-  opacity: 0;
-  transition: opacity 0.12s ease-in-out;
-}
-
-.notebook-cell:hover .cell-run-more,
-.notebook-cell:focus-within .cell-run-more {
-  opacity: 1;
 }
 
 .chip-running {
@@ -742,11 +743,10 @@ textarea {
   overflow: hidden;
 }
 
-/* A diff editor does not size itself to its content the way a cell does, so the
-   container sets the height and Monaco scrolls both sides inside it. */
+/* Height is set from the line count in useDiffEditor — a diff editor never
+   sizes itself, and a fixed height leaves a short file in a half-empty box. */
 .diff-editor {
   width: 100%;
-  height: 34rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;

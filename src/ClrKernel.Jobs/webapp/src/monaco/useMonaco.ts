@@ -4,6 +4,9 @@ import { cellEditorOptions, monaco } from './setup';
 /** Tallest a single cell grows before it scrolls internally. */
 const MAX_CELL_HEIGHT = 600;
 
+/** Same idea for the production diff, which gets more room — it is the page. */
+const MAX_DIFF_HEIGHT = 720;
+
 /**
  * A Monaco editor for one notebook cell: it sizes itself to its content, swaps
  * language without losing undo history, and disposes cleanly.
@@ -93,12 +96,28 @@ export function useDiffEditor(original: string, modified: string, language: stri
     if (!container.current) {
       return;
     }
+    // A diff editor never sizes itself, and a fixed height leaves a short file
+    // sitting in a mostly empty box. Count the lines instead, with a floor so a
+    // one-line change still has room for the header and a cap so a long file
+    // scrolls rather than pushing the page away.
+    const lines = Math.max(original.split('\n').length, modified.split('\n').length);
+    const wanted = Math.max(lines, 8) * 19 + 24;
+    container.current.style.height = `${Math.min(wanted, MAX_DIFF_HEIGHT)}px`;
+
     const editor = monaco.editor.createDiffEditor(container.current, {
       automaticLayout: true,
       readOnly: true,
-      renderSideBySide: true,
+      // Two panes need width; below that the inline view stays readable.
+      renderSideBySide: container.current.clientWidth > 900,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
+      scrollbar: { vertical: 'auto', horizontal: 'auto' },
+      // The ruler is for finding changes you cannot see. When the whole diff
+      // fits on screen it is a grey column down the side and nothing else.
+      // Both are needed: renderOverviewRuler drops the diff's own ruler, and
+      // overviewRulerLanes drops the one each inner editor draws for itself.
+      renderOverviewRuler: wanted > MAX_DIFF_HEIGHT,
+      overviewRulerLanes: wanted > MAX_DIFF_HEIGHT ? 3 : 0,
       fontSize: 13,
     });
     const originalModel = monaco.editor.createModel(original, language);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { apiKey, setApiKey } from './api';
 import { Channels } from './pages/Channels';
 import { Dashboard } from './pages/Dashboard';
@@ -51,7 +51,10 @@ export function App() {
         <div className="spacer" />
         <ApiKeyBox />
       </nav>
-      <main className="main">
+      {/* 60rem is a good measure for reading tables and forms, and far too narrow
+          for an editor — a side-by-side diff would get two 27rem panes. The editor
+          takes the window instead. */}
+      <main className={useLocation().pathname === '/edit' ? 'main main-wide' : 'main'}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/jobs" element={<Jobs />} />
