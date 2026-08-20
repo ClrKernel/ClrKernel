@@ -63,6 +63,27 @@ check("initialize advertises hover", caps.get("hoverProvider") is True)
 check("initialize advertises signature help", bool(caps.get("signatureHelpProvider")))
 send("initialized", {}, notify=True)
 
+# 1b. the language descriptors ride the handshake and the dedicated request
+exp = caps.get("experimental", {}).get("clrkernel", {})
+langs = {l.get("id"): l for l in exp.get("languages", [])}
+check("handshake carries language descriptors", "sql" in langs and "dax" in langs)
+check("descriptors carry fence tags", "tsql" in langs.get("sql", {}).get("languageTags", []))
+check("descriptors carry directives", any(
+    d.get("selector") == "#!sql-connect" for d in langs.get("sql", {}).get("directives", [])))
+
+req_langs = request("clrkernel/languages", {})
+check("clrkernel/languages answers with the same ids",
+      {l.get("id") for l in (req_langs or {}).get("languages", [])} == set(langs))
+
+# 1c. connection providers describe their settings schemas
+described = request("clrkernel/connections/describe",
+                    {"languageId": "sql", "notebookUri": "file:///tmp/harness.nb.md"})
+providers = {p.get("type"): p for p in (described or {}).get("providers", [])}
+check("sql describes the SqlServer provider", "SqlServer" in providers)
+sql_settings = {s.get("name"): s for s in providers.get("SqlServer", {}).get("settings", [])}
+check("provider settings carry enum auth modes", "entra" in sql_settings.get("auth", {}).get("enumValues", []))
+check("passwords are secretRef settings", sql_settings.get("password", {}).get("kind") == "secretRef")
+
 # 2. execute a cell — its state must become visible to completion
 ex = request("clrkernel/execute", {"cellId": "c1", "code": 'var greeting = "hello"; var count = 42;'})
 check("execute returns ok", (ex or {}).get("status") == "ok")
