@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, type ApiCell, type ApiLanguage } from '../api';
-import { CellEditor } from '../components/CellEditor';
+import { CellEditor, CellInserter } from '../components/CellEditor';
 import { ErrorBanner, usePolling } from '../components/common';
 import { useCellEditor } from '../monaco/useMonaco';
 import {
@@ -131,6 +131,10 @@ export function Editor() {
     setCells((current) => current?.map((cell, i) => (i === index ? change(cell) : cell)) ?? current);
   }
 
+  function insertAt(index: number, kind: 'code' | 'markdown') {
+    setCells((current) => insertCell(current ?? [], index, emptyCell(kind)));
+  }
+
   return (
     <div>
       <div className="row-between">
@@ -184,36 +188,25 @@ export function Editor() {
           <p className="muted">Loading…</p>
         ) : (
           <div className="notebook-editor">
+            <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
             {cells.map((cell, index) => (
-              <CellEditor
-                key={cell.id}
-                cell={cell}
-                index={index}
-                count={cells.length}
-                languages={languages}
-                onChange={(value) => update(index, (c) => ({ ...c, source: value }))}
-                onLanguage={(value) => update(index, (c) => setCellLanguage(c, value, languages))}
-                onMove={(to) => setCells((current) => (current ? moveCell(current, index, to) : current))}
-                onDelete={() => setCells((current) => (current ? removeCell(current, index) : current))}
-                onInsertAfter={() =>
-                  setCells((current) => (current ? insertCell(current, index + 1, emptyCell()) : current))
-                }
-              />
+              <div key={cell.id}>
+                <CellEditor
+                  cell={cell}
+                  index={index}
+                  count={cells.length}
+                  languages={languages}
+                  onChange={(value) => update(index, (c) => ({ ...c, source: value }))}
+                  onLanguage={(value) => update(index, (c) => setCellLanguage(c, value, languages))}
+                  onMove={(to) => setCells((current) => (current ? moveCell(current, index, to) : current))}
+                  onDelete={() => setCells((current) => (current ? removeCell(current, index) : current))}
+                />
+                <CellInserter
+                  always={index === cells.length - 1}
+                  onInsert={(kind) => insertAt(index + 1, kind)}
+                />
+              </div>
             ))}
-            <div className="row-gap">
-              <button
-                className="button button-small"
-                onClick={() => setCells((current) => [...(current ?? []), emptyCell()])}
-              >
-                + Code
-              </button>
-              <button
-                className="button button-small"
-                onClick={() => setCells((current) => [...(current ?? []), emptyCell('markdown')])}
-              >
-                + Markdown
-              </button>
-            </div>
           </div>
         ))}
 

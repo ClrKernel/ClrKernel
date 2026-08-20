@@ -15,8 +15,41 @@ self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
 const darkMode = window.matchMedia?.('(prefers-color-scheme: dark)');
 
+// Monaco's stock themes paint their own background, which reads as a white box
+// dropped into the page. These inherit the app's palette so a cell looks like
+// part of the notebook rather than an embedded IDE.
+monaco.editor.defineTheme('clrkernel', {
+  base: 'vs',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.lineHighlightBackground': '#f6f7f9',
+    'editorLineNumber.foreground': '#9aa3b0',
+    'editorIndentGuide.background1': '#eef0f3',
+    'editor.selectionBackground': '#cfe0ff',
+    'editorWidget.background': '#ffffff',
+    'editorWidget.border': '#d8dce3',
+  },
+});
+
+monaco.editor.defineTheme('clrkernel-dark', {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#14171c',
+    'editor.lineHighlightBackground': '#1c2027',
+    'editorLineNumber.foreground': '#6b7280',
+    'editorIndentGuide.background1': '#242a33',
+    'editor.selectionBackground': '#2f4468',
+    'editorWidget.background': '#1c2027',
+    'editorWidget.border': '#2c323c',
+  },
+});
+
 function applyTheme(): void {
-  monaco.editor.setTheme(darkMode?.matches ? 'vs-dark' : 'vs');
+  monaco.editor.setTheme(darkMode?.matches ? 'clrkernel-dark' : 'clrkernel');
 }
 
 // The app has no theme toggle: it follows the OS, so the editor does too.
