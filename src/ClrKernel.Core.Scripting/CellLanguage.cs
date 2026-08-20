@@ -18,31 +18,39 @@ public interface ICellLanguage {
     string Id { get; }
 
     /// <summary>
-    /// The <c>#!</c> selectors this language answers. A cell is routed here when
-    /// its first non-blank line starts with one of these followed by whitespace
-    /// or end-of-line. Order within the list does not matter for dispatch — see
-    /// <see cref="CellLanguageRegistry"/> — but the <b>first</b> entry is the
-    /// language's default selector, the one serializers prepend to a bare cell.
+    /// Every <c>#!</c> directive this language answers — <c>#!sql</c> and its verbs
+    /// <c>#!sql-connect</c>, <c>#!sql-bulk</c>, … — declared once, as the same
+    /// tables its parsers bind against, so routing, completion, diagnostics and
+    /// front ends can never drift from what actually parses.
+    /// <para>
+    /// A directive's name IS the language's routing token: the <b>first</b>
+    /// directive is the default one, the one serializers prepend to a bare cell.
+    /// Order beyond that does not matter for dispatch — see
+    /// <see cref="CellLanguageRegistry"/>.
+    /// </para>
     /// </summary>
-    IReadOnlyList<string> Selectors { get; }
+    IReadOnlyList<DirectiveDefinition> Directives { get; }
+
+    /// <summary>
+    /// The routing tokens, derived from <see cref="Directives"/>: a selector is
+    /// simply a directive's name. A cell is routed here when its first non-blank
+    /// line starts with one of these followed by whitespace or end-of-line.
+    /// </summary>
+    IReadOnlyList<string> Selectors => Directives.Select(d => d.Selector).ToList();
+
+    /// <summary>The default routing token, prepended to a bare cell of this language.</summary>
+    string DefaultSelector => Directives.Count > 0 ? Directives[0].Selector : null;
 
     /// <summary>Human-readable name for pickers and generated UI ("SQL", "PowerShell").</summary>
     string DisplayName => Id;
 
     /// <summary>
-    /// The fenced-code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
+    /// The code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
     /// documents (<c>sql</c>, <c>tsql</c>; <c>bash</c>, <c>zsh</c>…). Parsers and
     /// serializers consult these instead of hard-coding tag tables. Empty when the
-    /// language has no fence form.
+    /// language has no tagged-block form.
     /// </summary>
     IReadOnlyList<string> LanguageTags => Array.Empty<string>();
-
-    /// <summary>
-    /// The declarative shapes of this language's <c>#!</c> directives — the same
-    /// tables its parsers bind against, so completion, diagnostics, and front ends
-    /// can never drift from what actually parses. Empty when it has none.
-    /// </summary>
-    IReadOnlyList<DirectiveDefinition> Directives => Array.Empty<DirectiveDefinition>();
 
     /// <summary>
     /// What this language adds to the C# scripting session — assemblies, imported

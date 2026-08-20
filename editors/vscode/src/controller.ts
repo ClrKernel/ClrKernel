@@ -38,7 +38,7 @@ export class ClrKernelController {
         // the 'csharp-script' language id (shown as "C#", keeps other C# tooling from
         // attaching). Plain 'csharp' is intentionally NOT listed: it would add a second
         // "C#" entry to the picker, and the serializer already maps every ```csharp
-        // fence to 'csharp-script' on load, so no cell is 'csharp'.
+        // tag to 'csharp-script' on load, so no cell is 'csharp'.
         this.applySupportedLanguages();
         onLanguagesChanged(() => this.applySupportedLanguages());
         this.controller.supportsExecutionOrder = true;

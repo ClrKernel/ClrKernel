@@ -5,6 +5,19 @@ namespace ClrKernel.Language.Shell;
 
 /// <summary>Parses <c>#!shell-connect</c> and the per-cell <c>--connection</c> flag.</summary>
 public static class ShellDirectives {
+    /// <summary>The declarative shape of a shell cell directive — one per shell
+    /// (<c>#!bash</c>, <c>#!zsh</c>, <c>#!sh</c>, <c>#!shell</c>), which is also
+    /// how the language's routing tokens are declared.</summary>
+    public static DirectiveDefinition CellDefinition(string shell) => new() {
+        Selector = "#!" + shell,
+        Description = shell == "shell"
+            ? "Runs the cell in the default shell (bash)."
+            : $"Runs the cell in {shell}.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connection", ValueRole = "connection", Description = "Named SSH target to run on (local when omitted)." },
+        },
+    };
+
     /// <summary>The declarative shape of <c>#!shell-connect</c>.</summary>
     public static readonly DirectiveDefinition ConnectDefinition = new() {
         Selector = "#!shell-connect",

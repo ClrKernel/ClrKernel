@@ -374,7 +374,7 @@ clrkernel --kernel-spec-details    # show which kernelspec the binary resolves
 
 A cell language is one class plus one assembly attribute. Implement
 `ICellLanguage` (from `ClrKernel.Core.Scripting`) — it declares its own
-`Selectors` (`#!kql`), `LanguageTags` (the ```` ```kql ```` fences it claims),
+`Selectors` (`#!kql`), `LanguageTags` (the ```` ```kql ```` tags it claims),
 `DisplayName`, and any `Directives` — then mark the assembly:
 
 ```csharp
@@ -382,7 +382,7 @@ A cell language is one class plus one assembly attribute. Implement
 ```
 
 A notebook that does `#r "nuget: My.ClrKernel.Language.Kql"` registers it in
-**that notebook's session only**: its selectors route immediately, its fences
+**that notebook's session only**: its selectors route immediately, its tags
 execute in `.nb.md` files, its directives get completion and diagnostics, and
 the VS Code cell-language picker refreshes. Other notebooks are untouched.
 

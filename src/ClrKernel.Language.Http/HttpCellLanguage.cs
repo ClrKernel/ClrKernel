@@ -17,7 +17,12 @@ public sealed class HttpCellLanguage : ICellLanguage {
 
     public string DisplayName => "HTTP";
 
-    public IReadOnlyList<string> Selectors { get; } = new[] { "#!http" };
+    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] {
+        new DirectiveDefinition {
+            Selector = "#!http",
+            Description = "Runs the cell as a .http document (session variables and named responses persist).",
+        },
+    };
 
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "http" };
 

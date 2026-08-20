@@ -4,8 +4,8 @@
 
 Language knowledge had been re-typed by hand in four places and had already drifted:
 
-- **Fence-tag maps** in four copies, two divergent — the worst consequence being that
-  ```sql / ```dax / ```bash fences in a `.nb.md` ran in VS Code but were **silently prose**
+- **language-tag maps** in four copies, two divergent — the worst consequence being that
+  ```sql / ```dax / ```bash tags in a `.nb.md` ran in VS Code but were **silently prose**
   for `clrkernel run` and every ClrKernel.Jobs job (`NotebookDocument` only knew
   csharp/http/mermaid/pwsh).
 - **Directive flags** in four encodings: the parsers (truth), the completion tables
@@ -37,10 +37,10 @@ schemas — and front ends that know nothing about specific languages.
    `DirectiveCompletion` generates magic-line completion AND directive-line diagnostics from the
    same tables the parsers bind — the drifted `_magicFlags` copies are gone, and a bad flag is
    an editor diagnostic instead of a run-time `FormatException`.
-3. **`feat(languages)` (fence unification + RPC)** — `NotebookDocument`/`NotebookImporter` parse
+3. **`feat(languages)` (tag unification + RPC)** — `NotebookDocument`/`NotebookImporter` parse
    by descriptor list; no descriptors degrades to C#-only. `clrkernel run` passes the registry;
    **Jobs initializes the kernel before parsing** and uses the descriptors from the initialize
-   reply, so a job executes exactly the fences its kernel can run (verified live: a bash fence
+   reply, so a job executes exactly the tags its kernel can run (verified live: a bash tag
    executes headlessly). serve `initialize` returns the full list; lsp carries
    `capabilities.experimental.clrkernel.languages` + a `clrkernel/languages` request. serve now
    speaks the same camelCase System.Text.Json wire as lsp. Kernel 0.9.x → **0.10.0**.
@@ -63,7 +63,7 @@ schemas — and front ends that know nothing about specific languages.
    hosts notify `clrkernel/languagesChanged` / `languagesChanged`.
 6. **`feat(vscode)` (descriptor consumption)** — `src/languages.ts` holds the live list
    (handshake + change notification) with `bundledLanguages` as the pre-handshake / old-kernel
-   fallback. Picker, `cellCode()` selector prepending, config auto-load, serializer fence maps
+   fallback. Picker, `cellCode()` selector prepending, config auto-load, serializer tag maps
    (both directions), and the LSP `documentSelector` (from the new `hasEditorServices` field —
    powershell cells get LSP features now) are all derived. Pairing bumped to 0.10.x.
 7. **`feat(vscode)` (generic wizard)** — `connections.ts` + `connectionDirective.ts` replace
@@ -74,11 +74,11 @@ schemas — and front ends that know nothing about specific languages.
 
 ## Decisions and bounds
 
-- **Presentation is VSIX-static.** A runtime-plugged language gets execution, routing, fences,
+- **Presentation is VSIX-static.** A runtime-plugged language gets execution, routing, tags,
   completion, and the connection UI — but `contributes.languages/grammars` can't be served, so
   no highlighting/icon without a companion extension. Stated in CLAUDE.md.
 - **Serializer-before-server**: a `.nb.md` opened before the kernel starts uses the bundled
-  fence map; only runtime-plugged languages' fences deserialize as markup until the kernel is
+  tag map; only runtime-plugged languages' tags deserialize as markup until the kernel is
   up. The `documentSelector` is fixed at client construction — plugin languages gain editor
   features on the next server start.
 - **Jupyter is out of scope, unchanged**: `LanguageRequestHandler` still routes everything to

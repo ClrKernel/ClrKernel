@@ -28,7 +28,7 @@ public class NotebookServer {
         _engine = new InteractiveScriptEngine(Environment.CurrentDirectory, loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
         _logger = loggerFactory.CreateLogger(nameof(NotebookServer));
         // A #r-loaded plugin changed the session's languages/providers: tell the
-        // client so it can re-parse fences and refresh any language UI.
+        // client so it can re-parse language tags and refresh any language UI.
         _engine.LanguagesChanged += () => _ = Rpc?.NotifyWithParameterObjectAsync(
             "languagesChanged", new {
                 languages = _engine.Languages.Describe(),

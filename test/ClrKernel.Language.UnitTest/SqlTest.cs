@@ -146,7 +146,7 @@ public class SqlLanguageTest {
 [TestClass]
 public class SqlImportTest {
     [TestMethod]
-    public void Markdown_sql_fence_becomes_sql_block() {
+    public void Markdown_sql_tag_becomes_sql_block() {
         var md = "# Title\n\n```sql\nSELECT 1\n```\n";
         var blocks = NotebookImporter.ParseMarkdown(md);
         Assert.AreEqual(1, blocks.Count);
@@ -155,7 +155,7 @@ public class SqlImportTest {
     }
 
     [TestMethod]
-    public void Markdown_sql_connect_fence_is_passed_through() {
+    public void Markdown_sql_connect_block_is_passed_through() {
         var md = "```sql\n#!sql-connect --name a --server s\n```\n";
         var blocks = NotebookImporter.ParseMarkdown(md);
         Assert.AreEqual(1, blocks.Count);

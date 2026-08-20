@@ -162,7 +162,7 @@ public class HttpExecutionTest {
     // --- notebook extraction ----------------------------------------------
 
     [TestMethod]
-    public void Markdown_http_fence_becomes_http_block() {
+    public void Markdown_http_tag_becomes_http_block() {
         var md =
             "# Title\n\n" +
             "```http\n" +

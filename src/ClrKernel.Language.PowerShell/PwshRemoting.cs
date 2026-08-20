@@ -105,6 +105,16 @@ public static class PwshConnectionConfig {
 
 /// <summary>Parses <c>#!pwsh-connect</c> and the per-cell <c>--connection</c> flag.</summary>
 public static class PwshDirectives {
+    /// <summary>The declarative shape of a PowerShell cell directive
+    /// (<c>#!pwsh</c>, <c>#!powershell</c>) — also the language's routing tokens.</summary>
+    public static DirectiveDefinition CellDefinition(string selector) => new() {
+        Selector = selector,
+        Description = "Runs the cell in the session's PowerShell runspace.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connection", ValueRole = "connection", Description = "Named PSRemoting target to run on (local runspace when omitted)." },
+        },
+    };
+
     /// <summary>The declarative shape of <c>#!pwsh-connect</c>.</summary>
     public static readonly DirectiveDefinition ConnectDefinition = new() {
         Selector = "#!pwsh-connect",

@@ -33,7 +33,7 @@ describe('language registry', () => {
         expect(languageForTag('toy')?.id).toBe('toy');
     });
 
-    it('maps fence tags to descriptors, C# and unknown tags to none', () => {
+    it('maps language tags to descriptors, C# and unknown tags to none', () => {
         expect(languageForTag('tsql')?.id).toBe('sql');
         expect(languageForTag('PS1')?.id).toBe('powershell');
         expect(languageForTag('zsh')?.id).toBe('shellscript');

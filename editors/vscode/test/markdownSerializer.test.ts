@@ -4,8 +4,8 @@ import { MarkdownNotebookSerializer } from '../src/markdownSerializer';
 
 /**
  * `.nb.md` files are the notebook format, and the same files are run headlessly by the kernel's
- * `#!import` and in CI. A fence tag that maps to the wrong languageId — or a languageId that
- * serializes back to the wrong fence — silently changes which cell language executes.
+ * `#!import` and in CI. A language tags that maps to the wrong languageId — or a languageId that
+ * serializes back to the wrong language tag — silently changes which cell language executes.
  *
  * CLAUDE.md calls this map one of the places that must stay in step when a cell language is added.
  */
@@ -16,7 +16,7 @@ const write = (cells: NotebookCellData[]) =>
     new TextDecoder().decode(serializer.serializeNotebook({ cells } as never));
 const code = (value: string, languageId: string) => new NotebookCellData(NotebookCellKind.Code, value, languageId);
 
-describe('fence tag -> cell language', () => {
+describe('language tags -> cell language', () => {
     const cases: Array<[string, string]> = [
         ['csharp', 'csharp-script'],
         ['c#', 'csharp-script'],
@@ -40,7 +40,7 @@ describe('fence tag -> cell language', () => {
         expect(cells).toHaveLength(1);
         expect(cells[0].kind).toBe(NotebookCellKind.Code);
         expect(cells[0].languageId).toBe(languageId);
-        // zsh/sh/shell fences keep their tag as an explicit selector line (bash is
+        // zsh/sh/shell blocks keep their tag as an explicit selector line (bash is
         // the shellscript default); every other tag passes the body through.
         const expected = tag === 'zsh' || tag === 'sh' || tag === 'shell' ? '#!' + tag + '\nBODY' : 'BODY';
         expect(cells[0].value).toBe(expected);
@@ -56,13 +56,13 @@ describe('fence tag -> cell language', () => {
         expect(read('```csharp\nvar x = 1;\n```').cells[0].languageId).toBe('csharp-script');
     });
 
-    it('leaves an unknown fence as prose rather than guessing a language', () => {
+    it('leaves an unknown language tag as prose rather than guessing a language', () => {
         const cells = read('```python\nprint(1)\n```').cells;
         expect(cells.every((c) => c.kind === NotebookCellKind.Markup)).toBe(true);
     });
 });
 
-describe('cell language -> fence tag', () => {
+describe('cell language -> language tags', () => {
     it.each([
         ['csharp-script', 'csharp'],
         ['http', 'http'],
@@ -94,41 +94,41 @@ describe('round trip', () => {
         expect(cells.find((c) => c.languageId === 'sql')?.value).toBe('select 1');
     });
 
-    it('keeps the content of an unterminated fence instead of dropping it', () => {
+    it('keeps the content of an unterminated block instead of dropping it', () => {
         const cells = read('```sql\nselect 1').cells;
         expect(cells[0].languageId).toBe('sql');
         expect(cells[0].value).toBe('select 1');
     });
 
-    it('supports longer and tilde fences', () => {
+    it('supports longer and tilde delimiters', () => {
         expect(read('````sql\nselect 1\n````').cells[0].languageId).toBe('sql');
         expect(read('~~~sql\nselect 1\n~~~').cells[0].languageId).toBe('sql');
     });
 });
 
 describe('shell cells', () => {
-    it('a zsh/sh fence keeps its shell via an explicit selector line', () => {
+    it('a zsh/sh block keeps its shell via an explicit selector line', () => {
         const cells = read('```zsh\necho hi\n```\n\n```sh\necho lo\n```').cells;
         expect(cells[0].value).toBe('#!zsh\necho hi');
         expect(cells[1].value).toBe('#!sh\necho lo');
     });
 
-    it('a bash fence needs no selector (bash is the default shell)', () => {
+    it('a bash block needs no selector (bash is the default shell)', () => {
         const cells = read('```bash\necho hi\n```').cells;
         expect(cells[0].value).toBe('echo hi');
     });
 
-    it('does not duplicate a selector the fence body already has', () => {
+    it('does not duplicate a selector the block body already has', () => {
         const cells = read('```zsh\n#!zsh\necho hi\n```').cells;
         expect(cells[0].value).toBe('#!zsh\necho hi');
     });
 
-    it('serializes the fence tag from the selector line, defaulting to bash', () => {
+    it('serializes the language tags from the selector line, defaulting to bash', () => {
         expect(write([code('echo hi', 'shellscript')])).toBe('```bash\necho hi\n```\n');
         expect(write([code('#!zsh\necho hi', 'shellscript')])).toBe('```zsh\n#!zsh\necho hi\n```\n');
         expect(write([code('#!sh\necho hi', 'shellscript')])).toBe('```sh\n#!sh\necho hi\n```\n');
         // A #!shell cell keeps its own tag: 'shell means bash' at execution, but the
-        // fence round-trips stably instead of being normalized away.
+        // language tag round-trips stably instead of being normalized away.
         expect(write([code('#!shell\necho hi', 'shellscript')])).toBe('```shell\n#!shell\necho hi\n```\n');
     });
 

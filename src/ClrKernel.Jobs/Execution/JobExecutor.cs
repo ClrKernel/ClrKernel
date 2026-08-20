@@ -204,7 +204,7 @@ public sealed class JobExecutor {
             using var client = new KernelClient(
                 process.StandardInput.BaseStream, process.StandardOutput.BaseStream);
             // The notebook is parsed with the languages THIS kernel declares, so
-            // sql/dax/shell fences execute exactly when the kernel can run them.
+            // sql/dax/shell blocks execute exactly when the kernel can run them.
             // ExecuteCellsAsync initializes again for its banner — initialize is
             // a pure info call, so the extra round trip is harmless.
             var info = await InitializeWithTimeoutAsync(client, cancellationToken);

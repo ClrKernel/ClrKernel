@@ -237,29 +237,29 @@ public class NotebookImporter {
         return name.Any(char.IsWhiteSpace) ? null : name;
     }
 
-    // Fence opener for executable markdown: ``` or ~~~ with a language tag.
-    private static readonly Regex _markdownFencePattern = new(
-        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>[^\s`~]*)\s*$",
+    // Tagged-block opener for executable markdown: ``` or ~~~ with a language tag.
+    private static readonly Regex _taggedBlockPattern = new(
+        @"^(?<delim>`{3,}|~{3,})\s*(?<lang>[^\s`~]*)\s*$",
         RegexOptions.Compiled);
 
     /// <summary>
     /// Extracts executable blocks from a markdown document ("executable
-    /// markdown"): fenced code blocks tagged csharp/c#/cs (C#), http (a .http
+    /// markdown"): tagged code blocks tagged csharp/c#/cs (C#), http (a .http
     /// request), mermaid (a diagram), or pwsh/powershell/ps1 (PowerShell) run;
-    /// prose and fences with other language tags are ignored.
+    /// prose and blocks with other language tags are ignored.
     /// </summary>
     public static IReadOnlyList<string> ParseMarkdown(string content, IReadOnlyList<LanguageDescriptor> languages = null) {
         var byTag = LanguageDescriptor.ByTag(Resolve(languages));
         var blocks = new List<string>();
         List<string> current = null;
-        string closingFence = null;
+        string closingDelimiter = null;
         var isCSharp = false;
         LanguageDescriptor language = null;
         string tag = null;
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (current == null) {
-                var match = _markdownFencePattern.Match(line);
+                var match = _taggedBlockPattern.Match(line);
                 if (!match.Success) {
                     continue;
                 }
@@ -268,10 +268,10 @@ public class NotebookImporter {
                 language = isCSharp ? null : byTag.GetValueOrDefault(tag);
                 if (isCSharp || language != null) {
                     current = new List<string>();
-                    closingFence = match.Groups["fence"].Value;
+                    closingDelimiter = match.Groups["delim"].Value;
                 }
-                // Unknown-language and untagged fences are prose: skipped entirely.
-            } else if (line.Trim() == closingFence) {
+                // Unknown-language and untagged blocks are prose: skipped entirely.
+            } else if (line.Trim() == closingDelimiter) {
                 var text = string.Join("\n", current).Trim();
                 if (text.Length > 0) {
                     blocks.Add(language == null ? text : language.BlockForTag(tag, text));

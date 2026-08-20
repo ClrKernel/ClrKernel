@@ -16,11 +16,15 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
 
     public string DisplayName => "PowerShell";
 
-    public IReadOnlyList<string> Selectors { get; } = new[] { "#!pwsh", "#!powershell", "#!pwsh-connect" };
-
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "pwsh", "powershell", "ps1" };
 
-    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] { PwshDirectives.ConnectDefinition };
+    // The cell directives are the language's routing tokens; #!pwsh leads, so it
+    // is the default for a bare cell.
+    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] {
+        PwshDirectives.CellDefinition("#!pwsh"),
+        PwshDirectives.CellDefinition("#!powershell"),
+        PwshDirectives.ConnectDefinition,
+    };
 
     public ICellLanguageServices Services => _services ??= new PowerShellCellLanguageServices(this);
 

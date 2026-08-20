@@ -19,7 +19,11 @@ namespace ClrKernel.Language.UnitTest;
 public sealed class ToyCellLanguage : ICellLanguage {
     public string Id => "toy";
     public string DisplayName => "Toy";
-    public IReadOnlyList<string> Selectors { get; } = new[] { "#!toy", "#!toy-connect" };
+    // Directives are the whole declaration: their names are the routing tokens.
+    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] {
+        new DirectiveDefinition { Selector = "#!toy", Description = "Runs a toy cell." },
+        new DirectiveDefinition { Selector = "#!toy-connect", Description = "Registers a toy connection." },
+    };
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "toy" };
     public ICellLanguageServices Services => null;
     public IConnectionCatalog Connections => null;

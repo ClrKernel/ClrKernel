@@ -1,6 +1,6 @@
 /**
  * The extension's view of the kernel's cell languages. Everything language-
- * specific — fence tags, selectors, which languages get LSP features or a
+ * specific — language tags, selectors, which languages get LSP features or a
  * connections UI — flows from the LanguageDescriptor list the kernel serves in
  * its initialize handshake (and updates via clrkernel/languagesChanged when a
  * plugin registers mid-session).
@@ -90,7 +90,7 @@ export function onLanguagesChanged(listener: (languages: LanguageDescriptor[]) =
 
 const csharpTags = new Set(['csharp', 'c#', 'cs']);
 
-/** The descriptor claiming a fence tag, or undefined (C# and unknown tags). */
+/** The descriptor claiming a language tags, or undefined (C# and unknown tags). */
 export function languageForTag(tag: string): LanguageDescriptor | undefined {
     const t = tag.toLowerCase();
     if (csharpTags.has(t)) {
@@ -113,14 +113,14 @@ export function startsWithSelector(language: LanguageDescriptor, text: string): 
     });
 }
 
-/** The selector to prepend for a fence tag: the tag's own selector when registered, else the default. */
+/** The selector to prepend for a language tags: the tag's own selector when registered, else the default. */
 export function selectorForTag(language: LanguageDescriptor, tag: string): string | null {
     const own = language.selectors.find((s) => s.toLowerCase() === '#!' + tag.toLowerCase());
     return own ?? language.defaultSelector;
 }
 
 /**
- * The fence tag to write when serializing a cell: the tag named by a leading
+ * The language tags to write when serializing a cell: the tag named by a leading
  * selector when it is one of the language's tags, else the tag matching the
  * language id, else the first tag. Keeps ```powershell and ```sql stable and
  * lets a #!zsh cell round-trip to its own tag.

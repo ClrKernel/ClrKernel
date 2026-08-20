@@ -3,19 +3,19 @@ import { currentLanguages, isCSharpTag, languageForTag, selectorForTag, tagForCe
 
 /**
  * Executable markdown <-> notebook, driven by the kernel's language descriptors:
- * a fenced block whose tag a registered language claims becomes a code cell in
- * that language; csharp/c#/cs fences become C# cells; everything else becomes
+ * a tagged block whose tag a registered language claims becomes a code cell in
+ * that language; csharp/c#/cs blocks become C# cells; everything else becomes
  * markup. The same files run headlessly via ClrKernel's `#!import` and the Jobs
  * runner — all three parse with the same descriptor model, so serialization
  * round-trips cleanly.
  *
  * A serializer runs at file open, possibly before any server has started: until
  * the handshake delivers the live list, the bundled defaults (all shipped
- * languages) apply, so only fences of runtime-plugged languages deserialize as
+ * languages) apply, so only blocks of runtime-plugged languages deserialize as
  * markup until the kernel is up and the file reopened.
  */
 export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
-    private static readonly fenceOpen = /^(`{3,}|~{3,})\s*([^\s`~]+)\s*$/;
+    private static readonly blockOpen = /^(`{3,}|~{3,})\s*([^\s`~]+)\s*$/;
 
     deserializeNotebook(content: Uint8Array): vscode.NotebookData {
         const text = new TextDecoder().decode(content);
@@ -23,7 +23,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
 
         let markup: string[] = [];
         let code: string[] | null = null;
-        let closingFence = '';
+        let closingDelimiter = '';
         let language = 'csharp-script';
         let pendingSelector: string | null = null;
 
@@ -40,12 +40,12 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
 
         for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
             if (code === null) {
-                const match = MarkdownNotebookSerializer.fenceOpen.exec(line);
+                const match = MarkdownNotebookSerializer.blockOpen.exec(line);
                 const descriptor = match && !isCSharpTag(match[2]) ? languageForTag(match[2]) : undefined;
                 if (match && (descriptor || isCSharpTag(match[2]))) {
                     flushMarkup();
                     code = [];
-                    closingFence = match[1];
+                    closingDelimiter = match[1];
                     language = descriptor?.id ?? 'csharp-script';
                     // A tag with its own selector keeps it explicit in the cell (#!zsh)
                     // so its meaning survives execution under the language default; a
@@ -55,10 +55,10 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
                     pendingSelector = descriptor && selector !== descriptor.defaultSelector &&
                         match[2].toLowerCase() !== descriptor.id.toLowerCase() ? selector : null;
                 } else {
-                    // Unknown-language fences (```python) stay markup, fence included.
+                    // Unknown-language blocks (```python) stay markup, delimiters included.
                     markup.push(line);
                 }
-            } else if (line.trim() === closingFence) {
+            } else if (line.trim() === closingDelimiter) {
                 cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, withSelector(code.join('\n')), language));
                 code = null;
                 pendingSelector = null;
@@ -67,7 +67,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
             }
         }
         if (code !== null) {
-            // unterminated fence: keep the content as a code cell rather than losing it
+            // unterminated block: keep the content as a code cell rather than losing it
             cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, withSelector(code.join('\n')), language));
         }
         flushMarkup();

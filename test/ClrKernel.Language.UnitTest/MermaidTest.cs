@@ -71,7 +71,7 @@ public class MermaidTest {
     }
 
     [TestMethod]
-    public void Markdown_mermaid_fence_becomes_mermaid_block() {
+    public void Markdown_mermaid_tag_becomes_mermaid_block() {
         var md = "# Title\n\n```mermaid\ngraph TD; A-->B\n```\n";
         var blocks = NotebookImporter.ParseMarkdown(md);
         Assert.AreEqual(1, blocks.Count);

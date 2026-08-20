@@ -82,7 +82,7 @@ public sealed class InitializeReply {
     public JsonElement? LanguagesElement { get; set; }
 
     /// <summary>The cell languages this kernel executes — used to parse the
-    /// notebook so exactly those fences become code cells. Empty (an old kernel,
+    /// notebook so exactly those tagged blocks become code cells. Empty (an old kernel,
     /// or none registered) degrades to C#-only parsing.</summary>
     [JsonIgnore]
     public IReadOnlyList<LanguageDescriptor> Languages => _languages ??= ReadLanguages(LanguagesElement);

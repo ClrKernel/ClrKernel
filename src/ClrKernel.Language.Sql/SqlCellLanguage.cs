@@ -38,10 +38,6 @@ public sealed class SqlCellLanguage : ICellLanguage {
 
     public string DisplayName => "SQL";
 
-    public IReadOnlyList<string> Selectors { get; } = new[] {
-        "#!sql", "#!sql-connect", "#!sql-bulk", "#!sql-merge", "#!sql-run", "#!sql-deploy",
-    };
-
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "sql", "tsql" };
 
     public IReadOnlyList<DirectiveDefinition> Directives => SqlDirectives.AllDefinitions;

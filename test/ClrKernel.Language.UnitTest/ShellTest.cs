@@ -114,7 +114,7 @@ public class ShellTest {
     }
 
     [TestMethod]
-    public void Markdown_shell_fences_become_selector_blocks() {
+    public void Markdown_shell_tags_become_selector_blocks() {
         var md = "```bash\necho a\n```\n\n```zsh\necho b\n```\n\n```sh\necho c\n```\n";
         var blocks = NotebookImporter.ParseMarkdown(md);
         Assert.AreEqual(3, blocks.Count);

@@ -95,7 +95,7 @@ public class ShellRemotingTest {
     }
 
     [TestMethod]
-    public void Pwsh_connect_inside_a_powershell_fence_passes_through() {
+    public void Pwsh_connect_inside_a_powershell_block_passes_through() {
         var blocks = NotebookImporter.ParseMarkdown(
             "```powershell\n#!pwsh-connect --name srv --host x\n```\n\n```powershell\nGet-Date\n```\n");
         Assert.AreEqual(2, blocks.Count);

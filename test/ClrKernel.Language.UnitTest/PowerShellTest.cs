@@ -112,7 +112,7 @@ public class PowerShellTest {
     }
 
     [TestMethod]
-    public void Markdown_pwsh_fence_becomes_pwsh_block() {
+    public void Markdown_pwsh_tag_becomes_pwsh_block() {
         // A tag with its own selector keeps it (#!powershell); a bare alias tag
         // (ps1) falls back to the language default (#!pwsh). Both route identically.
         var md = "# Title\n\n```powershell\nGet-Date\n```\n\n```ps1\nGet-Item .\n```\n";

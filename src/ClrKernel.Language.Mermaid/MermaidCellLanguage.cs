@@ -13,7 +13,9 @@ public sealed class MermaidCellLanguage : ICellLanguage {
 
     public string DisplayName => "Mermaid";
 
-    public IReadOnlyList<string> Selectors { get; } = new[] { "#!mermaid" };
+    public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] {
+        new DirectiveDefinition { Selector = "#!mermaid", Description = "Renders the cell as a diagram." },
+    };
 
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "mermaid" };
 

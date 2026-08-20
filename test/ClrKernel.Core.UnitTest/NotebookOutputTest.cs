@@ -25,7 +25,7 @@ public class NotebookDocumentTest {
     }
 
     [TestMethod]
-    public void ParseMarkdown_leaves_non_csharp_fences_in_markdown() {
+    public void ParseMarkdown_leaves_non_csharp_blocks_in_markdown() {
         var md = "```python\nprint(1)\n```\n";
         var cells = NotebookDocument.ParseMarkdown(md);
 
@@ -45,7 +45,7 @@ public class NotebookDocumentTest {
     };
 
     [TestMethod]
-    public void ParseMarkdown_executes_fences_a_descriptor_claims() {
+    public void ParseMarkdown_executes_blocks_a_descriptor_claims() {
         var md = "```sql\nSELECT 1\n```\n\n```tsql\nSELECT 2\n```\n\n```python\nprint(1)\n```\n";
         var cells = NotebookDocument.ParseMarkdown(md, new[] { SqlDescriptor() });
 
@@ -57,7 +57,7 @@ public class NotebookDocumentTest {
     }
 
     [TestMethod]
-    public void ParseMarkdown_does_not_double_prepend_an_already_selectored_fence() {
+    public void ParseMarkdown_does_not_double_prepend_an_already_selectored_block() {
         var md = "```sql\n#!sql-connect --name dw --server s\n```\n";
         var cells = NotebookDocument.ParseMarkdown(md, new[] { SqlDescriptor() });
 

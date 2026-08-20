@@ -6,7 +6,7 @@ namespace ClrKernel.Core.Scripting;
 /// Marks an assembly as exporting a cell language. When a session loads the
 /// assembly (<c>#r "nuget: …"</c> or <c>#r "path.dll"</c>), the engine
 /// instantiates the type and registers it with THAT session's language set —
-/// selectors, fence tags, directives, completions and all — without touching
+/// selectors, language tags, directives, completions and all — without touching
 /// other notebooks' engines. The shipped Language.* assemblies carry this too;
 /// a language whose Id is already registered is skipped, so re-referencing a
 /// built-in is a no-op.

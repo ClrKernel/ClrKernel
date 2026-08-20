@@ -111,24 +111,24 @@ public class NotebookImporterTest {
     // --- executable markdown parsing ---
 
     [TestMethod]
-    public void MarkdownRunsCSharpFencesSkipsProseAndOtherLanguages() {
+    public void MarkdownRunsCSharpBlocksSkipsProseAndOtherLanguages() {
         var content = string.Join("\n",
             "# Title", "Some prose.", "",
             "```csharp", "var a = 1;", "```", "",
             "```python", "print(1)", "```", "",
             "```cs", "var b = 2;", "```", "",
-            "```", "untagged fence, skipped", "```");
+            "```", "untagged block, skipped", "```");
         var blocks = NotebookImporter.ParseMarkdown(content);
         CollectionAssert.AreEqual(new[] { "var a = 1;", "var b = 2;" }, blocks.ToArray());
     }
 
     [TestMethod]
-    public void MarkdownHandlesTildeFencesAndBackticksInsideCode() {
+    public void MarkdownHandlesTildeDelimitersAndBackticksInsideCode() {
         var content = string.Join("\n",
-            "~~~csharp", "var s = \"```not a fence```\";", "~~~");
+            "~~~csharp", "var s = \"```not a delimiter```\";", "~~~");
         var blocks = NotebookImporter.ParseMarkdown(content);
         Assert.AreEqual(1, blocks.Count);
-        StringAssert.Contains(blocks[0], "not a fence");
+        StringAssert.Contains(blocks[0], "not a delimiter");
     }
 
     // --- .ipynb parsing ---

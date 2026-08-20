@@ -33,16 +33,16 @@ public sealed class NotebookCell {
 /// which returns only the C#. Used by the runner to write a faithful executed
 /// .ipynb. Supports .nb.md / .md (executable markdown), .ipynb, .dib, and .csx.
 /// <para>
-/// Which fence tags and .dib sections execute is decided by the
+/// Which language tags and .dib sections execute is decided by the
 /// <see cref="LanguageDescriptor"/> list a caller passes — the kernel passes its
 /// registry, a remote client (Jobs) passes what the kernel's initialize reply
-/// declared. C# is always executable; with no descriptors every other fence
+/// declared. C# is always executable; with no descriptors every other tagged block
 /// stays markdown, so a process with no languages registered degrades safely.
 /// </para>
 /// </summary>
 public static class NotebookDocument {
-    private static readonly Regex _markdownFence = new(
-        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>[^\s`~]*)\s*$",
+    private static readonly Regex _taggedBlock = new(
+        @"^(?<delim>`{3,}|~{3,})\s*(?<lang>[^\s`~]*)\s*$",
         RegexOptions.Compiled);
 
     private static readonly HashSet<string> _csharpLangs =
@@ -72,9 +72,9 @@ public static class NotebookDocument {
     }
 
     /// <summary>
-    /// Splits executable markdown: csharp/cs/c# fenced blocks and fences tagged
+    /// Splits executable markdown: csharp/cs/c# blocks and blocks tagged
     /// with a registered language's tag become code cells; everything else
-    /// (prose, and fences of unknown languages) stays markdown.
+    /// (prose, and blocks of unknown languages) stays markdown.
     /// </summary>
     public static IReadOnlyList<NotebookCell> ParseMarkdown(
         string content, IReadOnlyList<LanguageDescriptor> languages = null) {
@@ -82,7 +82,7 @@ public static class NotebookDocument {
         var cells = new List<NotebookCell>();
         var markdown = new List<string>();
         List<string> code = null;
-        string closingFence = null;
+        string closingDelimiter = null;
         var codeIsCSharp = false;
         LanguageDescriptor codeLanguage = null;
         string codeTag = null;
@@ -97,21 +97,21 @@ public static class NotebookDocument {
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (code == null) {
-                var match = _markdownFence.Match(line);
+                var match = _taggedBlock.Match(line);
                 if (match.Success) {
                     code = new List<string>();
-                    closingFence = new string(match.Groups["fence"].Value[0], match.Groups["fence"].Value.Length);
+                    closingDelimiter = new string(match.Groups["delim"].Value[0], match.Groups["delim"].Value.Length);
                     codeTag = match.Groups["lang"].Value;
                     codeIsCSharp = _csharpLangs.Contains(codeTag);
                     codeLanguage = codeIsCSharp ? null : byTag.GetValueOrDefault(codeTag);
                     if (!codeIsCSharp && codeLanguage == null) {
-                        // Keep unknown-language fences verbatim inside the markdown cell.
+                        // Keep unknown-language blocks verbatim inside the markdown cell.
                         markdown.Add(line);
                     }
                 } else {
                     markdown.Add(line);
                 }
-            } else if (line.TrimEnd() == closingFence || line.StartsWith(closingFence, StringComparison.Ordinal)) {
+            } else if (line.TrimEnd() == closingDelimiter || line.StartsWith(closingDelimiter, StringComparison.Ordinal)) {
                 if (codeIsCSharp || codeLanguage != null) {
                     var text = string.Join("\n", code).Trim();
                     if (text.Length > 0) {

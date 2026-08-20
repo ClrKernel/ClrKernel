@@ -125,7 +125,7 @@ public sealed class LspServer {
             var engine = new InteractiveScriptEngine(
                 DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
             // A #r-loaded plugin changed this session's languages/providers: tell
-            // the client so its pickers, fence maps, and wizards refresh.
+            // the client so its pickers, language-tag maps, and wizards refresh.
             engine.LanguagesChanged += () => _ = Rpc?.NotifyWithParameterObjectAsync(
                 "clrkernel/languagesChanged", new {
                     notebookUri = key,

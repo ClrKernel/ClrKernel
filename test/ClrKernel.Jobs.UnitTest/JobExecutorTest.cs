@@ -284,18 +284,18 @@ public class JobExecutorTest {
         var executor = new JobExecutor(_store, _options,
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var plan = executor.BuildPlan(new JobDefinition { Name = "o", NotebookPath = notebookPath }, reply.Languages);
-        Assert.AreEqual(1, plan.Count(p => p.CodeIndex >= 0), "only the C# fence runs");
+        Assert.AreEqual(1, plan.Count(p => p.CodeIndex >= 0), "only the C# block runs");
     }
 
     [TestMethod]
-    public void BuildPlan_executes_the_fences_the_kernel_declared() {
+    public void BuildPlan_executes_the_blocks_the_kernel_declared() {
         var notebookPath = Path.Combine(_dir, "sqlnb.nb.md");
         File.WriteAllText(notebookPath, "# T\n\n```sql\nSELECT 1\n```\n\n```csharp\nvar x = 1;\n```\n");
         var executor = new JobExecutor(_store, _options,
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var job = new JobDefinition { Name = "s", NotebookPath = notebookPath };
 
-        // Without descriptors (an old kernel): the sql fence stays markdown.
+        // Without descriptors (an old kernel): the sql block stays markdown.
         Assert.AreEqual(1, executor.BuildPlan(job).Count(p => p.CodeIndex >= 0));
 
         // With the kernel-declared descriptor it becomes an executable cell.

@@ -67,7 +67,7 @@ send("initialized", {}, notify=True)
 exp = caps.get("experimental", {}).get("clrkernel", {})
 langs = {l.get("id"): l for l in exp.get("languages", [])}
 check("handshake carries language descriptors", "sql" in langs and "dax" in langs)
-check("descriptors carry fence tags", "tsql" in langs.get("sql", {}).get("languageTags", []))
+check("descriptors carry language tags", "tsql" in langs.get("sql", {}).get("languageTags", []))
 check("descriptors carry directives", any(
     d.get("selector") == "#!sql-connect" for d in langs.get("sql", {}).get("directives", [])))
 

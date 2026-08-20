@@ -6,7 +6,7 @@
 asks the kernel.
 
 - **Languages come from the kernel.** The cell-language picker, the selector
-  prepended when a cell runs, the ```` ``` ```` fence map, and which cells get
+  prepended when a cell runs, the language-tag map, and which cells get
   completion/hover all follow the descriptor list the kernel reports at
   connect time. A language added to the kernel — including one a notebook
   loads at run time with `#r "nuget: …"` — appears without an extension

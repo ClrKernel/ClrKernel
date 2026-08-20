@@ -12,7 +12,7 @@ namespace ClrKernel.Language.UnitTest;
 
 /// <summary>
 /// Phase 2 of the language-provider registry: languages self-describe (display
-/// name, fence tags, directive tables) and completions/diagnostics are generated
+/// name, language tags, directive tables) and completions/diagnostics are generated
 /// from the same tables the parsers bind against — including the flags the old
 /// hand-maintained completion lists had drifted away from.
 /// </summary>
@@ -24,11 +24,17 @@ public class LanguageDescriptorTest {
     });
 
     [TestMethod]
-    public void Every_directive_selector_belongs_to_its_language() {
+    public void A_selector_is_just_a_directive_name() {
+        // One concept, not two: the routing tokens are derived from the directive
+        // table, so a language cannot answer a selector it does not describe.
         foreach (var language in AllLanguages().Languages) {
-            foreach (var directive in language.Directives) {
-                CollectionAssert.Contains(language.Selectors.ToList(), directive.Selector,
-                    $"{language.Id}: directive '{directive.Selector}' must be one of the language's selectors");
+            CollectionAssert.AreEqual(
+                language.Directives.Select(d => d.Selector).ToList(), language.Selectors.ToList(),
+                $"{language.Id}: selectors must be exactly its directive names");
+            Assert.AreEqual(language.Directives[0].Selector, language.DefaultSelector,
+                $"{language.Id}: the first directive is the default");
+            foreach (var selector in language.Selectors) {
+                StringAssert.StartsWith(selector, "#!", $"{language.Id}: a selector is #! + a name");
             }
         }
     }
@@ -52,7 +58,7 @@ public class LanguageDescriptorTest {
         Assert.IsFalse(shell.HasConnections, "shell's SSH targets are session-local, not a catalog");
 
         var mermaid = descriptors.Single(d => d.Id == "mermaid");
-        Assert.AreEqual(0, mermaid.Directives.Count);
+        Assert.AreEqual("#!mermaid", mermaid.Directives.Single().Selector, "even a bare language describes its one directive");
         Assert.IsFalse(mermaid.HasConnections);
 
         Assert.IsTrue(descriptors.Single(d => d.Id == "dax").ConfigBacked);
