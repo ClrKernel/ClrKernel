@@ -817,10 +817,12 @@ textarea {
   background: transparent;
 }
 
+/* Left, in the strip that lines up with the cell's run gutter — the same edge
+   every other control on the cell hangs off. */
 .output-menu {
   position: absolute;
   top: 0.2rem;
-  right: 0.4rem;
+  left: 0.5rem;
   z-index: 3;
 }
 
@@ -841,11 +843,12 @@ textarea {
   color: var(--text);
 }
 
+/* Placed from the button's rect by OutputMenu: fixed, so neither the output
+   area's scrolling nor the cell's hidden overflow can clip it. */
 .output-menu-items {
-  position: absolute;
-  right: 0;
-  top: 1.6rem;
+  position: fixed;
   min-width: 9rem;
+  z-index: 40;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;

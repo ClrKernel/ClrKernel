@@ -174,38 +174,73 @@ export function CellEditor({
   );
 }
 
-/** The "…" on an output block. Small, but it is where anything acting on results
- *  rather than on code belongs. */
+/** Roughly how tall the menu is, for deciding whether it fits below the button. */
+const _menuHeight = 48;
+
+/**
+ * The "…" on an output block, where anything acting on results rather than on
+ * code belongs.
+ *
+ * The popup is positioned `fixed` from the button's own rect rather than absolutely
+ * inside the block. An absolute popup is clipped by the first scrolling or hidden
+ * ancestor, and it has two: the output area scrolls (`overflow: auto` for long
+ * results) and the cell hides overflow (for its rounded corners). No z-index
+ * escapes that — leaving the container does.
+ */
 function OutputMenu({ onClear }: { onClear: () => void }) {
-  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
+  const button = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    if (!open) {
+    if (at == null) {
       return;
     }
-    // Any click that is not inside this menu closes it — including one on
-    // another cell's menu, which is what keeps two from being open at once.
+    // Any click outside closes it — including one on another cell's menu, which
+    // is what keeps two from being open at once.
     function onDown(event: MouseEvent) {
       if (!box.current?.contains(event.target as Node)) {
-        setOpen(false);
+        setAt(null);
       }
     }
+    // A fixed popup does not travel with the page, so scrolling or resizing
+    // closes it rather than leaving it stranded over something unrelated.
+    const close = () => setAt(null);
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [at]);
+
+  function toggle() {
+    if (at != null || !button.current) {
+      setAt(null);
+      return;
+    }
+    const rect = button.current.getBoundingClientRect();
+    const below = rect.bottom + 4;
+    setAt({
+      // Near the bottom of the window it opens upward instead of off-screen.
+      top: below + _menuHeight > window.innerHeight ? rect.top - _menuHeight : below,
+      left: rect.left,
+    });
+  }
 
   return (
     <div className="output-menu" ref={box}>
-      <button className="output-menu-button" onClick={() => setOpen((v) => !v)} title="Output actions">
+      <button className="output-menu-button" ref={button} onClick={toggle} title="Output actions">
         …
       </button>
-      {open && (
-        <div className="output-menu-items">
+      {at && (
+        <div className="output-menu-items" style={{ top: at.top, left: at.left }}>
           <button
             onClick={() => {
               onClear();
-              setOpen(false);
+              setAt(null);
             }}
           >
             Clear output
