@@ -283,6 +283,9 @@ public static class Program {
         // language picker. Probed lazily on first use, never at startup.
         builder.Services.AddSingleton(provider => new KernelLanguages(
             options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<KernelLanguages>()));
+        // Warm kernels for the web editor: one per notebook, evicted when idle.
+        builder.Services.AddSingleton<NotebookSessionManager>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<NotebookSessionManager>());
         builder.Services.AddSingleton<SchedulerService>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 

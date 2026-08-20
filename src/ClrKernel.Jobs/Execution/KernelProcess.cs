@@ -23,10 +23,18 @@ public sealed class KernelProcess : IDisposable {
 
     public KernelClient Client { get; }
 
+    /// <summary>A kernel backed by an existing connection rather than a child
+    /// process — the seam that lets sessions be tested against a fake kernel over
+    /// an in-memory stream, with no clrkernel binary present.</summary>
+    internal static KernelProcess ForClient(KernelClient client) => new(null, client, null);
+
     /// <summary>True when the kernel has died — a cell can call Environment.Exit,
     /// and shutdown does exactly that.</summary>
     public bool HasExited {
         get {
+            if (_process == null) {
+                return false; // an injected connection lives as long as its owner
+            }
             try {
                 return _process.HasExited;
             } catch (InvalidOperationException) {
@@ -83,6 +91,9 @@ public sealed class KernelProcess : IDisposable {
 
     public void Dispose() {
         Client.Dispose();
+        if (_process == null) {
+            return;
+        }
         try {
             if (!_process.HasExited) {
                 _process.WaitForExit(2000);

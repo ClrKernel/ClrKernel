@@ -136,6 +136,95 @@ public static class JobsApi {
                 return SaveToDev(context, target, path, NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
             });
 
+        // --- interactive sessions -------------------------------------------
+        //
+        // Running a cell executes code the request body carried, against a warm
+        // kernel that outlives the request. Nothing here writes to the run store:
+        // an interactive run leaves no Run rows, so it can never become the green
+        // evidence promotion requires.
+
+        api.MapPost("/envs/{env}/notebooks/session", async (
+            HttpContext context, JobCatalog catalog, JobsOptions options,
+            NotebookSessionManager sessions, KernelLanguages kernelLanguages, string env, string path) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                try {
+                    var session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
+                    // The session's kernel is authoritative about languages; save the
+                    // editor a separate probe.
+                    kernelLanguages.Seed(session.Languages);
+                    return Results.Ok(SessionView.From(session, false));
+                } catch (Exception e) {
+                    return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(resolved)?.KernelLog() });
+                }
+            });
+
+        api.MapDelete("/envs/{env}/notebooks/session", (
+            HttpContext context, JobCatalog catalog, JobsOptions options,
+            NotebookSessionManager sessions, string env, string path) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                return Results.Ok(new { restarted = sessions.Restart(resolved) });
+            });
+
+        api.MapPost("/envs/{env}/notebooks/run", async (
+            HttpContext context, JobCatalog catalog, JobsOptions options,
+            NotebookSessionManager sessions, string env, string path) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                CellWrite request;
+                try {
+                    request = await JsonSerializer.DeserializeAsync<CellWrite>(context.Request.Body, _bodyJson);
+                } catch (JsonException e) {
+                    return Results.BadRequest(new { error = "Could not read the cells: " + e.Message });
+                }
+                if (request?.Cells is not { Count: > 0 }) {
+                    return Results.BadRequest(new { error = "Body must be { cells: [...] } with at least one cell." });
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                NotebookSession session;
+                try {
+                    session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
+                } catch (Exception e) {
+                    return Results.BadRequest(new { error = e.Message });
+                }
+
+                var languages = session.Languages;
+                var cells = request.Cells.Select(c => c.ToCell(languages)).ToList();
+                var ids = request.Cells.Select((c, i) => c.Id ?? $"run{i}").ToList();
+                // The run continues after the response: a long cell must not hold an
+                // HTTP request open, and the editor polls status for progress.
+                return session.TryStartRun(cells, ids, out _)
+                    ? Results.Accepted(value: new { running = ids })
+                    : Results.Json(new { error = "This notebook is already running a cell." }, statusCode: 409);
+            });
+
+        api.MapGet("/envs/{env}/notebooks/session/status", async (
+            HttpContext context, JobCatalog catalog, JobsOptions options, IRunStore store,
+            NotebookSessionManager sessions, string env, string path) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var session = sessions.Find(resolved);
+                if (session == null) {
+                    return Results.Ok(new { running = false, started = false });
+                }
+                // A scheduled run of this notebook may be in flight in its own kernel;
+                // the editor says so rather than leaving the file changing unexplained.
+                var scheduled = false;
+                foreach (var job in catalog.Load().In(env).Where(j =>
+                    string.Equals(j.NotebookPath, resolved, StringComparison.OrdinalIgnoreCase))) {
+                    scheduled |= await store.HasActiveRunAsync(job.Environment, job.Name);
+                }
+                return Results.Ok(SessionView.From(session, scheduled));
+            });
+
         api.MapGet("/envs/dev/notebooks/promotion", async (
             HttpContext context, JobCatalog catalog, IRunStore store, string path) => {
                 var git = GitOf(context);
@@ -415,6 +504,59 @@ public static class JobsApi {
             : Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
     }
 
+    /// <summary>
+    /// The single policy check for every endpoint that executes code. Running a
+    /// cell is the one place the tool runs code straight from a request body, so
+    /// the decision lives in exactly one function.
+    /// <para>
+    /// The gate: the git workflow must be on, the environment must be dev (prod is
+    /// read-only and is not a scratchpad), the path must resolve inside the dev
+    /// worktree — and, since an API key is optional, execution is refused when the
+    /// server is bound beyond localhost without one. That combination is remote
+    /// code execution for anyone who can reach the port.
+    /// </para>
+    /// </summary>
+    private static IResult DenyExecution(
+        HttpContext context, JobCatalog catalog, JobsOptions options, string env, string path) {
+        if (!catalog.GitLayout) {
+            return Results.BadRequest(new {
+                error = "Running cells needs the git workflow — run `clrkernel-jobs git init`.",
+            });
+        }
+        if (env != "dev") {
+            return Results.BadRequest(new { error = "Cells run in dev only — prod is read-only." });
+        }
+        if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
+            return Results.BadRequest(new { error = "Path is outside the dev area." });
+        }
+        if (string.IsNullOrEmpty(options.ApiKey) && !IsLocalOnly(options.Urls)) {
+            return Results.Json(new {
+                error = "Refusing to run cells: the server is listening beyond localhost with no API key. " +
+                    "Set --api-key (or CLRKERNEL_JOBS_APIKEY), or bind to localhost.",
+            }, statusCode: 403);
+        }
+        return null;
+    }
+
+    /// <summary>True when every configured URL is loopback. Null/empty means the
+    /// default bind, which is localhost.</summary>
+    internal static bool IsLocalOnly(string urls) {
+        if (string.IsNullOrWhiteSpace(urls)) {
+            return true;
+        }
+        foreach (var url in urls.Split(';', StringSplitOptions.RemoveEmptyEntries)) {
+            if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var parsed)) {
+                return false; // unparseable: assume the worst
+            }
+            var host = parsed.Host;
+            var loopback = host is "localhost" or "127.0.0.1" or "::1" or "[::1]";
+            if (!loopback) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>The one committing writer: the file lands and is committed inside a
     /// single git-lock hold, so racing saves cannot commit each other's bytes.</summary>
     private static IResult SaveToDev(HttpContext context, string resolved, string path, string content) {
@@ -609,6 +751,9 @@ public sealed class CellWrite {
 }
 
 public sealed class CellEdit {
+    /// <summary>The editor's cell id, used as the kernel cellId so display
+    /// notifications land on the right cell. Ignored on save.</summary>
+    public string Id { get; set; }
     public string Kind { get; set; }
     public string Tag { get; set; }
     public string LanguageId { get; set; }
@@ -635,4 +780,45 @@ public sealed class CellEdit {
             Closed = Closed ?? true,
         };
     }
+}
+
+/// <summary>A notebook session as the editor sees it: what the kernel is, what it
+/// can run, and what every cell has done so far.</summary>
+public sealed class SessionView {
+    public string SessionId { get; set; }
+    public bool Started { get; set; }
+    public bool Running { get; set; }
+    public string Kernel { get; set; }
+    public string Version { get; set; }
+    public bool KernelRestarted { get; set; }
+    /// <summary>A scheduled run of this notebook is in flight in its own kernel —
+    /// the editor says so rather than letting the file change unexplained.</summary>
+    public bool ScheduledRunActive { get; set; }
+    public IReadOnlyList<LanguageDescriptor> Languages { get; set; }
+    public Dictionary<string, CellRunView> Cells { get; set; }
+
+    public static SessionView From(NotebookSession session, bool scheduledRunActive) => new() {
+        SessionId = session.Id,
+        Started = true,
+        Running = session.Busy,
+        Kernel = session.KernelName,
+        Version = session.KernelVersion,
+        KernelRestarted = session.KernelRestarted,
+        ScheduledRunActive = scheduledRunActive,
+        Languages = session.Languages,
+        Cells = session.Snapshot().ToDictionary(kv => kv.Key, kv => new CellRunView {
+            Status = kv.Value.Status,
+            ExecutionCount = kv.Value.ExecutionCount,
+            Truncated = kv.Value.Truncated,
+            Outputs = kv.Value.Outputs,
+        }),
+    };
+}
+
+public sealed class CellRunView {
+    public string Status { get; set; }
+    public int? ExecutionCount { get; set; }
+    public bool Truncated { get; set; }
+    /// <summary>nbformat outputs — the same shapes the run view already renders.</summary>
+    public System.Text.Json.Nodes.JsonArray Outputs { get; set; }
 }

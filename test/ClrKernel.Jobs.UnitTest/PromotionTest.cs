@@ -192,4 +192,27 @@ public class PromotionTest {
         Assert.IsFalse(result.Eligible);
         StringAssert.Contains(result.Reasons.Single(), "'eu'");
     }
+
+    [TestMethod]
+    public async Task An_interactive_run_changes_nothing_about_promotability() {
+        // The guarantee behind the web editor's run buttons: a session executes
+        // cells against a warm kernel and writes NO run rows, so iterating in the
+        // browser can never manufacture the green evidence promotion requires.
+        SeedNotebookAndJob();
+        var before = await CheckAsync();
+        Assert.IsFalse(before.Eligible);
+
+        var session = new NotebookSession("s", Path.Combine(_git.DevPath, "etl.nb.md"), "/nonexistent/clrkernel");
+        session.TryStartRun(
+            new[] { ClrKernel.Core.Runner.MarkdownCell.Code("csharp", "1+1") }, new[] { "c0" }, out var completion);
+        await completion;
+        session.Dispose();
+
+        var after = await CheckAsync();
+        Assert.AreEqual(before.Eligible, after.Eligible);
+        CollectionAssert.AreEqual(before.Reasons.ToList(), after.Reasons.ToList(),
+            "an interactive run must be invisible to the promotion gate");
+        Assert.AreEqual(0, (await _store.QueryRunsAsync(new RunQuery { Environment = "dev" })).Count,
+            "and must leave no run history at all");
+    }
 }
