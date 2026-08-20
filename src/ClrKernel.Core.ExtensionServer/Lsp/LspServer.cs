@@ -121,10 +121,18 @@ public sealed class LspServer {
     }
 
     private NotebookSession SessionFor(string uri) =>
-        _sessions.GetOrAdd(NotebookKeyFor(uri), key => new NotebookSession {
-            Engine = new InteractiveScriptEngine(
-                DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine))),
-            Language = new ScriptLanguageService(),
+        _sessions.GetOrAdd(NotebookKeyFor(uri), key => {
+            var engine = new InteractiveScriptEngine(
+                DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
+            // A #r-loaded plugin changed this session's languages/providers: tell
+            // the client so its pickers, fence maps, and wizards refresh.
+            engine.LanguagesChanged += () => _ = Rpc?.NotifyWithParameterObjectAsync(
+                "clrkernel/languagesChanged", new {
+                    notebookUri = key,
+                    languages = engine.Languages.Describe(),
+                    connectionProviders = engine.ConnectionProviders,
+                });
+            return new NotebookSession { Engine = engine, Language = new ScriptLanguageService() };
         });
 
     // The notebook's own folder, so #load and relative paths resolve beside it.

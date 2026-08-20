@@ -264,6 +264,15 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         statement = PrepareStatement(statement);
 
         await EnsureScriptStateAsync();
+        // A plugin registered by the #r above may have contributed using-static
+        // lines; they run first so the statement itself can already use them.
+        if (_pendingPluginPrelude.Count > 0) {
+            foreach (var prelude in _pendingPluginPrelude) {
+                _scriptState = await _scriptState.ContinueWithAsync(prelude, _scriptOptions);
+                _submissions.Add(prelude);
+            }
+            _pendingPluginPrelude.Clear();
+        }
         try {
             _scriptState = await _scriptState.ContinueWithAsync(statement, _scriptOptions);
         } catch (CompilationErrorException e) when (e.Diagnostics.Any(d => d.Id is "CS1109" or "CS7021")) {
@@ -584,9 +593,106 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         foreach (var runtimeDependency in lineDependencies) {
             _logger.LogDebug("Adding reference to a runtime dependency => " + runtimeDependency);
             _scriptOptions = _scriptOptions.AddReferences(MetadataReference.CreateFromFile(runtimeDependency.Path));
+            ScanForPlugins(runtimeDependency.Path);
+        }
+
+        // A direct `#r "path.dll"` is resolved by Roslyn's metadata resolver, not
+        // the nuget resolver above — scan those for plugin exports too.
+        foreach (var line in statement.Split('\n')) {
+            var trimmed = line.TrimStart();
+            if (!trimmed.StartsWith("#r ", StringComparison.Ordinal)) {
+                continue;
+            }
+            var argument = trimmed.Substring(3).Trim().Trim('"');
+            if (!argument.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            var path = Path.IsPathRooted(argument) ? argument : Path.Combine(_currentDirectory, argument);
+            if (File.Exists(path)) {
+                ScanForPlugins(path);
+            }
         }
 
         return true;
+    }
+
+    // --- Runtime plugins ------------------------------------------------------
+
+    /// <summary>Raised when a #r-loaded assembly registered a new cell language or
+    /// connection provider with THIS session — hosts forward it to their clients.</summary>
+    public event Action LanguagesChanged;
+
+    private readonly HashSet<string> _scannedPluginPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _pendingPluginPrelude = new();
+
+    // Loads a newly-referenced assembly (default load context — plugin types must
+    // share identity with this assembly's contracts) and registers its exports.
+    private void ScanForPlugins(string assemblyPath) {
+        if (!_scannedPluginPaths.Add(assemblyPath)) {
+            return;
+        }
+        try {
+            RegisterPlugins(System.Reflection.Assembly.LoadFrom(assemblyPath));
+        } catch (Exception e) {
+            // A bad plugin must not break the #r that pulled it in.
+            _logger.LogWarning("Plugin scan failed for {Path}: {Error}", assemblyPath, e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Registers the cell languages and connection providers an assembly exports
+    /// (via <see cref="CellLanguageExportAttribute"/> /
+    /// <see cref="Core.Primitives.ConnectionProviderExportAttribute"/>) with this
+    /// session only. Languages whose Id — and providers whose Type — are already
+    /// registered are skipped, so built-in assemblies and repeat loads are no-ops.
+    /// Returns true when anything new was registered.
+    /// </summary>
+    public bool RegisterPlugins(System.Reflection.Assembly assembly) {
+        var changed = false;
+        foreach (var export in assembly.GetCustomAttributes(typeof(CellLanguageExportAttribute), inherit: false)
+                     .Cast<CellLanguageExportAttribute>()) {
+            if (Activator.CreateInstance(export.LanguageType) is not ICellLanguage language ||
+                _languages.ById(language.Id) != null) {
+                continue;
+            }
+            _languages.Add(language);
+            ApplyContribution(language.ScriptContribution);
+            _logger.LogInformation("Registered cell language '{Id}' from {Assembly}", language.Id, assembly.GetName().Name);
+            changed = true;
+        }
+        foreach (var export in assembly.GetCustomAttributes(typeof(Core.Primitives.ConnectionProviderExportAttribute), inherit: false)
+                     .Cast<Core.Primitives.ConnectionProviderExportAttribute>()) {
+            var descriptor = export.DescriptorSource
+                .GetProperty("Descriptor", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                ?.GetValue(null) as Core.Primitives.ConnectionProviderDescriptor;
+            if (descriptor == null || _connectionProviders.Exists(p =>
+                    string.Equals(p.Type, descriptor.Type, StringComparison.OrdinalIgnoreCase))) {
+                continue;
+            }
+            _connectionProviders.Add(descriptor);
+            _logger.LogInformation("Registered connection provider '{Type}' from {Assembly}", descriptor.Type, assembly.GetName().Name);
+            changed = true;
+        }
+        if (changed) {
+            LanguagesChanged?.Invoke();
+        }
+        return changed;
+    }
+
+    // A plugin's contribution lands on the LIVE session: references and imports
+    // apply to every later submission; using-statics run as the next submission's
+    // prelude (they are legal script statements).
+    private void ApplyContribution(ScriptContribution contribution) {
+        if (contribution == null) {
+            return;
+        }
+        foreach (var reference in contribution.References) {
+            _scriptOptions = _scriptOptions.AddReferences(MetadataReference.CreateFromFile(reference.Location));
+        }
+        if (contribution.Imports.Count > 0) {
+            _scriptOptions = _scriptOptions.AddImports(contribution.Imports);
+        }
+        _pendingPluginPrelude.AddRange(contribution.UsingStatics.Select(u => u.TrimEnd(';') + ";"));
     }
 
     private string PrepareStatement(string statement) {

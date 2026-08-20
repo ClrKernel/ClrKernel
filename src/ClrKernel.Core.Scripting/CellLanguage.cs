@@ -200,11 +200,30 @@ public sealed class CellLanguageSet {
 
     public CellLanguageSet(IEnumerable<ICellLanguage> languages) {
         _languages = (languages ?? Array.Empty<ICellLanguage>()).Where(l => l != null).ToList();
-        _bySelector = _languages
+        _bySelector = new List<(string, ICellLanguage)>();
+        RebuildSelectorTable();
+    }
+
+    /// <summary>
+    /// Adds a language to this set at run time (a plugin loaded mid-session) and
+    /// re-derives the selector table, so longest-first dispatch keeps holding no
+    /// matter when a language arrived. Registration-order independence is the
+    /// same guarantee the constructor gives.
+    /// </summary>
+    public void Add(ICellLanguage language) {
+        if (language == null) {
+            return;
+        }
+        _languages.Add(language);
+        RebuildSelectorTable();
+    }
+
+    private void RebuildSelectorTable() {
+        _bySelector.Clear();
+        _bySelector.AddRange(_languages
             .SelectMany(l => (l.Selectors ?? Array.Empty<string>()).Select(s => (Selector: s, Language: l)))
             .OrderByDescending(p => p.Selector.Length)
-            .ThenBy(p => p.Selector, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .ThenBy(p => p.Selector, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>This engine's languages, in registration order.</summary>
