@@ -741,3 +741,13 @@ textarea {
   border-radius: 6px;
   overflow: hidden;
 }
+
+/* A diff editor does not size itself to its content the way a cell does, so the
+   container sets the height and Monaco scrolls both sides inside it. */
+.diff-editor {
+  width: 100%;
+  height: 34rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}

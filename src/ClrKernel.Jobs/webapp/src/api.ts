@@ -254,10 +254,8 @@ export const api = {
       `/envs/dev/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
     ),
-  gitDiff: (path: string) =>
-    fetch(`/api/git/diff?path=${encodeURIComponent(path)}`, {
-      headers: apiKey() ? { 'X-Api-Key': apiKey() } : {},
-    }).then((r) => (r.ok ? r.text() : '')),
+  // The UI diffs by fetching both environments' content into Monaco. GET
+  // /api/git/diff still exists and is still the right thing over curl.
   // The notebook as cells, with the languages this kernel can run — parsed and
   // written server-side so the browser never needs its own copy of the format.
   notebookCells: (env: string, path: string) =>

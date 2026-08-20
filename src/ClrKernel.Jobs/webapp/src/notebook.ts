@@ -58,6 +58,25 @@ export function monacoLanguage(languageId: string | null | undefined, tag?: stri
   return 'plaintext';
 }
 
+/**
+ * The Monaco language for a whole file — the Source tab and the production diff,
+ * where there are no cells to ask. A notebook that is not `.nb.md` (`.ipynb`,
+ * `.dib`, `.csx`) opens as source, so those need an answer too.
+ */
+export function fileLanguage(path: string): string {
+  const name = path.toLowerCase();
+  if (name.endsWith('.ipynb')) {
+    return 'json';
+  }
+  if (name.endsWith('.yaml') || name.endsWith('.yml')) {
+    return 'yaml';
+  }
+  if (name.endsWith('.csx') || name.endsWith('.dib')) {
+    return 'csharp';
+  }
+  return 'markdown';
+}
+
 /** The label shown in a cell's language picker. */
 export function languageLabel(cell: ApiCell, languages: ApiLanguage[]): string {
   if (cell.kind === 'markdown') {

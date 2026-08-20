@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ApiCell, ApiLanguage, ApiSession } from './api';
 import {
   cellsToRun,
+  fileLanguage,
   isDirty,
   keepIds,
   languageOptions,
@@ -45,6 +46,16 @@ describe('monacoLanguage', () => {
   it('treats a tagged cell with no language as C#, and an untagged one as prose', () => {
     expect(monacoLanguage(null, 'csharp')).toBe('csharp');
     expect(monacoLanguage(null, null)).toBe('markdown');
+  });
+});
+
+describe('fileLanguage', () => {
+  it('answers for every file the editor can open, not just .nb.md', () => {
+    expect(fileLanguage('a/b.nb.md')).toBe('markdown');
+    expect(fileLanguage('Report.IPYNB')).toBe('json');
+    expect(fileLanguage('etl.jobs.yaml')).toBe('yaml');
+    expect(fileLanguage('setup.csx')).toBe('csharp');
+    expect(fileLanguage('legacy.dib')).toBe('csharp');
   });
 });
 

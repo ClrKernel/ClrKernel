@@ -3,10 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ErrorBanner, usePolling } from '../components/common';
-import { useCellEditor } from '../monaco/useMonaco';
+import { useCellEditor, useDiffEditor } from '../monaco/useMonaco';
 import {
   cellsToRun,
   emptyCell,
+  fileLanguage,
   insertCell,
   isDirty,
   keepIds,
@@ -39,7 +40,8 @@ export function Editor() {
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
   const [savedSource, setSavedSource] = useState<string | null>(null);
-  const [diff, setDiff] = useState('');
+  /** Production's copy of this file: null while loading, '' when it has none. */
+  const [prod, setProd] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(isNotebook ? 'notebook' : 'source');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -188,9 +190,19 @@ export function Editor() {
     }
   }
 
+  /**
+   * Both sides come from the content GET, which reads any environment — only
+   * writing is dev-only. A 404 on prod means the file exists solely on dev, so
+   * the original side is empty and the whole thing reads as added.
+   */
   async function showDiff() {
-    setDiff(await api.gitDiff(path));
     setTab('diff');
+    setProd(null);
+    try {
+      setProd(await api.notebookContent('prod', path));
+    } catch {
+      setProd('');
+    }
   }
 
   async function promote() {
@@ -348,13 +360,21 @@ export function Editor() {
         ))}
 
       {tab === 'source' &&
-        (source == null ? <p className="muted">Loading…</p> : <SourceEditor value={source} onChange={setSource} />)}
+        (source == null ? <p className="muted">Loading…</p> : <SourceEditor value={source} language={fileLanguage(path)} onChange={setSource} />)}
 
       {tab === 'diff' &&
-        (diff ? (
-          <pre className="output-text log">{diff}</pre>
-        ) : (
+        (prod == null || savedSource == null ? (
+          <p className="muted">Loading…</p>
+        ) : prod === savedSource ? (
           <p className="muted">No differences — dev and production are identical for this file.</p>
+        ) : (
+          <>
+            <p className="muted small">
+              Production (left) vs dev (right){prod === '' && ' — this file does not exist in production yet'}
+              {dirty && '. Unsaved edits are not shown: this compares what is committed on each branch.'}
+            </p>
+            <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
+          </>
         ))}
 
       <p className="muted">
@@ -370,7 +390,26 @@ export function Editor() {
 
 /** The whole file as one editor — the fallback for non-notebooks, and the escape
  *  hatch when you want to see exactly what is on disk. */
-function SourceEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const container = useCellEditor('markdown', value, onChange);
+function SourceEditor({
+  value, language, onChange,
+}: {
+  value: string;
+  language: string;
+  onChange: (value: string) => void;
+}) {
+  const container = useCellEditor(language, value, onChange);
   return <div className="source-editor" ref={container} />;
+}
+
+/** What promotion would ship, side by side — the same view VS Code gives a
+ *  branch comparison, rather than a unified diff to read in your head. */
+function DiffView({
+  original, modified, language,
+}: {
+  original: string;
+  modified: string;
+  language: string;
+}) {
+  const container = useDiffEditor(original, modified, language);
+  return <div className="diff-editor" ref={container} />;
 }
