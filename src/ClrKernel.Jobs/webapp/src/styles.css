@@ -83,7 +83,12 @@ pre,
   width: 12rem;
 }
 
-.main {
+/* Element-qualified on purpose. Monaco's suggest widget builds rows out of
+   `div.main` and `div.tree`, and a bare `.main { padding: 1.5rem }` applied to
+   them — pushing the completion label out of its own 20px row and behind the
+   cell footer, which looked like an empty blue box. Ours are <main> and <ul>;
+   Monaco's are <div>. Keep new layout classes specific enough not to collide. */
+main.main {
   max-width: 60rem;
   margin: 0 auto;
   padding: 1.5rem;
@@ -91,12 +96,12 @@ pre,
 
 /* The editor is not prose: cells want room, and a side-by-side diff at 60rem is
    two 27rem panes of wrapped code. */
-.main-wide {
+main.main-wide {
   max-width: 100rem;
 }
 
 /* Code takes the width; sentences do not — a 100rem line is unreadable. */
-.main-wide p {
+main.main-wide p {
   max-width: 60rem;
 }
 
@@ -390,8 +395,8 @@ textarea {
 
 /* --- tree --------------------------------------------------------------- */
 
-.tree,
-.tree ul {
+ul.tree,
+ul.tree ul {
   list-style: none;
   padding-left: 1rem;
   margin: 0.25rem 0;
