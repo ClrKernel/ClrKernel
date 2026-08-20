@@ -248,6 +248,10 @@ public sealed class LspServer {
         if (p?.TextDocument?.Uri != null) {
             _documents.TryRemove(p.TextDocument.Uri, out _);
             _languages.TryRemove(p.TextDocument.Uri, out _);
+            // Retract anything still on screen for it. Changing a cell's language
+            // closes the document and reopens it under the new languageId, so
+            // without this the old language's problems outlive the cell.
+            SendDiagnostics(p.TextDocument.Uri, new List<Diagnostic>());
         }
     }
 
@@ -260,31 +264,46 @@ public sealed class LspServer {
         if (Rpc == null || uri == null) {
             return;
         }
-        if (!_languages.TryGetValue(uri, out var lang)) {
-            return;
-        }
-        var services = SessionFor(uri).Engine.Languages.ById(lang)?.Services;
-        if (services == null) {
-            return;
-        }
-        var text = _documents.TryGetValue(uri, out var t) ? t : string.Empty;
         var diagnostics = new List<Diagnostic>();
-        try {
-            foreach (var d in services.Diagnose(text)) {
-                diagnostics.Add(new Diagnostic {
-                    Range = new Range {
-                        Start = new Position { Line = d.Line, Character = d.Column },
-                        End = new Position { Line = d.EndLine, Character = d.EndColumn },
-                    },
-                    Severity = 1,
-                    Source = "clrkernel-" + lang,
-                    Code = d.Code.ToString(),
-                    Message = d.Message,
-                });
+        // Every path below ends in SendDiagnostics, including the ones that produce
+        // nothing: a language with no diagnostics of its own (C#, shell) must CLEAR
+        // what the previous language left, not silently leave it on screen.
+        if (_languages.TryGetValue(uri, out var lang) &&
+            SessionFor(uri).Engine.Languages.ById(lang)?.Services is { } services) {
+            var text = _documents.TryGetValue(uri, out var t) ? t : string.Empty;
+            try {
+                foreach (var d in services.Diagnose(text)) {
+                    diagnostics.Add(new Diagnostic {
+                        Range = new Range {
+                            Start = new Position { Line = d.Line, Character = d.Column },
+                            End = new Position { Line = d.EndLine, Character = d.EndColumn },
+                        },
+                        Severity = 1,
+                        Source = "clrkernel-" + lang,
+                        Code = d.Code.ToString(),
+                        Message = d.Message,
+                    });
+                }
+            } catch (Exception e) {
+                _logger.LogWarning(e, "diagnostics failed for {Language}", lang);
+                diagnostics.Clear(); // a failed check reports nothing, not the last run's problems
             }
-        } catch (Exception e) {
-            _logger.LogWarning(e, "diagnostics failed for {Language}", lang);
-            return;
+        }
+        SendDiagnostics(uri, diagnostics);
+    }
+
+    // Documents with problems currently on screen, so an empty result is sent only
+    // when there is something to retract (rather than on every keystroke of every
+    // undiagnosed cell).
+    private readonly ConcurrentDictionary<string, byte> _publishedDiagnostics = new();
+
+    private void SendDiagnostics(string uri, List<Diagnostic> diagnostics) {
+        if (diagnostics.Count == 0) {
+            if (!_publishedDiagnostics.TryRemove(uri, out _)) {
+                return; // nothing was published for this document; nothing to clear
+            }
+        } else {
+            _publishedDiagnostics[uri] = 0;
         }
         _ = Rpc.NotifyWithParameterObjectAsync("textDocument/publishDiagnostics",
             new PublishDiagnosticsParams { Uri = uri, Diagnostics = diagnostics });
