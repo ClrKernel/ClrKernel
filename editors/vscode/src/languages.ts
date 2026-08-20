@@ -33,7 +33,7 @@ export interface DirectiveDefinition {
 export interface DirectiveParameter {
     name: string;
     aliases?: string[];
-    kind?: number; // DirectiveParameterKind: 0 Value, 1 Flag, 2 KeyValue, 3 Forbidden
+    kind?: 'value' | 'flag' | 'keyValue' | 'forbidden';
     required?: boolean;
     enumValues?: string[];
     description?: string;

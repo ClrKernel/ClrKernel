@@ -30,6 +30,7 @@ public sealed class KernelClient : IDisposable {
         var formatter = new SystemTextJsonFormatter();
         formatter.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         formatter.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        formatter.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase));
         var handler = new HeaderDelimitedMessageHandler(sendingStream, receivingStream, formatter);
         _rpc = new JsonRpc(handler);
         _rpc.AddLocalRpcTarget(new NotificationSink(this));

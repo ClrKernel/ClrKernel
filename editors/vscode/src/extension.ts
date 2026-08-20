@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
+import { ConnectionUi } from './connections';
 import { ClrKernelController } from './controller';
-import { MarkdownNotebookSerializer } from './markdownSerializer';
-import { SqlConnectionUi } from './sqlConnections';
-import { DaxConnectionUi } from './daxConnections';
 import { nextUntitledNotebookName } from './directives';
+import { MarkdownNotebookSerializer } from './markdownSerializer';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
@@ -27,11 +26,10 @@ export function activate(context: vscode.ExtensionContext): void {
         }),
     );
 
-    // SQL connection button + guided QuickPick (pick / add / manage connections).
-    new SqlConnectionUi(controller).register(context);
-
-    // Cube (Analysis Services / Fabric) connection button for #!dax cells.
-    new DaxConnectionUi(controller).register(context);
+    // One connection button + schema-driven wizard for every language whose
+    // descriptor declares connections — SQL, DAX, and any provider plugged in
+    // later, with no per-language UI code.
+    new ConnectionUi(controller).register(context);
 }
 
 /**

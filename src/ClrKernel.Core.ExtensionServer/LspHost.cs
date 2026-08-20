@@ -32,6 +32,7 @@ public static class LspHost {
         formatter.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         formatter.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
         formatter.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        formatter.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 
         var server = new LspServer(loggerFactory);
         using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stdout, stdin, formatter), server);

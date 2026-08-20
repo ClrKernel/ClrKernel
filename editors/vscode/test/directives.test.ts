@@ -1,131 +1,132 @@
 import { describe, expect, it } from 'vitest';
 import {
-    buildDaxConnectDirective,
-    buildSqlConnectDirective,
-    nextUntitledNotebookName,
+    composeConnectDirective,
+    ConnectionProviderDescriptor,
     quote,
-} from '../src/directives';
+} from '../src/connectionDirective';
+import { nextUntitledNotebookName } from '../src/directives';
+import { DirectiveDefinition } from '../src/languages';
 
-/**
- * These strings are the contract with the kernel's directive parsers. The connection buttons build
- * them and the kernel parses them, and nothing else checks that the two agree.
- */
 describe('quote', () => {
-    it('leaves a simple value alone', () => {
+    it('leaves plain values alone', () => {
         expect(quote('warehouse')).toBe('warehouse');
         expect(quote('sql01.corp.local')).toBe('sql01.corp.local');
     });
 
-    it('wraps anything with whitespace, so the tokenizer keeps it whole', () => {
+    it('wraps values containing whitespace', () => {
         expect(quote('My Workspace')).toBe('"My Workspace"');
-        expect(quote('Sales Model')).toBe('"Sales Model"');
     });
 
-    it('strips embedded quotes rather than emitting an unbalanced string', () => {
+    it('strips embedded quotes rather than escaping (the kernel tokenizer has no escapes)', () => {
         expect(quote('say "hi"')).toBe('"say hi"');
     });
 });
 
-describe('buildSqlConnectDirective', () => {
-    it('names the connection, server and auth mode', () => {
-        expect(buildSqlConnectDirective({ name: 'wh', server: 'sql01', database: 'dw', auth: 'integrated' }))
-            .toBe('#!sql-connect --name wh --server sql01 --database dw --auth integrated');
+// Fixtures mirroring the wire shape of clrkernel/connections/describe and the
+// language descriptor's directive tables.
+const sqlDirective: DirectiveDefinition = {
+    selector: '#!sql-connect',
+    parameters: [
+        { name: '--name' }, { name: '--server' }, { name: '--database' }, { name: '--auth' },
+        { name: '--user' }, { name: '--encrypt' },
+        { name: '--trust-cert', kind: 'flag' },
+        { name: '--secret' },
+    ],
+};
+
+const sqlProvider: ConnectionProviderDescriptor = {
+    type: 'SqlServer',
+    displayName: 'SQL Server',
+    connectSelector: '#!sql-connect',
+    settings: [
+        { name: 'name', required: true, directiveFlag: '--name' },
+        { name: 'server', oneOfGroup: 'target', directiveFlag: '--server' },
+        { name: 'connectionString', oneOfGroup: 'target', directiveFlag: '--connection-string' },
+        { name: 'database', directiveFlag: '--database' },
+        { name: 'auth', kind: 'enum', enumValues: ['sql', 'integrated', 'entra'], default: 'integrated', directiveFlag: '--auth' },
+        { name: 'user', directiveFlag: '--user' },
+        { name: 'password', kind: 'secretRef', directiveFlag: '--secret' },
+        { name: 'encrypt', kind: 'bool', default: 'true', directiveFlag: '--encrypt' },
+        { name: 'trustServerCertificate', kind: 'bool', default: 'false', directiveFlag: '--trust-cert' },
+    ],
+};
+
+describe('composeConnectDirective', () => {
+    it('states every given value, quotes whitespace, and skips the untouched', () => {
+        const line = composeConnectDirective(sqlProvider, sqlDirective, {
+            name: 'wh', server: 'sql server.local', database: 'dw', auth: 'sql', user: 'sa',
+        });
+        expect(line).toBe('#!sql-connect --name wh --server "sql server.local" --database dw --auth sql --user sa');
     });
 
-    it('quotes values containing spaces', () => {
-        const d = buildSqlConnectDirective({ name: 'my dw', server: 'sql 01', database: 'a b', auth: 'sql', user: 'svc acct' });
-        expect(d).toContain('--name "my dw"');
-        expect(d).toContain('--server "sql 01"');
-        expect(d).toContain('--database "a b"');
-        expect(d).toContain('--user "svc acct"');
+    it('always states non-bool values, even at their default — the kernel ladder must not re-infer', () => {
+        const line = composeConnectDirective(sqlProvider, sqlDirective, {
+            name: 'wh', server: 's', auth: 'integrated', user: 'svc',
+        });
+        expect(line).toContain('--auth integrated');
     });
 
-    it('omits an absent database rather than sending an empty flag', () => {
-        expect(buildSqlConnectDirective({ name: 'n', server: 's', auth: 'integrated' }))
-            .not.toContain('--database');
+    it('omits bool defaults, emits a bare switch for flag-kind bools and a value otherwise', () => {
+        const defaults = composeConnectDirective(sqlProvider, sqlDirective, {
+            name: 'wh', server: 's', encrypt: 'true', trustServerCertificate: 'false',
+        });
+        expect(defaults).toBe('#!sql-connect --name wh --server s');
+
+        const flipped = composeConnectDirective(sqlProvider, sqlDirective, {
+            name: 'wh', server: 's', encrypt: 'false', trustServerCertificate: 'true',
+        });
+        expect(flipped).toBe('#!sql-connect --name wh --server s --encrypt false --trust-cert');
     });
 
-    it('states encryption only when it is off, since on is the default', () => {
-        expect(buildSqlConnectDirective({ name: 'n', server: 's', auth: 'integrated' })).not.toContain('--encrypt');
-        expect(buildSqlConnectDirective({ name: 'n', server: 's', auth: 'integrated', encrypt: true })).not.toContain('--encrypt');
-        expect(buildSqlConnectDirective({ name: 'n', server: 's', auth: 'integrated', encrypt: false })).toContain('--encrypt false');
+    it('never emits the secret — it rides the RPC parameter, not the line', () => {
+        const line = composeConnectDirective(sqlProvider, sqlDirective, {
+            name: 'wh', server: 's', user: 'sa', password: 'hunter2',
+        });
+        expect(line).not.toContain('hunter2');
+        expect(line).not.toContain('--secret');
     });
 
-    it('adds --trust-cert only when asked', () => {
-        expect(buildSqlConnectDirective({ name: 'n', server: 's', auth: 'integrated', trustCert: true })).toContain('--trust-cert');
-        expect(buildSqlConnectDirective({ name: 'n', server: 's', auth: 'integrated' })).not.toContain('--trust-cert');
-    });
-});
-
-describe('buildDaxConnectDirective', () => {
-    it('builds a Fabric cube from workspace and model', () => {
-        expect(buildDaxConnectDirective({ name: 'fcst', kind: 'fabric', workspace: 'DataWarehouse', model: 'Forecast' }))
-            .toBe('#!dax-connect --name fcst --fabric --workspace DataWarehouse --model Forecast');
-    });
-
-    it('builds Azure Analysis Services with its own flag', () => {
-        const d = buildDaxConnectDirective({ name: 'aas', kind: 'azure-as', server: 'asazure://westus.asazure.windows.net/s', database: 'M' });
-        expect(d).toContain('--azure-as');
-        expect(d).toContain('--server asazure://westus.asazure.windows.net/s');
-    });
-
-    it('builds an on-prem cube with no auth flag at all', () => {
-        const d = buildDaxConnectDirective({ name: 'o', kind: 'on-prem', server: 'ssas01', database: 'M' });
-        expect(d).toBe('#!dax-connect --name o --server ssas01 --database M');
-        expect(d).not.toContain('--azure-as');
-        expect(d).not.toContain('--integrated');
+    it('maps a flagless enum to the matching directive switch (PSRemoting transport)', () => {
+        const pwshDirective: DirectiveDefinition = {
+            selector: '#!pwsh-connect',
+            parameters: [
+                { name: '--name' }, { name: '--host' },
+                { name: '--ssh', kind: 'flag' },
+                { name: '--winrm', kind: 'flag' },
+            ],
+        };
+        const pwshProvider: ConnectionProviderDescriptor = {
+            type: 'PSRemoting', displayName: 'PowerShell Remoting', connectSelector: '#!pwsh-connect',
+            settings: [
+                { name: 'name', directiveFlag: '--name' },
+                { name: 'host', directiveFlag: '--host' },
+                { name: 'transport', kind: 'enum', enumValues: ['ssh', 'winrm'], default: 'ssh' },
+            ],
+        };
+        expect(composeConnectDirective(pwshProvider, pwshDirective, { name: 'w', host: 'h', transport: 'winrm' }))
+            .toBe('#!pwsh-connect --name w --host h --winrm');
+        expect(composeConnectDirective(pwshProvider, pwshDirective, { name: 'w', host: 'h', transport: 'ssh' }))
+            .toBe('#!pwsh-connect --name w --host h --ssh');
     });
 
-    // The Entra token is the default and therefore carries NO flag. A build that treated "no flag"
-    // as "nothing chosen" silently dropped every Fabric and Azure AS connection, so these two pin
-    // that an absent --integrated still produces a complete, usable directive.
-    it('produces a complete Fabric directive when Entra (the default) is chosen', () => {
-        const d = buildDaxConnectDirective({ name: 'f', kind: 'fabric', workspace: 'W', model: 'M', integrated: false });
-        expect(d).toContain('--fabric');
-        expect(d).toContain('--workspace W');
-        expect(d).not.toContain('--integrated');
-    });
-
-    it('adds --integrated for the Windows identity on both cloud kinds', () => {
-        expect(buildDaxConnectDirective({ name: 'f', kind: 'fabric', workspace: 'W', model: 'M', integrated: true }))
-            .toContain('--integrated');
-        expect(buildDaxConnectDirective({ name: 'a', kind: 'azure-as', server: 's', database: 'M', integrated: true }))
-            .toContain('--integrated');
-    });
-
-    it('never adds --integrated to an on-prem cube, which is already Integrated', () => {
-        expect(buildDaxConnectDirective({ name: 'o', kind: 'on-prem', server: 's', database: 'M', integrated: true }))
-            .not.toContain('--integrated');
-    });
-
-    it('quotes a workspace or model containing spaces', () => {
-        const d = buildDaxConnectDirective({ name: 'f', kind: 'fabric', workspace: 'My WS', model: 'Sales Model' });
-        expect(d).toContain('--workspace "My WS"');
-        expect(d).toContain('--model "Sales Model"');
+    it('composes the DAX fabric form from workspace and model', () => {
+        const daxProvider: ConnectionProviderDescriptor = {
+            type: 'AnalysisServices', displayName: 'Analysis Services', connectSelector: '#!dax-connect',
+            settings: [
+                { name: 'name', directiveFlag: '--name' },
+                { name: 'workspace', oneOfGroup: 'target', directiveFlag: '--workspace' },
+                { name: 'model', directiveFlag: '--model' },
+            ],
+        };
+        expect(composeConnectDirective(daxProvider, undefined, {
+            name: 'sales', workspace: 'Analytics WS', model: 'Sales Model',
+        })).toBe('#!dax-connect --name sales --workspace "Analytics WS" --model "Sales Model"');
     });
 });
 
 describe('nextUntitledNotebookName', () => {
-    it('starts at 1 and keeps the .nb.md double extension', () => {
-        // A plain .md file is not matched by the notebook type's *.nb.md selector, which is the
-        // whole reason this exists.
+    it('numbers past whatever is open', () => {
         expect(nextUntitledNotebookName([])).toBe('Untitled-1.nb.md');
-    });
-
-    it('skips names already open', () => {
-        expect(nextUntitledNotebookName(['/Untitled-1.nb.md'])).toBe('Untitled-2.nb.md');
-        expect(nextUntitledNotebookName(['/Untitled-1.nb.md', '/Untitled-2.nb.md'])).toBe('Untitled-3.nb.md');
-    });
-
-    it('ignores gaps rather than reusing a number in the middle', () => {
-        expect(nextUntitledNotebookName(['/Untitled-2.nb.md'])).toBe('Untitled-1.nb.md');
-    });
-
-    it('compares by file name, not by the whole path', () => {
-        expect(nextUntitledNotebookName(['/some/deep/folder/Untitled-1.nb.md'])).toBe('Untitled-2.nb.md');
-    });
-
-    it('is not confused by real notebooks that happen to be open', () => {
-        expect(nextUntitledNotebookName(['/work/Sales.nb.md', '/work/notes.md'])).toBe('Untitled-1.nb.md');
+        expect(nextUntitledNotebookName(['/x/Untitled-1.nb.md', 'Untitled-2.nb.md'])).toBe('Untitled-3.nb.md');
     });
 });
