@@ -121,6 +121,44 @@ public class LanguageDescriptorTest {
             .Any(d => d.Message.Contains("#!sql-connect")), "a valid connect line is clean");
     }
 
+    // ---- connection providers: per-language lookup, Ssh shared by two languages ----
+
+    [TestMethod]
+    public void Connection_providers_resolve_per_language_and_ssh_serves_two() {
+        var engine = new ClrKernel.Core.Scripting.InteractiveScriptEngine(
+            System.Environment.CurrentDirectory,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        Assert.AreEqual("SqlServer", engine.ConnectionProvidersFor("sql").Single().Type);
+        Assert.AreEqual("AnalysisServices", engine.ConnectionProvidersFor("dax").Single().Type);
+        // One "$type": "Ssh" host definition serves both languages — the lookup is
+        // by language, never $type → one provider.
+        Assert.IsTrue(engine.ConnectionProvidersFor("shellscript").Any(p => p.Type == "Ssh"));
+        Assert.IsTrue(engine.ConnectionProvidersFor("powershell").Any(p => p.Type == "Ssh"));
+        Assert.IsTrue(engine.ConnectionProvidersFor("powershell").Any(p => p.Type == "PSRemoting"));
+        Assert.AreEqual(0, engine.ConnectionProvidersFor("mermaid").Count());
+    }
+
+    [TestMethod]
+    public void Connect_selector_flags_exist_in_the_language_directive_tables() {
+        // The wizard composes directive lines from DirectiveFlag values; every one
+        // must be a real parameter of the provider's connect directive.
+        var byLanguage = AllLanguages().Languages.ToDictionary(l => l.Id);
+        foreach (var descriptor in new[] {
+            ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
+            ClrKernel.Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
+            SshConnectionProvider.Descriptor,
+            PwshConnectionProvider.Descriptor,
+        }) {
+            var language = byLanguage[descriptor.LanguageIds[0]];
+            var directive = language.Directives.Single(d => d.Selector == descriptor.ConnectSelector);
+            foreach (var setting in descriptor.Settings.Where(s => s.DirectiveFlag != null)) {
+                Assert.IsNotNull(directive.Find(setting.DirectiveFlag),
+                    $"{descriptor.Type}: {setting.DirectiveFlag} is not a flag of {descriptor.ConnectSelector}");
+            }
+        }
+    }
+
     [TestMethod]
     public void Dax_diagnostics_flag_a_bad_directive_line() {
         var services = new DaxCellLanguage().Services;

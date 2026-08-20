@@ -35,5 +35,10 @@ public static class TestCellLanguages {
                 references: new[] { typeof(FabricConnection).Assembly },
                 imports: new[] { "ClrKernel.Database.Provider.Fabric" }),
         };
+        ConnectionProviderRegistry.Default = new[] {
+            ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
+            ClrKernel.Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
+            ClrKernel.Database.Provider.Fabric.FabricConnectionProvider.Descriptor,
+        };
     }
 }

@@ -41,6 +41,12 @@ public class NotebookServer {
         };
     }
 
+    /// <summary>The connection-provider descriptors for a language — same payload
+    /// the LSP surface serves via clrkernel/connections/describe.</summary>
+    [JsonRpcMethod("describeConnections")]
+    public object DescribeConnections(string languageId) =>
+        new { providers = _engine.ConnectionProvidersFor(languageId ?? string.Empty) };
+
     [JsonRpcMethod("execute")]
     public async Task<object> ExecuteAsync(string cellId, string code) {
         await _executionLock.WaitAsync().ConfigureAwait(false);

@@ -75,6 +75,17 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     /// <summary>The cell languages this session dispatches to.</summary>
     public CellLanguageSet Languages => _languages;
 
+    private readonly List<Core.Primitives.ConnectionProviderDescriptor> _connectionProviders;
+
+    /// <summary>This session's connection-provider descriptors (built-ins plus any
+    /// registered by a package loaded mid-session).</summary>
+    public IReadOnlyList<Core.Primitives.ConnectionProviderDescriptor> ConnectionProviders => _connectionProviders;
+
+    /// <summary>The providers a language's connection UI should offer.</summary>
+    public IEnumerable<Core.Primitives.ConnectionProviderDescriptor> ConnectionProvidersFor(string languageId) =>
+        _connectionProviders.FindAll(p =>
+            p.LanguageIds.Any(id => string.Equals(id, languageId, StringComparison.OrdinalIgnoreCase)));
+
     public static string RefsFilePath { get; set; }
 
     /// <summary>
@@ -124,6 +135,7 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         IEnumerable<ScriptContribution> extraContributions) {
         Current = this;
         _languages = (languages ?? CellLanguageRegistry.Default).CreateSet();
+        _connectionProviders = new List<Core.Primitives.ConnectionProviderDescriptor>(ConnectionProviderRegistry.Default);
         // #!import routes non-C# blocks with this session's own language set, so
         // languages added mid-session are honored inside imported files too.
         _importer.Languages = () => _languages.Describe();

@@ -184,6 +184,20 @@ public sealed class LspServer {
         return new { languages };
     }
 
+    /// <summary>
+    /// The connection-provider descriptors a language's connection UI should
+    /// offer — settings schemas the generic wizard renders. Session-scoped, so
+    /// providers loaded mid-session (#r) appear for that notebook.
+    /// </summary>
+    [JsonRpcMethod("clrkernel/connections/describe", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsDescribe(ConnectionParams p) {
+        var session = SessionForConnections(p);
+        if (session == null || string.IsNullOrEmpty(p?.LanguageId)) {
+            return new { ok = false, error = "notebookUri and languageId are required." };
+        }
+        return new { ok = true, providers = session.Engine.ConnectionProvidersFor(p.LanguageId) };
+    }
+
     [JsonRpcMethod("initialized")]
     public void Initialized() {
         _logger.LogInformation("LSP initialized");
