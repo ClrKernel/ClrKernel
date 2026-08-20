@@ -24,4 +24,11 @@
     <ProjectReference Include="..\..\src\ClrKernel.Core.ExtensionServer\ClrKernel.Core.ExtensionServer.csproj" />
   </ItemGroup>
 
+  <!-- The shipped notebooks are the round-trip corpus: NotebookMarkdownTest asserts every
+       one survives Parse → Serialize byte for byte, so the web editor's save can never
+       rewrite a file it didn't mean to change. -->
+  <ItemGroup>
+    <None Include="..\..\samples\*.nb.md" LinkBase="samples" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
