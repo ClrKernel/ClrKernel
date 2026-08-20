@@ -10,7 +10,11 @@
              completion and the namespace peek show /// summaries for ClrKernel's
              own APIs, same as for nuget packages. -->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <!-- CS1591: not every public member needs a doc comment.
+             CS1573: nor does documenting one parameter oblige you to document the
+             rest — a <param> on the one argument that surprises people is the
+             point, and filling in "the logger" for the others is noise. -->
+        <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
         <!-- Ship only English satellite assemblies. Roslyn brings ~15 localized
              resource DLLs (~7 MB) we don't surface; keep just neutral/en. -->
         <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
