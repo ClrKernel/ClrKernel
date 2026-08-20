@@ -115,6 +115,23 @@ public class NotebookSessionTest {
         await completion;
     }
 
+    /// <summary>
+    /// Waits for something the kernel reported out of band. A display is not part
+    /// of a cell's reply and can land just after it — which is exactly why the
+    /// session subscribes for the kernel's whole life rather than for one run.
+    /// Anything asserted about displays has to settle first, or it is a race that
+    /// passes in Debug and fails in Release.
+    /// </summary>
+    private static async Task SettleAsync(Func<bool> arrived, string because) {
+        for (var i = 0; i < 200; i++) {
+            if (arrived()) {
+                return;
+            }
+            await Task.Delay(10);
+        }
+        Assert.Fail(because);
+    }
+
     [TestMethod]
     public async Task Cells_run_in_order_against_one_warm_kernel() {
         var (session, kernel) = NewSession();
@@ -152,15 +169,9 @@ public class NotebookSessionTest {
         var (session, _) = NewSession();
         await RunAsync(session, "display something");
 
-        // The update can land just after the cell's reply, so settle before asserting —
-        // which is precisely why the session subscribes for the kernel's whole life
-        // rather than for the duration of a run.
-        for (var i = 0; i < 100; i++) {
-            if (session.Snapshot()["c0"].Outputs.ToJsonString().Contains("100%")) {
-                break;
-            }
-            await Task.Delay(10);
-        }
+        await SettleAsync(
+            () => session.Snapshot()["c0"].Outputs.ToJsonString().Contains("100%"),
+            "the updateDisplay never arrived");
 
         var outputs = session.Snapshot()["c0"].Outputs;
         // One progress output, not two: a bar that ticks a hundred times must not
@@ -175,9 +186,14 @@ public class NotebookSessionTest {
         var (session, _) = NewSession();
         await RunAsync(session, "flood");
 
+        // 260 displays are written before the reply, but the client can still be
+        // draining them when it arrives — so wait for the cap rather than assume it.
+        await SettleAsync(
+            () => session.Snapshot()["c0"].Truncated,
+            "a cell that never stops printing must not grow the server without bound");
+
         var cell = session.Snapshot()["c0"];
-        Assert.IsTrue(cell.Truncated, "a cell that never stops printing must not grow the server without bound");
-        Assert.IsTrue(cell.Outputs.Count <= 210);
+        Assert.IsTrue(cell.Outputs.Count <= 210, $"kept {cell.Outputs.Count} outputs");
         StringAssert.Contains(cell.Outputs.ToJsonString(), "truncated");
     }
 
