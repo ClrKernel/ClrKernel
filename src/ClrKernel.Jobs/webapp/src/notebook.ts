@@ -1,0 +1,151 @@
+import type { ApiCell, ApiLanguage } from './api';
+
+/**
+ * Notebook editing logic, kept free of React and Monaco so it can be tested
+ * directly — the same rule ipynb.ts follows. Everything here is a pure function
+ * over cells; the components only render the result.
+ */
+
+/** A cell plus the editor-only state that never reaches the file. */
+export interface EditorCell extends ApiCell {
+  id: string;
+}
+
+let nextId = 0;
+
+/** Ids are the kernel's cellId for a run, so they must be unique per session. */
+export function newCellId(): string {
+  nextId += 1;
+  return `n${nextId}`;
+}
+
+export function withIds(cells: ApiCell[]): EditorCell[] {
+  return cells.map((cell, index) => ({ ...cell, id: cell.id ?? `c${index}` }));
+}
+
+/**
+ * The Monaco language for a cell. Cell language ids are the kernel's
+ * (`shellscript`, `csharp-script`); Monaco has its own names, and for languages
+ * it has no grammar for, plain text beats a wrong highlighter.
+ */
+export function monacoLanguage(languageId: string | null | undefined, tag?: string | null): string {
+  const id = (languageId ?? '').toLowerCase();
+  if (id === 'sql') {
+    return 'sql';
+  }
+  if (id === 'powershell') {
+    return 'powershell';
+  }
+  if (id === 'shellscript') {
+    return 'shell';
+  }
+  if (id === 'mermaid' || id === 'dax' || id === 'http') {
+    // Monaco ships no grammar for these; the kernel owns their real editing story.
+    return 'plaintext';
+  }
+  if (!id) {
+    // No language id: prose, or a C# block (csharp/cs/c#).
+    return tag == null ? 'markdown' : 'csharp';
+  }
+  return 'plaintext';
+}
+
+/** The label shown in a cell's language picker. */
+export function languageLabel(cell: ApiCell, languages: ApiLanguage[]): string {
+  if (cell.kind === 'markdown') {
+    return 'Markdown';
+  }
+  const language = languages.find((l) => l.id === cell.languageId);
+  return language?.displayName ?? 'C#';
+}
+
+/** Picker options: Markdown, C#, then every language the kernel declared. */
+export function languageOptions(languages: ApiLanguage[]): { value: string; label: string }[] {
+  return [
+    { value: 'markdown', label: 'Markdown' },
+    { value: 'csharp', label: 'C#' },
+    ...languages.map((l) => ({ value: l.id, label: l.displayName })),
+  ];
+}
+
+/**
+ * Applies a language-picker choice. The tag is cleared so the server computes a
+ * fresh one for the new language — a tag that stays is a tag the file already
+ * had, which we never rewrite.
+ */
+export function setCellLanguage(cell: EditorCell, value: string, languages: ApiLanguage[]): EditorCell {
+  if (value === 'markdown') {
+    return { ...cell, kind: 'markdown', tag: null, languageId: null };
+  }
+  if (value === 'csharp') {
+    return { ...cell, kind: 'code', tag: 'csharp', languageId: null };
+  }
+  const language = languages.find((l) => l.id === value);
+  return { ...cell, kind: 'code', tag: null, languageId: language?.id ?? null };
+}
+
+/** The cells a run button executes, in order. Markdown never runs. */
+export function cellsToRun(
+  cells: EditorCell[],
+  index: number,
+  mode: 'one' | 'before' | 'after' | 'all',
+): EditorCell[] {
+  const slice =
+    mode === 'one'
+      ? cells.slice(index, index + 1)
+      : mode === 'before'
+        ? cells.slice(0, index)
+        : mode === 'after'
+          ? cells.slice(index)
+          : cells;
+  return slice.filter((cell) => cell.kind === 'code');
+}
+
+export function moveCell(cells: EditorCell[], from: number, to: number): EditorCell[] {
+  if (to < 0 || to >= cells.length || from === to) {
+    return cells;
+  }
+  const next = [...cells];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+export function insertCell(cells: EditorCell[], index: number, cell: EditorCell): EditorCell[] {
+  const next = [...cells];
+  next.splice(index, 0, cell);
+  return next;
+}
+
+export function removeCell(cells: EditorCell[], index: number): EditorCell[] {
+  return cells.filter((_, i) => i !== index);
+}
+
+export function emptyCell(kind: 'code' | 'markdown' = 'code'): EditorCell {
+  return {
+    id: newCellId(),
+    kind,
+    tag: kind === 'code' ? 'csharp' : null,
+    languageId: null,
+    source: '',
+    blankLinesAfter: 1,
+    closed: true,
+  };
+}
+
+/** What gets sent to the server on save — editor-only fields dropped. */
+export function toApiCells(cells: EditorCell[]): ApiCell[] {
+  return cells.map((cell) => ({
+    kind: cell.kind,
+    tag: cell.tag ?? null,
+    languageId: cell.languageId ?? null,
+    source: cell.source,
+    blankLinesAfter: cell.blankLinesAfter ?? 1,
+    closed: cell.closed ?? true,
+  }));
+}
+
+/** True when the notebook differs from what was loaded — drives the Save button. */
+export function isDirty(cells: EditorCell[], saved: ApiCell[]): boolean {
+  return JSON.stringify(toApiCells(cells)) !== JSON.stringify(toApiCells(withIds(saved)));
+}
