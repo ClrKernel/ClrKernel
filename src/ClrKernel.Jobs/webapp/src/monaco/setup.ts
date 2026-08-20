@@ -1,7 +1,5 @@
 import * as monaco from 'monaco-editor';
-// Aliased in vite.config.ts to Monaco's editor worker; `?worker` makes Vite emit
-// it as an asset of this build.
-import EditorWorker from 'monaco-editor-worker?worker';
+import EditorWorker from './editor.worker?worker';
 
 /**
  * Monaco, bundled locally. The worker is resolved through `new URL(…,
