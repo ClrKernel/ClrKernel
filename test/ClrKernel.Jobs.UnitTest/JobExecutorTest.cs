@@ -260,6 +260,33 @@ public class JobExecutorTest {
         CollectionAssert.AreEqual(new[] { "sql", "tsql" }, sql.LanguageTags.ToList());
     }
 
+    /// <summary>Answers initialize the way kernels before 0.10 did: bare language names.</summary>
+    private sealed class OldKernel {
+        [JsonRpcMethod("initialize")]
+        public object Initialize() => new { name = "ClrKernel.Server", version = "0.6.0.0", languages = new[] { "csharp" } };
+    }
+
+    [TestMethod]
+    public async Task An_older_kernel_degrades_instead_of_failing_the_run() {
+        // Regression: binding ["csharp"] into descriptors threw, and the exception
+        // killed the whole job — an extension-era kernel must simply mean C#-only.
+        var (clientStream, serverStream) = FullDuplexStream.CreatePair();
+        using var serverRpc = JsonRpc.Attach(serverStream, new OldKernel());
+        using var client = new KernelClient(clientStream, clientStream);
+
+        var reply = await client.InitializeAsync();
+
+        Assert.AreEqual("ClrKernel.Server", reply.Name);
+        Assert.AreEqual(0, reply.Languages.Count, "bare names are ignored, not fatal");
+
+        var notebookPath = Path.Combine(_dir, "old.nb.md");
+        File.WriteAllText(notebookPath, "```sql\nSELECT 1\n```\n\n```csharp\nvar x = 1;\n```\n");
+        var executor = new JobExecutor(_store, _options,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var plan = executor.BuildPlan(new JobDefinition { Name = "o", NotebookPath = notebookPath }, reply.Languages);
+        Assert.AreEqual(1, plan.Count(p => p.CodeIndex >= 0), "only the C# fence runs");
+    }
+
     [TestMethod]
     public void BuildPlan_executes_the_fences_the_kernel_declared() {
         var notebookPath = Path.Combine(_dir, "sqlnb.nb.md");

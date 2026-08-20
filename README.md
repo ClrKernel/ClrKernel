@@ -370,6 +370,32 @@ bare `./build.sh` restores, builds, and tests in one go.
 clrkernel --kernel-spec-details    # show which kernelspec the binary resolves
 ```
 
+### Extending the kernel: your own cell language
+
+A cell language is one class plus one assembly attribute. Implement
+`ICellLanguage` (from `ClrKernel.Core.Scripting`) — it declares its own
+`Selectors` (`#!kql`), `LanguageTags` (the ```` ```kql ```` fences it claims),
+`DisplayName`, and any `Directives` — then mark the assembly:
+
+```csharp
+[assembly: CellLanguageExport(typeof(MyKqlCellLanguage))]
+```
+
+A notebook that does `#r "nuget: My.ClrKernel.Language.Kql"` registers it in
+**that notebook's session only**: its selectors route immediately, its fences
+execute in `.nb.md` files, its directives get completion and diagnostics, and
+the VS Code cell-language picker refreshes. Other notebooks are untouched.
+
+Connection types work the same way — expose a static
+`ConnectionProviderDescriptor Descriptor` describing your settings (keys, auth
+modes, which need secrets) and mark the assembly
+`[assembly: ConnectionProviderExport(typeof(MyProvider))]`; the editor's
+connection wizard is generated from it, with no extension changes.
+
+One bound: syntax highlighting and file icons are VS Code *install-time*
+contributions, so a runtime-registered language gets full behaviour but plain
+text styling unless you ship a companion extension with a grammar.
+
 ## License
 
 Apache 2.0, preserving the upstream license. Original work © SciSharp

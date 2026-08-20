@@ -72,11 +72,50 @@ public sealed class InitializeReply {
     [JsonPropertyName("version")]
     public string Version { get; set; }
 
-    /// <summary>The cell languages this kernel executes — used to parse the
-    /// notebook so exactly those fences become code cells. Null/empty (an old
-    /// kernel) degrades to C#-only parsing.</summary>
+    /// <summary>
+    /// The raw <c>languages</c> value. Deliberately untyped: kernels before 0.10
+    /// answered with a list of bare names (<c>["csharp"]</c>), and binding that
+    /// straight to descriptors would throw and fail the whole run against an
+    /// older kernel. <see cref="Languages"/> reads whatever is usable.
+    /// </summary>
     [JsonPropertyName("languages")]
-    public List<LanguageDescriptor> Languages { get; set; }
+    public JsonElement? LanguagesElement { get; set; }
+
+    /// <summary>The cell languages this kernel executes — used to parse the
+    /// notebook so exactly those fences become code cells. Empty (an old kernel,
+    /// or none registered) degrades to C#-only parsing.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<LanguageDescriptor> Languages => _languages ??= ReadLanguages(LanguagesElement);
+
+    private IReadOnlyList<LanguageDescriptor> _languages;
+
+    private static readonly JsonSerializerOptions _descriptorOptions = new() {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
+
+    // Anything that is not a descriptor object is ignored rather than fatal.
+    private static IReadOnlyList<LanguageDescriptor> ReadLanguages(JsonElement? element) {
+        var languages = new List<LanguageDescriptor>();
+        if (element is not { ValueKind: JsonValueKind.Array } array) {
+            return languages;
+        }
+        foreach (var item in array.EnumerateArray()) {
+            if (item.ValueKind != JsonValueKind.Object) {
+                continue; // pre-0.10 kernels listed bare names
+            }
+            try {
+                var descriptor = item.Deserialize<LanguageDescriptor>(_descriptorOptions);
+                if (!string.IsNullOrEmpty(descriptor?.Id)) {
+                    languages.Add(descriptor);
+                }
+            } catch (JsonException) {
+                // A descriptor shape this build doesn't understand: skip it, keep the rest.
+            }
+        }
+        return languages;
+    }
 }
 
 /// <summary>A display/updateDisplay notification: a mime bundle for a cell.</summary>

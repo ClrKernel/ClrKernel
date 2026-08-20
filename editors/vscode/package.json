@@ -2,7 +2,7 @@
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
   "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
