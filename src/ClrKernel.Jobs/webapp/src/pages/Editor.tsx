@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
+import { ConnectionWizard } from '../components/ConnectionWizard';
 import { ErrorBanner, usePolling } from '../components/common';
 import { useCellEditor, useDiffEditor } from '../monaco/useMonaco';
 import {
   cellsToRun,
+  connectableLanguage,
   emptyCell,
   fileLanguage,
   insertCell,
@@ -48,6 +50,8 @@ export function Editor() {
   const [busy, setBusy] = useState(false);
   const [pollFast, setPollFast] = useState(false);
   const [restartDismissed, setRestartDismissed] = useState(false);
+  const [cleared, setCleared] = useState<Set<string>>(new Set());
+  const [connectFor, setConnectFor] = useState<number | null>(null);
   // The source each cell had when it was last run, so an edit can dim its output
   // instead of silently leaving a result that no longer matches the code.
   const ranSource = useRef<Record<string, string>>({});
@@ -159,6 +163,14 @@ export function Editor() {
       for (const cell of toRun) {
         ranSource.current[cell.id] = cell.source;
       }
+      // Running a cell replaces its output, so a previous "clear" no longer applies.
+      setCleared((current) => {
+        const next = new Set(current);
+        for (const cell of toRun) {
+          next.delete(cell.id);
+        }
+        return next;
+      });
       setPollFast(true);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -231,6 +243,25 @@ export function Editor() {
 
   function insertAt(index: number, kind: 'code' | 'markdown') {
     setCells((current) => insertCell(current ?? [], index, emptyCell(kind)));
+  }
+
+  /**
+   * A connect directive becomes its own cell above the one you opened the wizard
+   * from, in that cell's language — a connection is a statement about the session,
+   * not part of the query you were writing.
+   */
+  function insertConnection(index: number, directive: string) {
+    const source = cells?.[index];
+    setCells((current) =>
+      insertCell(current ?? [], index, {
+        ...emptyCell('code'),
+        tag: source?.tag ?? null,
+        languageId: source?.languageId ?? null,
+        source: directive,
+      }),
+    );
+    setConnectFor(null);
+    setNotice('Connection cell added. Run it to open the connection.');
   }
 
   return (
@@ -349,6 +380,9 @@ export function Editor() {
                   onMove={(to) => setCells((current) => (current ? moveCell(current, index, to) : current))}
                   onDelete={() => setCells((current) => (current ? removeCell(current, index) : current))}
                   onRun={(mode) => run(index, mode)}
+                  cleared={cleared.has(cell.id)}
+                  onClearOutput={() => setCleared((current) => new Set(current).add(cell.id))}
+                  onConnect={() => setConnectFor(index)}
                 />
                 <CellInserter
                   always={index === cells.length - 1}
@@ -376,6 +410,16 @@ export function Editor() {
             <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
           </>
         ))}
+
+      {connectFor != null && cells?.[connectFor] &&
+        connectableLanguage(cells[connectFor].languageId, languages) && (
+          <ConnectionWizard
+            path={path}
+            language={connectableLanguage(cells[connectFor].languageId, languages)!}
+            onInsert={(directive) => insertConnection(connectFor, directive)}
+            onClose={() => setConnectFor(null)}
+          />
+        )}
 
       <p className="muted">
         Every save commits to the dev branch. Cells you run here execute in a warm kernel that is

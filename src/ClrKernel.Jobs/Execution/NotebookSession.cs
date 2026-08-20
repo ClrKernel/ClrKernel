@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Runner;
 using ClrKernel.Core.Scripting;
 
@@ -178,6 +179,18 @@ public sealed class NotebookSession : IDisposable {
                 failed = !reply.Ok;
             }
         }
+    }
+
+    /// <summary>The connection providers a language offers in <em>this</em> session —
+    /// asked of the live kernel, so providers a package added with <c>#r</c> mid-session
+    /// are included.</summary>
+    public async Task<IReadOnlyList<ConnectionProviderDescriptor>> DescribeConnectionsAsync(
+        string languageId, CancellationToken cancellationToken) {
+        var kernel = await EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
+        Touch();
+        var reply = await kernel.Client.DescribeConnectionsAsync(languageId, cancellationToken)
+            .ConfigureAwait(false);
+        return reply?.Providers ?? Array.Empty<ConnectionProviderDescriptor>();
     }
 
     /// <summary>The state of every cell this session has run, for polling.</summary>

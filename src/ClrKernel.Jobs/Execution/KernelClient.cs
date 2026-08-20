@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 using StreamJsonRpc;
 
@@ -42,6 +43,14 @@ public sealed class KernelClient : IDisposable {
 
     public Task<ExecuteReply> ExecuteAsync(string cellId, string code, CancellationToken cancellationToken = default) =>
         _rpc.InvokeWithParameterObjectAsync<ExecuteReply>("execute", new { cellId, code }, cancellationToken);
+
+    /// <summary>The connection providers a language offers, and the settings each
+    /// one takes — the schema the editor's connection wizard renders. Same payload
+    /// the LSP surface serves, so the web UI and VS Code build the same directive.</summary>
+    public Task<DescribeConnectionsReply> DescribeConnectionsAsync(
+        string languageId, CancellationToken cancellationToken = default) =>
+        _rpc.InvokeWithParameterObjectAsync<DescribeConnectionsReply>(
+            "describeConnections", new { languageId }, cancellationToken);
 
     /// <summary>Asks the kernel to exit; the caller still owns killing the process if it lingers.</summary>
     public async Task ShutdownAsync() {
@@ -89,12 +98,6 @@ public sealed class InitializeReply {
 
     private IReadOnlyList<LanguageDescriptor> _languages;
 
-    private static readonly JsonSerializerOptions _descriptorOptions = new() {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
-
     // Anything that is not a descriptor object is ignored rather than fatal.
     private static IReadOnlyList<LanguageDescriptor> ReadLanguages(JsonElement? element) {
         var languages = new List<LanguageDescriptor>();
@@ -106,7 +109,7 @@ public sealed class InitializeReply {
                 continue; // pre-0.10 kernels listed bare names
             }
             try {
-                var descriptor = item.Deserialize<LanguageDescriptor>(_descriptorOptions);
+                var descriptor = item.Deserialize<LanguageDescriptor>(KernelJson.Options);
                 if (!string.IsNullOrEmpty(descriptor?.Id)) {
                     languages.Add(descriptor);
                 }
@@ -116,6 +119,54 @@ public sealed class InitializeReply {
         }
         return languages;
     }
+}
+
+/// <summary>
+/// The connection providers for one language. Kernels older than 0.10 do not
+/// answer <c>describeConnections</c> at all, and a provider shape this build does
+/// not understand is skipped rather than failing the whole list — the same
+/// tolerance <see cref="InitializeReply.Languages"/> applies.
+/// </summary>
+public sealed class DescribeConnectionsReply {
+    [JsonPropertyName("providers")]
+    public JsonElement? ProvidersElement { get; set; }
+
+    private IReadOnlyList<ConnectionProviderDescriptor> _providers;
+
+    [JsonIgnore]
+    public IReadOnlyList<ConnectionProviderDescriptor> Providers =>
+        _providers ??= Read(ProvidersElement);
+
+    private static IReadOnlyList<ConnectionProviderDescriptor> Read(JsonElement? element) {
+        var providers = new List<ConnectionProviderDescriptor>();
+        if (element is not { ValueKind: JsonValueKind.Array } array) {
+            return providers;
+        }
+        foreach (var item in array.EnumerateArray()) {
+            if (item.ValueKind != JsonValueKind.Object) {
+                continue;
+            }
+            try {
+                var descriptor = item.Deserialize<ConnectionProviderDescriptor>(KernelJson.Options);
+                if (!string.IsNullOrEmpty(descriptor?.Type)) {
+                    providers.Add(descriptor);
+                }
+            } catch (JsonException) {
+                // A provider shape this build doesn't understand: skip it, keep the rest.
+            }
+        }
+        return providers;
+    }
+}
+
+/// <summary>How the kernel's payloads are shaped on the wire — camelCase names and
+/// string enums, matching what the hosts serialize.</summary>
+internal static class KernelJson {
+    public static readonly JsonSerializerOptions Options = new() {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
 }
 
 /// <summary>A display/updateDisplay notification: a mime bundle for a cell.</summary>

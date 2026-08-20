@@ -86,6 +86,19 @@ export function languageLabel(cell: ApiCell, languages: ApiLanguage[]): string {
   return language?.displayName ?? 'C#';
 }
 
+/**
+ * The language behind this cell when it has connection providers — the kernel
+ * says which do, so a Connect button appears on `#!sql` and `#!dax` cells and
+ * nowhere else without the browser knowing what SQL is.
+ */
+export function connectableLanguage(
+  languageId: string | null | undefined,
+  languages: ApiLanguage[],
+): ApiLanguage | null {
+  const language = languages.find((l) => l.id === languageId);
+  return language?.hasConnections ? language : null;
+}
+
 /** Picker options: Markdown, C#, then every language the kernel declared. */
 export function languageOptions(languages: ApiLanguage[]): { value: string; label: string }[] {
   return [

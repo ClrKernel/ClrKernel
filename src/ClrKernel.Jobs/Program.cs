@@ -228,6 +228,11 @@ public static class Program {
 
         // Statuses and triggers go over the wire as their names, matching how they
         // are stored and keeping the SPA free of magic numbers.
+        // Enum names as declared. Deliberately NOT camelCase: RunStatus etc. are
+        // part of the public API shape ("Succeeded"), and the SPA and anything else
+        // reading /api/runs compares against those names. Where a payload's casing
+        // differs from the kernel's RPC — connection setting kinds — the client
+        // compares case-insensitively rather than this contract being bent.
         builder.Services.ConfigureHttpJsonOptions(json =>
             json.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

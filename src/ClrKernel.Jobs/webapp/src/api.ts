@@ -62,6 +62,23 @@ export interface ApiCell {
   closed?: boolean;
 }
 
+/** One parameter a directive accepts — 'flag' is a bare switch, anything else
+ *  takes a value. The connection wizard needs this to know how to write a flag. */
+export interface ApiDirectiveParameter {
+  name: string;
+  aliases?: string[];
+  kind?: 'value' | 'flag' | 'keyValue' | 'forbidden';
+  required?: boolean;
+  enumValues?: string[];
+  description?: string;
+}
+
+export interface ApiDirective {
+  selector: string;
+  description?: string;
+  parameters?: ApiDirectiveParameter[];
+}
+
 /** A cell language the kernel declared, for the picker and syntax highlighting. */
 export interface ApiLanguage {
   id: string;
@@ -69,6 +86,7 @@ export interface ApiLanguage {
   defaultSelector: string | null;
   selectors: string[];
   languageTags: string[];
+  directives?: ApiDirective[];
   hasEditorServices?: boolean;
   hasConnections?: boolean;
 }
@@ -96,6 +114,38 @@ export interface ApiSession {
   scheduledRunActive?: boolean;
   languages?: ApiLanguage[];
   cells?: Record<string, ApiCellRun>;
+}
+
+/** One setting a connection type takes. The kernel owns this schema; the browser
+ *  renders it without knowing what any particular connection type is. */
+export interface ApiConnectionSetting {
+  name: string;
+  displayName?: string | null;
+  kind: 'text' | 'secret' | 'enum' | 'bool' | 'int' | string;
+  required?: boolean;
+  /** Exactly one of the settings sharing a group is filled in. */
+  oneOfGroup?: string | null;
+  enumValues?: string[] | null;
+  /** Enum values that mean "a credential follows" — those need a secret ref. */
+  credentialValues?: string[] | null;
+  requires?: string[] | null;
+  default?: string | null;
+  /** The flag this maps to on the connect directive. */
+  directiveFlag?: string | null;
+  /** Set at run time only — never written into the notebook. */
+  runtimeOnly?: boolean;
+  description?: string | null;
+}
+
+export interface ApiConnectionProvider {
+  type: string;
+  displayName: string;
+  description?: string | null;
+  languageIds?: string[];
+  /** The directive a connection for this provider is written as, e.g. `#!sql-connect`. */
+  connectSelector?: string | null;
+  settings: ApiConnectionSetting[];
+  allowExtraSettings?: boolean;
 }
 
 export interface TreeNode {
@@ -275,6 +325,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ cells }),
     }),
+  /** The connection wizard's schema, from the notebook's own kernel. */
+  connectionProviders: (path: string, languageId: string) =>
+    request<{ providers: ApiConnectionProvider[] }>(
+      `/envs/dev/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
+    ),
   sessionStatus: (path: string) =>
     request<ApiSession>(`/envs/dev/notebooks/session/status?path=${encodeURIComponent(path)}`),
   /** Kills the kernel. Also the only interrupt there is — no RPC surface can

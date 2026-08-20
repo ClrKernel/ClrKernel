@@ -595,38 +595,138 @@ textarea {
   margin-bottom: 0.75rem;
 }
 
+/* The cell reads as one object: a code body with a footer, and output attached
+   underneath but visibly a different kind of thing. */
 .notebook-cell {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg);
   overflow: hidden;
+  margin: 0;
 }
 
 .notebook-cell:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* A run that failed is worth seeing without reading the badge. */
+.notebook-cell.cell-failed {
+  border-left: 3px solid var(--fail);
+}
+
+.notebook-cell.cell-succeeded {
+  border-left: 3px solid var(--ok);
+}
+
+.notebook-cell.cell-running {
+  border-left: 3px solid var(--run);
 }
 
 .notebook-cell-markdown {
   background: var(--panel);
 }
 
-/* Chrome stays quiet until the cell is in play: the code is the content, the
-   toolbar is not. */
-.cell-toolbar {
+.cell-main {
+  display: flex;
+  align-items: stretch;
+}
+
+/* The gutter: run at the top, execution count at the bottom. */
+.cell-gutter-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  flex: 0 0 2.6rem;
+  padding: 0.35rem 0 0.3rem;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.cell-run-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0.2rem 0.35rem;
+}
+
+.cell-run-button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.cell-run-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cell-run-spacer {
+  height: 1.3rem;
+}
+
+.cell-gutter-index {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  white-space: pre;
+}
+
+.cell-content {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Structural actions float over the top-right of the editor rather than taking
+   a row of their own — a resting cell should be code and nothing else. */
+.cell-float-actions {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.5rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.12s ease-in-out;
+}
+
+.cell-float-actions .button-small {
+  margin-left: 0;
+  background: var(--bg);
+}
+
+.notebook-cell:hover .cell-float-actions,
+.notebook-cell:focus-within .cell-float-actions {
+  opacity: 1;
+}
+
+/* Monaco sizes itself to the content; the container just holds the space. */
+.cell-editor {
+  width: 100%;
+}
+
+/* What the cell did on the left, how it is configured on the right. */
+.cell-footer {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.15rem 0.4rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.2rem 0.5rem;
+  border-top: 1px solid var(--border);
   background: var(--panel);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  min-height: 1.9rem;
 }
 
-.cell-number {
-  color: var(--muted);
-  font-size: 0.75rem;
-  min-width: 1.25rem;
-  text-align: right;
+.cell-footer-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .cell-language {
@@ -642,23 +742,6 @@ textarea {
 .cell-language:focus {
   border-color: var(--border);
   color: var(--text);
-}
-
-.cell-actions {
-  display: flex;
-  gap: 0.25rem;
-  opacity: 0;
-  transition: opacity 0.12s ease-in-out;
-}
-
-.notebook-cell:hover .cell-actions,
-.notebook-cell:focus-within .cell-actions {
-  opacity: 1;
-}
-
-/* Monaco sizes itself to the content; the container just holds the space. */
-.cell-editor {
-  width: 100%;
 }
 
 /* Rendered prose, the way a notebook reads. Double-click returns to the editor. */
@@ -700,28 +783,18 @@ textarea {
   margin-bottom: 0.5rem;
 }
 
-/* All three stay visible. Hiding two of them with opacity left their layout box
-   behind — a hole between the arrow and the cell number — and the toolbar has
-   room to spare anyway. Running a cell is the point of the page, not a
-   secondary action to go hunting for. */
-.cell-run {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.cell-run .button-small {
-  margin-left: 0;
-}
-
 .chip-running {
   color: var(--accent);
 }
 
+/* Output is attached to the cell but is not the cell: inset, on the page
+   background, and separated by a rule. */
 .cell-outputs {
+  position: relative;
   border-top: 1px solid var(--border);
-  padding: 0.3rem 0.6rem;
-  max-height: 30rem;
+  background: var(--panel);
+  padding: 0.35rem 0.6rem 0.35rem 3.1rem;
+  max-height: 32rem;
   overflow: auto;
 }
 
@@ -733,6 +806,69 @@ textarea {
 
 .cell-outputs .output-text {
   margin: 0.2rem 0;
+}
+
+/* Script-driven output runs in its own document; the frame is sized from the
+   height it reports, so it must not add chrome of its own. */
+.output-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.output-menu {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.4rem;
+  z-index: 3;
+}
+
+.output-menu-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.05rem 0.35rem;
+}
+
+.output-menu-button:hover {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.output-menu-items {
+  position: absolute;
+  right: 0;
+  top: 1.6rem;
+  min-width: 9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  padding: 0.2rem;
+}
+
+.output-menu-items button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+}
+
+.output-menu-items button:hover {
+  background: var(--panel);
 }
 
 .source-editor {
@@ -750,4 +886,61 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* --- modal (the connection wizard) --------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4rem 1rem 2rem;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  padding: 1.1rem 1.25rem 1.25rem;
+  width: min(42rem, 100%);
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.wizard-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.85rem 0;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.form-field.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.wizard-required {
+  color: var(--warn);
+}
+
+.wizard-preview {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  background: var(--panel);
+  white-space: pre-wrap;
+  word-break: break-all;
 }

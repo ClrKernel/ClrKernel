@@ -229,6 +229,28 @@ public static class JobsApi {
                     : Results.Ok(SessionView.From(session, scheduled));
             });
 
+        // The connection wizard's schema. Answered by the notebook's own kernel so
+        // a package `#r`-ed into this session contributes its providers too — the
+        // browser never learns what a connection type is, it renders what it is told.
+        api.MapGet("/envs/{env}/notebooks/connections", async (
+            HttpContext context, JobCatalog catalog, JobsOptions options,
+            NotebookSessionManager sessions, string env, string path, string languageId) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                if (string.IsNullOrWhiteSpace(languageId)) {
+                    return Results.BadRequest(new { error = "languageId is required." });
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                try {
+                    var session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
+                    var reply = await session.DescribeConnectionsAsync(languageId, context.RequestAborted);
+                    return Results.Ok(new { providers = reply });
+                } catch (Exception e) {
+                    return Results.BadRequest(new { error = e.Message });
+                }
+            });
+
         api.MapGet("/envs/dev/notebooks/promotion", async (
             HttpContext context, JobCatalog catalog, IRunStore store, string path) => {
                 var git = GitOf(context);

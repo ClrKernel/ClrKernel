@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import Markdown from 'react-markdown';
+import { SandboxedHtml } from './SandboxedHtml';
 import {
   isInjectedParameters,
   joinSource,
@@ -24,11 +25,18 @@ function AnsiText({ text }: { text: string }) {
 }
 
 /**
- * Rich output from the kernel's formatters. The HTML comes from our own kernel,
- * but notebooks can emit arbitrary HTML deliberately, so it is sanitised before
- * it goes anywhere near the DOM.
+ * Rich output from the kernel's formatters. Static HTML is sanitised and shown
+ * inline, where it inherits the page's styles.
+ *
+ * Output that carries its own script cannot go that way: sanitising strips the
+ * script, and for the interactive grid the script is what builds the rows from
+ * the embedded JSON payload — leaving a toolbar above nothing. Those go into a
+ * sandboxed frame instead, which is how VS Code has always run them.
  */
 function HtmlOutput({ html }: { html: string }) {
+  if (/<script[\s>]/i.test(html)) {
+    return <SandboxedHtml html={html} />;
+  }
   const clean = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
   return <div className="output-html" dangerouslySetInnerHTML={{ __html: clean }} />;
 }
