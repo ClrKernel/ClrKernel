@@ -217,6 +217,9 @@ public static class JobsApi {
                 }
                 // A scheduled run of this notebook may be in flight in its own kernel;
                 // the editor says so rather than leaving the file changing unexplained.
+                // ponytail: Load() re-reads the jobs yaml under the git lock, and the
+                // editor polls this ~2.5×/s while a cell runs. Fine for one person's
+                // handful of files; cache it per notebook if that ever shows up.
                 var scheduled = false;
                 foreach (var job in catalog.Load().In(env).Where(j =>
                     string.Equals(j.NotebookPath, resolved, StringComparison.OrdinalIgnoreCase))) {

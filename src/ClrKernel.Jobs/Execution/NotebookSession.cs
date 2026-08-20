@@ -197,8 +197,6 @@ public sealed class NotebookSession : IDisposable {
 
     public void Touch() => LastActivity = DateTime.UtcNow;
 
-    public void AcknowledgeRestart() => KernelRestarted = false;
-
     private void Apply(string id, ExecuteReply reply) {
         if (reply.Data is { Count: > 0 }) {
             AddOutput(id, IpynbWriter.ExecuteResultOutput(++_executionCount, ToBundle(reply.Data)));

@@ -33,7 +33,9 @@ function HtmlOutput({ html }: { html: string }) {
   return <div className="output-html" dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
-function Output({ output }: { output: NotebookOutput }) {
+/** One kernel output. Shared with the editor's live results, so a cell run in
+ *  the browser renders exactly the way the executed artifact will. */
+export function Output({ output }: { output: NotebookOutput }) {
   const rendered = renderOutput(output);
   if (!rendered) {
     return null;

@@ -2,27 +2,39 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useCellEditor } from '../monaco/useMonaco';
-import { languageOptions, monacoLanguage, type EditorCell } from '../notebook';
+import { languageOptions, monacoLanguage, type CellRunState, type EditorCell } from '../notebook';
+import { Output } from './NotebookView';
+
+export type RunMode = 'one' | 'before' | 'after';
 
 interface Props {
   cell: EditorCell;
   index: number;
   count: number;
   languages: ApiLanguage[];
+  /** What this cell did in the session, if it has run. */
+  run: CellRunState | null;
+  /** False when this deployment cannot execute — no git workflow, or a server
+   *  bound beyond localhost with no API key. The buttons are hidden, not broken. */
+  canRun: boolean;
+  /** A run is in flight somewhere in this notebook; the kernel takes one at a time. */
+  busy: boolean;
   onChange: (source: string) => void;
   onLanguage: (value: string) => void;
   onMove: (to: number) => void;
   onDelete: () => void;
+  onRun: (mode: RunMode) => void;
 }
 
 /**
  * One notebook cell: a Monaco editor sized to its content, a language picker fed
- * by whatever the kernel declared, and the structural controls. A markdown cell
- * shows its rendered prose until you click into it — the way a notebook reads —
- * and returns to prose when focus leaves. Run buttons and output land here next.
+ * by whatever the kernel declared, the structural controls, and — for code — the
+ * run buttons and whatever the kernel last said about it. A markdown cell shows
+ * its rendered prose until you click into it, the way a notebook reads.
  */
 export function CellEditor({
-  cell, index, count, languages, onChange, onLanguage, onMove, onDelete,
+  cell, index, count, languages, run, canRun, busy,
+  onChange, onLanguage, onMove, onDelete, onRun,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
   const [editing, setEditing] = useState(false);
@@ -31,7 +43,39 @@ export function CellEditor({
   return (
     <div className={`notebook-cell notebook-cell-${cell.kind}`}>
       <div className="cell-toolbar">
-        <span className="cell-number">{index + 1}</span>
+        {!isMarkdown && canRun && (
+          <div className="cell-run">
+            <button
+              className="button button-small"
+              onClick={() => onRun('one')}
+              disabled={busy}
+              title="Run this cell"
+            >
+              ▶
+            </button>
+            <button
+              className="button button-small"
+              onClick={() => onRun('before')}
+              // Nothing above cell one: the server rejects an empty run, so the
+              // button says so first.
+              disabled={busy || index === 0}
+              title="Run every cell above this one"
+            >
+              ▶ above
+            </button>
+            <button
+              className="button button-small"
+              onClick={() => onRun('after')}
+              disabled={busy}
+              title="Run this cell and everything below it"
+            >
+              ▶ below
+            </button>
+          </div>
+        )}
+        <span className="cell-number">
+          {run?.executionCount != null ? `[${run.executionCount}]` : index + 1}
+        </span>
         <select
           className="cell-language"
           value={isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp')}
@@ -49,6 +93,7 @@ export function CellEditor({
         {cell.tag && cell.tag !== cell.languageId && cell.tag !== 'csharp' && (
           <span className="chip chip-muted">{cell.tag}</span>
         )}
+        {run && <span className={`badge badge-${run.status}`}>{run.status}</span>}
         <span className="spacer" />
         <div className="cell-actions">
           <button className="button button-small" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
@@ -83,6 +128,17 @@ export function CellEditor({
           onChange={onChange}
           onBlur={() => setEditing(false)}
         />
+      )}
+
+      {run && run.outputs.length > 0 && (
+        <div
+          className={run.stale ? 'cell-outputs cell-outputs-stale' : 'cell-outputs'}
+          title={run.stale ? 'This cell changed since it ran — the output below is stale.' : undefined}
+        >
+          {run.outputs.map((output, i) => (
+            <Output key={i} output={output} />
+          ))}
+        </div>
       )}
     </div>
   );

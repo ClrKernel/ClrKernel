@@ -1,6 +1,8 @@
 // The typed client for the jobs API. The key, when the server requires one, is
 // kept in localStorage — the SPA is served by the same tool, so same-origin.
 
+import type { NotebookOutput } from './ipynb';
+
 export type RunStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut';
 export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipped';
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
@@ -69,6 +71,31 @@ export interface ApiLanguage {
   languageTags: string[];
   hasEditorServices?: boolean;
   hasConnections?: boolean;
+}
+
+/** What one cell did in an interactive session. Outputs are nbformat shapes —
+ *  the same ones the run view renders. */
+export interface ApiCellRun {
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | string;
+  executionCount: number | null;
+  truncated: boolean;
+  outputs: NotebookOutput[];
+}
+
+/** The warm kernel behind the editor. `started: false` means no kernel is
+ *  running for this notebook yet — the first run starts one. */
+export interface ApiSession {
+  sessionId?: string;
+  started: boolean;
+  running: boolean;
+  kernel?: string | null;
+  version?: string | null;
+  /** The kernel died on its own and was replaced: variables are gone. */
+  kernelRestarted?: boolean;
+  /** A scheduled run of this notebook is in flight, in its own kernel. */
+  scheduledRunActive?: boolean;
+  languages?: ApiLanguage[];
+  cells?: Record<string, ApiCellRun>;
 }
 
 export interface TreeNode {
@@ -242,6 +269,23 @@ export const api = {
       `/envs/dev/notebooks/cells?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: JSON.stringify({ cells }) },
     ),
+  // Interactive execution against the notebook's warm kernel. None of this
+  // writes to the run store: an interactive run never appears in run history
+  // and can never become the green evidence promotion requires.
+  runCells: (path: string, cells: ApiCell[]) =>
+    request<{ running: string[] }>(`/envs/dev/notebooks/run?path=${encodeURIComponent(path)}`, {
+      method: 'POST',
+      body: JSON.stringify({ cells }),
+    }),
+  sessionStatus: (path: string) =>
+    request<ApiSession>(`/envs/dev/notebooks/session/status?path=${encodeURIComponent(path)}`),
+  /** Kills the kernel. Also the only interrupt there is — no RPC surface can
+   *  cancel a cell that is already running. */
+  restartSession: (path: string) =>
+    request<{ restarted: boolean }>(`/envs/dev/notebooks/session?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+    }),
+
   promotionStatus: (path: string) =>
     request<{
       eligible: boolean;

@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import type { ApiCell, ApiLanguage } from './api';
+import type { ApiCell, ApiLanguage, ApiSession } from './api';
 import {
   cellsToRun,
   isDirty,
   languageOptions,
+  mergeStatus,
   monacoLanguage,
   moveCell,
   removeCell,
   setCellLanguage,
   toApiCells,
+  toRunCells,
   withIds,
 } from './notebook';
 
@@ -71,6 +73,81 @@ describe('cellsToRun', () => {
 
   it('never runs markdown', () => {
     expect(cellsToRun(cells, 1, 'one')).toEqual([]);
+  });
+
+  it('has nothing above the first cell', () => {
+    // The run endpoint rejects an empty list, so the button that would produce
+    // one is disabled — this is the fact it is disabled on.
+    expect(cellsToRun(cells, 0, 'before')).toEqual([]);
+  });
+});
+
+describe('toRunCells', () => {
+  it('carries the cell id, which a save deliberately drops', () => {
+    // The session keys each cell's outputs by the id it received. Without one,
+    // the server falls back to position in the request, so running cell three
+    // alone would file its output against cell one.
+    const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const posted = toRunCells([cells[1]]);
+    expect(posted[0].id).toBe(cells[1].id);
+    expect(posted[0].source).toBe('b');
+    expect(toApiCells(cells)[0].id).toBeUndefined();
+  });
+});
+
+describe('withIds', () => {
+  it('mints fresh ids rather than numbering by position', () => {
+    // Delete the first cell, save, reload: a positional id would hand the new
+    // first cell the old first cell's outputs. Losing them is honest; showing
+    // someone else's is not.
+    const first = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const reloaded = withIds([cell({ source: 'b' })]);
+    expect(reloaded[0].id).not.toBe(first[0].id);
+    expect(new Set(first.map((c) => c.id)).size).toBe(2);
+  });
+});
+
+describe('mergeStatus', () => {
+  const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+  const session = (over: Partial<ApiSession> = {}): ApiSession => ({
+    started: true, running: false, ...over,
+  });
+
+  it('joins a cell to what the session says it did', () => {
+    const status = session({
+      cells: {
+        [cells[0].id]: {
+          status: 'succeeded', executionCount: 3, truncated: false,
+          outputs: [{ output_type: 'stream', text: 'hi' }],
+        },
+      },
+    });
+    const merged = mergeStatus(cells, status, {});
+    expect(merged[cells[0].id]).toMatchObject({ status: 'succeeded', executionCount: 3, stale: false });
+    expect(merged[cells[1].id]).toBeUndefined();
+  });
+
+  it('marks output stale once the cell it came from is edited', () => {
+    const status = session({
+      cells: { [cells[0].id]: { status: 'succeeded', executionCount: 1, truncated: false, outputs: [] } },
+    });
+    const ran = { [cells[0].id]: 'a' };
+    expect(mergeStatus(cells, status, ran)[cells[0].id].stale).toBe(false);
+
+    const edited = [{ ...cells[0], source: 'a + 1' }, cells[1]];
+    expect(mergeStatus(edited, status, ran)[cells[0].id].stale).toBe(true);
+  });
+
+  it('ignores state the session still holds for cells that are gone', () => {
+    const status = session({
+      cells: { 'deleted-cell': { status: 'succeeded', executionCount: 1, truncated: false, outputs: [] } },
+    });
+    expect(mergeStatus(cells, status, {})).toEqual({});
+  });
+
+  it('is empty before anything has run', () => {
+    expect(mergeStatus(cells, null, {})).toEqual({});
+    expect(mergeStatus(cells, session({ started: false }), {})).toEqual({});
   });
 });
 

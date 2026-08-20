@@ -680,6 +680,47 @@ textarea {
   opacity: 1;
 }
 
+/* --- running cells ------------------------------------------------------- */
+
+.notebook-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Unlike the structural controls, the run buttons stay visible: reaching for
+   one should not require finding the cell first. */
+.cell-run {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.cell-run .button-small {
+  margin-left: 0;
+}
+
+.chip-running {
+  color: var(--accent);
+}
+
+.cell-outputs {
+  border-top: 1px solid var(--border);
+  padding: 0.3rem 0.6rem;
+  max-height: 30rem;
+  overflow: auto;
+}
+
+/* The cell changed after this ran, so the result no longer matches the code
+   above it. Dimmed rather than dropped — losing output on a keystroke is worse. */
+.cell-outputs-stale {
+  opacity: 0.45;
+}
+
+.cell-outputs .output-text {
+  margin: 0.2rem 0;
+}
+
 .source-editor {
   width: 100%;
   min-height: 28rem;

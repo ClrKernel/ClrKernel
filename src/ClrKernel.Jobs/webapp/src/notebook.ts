@@ -1,4 +1,5 @@
-import type { ApiCell, ApiLanguage } from './api';
+import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession } from './api';
+import type { NotebookOutput } from './ipynb';
 
 /**
  * Notebook editing logic, kept free of React and Monaco so it can be tested
@@ -19,8 +20,15 @@ export function newCellId(): string {
   return `n${nextId}`;
 }
 
+/**
+ * Ids are minted fresh, never positional. The session keys a cell's outputs by
+ * the id it was run under, so a positional id would file a reloaded notebook's
+ * results under whatever cell now sits at that index — delete the first cell,
+ * save, and every output shifts up one. Losing run state on reload is honest;
+ * showing it against the wrong cell is not.
+ */
 export function withIds(cells: ApiCell[]): EditorCell[] {
-  return cells.map((cell, index) => ({ ...cell, id: cell.id ?? `c${index}` }));
+  return cells.map((cell) => ({ ...cell, id: newCellId() }));
 }
 
 /**
@@ -145,7 +153,55 @@ export function toApiCells(cells: EditorCell[]): ApiCell[] {
   }));
 }
 
+/**
+ * What a run posts. Same cells as a save, but carrying their ids: the session
+ * keys each cell's outputs by the id it received, so an id-less run would file
+ * everything under its position in the request — "run cell five" alone would
+ * come back as cell one.
+ */
+export function toRunCells(cells: EditorCell[]): ApiCell[] {
+  return toApiCells(cells).map((cell, i) => ({ ...cell, id: cells[i].id }));
+}
+
 /** True when the notebook differs from what was loaded — drives the Save button. */
 export function isDirty(cells: EditorCell[], saved: ApiCell[]): boolean {
   return JSON.stringify(toApiCells(cells)) !== JSON.stringify(toApiCells(withIds(saved)));
+}
+
+/** What one cell did in the session, as the editor renders it. */
+export interface CellRunState {
+  status: string;
+  executionCount: number | null;
+  outputs: NotebookOutput[];
+  truncated: boolean;
+  /** The cell was edited after this ran, so the output below it is no longer
+   *  what the code says. Dimmed rather than dropped — the same call VS Code makes. */
+  stale: boolean;
+}
+
+/**
+ * Joins the cells on screen to what the session says they did. Cells the session
+ * has never run simply have no entry; ids the session still holds for cells that
+ * are gone are ignored.
+ */
+export function mergeStatus(
+  cells: EditorCell[],
+  session: ApiSession | null,
+  ranSource: Record<string, string>,
+): Record<string, CellRunState> {
+  const merged: Record<string, CellRunState> = {};
+  for (const cell of cells) {
+    const run: ApiCellRun | undefined = session?.cells?.[cell.id];
+    if (!run) {
+      continue;
+    }
+    merged[cell.id] = {
+      status: run.status,
+      executionCount: run.executionCount ?? null,
+      outputs: run.outputs ?? [],
+      truncated: run.truncated ?? false,
+      stale: cell.id in ranSource && ranSource[cell.id] !== cell.source,
+    };
+  }
+  return merged;
 }
