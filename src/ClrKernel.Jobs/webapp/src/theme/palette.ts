@@ -14,23 +14,25 @@
 /** Neutrals and status colours — identical under every accent. */
 export const NEUTRAL = {
   /**
-   * The content region. Deliberately a real grey, not a near-white: with only a
-   * few percent between page, card and border the whole app reads as one flat
-   * surface and nothing separates from anything.
+   * The canvas is white. Separation comes from a crisp border and a subtle
+   * lift, not from stacking greys — a grey page with white cards reads heavy,
+   * and a page and card a few percent apart reads flat. This is the middle:
+   * white content, tinted chrome, and panels that sit above the page.
    */
-  background: '#e9ecf1',
+  background: '#ffffff',
   foreground: '#1c1f24',
   /** Cards, editors, panels — pure white on top of the app background. */
   card: '#ffffff',
   popover: '#ffffff',
-  /** Subtle fills *on a card*: hover states, table headers, markdown cells.
-   *  Lighter than the page, so a filled cell still reads as raised. */
-  muted: '#f1f3f6',
-  mutedForeground: '#5b6472',
-  border: '#cbd2da',
+  /** Chrome and subtle fills: the bars, table headers, hover, cell footers.
+   *  Tinted just enough to read as chrome against the white canvas. */
+  muted: '#f4f6f8',
+  mutedForeground: '#4f5865',
+  /** Crisp rather than faint — this is what actually defines a region. */
+  border: '#d5dae1',
   destructive: '#b91c1c',
-  /** The rail is the darkest surface, so the chrome frames the content. */
-  surfaceRail: '#dbe0e7',
+  /** The rail reads as chrome, one shade past the bars beside it. */
+  surfaceRail: '#eef1f4',
 } as const;
 
 export const STATUS = {

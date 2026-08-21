@@ -123,6 +123,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--card);
+    box-shadow: var(--shadow-card);
   }
 
   .table {
@@ -328,8 +329,14 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--card);
+    box-shadow: var(--shadow-card);
     overflow: hidden;
     margin: 0;
+    transition: box-shadow 0.12s ease, border-color 0.12s ease;
+  }
+
+  .notebook-cell:hover {
+    box-shadow: var(--shadow-card-hover);
   }
 
   .notebook-cell:focus-within {
@@ -895,4 +902,23 @@
     display: none;
   }
 
+}
+
+/* --- notebook tab indicator ----------------------------------------------
+ * Unlayered on purpose. The generated Tabs component paints its `::after`
+ * indicator with group-data-scoped utilities that outrank anything we can pass
+ * through `className`, and `cn()`'s tailwind-merge drops the duplicate rather
+ * than letting the later one win. Unlayered CSS beats layered CSS, which is the
+ * one reliable way to override it — and three lines here is a smaller diff than
+ * forking the component.
+ */
+.nb-toolbar [data-slot='tabs-trigger']::after {
+  background: var(--primary);
+  bottom: 0;
+  height: 2px;
+}
+
+.nb-toolbar [data-slot='tabs-trigger'][data-state='active'] {
+  color: var(--primary);
+  background: transparent;
 }

@@ -11,24 +11,24 @@
 
 :root {
   /* --- neutral base, fixed under every accent --------------------------- */
-  --background: #e9ecf1;
+  --background: #ffffff;
   --foreground: #1c1f24;
   --card: #ffffff;
   --card-foreground: #1c1f24;
   --popover: #ffffff;
   --popover-foreground: #1c1f24;
-  --secondary: #f1f3f6;
+  --secondary: #f4f6f8;
   --secondary-foreground: #1c1f24;
-  --muted: #f1f3f6;
-  --muted-foreground: #5b6472;
-  --accent: #eaedf1;
+  --muted: #f4f6f8;
+  --muted-foreground: #4f5865;
+  --accent: #eef1f4;
   --accent-foreground: #1c1f24;
   --destructive: #b91c1c;
-  --border: #cbd2da;
-  --input: #cbd2da;
+  --border: #d5dae1;
+  --input: #d5dae1;
 
   /* --- app-specific ----------------------------------------------------- */
-  --surface-rail: #dbe0e7;
+  --surface-rail: #eef1f4;
   --status-idle: #6b7280;
   --status-running: #1d4ed8;
   --status-error: #b91c1c;
@@ -44,8 +44,14 @@
   --ansi-magenta: #c026d3;
   --ansi-cyan: #0891b2;
 
-  /* Floating layers. Shadows are reserved for things that genuinely float —
-     dropdowns, popovers, dialogs — never for cards. */
+  /* Elevation. The spec originally reserved shadow for floating layers only,
+     but on a white canvas a hairline alone does not lift a panel off the page —
+     a card needs the shadow to read as a card. Kept very soft: this is a
+     developer tool, not a marketing page. */
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.08), 0 4px 10px rgb(0 0 0 / 0.05);
+  --shadow-card-hover: 0 1px 3px rgb(0 0 0 / 0.10), 0 6px 16px rgb(0 0 0 / 0.08);
+
+  /* Genuinely floating layers: dropdowns, popovers, dialogs. */
   --overlay: rgb(0 0 0 / 0.45);
   --shadow-popover: 0 4px 14px rgb(0 0 0 / 0.16);
   --shadow-dialog: 0 12px 40px rgb(0 0 0 / 0.28);
@@ -148,6 +154,9 @@
   --color-status-warning: var(--status-warning);
   --color-status-success: var(--status-success);
   --color-code-bg: var(--code-bg);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);

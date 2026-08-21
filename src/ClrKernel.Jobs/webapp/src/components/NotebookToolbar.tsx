@@ -116,9 +116,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   return (
     // Sticky, so Run All stays reachable while scrolling a long notebook in
     // Normal Mode. The tabs' underline sits on the row's own bottom border.
-    <div className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-border bg-muted px-6">
-      <Tabs value={props.tab} onValueChange={props.onTab}>
-        <TabsList className="h-8 bg-background">
+    <div className="nb-toolbar sticky top-0 z-20 flex h-[48px] items-stretch gap-2 border-b border-border bg-muted px-6">
+      <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
+        <TabsList variant="line" className="h-full! gap-1 bg-transparent p-0">
           {props.isNotebook && <TabsTrigger value="notebook" className={TAB}>Notebook</TabsTrigger>}
           <TabsTrigger value="source" className={TAB}>
             Source

@@ -83,18 +83,26 @@ describe('tokens.css mirrors palette.ts', () => {
 
   /**
    * The first palette put page, card, border and rail inside a 10-unit band and
-   * the whole app read as one flat grey. Separation is the design, so it is
-   * asserted rather than left to taste.
+   * the whole app read as one flat grey; the second over-corrected into a grey
+   * page with white cards, which read heavy. The model now is a white canvas
+   * with tinted chrome, so what has to hold is: the chrome is tinted enough to
+   * be chrome, the rail is a step past it, and the border reads on white.
    */
-  it('separates its surfaces by enough to see', () => {
+  it('separates chrome from canvas by enough to see', () => {
     const value = (hex: string) => parseInt(hex.slice(1, 3), 16);
-    const ramp = [NEUTRAL.surfaceRail, NEUTRAL.background, NEUTRAL.muted, NEUTRAL.card];
-    for (let i = 1; i < ramp.length; i++) {
-      expect(value(ramp[i]) - value(ramp[i - 1]), `${ramp[i - 1]} -> ${ramp[i]}`)
-        .toBeGreaterThanOrEqual(8);
-    }
+    expect(value(NEUTRAL.background)).toBe(0xff);
+    expect(value(NEUTRAL.card)).toBe(0xff);
+    // Chrome is tinted against the white canvas...
+    expect(value(NEUTRAL.card) - value(NEUTRAL.muted)).toBeGreaterThanOrEqual(6);
+    // ...and the rail is a further step past the chrome bars.
+    expect(value(NEUTRAL.muted) - value(NEUTRAL.surfaceRail)).toBeGreaterThanOrEqual(5);
     // A border has to be visible against the lightest surface it sits on.
     expect(value(NEUTRAL.card) - value(NEUTRAL.border)).toBeGreaterThanOrEqual(30);
+  });
+
+  /** A white card on a white page is only a card because it is lifted. */
+  it('lifts panels off the canvas', () => {
+    expect(token(':root {', 'shadow-card')).toMatch(/rgb\(0 0 0 \/ 0\.0[3-9]\)/);
   });
 
   it.each(ACCENTS)('$label overrides primary, its foreground and the ring', (accent) => {

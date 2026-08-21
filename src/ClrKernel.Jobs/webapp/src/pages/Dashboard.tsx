@@ -68,7 +68,7 @@ export function RunTable({ runs, showJob = true }: { runs: Run[]; showJob?: bool
  */
 function StatCard({ value, label, tone }: { value: string; label: string; tone?: string }) {
   return (
-    <div className="rounded-md border border-border bg-card px-3 py-2.5">
+    <div className="rounded-md border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-card)]">
       <div className={`font-mono text-xl leading-tight ${tone ?? ''}`}>{value}</div>
       <div className="mt-0.5 text-base text-muted-foreground">{label}</div>
     </div>
