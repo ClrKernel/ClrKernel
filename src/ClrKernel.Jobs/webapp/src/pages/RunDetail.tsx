@@ -12,7 +12,7 @@ import { duration, timeAgo, type Notebook } from '../ipynb';
 /** The step-by-step view: one row per code cell, updated live while the run is in flight. */
 function CellProgress({ cells }: { cells: RunCell[] }) {
   if (cells.length === 0) {
-    return <p className="text-sm text-muted-foreground">No cells recorded for this run.</p>;
+    return <p className="text-base text-muted-foreground">No cells recorded for this run.</p>;
   }
   const done = cells.filter((c) => c.status === 'Succeeded').length;
   return (
@@ -28,7 +28,7 @@ function CellProgress({ cells }: { cells: RunCell[] }) {
           <tbody>
             {cells.map((cell) => (
               <tr key={cell.cellIndex} className={cell.status === 'Running' ? 'row-active' : undefined}>
-                <td className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                <td className="whitespace-nowrap font-mono text-base text-muted-foreground">
                   {cell.cellIndex + 1}/{cells.length}
                 </td>
                 <td>
@@ -37,7 +37,7 @@ function CellProgress({ cells }: { cells: RunCell[] }) {
                 <td>
                   <code className="preview">{cell.sourcePreview}</code>
                   {cell.errorSummary && (
-                    <div className="mt-1 font-mono text-xs text-status-error">
+                    <div className="mt-1 font-mono text-base text-status-error">
                       {cell.errorSummary}
                     </div>
                   )}
@@ -102,7 +102,7 @@ export function RunDetail() {
     return <ErrorBanner error={error} />;
   }
   if (!run) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="text-base text-muted-foreground">Loading…</p>;
   }
 
   return (
@@ -117,14 +117,14 @@ export function RunDetail() {
           </Link>
           <StatusBadge status={run.status} />
           {run.environment !== 'default' && (
-            <Badge variant="secondary" className="font-mono text-[11px]">
+            <Badge variant="secondary" className="font-mono text-xs">
               {run.environment}
             </Badge>
           )}
         </h1>
         {live && (
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs text-muted-foreground">live · refreshing</span>
+            <span className="text-base text-muted-foreground">live · refreshing</span>
             <Button variant="outline" size="sm" onClick={cancel} disabled={cancelling}>
               {cancelling ? 'Cancelling…' : 'Cancel run'}
             </Button>
@@ -133,7 +133,7 @@ export function RunDetail() {
       </div>
       <ErrorBanner error={cancelError} />
 
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-muted-foreground">
         <span className="font-mono">{run.notebookPath}</span>
         <span>{run.trigger}</span>
         {run.attempt > 1 && <span>attempt {run.attempt}</span>}
@@ -166,7 +166,7 @@ export function RunDetail() {
           {artifact ? (
             <NotebookView notebook={artifact} />
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-base text-muted-foreground">
               {live ? 'The artifact is written when the run finishes.' : 'No artifact for this run.'}
             </p>
           )}
@@ -175,7 +175,7 @@ export function RunDetail() {
           {log ? (
             <pre className="output-text log">{log}</pre>
           ) : (
-            <p className="text-sm text-muted-foreground">No log.</p>
+            <p className="text-base text-muted-foreground">No log.</p>
           )}
         </TabsContent>
       </Tabs>

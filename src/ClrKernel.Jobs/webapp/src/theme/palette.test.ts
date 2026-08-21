@@ -81,6 +81,22 @@ describe('tokens.css mirrors palette.ts', () => {
     expect(token(':root {', 'code-bg')).toBe(EDITOR.background);
   });
 
+  /**
+   * The first palette put page, card, border and rail inside a 10-unit band and
+   * the whole app read as one flat grey. Separation is the design, so it is
+   * asserted rather than left to taste.
+   */
+  it('separates its surfaces by enough to see', () => {
+    const value = (hex: string) => parseInt(hex.slice(1, 3), 16);
+    const ramp = [NEUTRAL.surfaceRail, NEUTRAL.background, NEUTRAL.muted, NEUTRAL.card];
+    for (let i = 1; i < ramp.length; i++) {
+      expect(value(ramp[i]) - value(ramp[i - 1]), `${ramp[i - 1]} -> ${ramp[i]}`)
+        .toBeGreaterThanOrEqual(8);
+    }
+    // A border has to be visible against the lightest surface it sits on.
+    expect(value(NEUTRAL.card) - value(NEUTRAL.border)).toBeGreaterThanOrEqual(30);
+  });
+
   it.each(ACCENTS)('$label overrides primary, its foreground and the ring', (accent) => {
     const selector = `[data-accent='${accent.name}'] {`;
     expect(token(selector, 'primary')).toBe(accent.primary);

@@ -101,14 +101,14 @@ export function CellEditor({
           <div className="cell-float-actions">
             {!isMarkdown && canRun && (
               <>
-                <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   onClick={() => onRun('before')}
                   disabled={busy || index === 0}
                   title="Run every cell above this one"
                 >
                   ▶ above
                 </Button>
-                <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   onClick={() => onRun('after')}
                   disabled={busy}
                   title="Run this cell and everything below it"
@@ -117,17 +117,17 @@ export function CellEditor({
                 </Button>
               </>
             )}
-            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
+            <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
               ↑
             </Button>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
+            <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
               onClick={() => onMove(index + 1)}
               disabled={index === count - 1}
               title="Move down"
             >
               ↓
             </Button>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} title="Delete this cell">
+            <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} title="Delete this cell">
               ✕
             </Button>
           </div>
@@ -155,7 +155,7 @@ export function CellEditor({
             </span>
             <span className="spacer" />
             {connectable && (
-              <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
+              <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                 onClick={onConnect}
                 title={`Build a ${connectable.displayName} connection directive`}
               >
@@ -166,7 +166,7 @@ export function CellEditor({
               value={isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp')}
               onValueChange={onLanguage}
             >
-              <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-xs shadow-none" aria-label="Cell language">
+              <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -314,10 +314,10 @@ export function CellInserter({
 }) {
   return (
     <div className={always ? 'cell-inserter cell-inserter-always' : 'cell-inserter'}>
-      <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onInsert('code')}>
+      <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert('code')}>
         + Code
       </Button>
-      <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onInsert('markdown')}>
+      <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert('markdown')}>
         + Markdown
       </Button>
     </div>

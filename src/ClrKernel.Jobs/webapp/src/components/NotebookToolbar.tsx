@@ -30,16 +30,15 @@ function useWindowWidth(): number {
 }
 
 /**
- * The indicator is a bottom border on a full-height trigger, so it lands on the
- * toolbar's own bottom border rather than floating near it — shadcn's `line`
- * variant offsets its `::after` for a shorter list than this row.
+ * shadcn's default segmented list: a muted track with the active tab lifted out
+ * of it. The active pill is `--card`, not `--background` — in this palette the
+ * page is grey and the raised surface is white, which is the opposite way round
+ * from stock shadcn, where `--background` is the white one.
  *
  * Neutral, not accent: the accent is reserved for the primary action, and
  * `Promote to production` is the only accent-filled control on this page.
  */
-const TAB =
-  'h-full! rounded-none border-b-2 border-transparent px-0 text-muted-foreground after:hidden ' +
-  'data-active:border-foreground data-active:bg-transparent data-active:text-foreground';
+const TAB = 'px-3 data-active:bg-card data-active:text-foreground';
 
 /**
  * `bg-muted` is nearly the toolbar's own background, so the default selected
@@ -117,9 +116,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   return (
     // Sticky, so Run All stays reachable while scrolling a long notebook in
     // Normal Mode. The tabs' underline sits on the row's own bottom border.
-    <div className="sticky top-0 z-20 flex h-10 items-stretch gap-2 border-b border-border bg-background px-6">
-      <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
-        <TabsList variant="line" className="h-full! gap-4 p-0">
+    <div className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-border bg-muted px-6">
+      <Tabs value={props.tab} onValueChange={props.onTab}>
+        <TabsList className="h-8 bg-background">
           {props.isNotebook && <TabsTrigger value="notebook" className={TAB}>Notebook</TabsTrigger>}
           <TabsTrigger value="source" className={TAB}>
             Source
@@ -137,7 +136,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         <div className="flex items-center gap-2">
           {/* Information before controls: you read what the kernel is doing
               before you reach the buttons that change it. */}
-          <Badge variant="secondary" className="gap-1.5 font-mono text-[11px] font-normal">
+          <Badge variant="secondary" className="gap-1.5 font-mono text-xs font-normal">
             <span
               aria-hidden="true"
               className={`size-1.5 shrink-0 rounded-full ${DOT[kernel.state]}`}

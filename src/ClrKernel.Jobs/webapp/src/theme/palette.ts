@@ -13,19 +13,24 @@
 
 /** Neutrals and status colours — identical under every accent. */
 export const NEUTRAL = {
-  /** App background: a near-white neutral, so white surfaces read as raised. */
-  background: '#f7f8fa',
+  /**
+   * The content region. Deliberately a real grey, not a near-white: with only a
+   * few percent between page, card and border the whole app reads as one flat
+   * surface and nothing separates from anything.
+   */
+  background: '#e9ecf1',
   foreground: '#1c1f24',
   /** Cards, editors, panels — pure white on top of the app background. */
   card: '#ffffff',
   popover: '#ffffff',
-  /** Subtle fills: hover states, table headers, inactive toggles. */
-  muted: '#f1f3f5',
-  mutedForeground: '#6b7280',
-  border: '#e3e6ea',
+  /** Subtle fills *on a card*: hover states, table headers, markdown cells.
+   *  Lighter than the page, so a filled cell still reads as raised. */
+  muted: '#f1f3f6',
+  mutedForeground: '#5b6472',
+  border: '#cbd2da',
   destructive: '#b91c1c',
-  /** The left rail sits one step darker than the app background. */
-  surfaceRail: '#eef0f3',
+  /** The rail is the darkest surface, so the chrome frames the content. */
+  surfaceRail: '#dbe0e7',
 } as const;
 
 export const STATUS = {
@@ -44,9 +49,9 @@ export const STATUS = {
  */
 export const EDITOR = {
   background: NEUTRAL.card,
-  lineHighlight: NEUTRAL.muted,
+  lineHighlight: '#f4f6f8',
   lineNumber: '#9aa3b0',
-  indentGuide: '#eef0f3',
+  indentGuide: '#e8ebef',
   selection: '#d7dde5',
   widgetBackground: NEUTRAL.popover,
   widgetBorder: NEUTRAL.border,

@@ -24,7 +24,7 @@ function Node({
       <li>
         <button
           type="button"
-          className="flex items-center gap-1 rounded-sm py-0.5 text-sm font-medium outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex items-center gap-1 rounded-sm py-0.5 text-base font-medium outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setOpen(!open)}
           aria-expanded={open}
         >
@@ -48,10 +48,10 @@ function Node({
 
   if (node.kind === 'jobs') {
     return (
-      <li className="flex items-center gap-2 py-0.5 text-sm">
+      <li className="flex items-center gap-2 py-0.5 text-base">
         <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="font-mono">{node.name}</span>
-        <span className="text-xs text-muted-foreground">jobs file</span>
+        <span className="text-base text-muted-foreground">jobs file</span>
       </li>
     );
   }
@@ -59,7 +59,7 @@ function Node({
   const editable = env === 'dev' && node.kind === 'notebook';
   const href = `/edit?path=${encodeURIComponent(node.path)}`;
   return (
-    <li className="group flex items-center gap-2 py-0.5 text-sm">
+    <li className="group flex items-center gap-2 py-0.5 text-base">
       <NotebookText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
       {editable ? (
         <Link className="font-mono text-primary hover:underline" to={href}>
@@ -78,14 +78,14 @@ function Node({
       {/* The row's actions stay out of the way until you are on the row. */}
       <span className="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         {editable && (
-          <Button asChild variant="outline" size="sm" className="h-6 px-2 text-xs">
+          <Button asChild variant="outline" size="sm" className="h-6 px-2 text-sm">
             <Link to={href}>Edit</Link>
           </Button>
         )}
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 px-2 text-xs"
+          className="h-6 px-2 text-sm"
           onClick={() => onCreate(node.path)}
         >
           <Plus className="size-3" aria-hidden="true" />
@@ -123,7 +123,7 @@ export function Notebooks() {
               Editing notebooks in the browser needs the dev→prod git workflow, so every save is a
               commit. Enable it once (stop the server first):
             </p>
-            <pre className="my-2 overflow-x-auto rounded-sm bg-muted px-2 py-1.5 font-mono text-xs text-foreground">
+            <pre className="my-2 overflow-x-auto rounded-sm bg-muted px-2 py-1.5 font-mono text-base text-foreground">
               clrkernel-jobs git init --notebooks &lt;your notebooks folder&gt;
             </pre>
             <p>
@@ -135,12 +135,12 @@ export function Notebooks() {
       )}
 
       {environments.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No notebooks under the notebooks root.</p>
+        <p className="text-base text-muted-foreground">No notebooks under the notebooks root.</p>
       ) : (
         environments.map((environment) => (
           <section key={environment.name} className="mb-5">
             {environment.name !== 'default' && (
-              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+              <h2 className="mb-1 flex items-center gap-2 text-base font-semibold">
                 {environment.name}
                 {environment.name === 'prod' && (
                   <Badge variant="secondary" className="font-normal">

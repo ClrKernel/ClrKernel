@@ -271,7 +271,7 @@ export function FocusMode({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-6 px-2 text-xs"
+                className="h-6 px-2 text-sm"
                 title="Hide contents"
                 aria-label="Hide contents"
                 onClick={() => onLayout({ ...layout, sidebarCollapsed: true })}
@@ -306,7 +306,7 @@ export function FocusMode({
         {active == null ? (
           <div className="focus-empty-state">
             <p>This notebook has no cells.</p>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onInsert(null, 'code')}>
+            <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert(null, 'code')}>
               + Code
             </Button>
           </div>
@@ -317,7 +317,7 @@ export function FocusMode({
                 Cell [{activeRun?.executionCount ?? ' '}]
               </span>
               {canRun && !isMarkdown && (
-                <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   disabled={busy}
                   onClick={() => onRun(active.id)}
                   title="Run this cell (⌘/Ctrl+Enter)"
@@ -332,7 +332,7 @@ export function FocusMode({
                 </Badge>
               )}
               <span className="spacer" />
-              <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
+              <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                 onClick={() => onClearOutput(active.id)}
                 title="Clear this cell's output"
               >
@@ -342,7 +342,7 @@ export function FocusMode({
                 value={isMarkdown ? 'markdown' : (active.languageId ?? 'csharp')}
                 onValueChange={(value) => onLanguage(active.id, value)}
               >
-                <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-xs shadow-none" aria-label="Cell language">
+                <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -353,7 +353,7 @@ export function FocusMode({
                   ))}
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" className="h-6 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => onDelete(active.id)}
                 title="Delete this cell"
               >

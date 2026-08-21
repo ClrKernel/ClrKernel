@@ -11,24 +11,24 @@
 
 :root {
   /* --- neutral base, fixed under every accent --------------------------- */
-  --background: #f7f8fa;
+  --background: #e9ecf1;
   --foreground: #1c1f24;
   --card: #ffffff;
   --card-foreground: #1c1f24;
   --popover: #ffffff;
   --popover-foreground: #1c1f24;
-  --secondary: #f1f3f5;
+  --secondary: #f1f3f6;
   --secondary-foreground: #1c1f24;
-  --muted: #f1f3f5;
-  --muted-foreground: #6b7280;
-  --accent: #f1f3f5;
+  --muted: #f1f3f6;
+  --muted-foreground: #5b6472;
+  --accent: #eaedf1;
   --accent-foreground: #1c1f24;
   --destructive: #b91c1c;
-  --border: #e3e6ea;
-  --input: #e3e6ea;
+  --border: #cbd2da;
+  --input: #cbd2da;
 
   /* --- app-specific ----------------------------------------------------- */
-  --surface-rail: #eef0f3;
+  --surface-rail: #dbe0e7;
   --status-idle: #6b7280;
   --status-running: #1d4ed8;
   --status-error: #b91c1c;
@@ -151,6 +151,17 @@
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+
+  /* The type scale, one step up from Tailwind's stock sizes. Overridden here
+     rather than in each component: `text-sm` is what the CLI-generated
+     components in `components/ui` use for every control, and hand-editing
+     twelve of them would be undone by the next `shadcn add`. */
+  --text-xs: 0.8125rem; /* 13px */
+  --text-xs--line-height: 1.15rem;
+  --text-sm: 0.9375rem; /* 15px */
+  --text-sm--line-height: 1.35rem;
+  --text-base: 1rem; /* 16px */
+  --text-base--line-height: 1.5rem;
 
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: calc(var(--radius) - 1px);

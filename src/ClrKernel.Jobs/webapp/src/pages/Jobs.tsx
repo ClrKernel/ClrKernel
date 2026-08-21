@@ -35,7 +35,7 @@ export function Jobs() {
       )}
 
       {jobs.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-base text-muted-foreground">
           No jobs yet. Add one from the{' '}
           <Link className="text-primary hover:underline" to="/notebooks">
             Notebooks
@@ -64,7 +64,7 @@ export function Jobs() {
                     {job.name}
                   </Link>
                   {job.environment !== 'default' && (
-                    <Badge variant="secondary" className="ml-2 font-mono text-[11px]">
+                    <Badge variant="secondary" className="ml-2 font-mono text-xs">
                       {job.environment}
                     </Badge>
                   )}

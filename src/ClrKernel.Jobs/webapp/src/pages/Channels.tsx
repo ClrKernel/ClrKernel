@@ -167,7 +167,7 @@ export function Channels() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-xs"
+                    className="h-6 px-2 text-sm"
                     onClick={() => test(channel.name)}
                     disabled={busy}
                   >
@@ -181,7 +181,7 @@ export function Channels() {
         </div>
       )}
 
-      <h2 className="mb-2 mt-5 text-sm font-semibold">Edit</h2>
+      <h2 className="mb-2 mt-5 text-base font-semibold">Edit</h2>
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => addTemplate(WEBHOOK_TEMPLATE)}>

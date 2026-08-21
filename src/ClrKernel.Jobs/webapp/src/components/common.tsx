@@ -71,7 +71,7 @@ export function PageHeader({
         {/* Cells and tables take the full width; sentences do not. A 1600px
             line of prose is unreadable. */}
         {description && (
-          <p className="mt-0.5 max-w-[78ch] text-sm text-muted-foreground">{description}</p>
+          <p className="mt-0.5 max-w-[78ch] text-base text-muted-foreground">{description}</p>
         )}
       </div>
       {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}

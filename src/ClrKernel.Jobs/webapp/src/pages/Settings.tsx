@@ -23,8 +23,8 @@ function ApiKeySection() {
 
   return (
     <section className="settings-section">
-      <h2 className="mb-1 text-sm font-semibold">Browser</h2>
-      <p className="mb-2 text-sm text-muted-foreground">
+      <h2 className="mb-1 text-base font-semibold">Browser</h2>
+      <p className="mb-2 text-base text-muted-foreground">
         Sent as <code>X-Api-Key</code> on every request. Required only when the server was started
         with a key; stored in this browser, never written to the server.
       </p>
@@ -95,9 +95,9 @@ function Section({ section }: { section: SettingsSection }) {
 
   return (
     <section className="settings-section">
-      <h2 className="mb-1 text-sm font-semibold">{section.title}</h2>
+      <h2 className="mb-1 text-base font-semibold">{section.title}</h2>
       {section.description && (
-        <p className="mb-2 text-sm text-muted-foreground">{section.description}</p>
+        <p className="mb-2 text-base text-muted-foreground">{section.description}</p>
       )}
       <ErrorBanner error={error} />
       {notice && (
@@ -122,7 +122,7 @@ function Section({ section }: { section: SettingsSection }) {
                   <td className="settings-label">
                     {field.label}
                     {field.help && (
-                      <div className="mt-0.5 text-xs text-muted-foreground">{field.help}</div>
+                      <div className="mt-0.5 text-base text-muted-foreground">{field.help}</div>
                     )}
                   </td>
                   <td>

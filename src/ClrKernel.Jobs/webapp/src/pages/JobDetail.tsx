@@ -70,7 +70,7 @@ function NotifyPicker({
     <div className="notify-row">
       <span className="notify-label">{label}</span>
       {names.length === 0 ? (
-        <span className="text-sm text-muted-foreground">
+        <span className="text-base text-muted-foreground">
           No channels yet — add one under{' '}
           <Link className="text-primary hover:underline" to="/channels">
             Channels
@@ -210,7 +210,7 @@ export function JobDetail() {
         <h1 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight">
           <span className="truncate">{isNew ? 'New job' : name}</span>
           {env !== 'default' && (
-            <Badge variant="secondary" className="font-mono text-[11px]">
+            <Badge variant="secondary" className="font-mono text-xs">
               {env}
             </Badge>
           )}
@@ -238,7 +238,7 @@ export function JobDetail() {
       <ErrorBanner error={error} />
       <ErrorBanner error={saveError} />
       {job && (
-        <p className="mb-3 text-sm text-muted-foreground">
+        <p className="mb-3 text-base text-muted-foreground">
           Defined in <code className="font-mono">{job.jobsFile}</code>
         </p>
       )}
@@ -249,11 +249,11 @@ export function JobDetail() {
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} />
         </label>
         <label>
-          Notebook <span className="text-sm text-muted-foreground">(relative to the notebooks root)</span>
+          Notebook <span className="text-base text-muted-foreground">(relative to the notebooks root)</span>
           <Input value={form.notebook} onChange={(e) => update('notebook', e.target.value)} />
         </label>
         <label>
-          Cron <span className="text-sm text-muted-foreground">(empty = manual or dependency-triggered)</span>
+          Cron <span className="text-base text-muted-foreground">(empty = manual or dependency-triggered)</span>
           <Input
             value={form.cron}
             placeholder="0 2 * * *"
@@ -261,7 +261,7 @@ export function JobDetail() {
           />
         </label>
         <label>
-          Depends on <span className="text-sm text-muted-foreground">(comma-separated job names)</span>
+          Depends on <span className="text-base text-muted-foreground">(comma-separated job names)</span>
           <Input value={form.dependsOn} onChange={(e) => update('dependsOn', e.target.value)} />
         </label>
         <div className="form-row">
@@ -286,7 +286,7 @@ export function JobDetail() {
           </label>
         </div>
         <label>
-          Parameters <span className="text-sm text-muted-foreground">(JSON, injected into the notebook)</span>
+          Parameters <span className="text-base text-muted-foreground">(JSON, injected into the notebook)</span>
           <textarea
             rows={6}
             value={form.parameters}
@@ -321,7 +321,7 @@ export function JobDetail() {
 
       {!isNew && (
         <>
-          <h2 className="mb-2 mt-6 text-sm font-semibold">Run history</h2>
+          <h2 className="mb-2 mt-6 text-base font-semibold">Run history</h2>
           <RunTable runs={runs ?? []} showJob={false} />
         </>
       )}

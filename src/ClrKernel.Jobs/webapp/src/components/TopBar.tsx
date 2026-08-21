@@ -24,8 +24,8 @@ export function TopBar({
   const crumbs = breadcrumbFor(location.pathname, location.search);
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-muted px-4">
+      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 text-base">
         {crumbs.map((crumb, index) => (
           <Fragment key={`${crumb.label}-${index}`}>
             {index > 0 && (
@@ -52,7 +52,7 @@ export function TopBar({
               </span>
             )}
             {crumb.badge && (
-              <Badge variant="secondary" className="font-mono text-[11px]">
+              <Badge variant="secondary" className="font-mono text-xs">
                 {crumb.badge}
               </Badge>
             )}

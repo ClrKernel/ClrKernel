@@ -19,7 +19,10 @@
 
   body {
     @apply bg-background text-foreground;
-    font-size: 14px;
+    /* 16px. 14px was the spec's "compact density", but at this information
+       density it reads as cramped rather than compact — the compactness that
+       matters is vertical rhythm and control height, not type size. */
+    font-size: 1rem;
   }
 }
 
@@ -44,7 +47,7 @@
   pre,
   .preview {
     font-family: var(--font-mono);
-    font-size: 0.9285rem; /* 13px against the 14px base */
+    font-size: 0.875rem; /* 14px — a shade below the 16px base */
   }
 
   /* --- layout ------------------------------------------------------------- */
@@ -81,7 +84,7 @@
 
   textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.85rem;
+    font-size: 0.9375rem;
     width: 100%;
   }
 
@@ -96,7 +99,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    font-size: 0.9rem;
+    font-size: 1rem;
   }
 
   .form-row {
@@ -132,7 +135,7 @@
     text-align: left;
     padding: 0.375rem 0.75rem;
     border-bottom: 1px solid var(--border);
-    font-size: 0.8125rem;
+    font-size: 0.9375rem;
     vertical-align: middle;
   }
 
@@ -186,7 +189,7 @@
     color: var(--muted-foreground);
     min-width: 1.5rem;
     text-align: right;
-    font-size: 0.8rem;
+    font-size: 0.875rem;
   }
 
   .cell-body {
@@ -196,7 +199,7 @@
 
   .cell-tag {
     color: var(--muted-foreground);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     margin-bottom: 0.25rem;
   }
 
@@ -235,7 +238,7 @@
   .output-html td {
     border: 1px solid var(--border);
     padding: 0.2rem 0.4rem;
-    font-size: 0.85rem;
+    font-size: 0.9375rem;
   }
 
   .output-error {
@@ -287,7 +290,7 @@
 
   .fieldset legend {
     color: var(--muted-foreground);
-    font-size: 0.85rem;
+    font-size: 0.9375rem;
     padding: 0 0.3rem;
   }
 
@@ -301,7 +304,7 @@
 
   .notify-label {
     color: var(--muted-foreground);
-    font-size: 0.9rem;
+    font-size: 1rem;
     min-width: 6rem;
   }
 
@@ -323,7 +326,7 @@
      underneath but visibly a different kind of thing. */
   .notebook-cell {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: var(--card);
     overflow: hidden;
     margin: 0;
@@ -347,7 +350,7 @@
     border-left: 3px solid var(--status-running);
   }
 
-  .notebook-cell-markdown {
+  .notebook-cell-markdown .cell-source {
     background: var(--muted);
   }
 
@@ -374,7 +377,7 @@
     border-radius: 4px;
     color: var(--muted-foreground);
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.9375rem;
     line-height: 1;
     padding: 0.2rem 0.35rem;
   }
@@ -397,7 +400,7 @@
   .cell-gutter-index {
     color: var(--muted-foreground);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
     white-space: pre;
   }
 
@@ -438,7 +441,7 @@
     padding: 0.2rem 0.5rem;
     border-top: 1px solid var(--border);
     background: var(--muted);
-    font-size: 0.78rem;
+    font-size: 0.875rem;
     min-height: 1.9rem;
   }
 
@@ -538,7 +541,7 @@
     border-radius: 4px;
     color: var(--muted-foreground);
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 1rem;
     line-height: 1;
     padding: 0.05rem 0.35rem;
   }
@@ -571,7 +574,7 @@
     color: var(--foreground);
     cursor: pointer;
     font: inherit;
-    font-size: 0.82rem;
+    font-size: 0.875rem;
     padding: 0.3rem 0.5rem;
     border-radius: 4px;
   }
@@ -632,7 +635,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    font-size: 0.9rem;
+    font-size: 1rem;
   }
 
   .form-field.checkbox {
@@ -691,7 +694,7 @@
     justify-content: space-between;
     gap: 0.5rem;
     padding: 0.4rem 0.5rem;
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--muted-foreground);
@@ -710,7 +713,7 @@
     background: var(--muted);
     cursor: pointer;
     color: var(--muted-foreground);
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
     padding: 0;
   }
 
@@ -735,7 +738,7 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.15rem 0.4rem;
-    font-size: 0.82rem;
+    font-size: 0.875rem;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
@@ -763,7 +766,7 @@
     cursor: pointer;
     color: var(--muted-foreground);
     padding: 0 0.15rem;
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
   }
 
   .focus-toc-section-label {
@@ -775,7 +778,7 @@
   .focus-toc-count {
     color: var(--muted-foreground);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.72rem;
+    font-size: 0.8125rem;
   }
 
   .focus-toc-label {
@@ -785,7 +788,7 @@
   }
 
   .focus-toc-dot {
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
     width: 0.9em;
     text-align: center;
     flex: 0 0 auto;
@@ -823,7 +826,7 @@
 
   .focus-cell-title {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.8rem;
+    font-size: 0.875rem;
     color: var(--muted-foreground);
   }
 
@@ -855,7 +858,7 @@
   .focus-empty,
   .focus-empty-state {
     color: var(--muted-foreground);
-    font-size: 0.85rem;
+    font-size: 0.9375rem;
     padding: 0.6rem;
   }
 

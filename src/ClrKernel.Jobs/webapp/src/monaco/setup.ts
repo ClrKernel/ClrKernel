@@ -54,7 +54,7 @@ export const cellEditorOptions: monaco.editor.IStandaloneEditorConstructionOptio
   scrollBeyondLastLine: false,
   scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },
   wordWrap: 'on',
-  fontSize: 13,
+  fontSize: 14,
   fontFamily: FONT_MONO,
   padding: { top: 8, bottom: 8 },
   renderLineHighlight: 'none',

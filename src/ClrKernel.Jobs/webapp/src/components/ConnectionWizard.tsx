@@ -75,15 +75,15 @@ export function ConnectionWizard({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <h2 style={{ margin: 0 }}>New {language.displayName} connection</h2>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onClose}>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>
             ✕
           </Button>
         </div>
         <ErrorBanner error={error} />
 
-        {providers == null && !error && <p className="text-sm text-muted-foreground">Asking the kernel what it can connect to…</p>}
+        {providers == null && !error && <p className="text-base text-muted-foreground">Asking the kernel what it can connect to…</p>}
         {providers?.length === 0 && (
-          <p className="text-sm text-muted-foreground">This kernel declares no connection types for {language.displayName}.</p>
+          <p className="text-base text-muted-foreground">This kernel declares no connection types for {language.displayName}.</p>
         )}
 
         {providers && providers.length > 1 && (
@@ -101,7 +101,7 @@ export function ConnectionWizard({
 
         {provider && (
           <>
-            {provider.description && <p className="text-xs text-muted-foreground">{provider.description}</p>}
+            {provider.description && <p className="text-base text-muted-foreground">{provider.description}</p>}
             <div className="wizard-fields">
               {provider.settings
                 .filter((setting) => !setting.runtimeOnly)
@@ -115,14 +115,14 @@ export function ConnectionWizard({
                 ))}
             </div>
 
-            <p className="text-xs text-muted-foreground">
+            <p className="text-base text-muted-foreground">
               This is what will be inserted. Nothing secret appears in it — a credential setting
               takes the <em>name</em> of a secret, resolved where the notebook runs.
             </p>
             <pre className="output-text wizard-preview">{directive}</pre>
 
             {missing.length > 0 && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-base text-muted-foreground">
                 Still needed: {missing.map((s) => s.displayName ?? s.name).join(', ')}
               </p>
             )}
@@ -184,7 +184,7 @@ function Field({
         />
         <span>
           {label}
-          {setting.description && <em className="text-xs text-muted-foreground"> — {setting.description}</em>}
+          {setting.description && <em className="text-base text-muted-foreground"> — {setting.description}</em>}
         </span>
       </label>
     );
@@ -218,7 +218,7 @@ function Field({
           }
         />
       )}
-      {setting.description && <em className="text-xs text-muted-foreground">{setting.description}</em>}
+      {setting.description && <em className="text-base text-muted-foreground">{setting.description}</em>}
     </label>
   );
 }

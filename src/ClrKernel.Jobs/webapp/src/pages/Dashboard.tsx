@@ -6,7 +6,7 @@ import { duration, timeAgo } from '../ipynb';
 
 export function RunTable({ runs, showJob = true }: { runs: Run[]; showJob?: boolean }) {
   if (runs.length === 0) {
-    return <p className="text-sm text-muted-foreground">No runs yet.</p>;
+    return <p className="text-base text-muted-foreground">No runs yet.</p>;
   }
   return (
     <div className="table-box">
@@ -36,7 +36,7 @@ export function RunTable({ runs, showJob = true }: { runs: Run[]; showJob?: bool
                     {run.jobName}
                   </Link>
                   {run.environment !== 'default' && (
-                    <Badge variant="secondary" className="ml-2 font-mono text-[11px]">
+                    <Badge variant="secondary" className="ml-2 font-mono text-xs">
                       {run.environment}
                     </Badge>
                   )}
@@ -70,7 +70,7 @@ function StatCard({ value, label, tone }: { value: string; label: string; tone?:
   return (
     <div className="rounded-md border border-border bg-card px-3 py-2.5">
       <div className={`font-mono text-xl leading-tight ${tone ?? ''}`}>{value}</div>
-      <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-base text-muted-foreground">{label}</div>
     </div>
   );
 }
@@ -103,7 +103,7 @@ export function Dashboard() {
         <StatCard value={`${running}`} label="in flight" />
       </div>
 
-      <h2 className="mb-2 text-sm font-semibold">Recent runs</h2>
+      <h2 className="mb-2 text-base font-semibold">Recent runs</h2>
       <RunTable runs={runs} />
     </div>
   );
