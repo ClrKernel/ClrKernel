@@ -53,6 +53,7 @@ public sealed class DaxCellLanguageServices : ICellLanguageServices {
     public Task<SignatureHelpResult> SignatureHelpAsync(string code, int offset) =>
         Task.FromResult<SignatureHelpResult>(null);
 
-    /// <summary>DAX is not syntax-checked offline.</summary>
-    public IReadOnlyList<DiagnosticResult> Diagnose(string text) => new List<DiagnosticResult>();
+    /// <summary>DAX itself is not syntax-checked offline, but its directive lines are.</summary>
+    public IReadOnlyList<DiagnosticResult> Diagnose(string text) =>
+        DirectiveCompletion.Check(DaxDirectives.AllDefinitions, text);
 }

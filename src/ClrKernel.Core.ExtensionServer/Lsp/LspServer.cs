@@ -121,10 +121,18 @@ public sealed class LspServer {
     }
 
     private NotebookSession SessionFor(string uri) =>
-        _sessions.GetOrAdd(NotebookKeyFor(uri), key => new NotebookSession {
-            Engine = new InteractiveScriptEngine(
-                DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine))),
-            Language = new ScriptLanguageService(),
+        _sessions.GetOrAdd(NotebookKeyFor(uri), key => {
+            var engine = new InteractiveScriptEngine(
+                DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
+            // A #r-loaded plugin changed this session's languages/providers: tell
+            // the client so its pickers, language-tag maps, and wizards refresh.
+            engine.LanguagesChanged += () => _ = Rpc?.NotifyWithParameterObjectAsync(
+                "clrkernel/languagesChanged", new {
+                    notebookUri = key,
+                    languages = engine.Languages.Describe(),
+                    connectionProviders = engine.ConnectionProviders,
+                });
+            return new NotebookSession { Engine = engine, Language = new ScriptLanguageService() };
         });
 
     // The notebook's own folder, so #load and relative paths resolve beside it.
@@ -156,12 +164,46 @@ public sealed class LspServer {
                     TriggerCharacters = new List<string> { "(", "," },
                 },
                 DefinitionProvider = true,
+                // The registered cell languages ride the handshake so the client
+                // needs no extra round trip; clrkernel/languages re-queries a
+                // live session (whose set can grow via runtime plugins).
+                Experimental = new {
+                    clrkernel = new { languages = CellLanguageRegistry.Default.CreateSet().Describe() },
+                },
             },
             ServerInfo = new ServerInfo {
                 Name = "ClrKernel",
                 Version = typeof(LspServer).Assembly.GetName().Version?.ToString(),
             },
         };
+    }
+
+    /// <summary>
+    /// The cell languages available to a notebook's session — the same shape as
+    /// the initialize handshake's experimental payload. With a notebookUri, the
+    /// answer reflects that session's live set (runtime-registered languages
+    /// included); without one, the process registry.
+    /// </summary>
+    [JsonRpcMethod("clrkernel/languages", UseSingleObjectParameterDeserialization = true)]
+    public object Languages(RestartParams p) {
+        var languages = string.IsNullOrEmpty(p?.NotebookUri)
+            ? CellLanguageRegistry.Default.CreateSet().Describe()
+            : SessionFor(p.NotebookUri).Engine.Languages.Describe();
+        return new { languages };
+    }
+
+    /// <summary>
+    /// The connection-provider descriptors a language's connection UI should
+    /// offer — settings schemas the generic wizard renders. Session-scoped, so
+    /// providers loaded mid-session (#r) appear for that notebook.
+    /// </summary>
+    [JsonRpcMethod("clrkernel/connections/describe", UseSingleObjectParameterDeserialization = true)]
+    public object ConnectionsDescribe(ConnectionParams p) {
+        var session = SessionForConnections(p);
+        if (session == null || string.IsNullOrEmpty(p?.LanguageId)) {
+            return new { ok = false, error = "notebookUri and languageId are required." };
+        }
+        return new { ok = true, providers = session.Engine.ConnectionProvidersFor(p.LanguageId) };
     }
 
     [JsonRpcMethod("initialized")]
@@ -206,6 +248,10 @@ public sealed class LspServer {
         if (p?.TextDocument?.Uri != null) {
             _documents.TryRemove(p.TextDocument.Uri, out _);
             _languages.TryRemove(p.TextDocument.Uri, out _);
+            // Retract anything still on screen for it. Changing a cell's language
+            // closes the document and reopens it under the new languageId, so
+            // without this the old language's problems outlive the cell.
+            SendDiagnostics(p.TextDocument.Uri, new List<Diagnostic>());
         }
     }
 
@@ -218,31 +264,46 @@ public sealed class LspServer {
         if (Rpc == null || uri == null) {
             return;
         }
-        if (!_languages.TryGetValue(uri, out var lang)) {
-            return;
-        }
-        var services = SessionFor(uri).Engine.Languages.ById(lang)?.Services;
-        if (services == null) {
-            return;
-        }
-        var text = _documents.TryGetValue(uri, out var t) ? t : string.Empty;
         var diagnostics = new List<Diagnostic>();
-        try {
-            foreach (var d in services.Diagnose(text)) {
-                diagnostics.Add(new Diagnostic {
-                    Range = new Range {
-                        Start = new Position { Line = d.Line, Character = d.Column },
-                        End = new Position { Line = d.EndLine, Character = d.EndColumn },
-                    },
-                    Severity = 1,
-                    Source = "clrkernel-" + lang,
-                    Code = d.Code.ToString(),
-                    Message = d.Message,
-                });
+        // Every path below ends in SendDiagnostics, including the ones that produce
+        // nothing: a language with no diagnostics of its own (C#, shell) must CLEAR
+        // what the previous language left, not silently leave it on screen.
+        if (_languages.TryGetValue(uri, out var lang) &&
+            SessionFor(uri).Engine.Languages.ById(lang)?.Services is { } services) {
+            var text = _documents.TryGetValue(uri, out var t) ? t : string.Empty;
+            try {
+                foreach (var d in services.Diagnose(text)) {
+                    diagnostics.Add(new Diagnostic {
+                        Range = new Range {
+                            Start = new Position { Line = d.Line, Character = d.Column },
+                            End = new Position { Line = d.EndLine, Character = d.EndColumn },
+                        },
+                        Severity = 1,
+                        Source = "clrkernel-" + lang,
+                        Code = d.Code.ToString(),
+                        Message = d.Message,
+                    });
+                }
+            } catch (Exception e) {
+                _logger.LogWarning(e, "diagnostics failed for {Language}", lang);
+                diagnostics.Clear(); // a failed check reports nothing, not the last run's problems
             }
-        } catch (Exception e) {
-            _logger.LogWarning(e, "diagnostics failed for {Language}", lang);
-            return;
+        }
+        SendDiagnostics(uri, diagnostics);
+    }
+
+    // Documents with problems currently on screen, so an empty result is sent only
+    // when there is something to retract (rather than on every keystroke of every
+    // undiagnosed cell).
+    private readonly ConcurrentDictionary<string, byte> _publishedDiagnostics = new();
+
+    private void SendDiagnostics(string uri, List<Diagnostic> diagnostics) {
+        if (diagnostics.Count == 0) {
+            if (!_publishedDiagnostics.TryRemove(uri, out _)) {
+                return; // nothing was published for this document; nothing to clear
+            }
+        } else {
+            _publishedDiagnostics[uri] = 0;
         }
         _ = Rpc.NotifyWithParameterObjectAsync("textDocument/publishDiagnostics",
             new PublishDiagnosticsParams { Uri = uri, Diagnostics = diagnostics });

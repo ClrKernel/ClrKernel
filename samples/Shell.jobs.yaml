@@ -1,0 +1,12 @@
+
+notebook: ./Shell.nb.md
+defaults:
+  timeoutSeconds: 3600
+  retryCount: 1
+  parameters: {env: prod, region: us}
+jobs:
+  - name: us
+    cron: "0 2 * * *"
+  - name: eu
+    timeoutSeconds: 60
+    parameters: {region: eu}

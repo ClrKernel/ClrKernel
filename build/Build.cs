@@ -17,6 +17,8 @@ using static Nuke.Common.Tools.Npm.NpmTasks;
 ///   ./build.sh Test  --filter Http              # run a subset of tests
 ///   ./build.sh Extension             # build the VS Code extension
 ///   ./build.sh ExtensionTest         # run the extension's unit tests
+///   ./build.sh Web                   # build the jobs web app into wwwroot
+///   ./build.sh WebTest               # run the web app's unit tests
 ///   ./build.sh All                   # solution build+test AND the extension
 ///   ./build.sh Format                # verify formatting (Format --apply to fix)
 /// </summary>
@@ -38,6 +40,7 @@ class ClrKernelBuild : NukeBuild {
 
     AbsolutePath SolutionFile => RootDirectory / "ClrKernel.slnx";
     AbsolutePath ExtensionDirectory => RootDirectory / "editors" / "vscode";
+    AbsolutePath WebappDirectory => RootDirectory / "src" / "ClrKernel.Jobs" / "webapp";
 
     // The build/restore target: a single --project if given, else the solution.
     AbsolutePath TargetFile => string.IsNullOrEmpty(Project) ? SolutionFile : ResolveProject(Project);
@@ -125,7 +128,25 @@ class ClrKernelBuild : NukeBuild {
             Npm("test", ExtensionDirectory);
         });
 
+    Target Web => _ => _
+        .Description("Build the ClrKernel.Jobs web app (npm install + vite build into wwwroot).")
+        .Executes(() => {
+            Npm("install", WebappDirectory);
+            // Vite writes ../wwwroot, which the tool serves and packs. Run this before
+            // packing ClrKernel.Jobs or the tool ships with no UI.
+            Npm("run build", WebappDirectory);
+        });
+
+    Target WebTest => _ => _
+        .Description("Run the web app's unit tests (vitest).")
+        .DependsOn(Web)
+        .Executes(() => {
+            // The renderer helpers are the only part with real logic: nbformat's
+            // source shapes, output selection, ANSI parsing, and time formatting.
+            Npm("test", WebappDirectory);
+        });
+
     Target All => _ => _
-        .Description("Build and test the solution AND build and test the VS Code extension.")
-        .DependsOn(Test, ExtensionTest);
+        .Description("Build and test the solution, the VS Code extension, and the jobs web app.")
+        .DependsOn(Test, ExtensionTest, WebTest);
 }

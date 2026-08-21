@@ -34,5 +34,11 @@ public static class TestCellLanguages {
             () => new SqlCellLanguage(),
             () => new DaxCellLanguage(),
         });
+        ConnectionProviderRegistry.Default = new[] {
+            ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
+            ClrKernel.Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
+            ClrKernel.Language.Shell.SshConnectionProvider.Descriptor,
+            ClrKernel.Language.PowerShell.PwshConnectionProvider.Descriptor,
+        };
     }
 }

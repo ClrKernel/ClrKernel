@@ -1,0 +1,4 @@
+{
+  "store": "sqlserver",
+  "connectionString": "Server=localhost,51433;Database=clrkernel_jobs;User Id=sa;Password=DevOnly!Passw0rd;TrustServerCertificate=True"
+}

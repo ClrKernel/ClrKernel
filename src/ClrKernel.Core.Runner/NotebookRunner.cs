@@ -44,7 +44,8 @@ public static class NotebookRunner {
 
         List<string> blocks;
         try {
-            blocks = NotebookImporter.ExtractCSharpBlocks(fullPath).ToList();
+            blocks = NotebookImporter.ExtractCSharpBlocks(
+                fullPath, CellLanguageRegistry.Default.CreateSet().Describe()).ToList();
         } catch (Exception e) {
             logger.LogError(e, "Could not parse notebook: {Path}", fullPath);
             return 1;
@@ -99,7 +100,7 @@ public static class NotebookRunner {
         RunnerOptions options, string fullPath, string workingDir, ILogger logger) {
         IReadOnlyList<NotebookCell> cells;
         try {
-            cells = NotebookDocument.Parse(fullPath);
+            cells = NotebookDocument.Parse(fullPath, CellLanguageRegistry.Default.CreateSet().Describe());
         } catch (Exception e) {
             logger.LogError(e, "Could not parse notebook: {Path}", fullPath);
             return 1;

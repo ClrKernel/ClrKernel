@@ -31,7 +31,9 @@
         "ExtensionTest",
         "Format",
         "Restore",
-        "Test"
+        "Test",
+        "Web",
+        "WebTest"
       ]
     },
     "Verbosity": {

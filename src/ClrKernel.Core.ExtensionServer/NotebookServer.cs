@@ -27,6 +27,13 @@ public class NotebookServer {
     public NotebookServer(ILoggerFactory loggerFactory) {
         _engine = new InteractiveScriptEngine(Environment.CurrentDirectory, loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
         _logger = loggerFactory.CreateLogger(nameof(NotebookServer));
+        // A #r-loaded plugin changed the session's languages/providers: tell the
+        // client so it can re-parse language tags and refresh any language UI.
+        _engine.LanguagesChanged += () => _ = Rpc?.NotifyWithParameterObjectAsync(
+            "languagesChanged", new {
+                languages = _engine.Languages.Describe(),
+                connectionProviders = _engine.ConnectionProviders,
+            });
     }
 
     [JsonRpcMethod("initialize")]
@@ -34,9 +41,18 @@ public class NotebookServer {
         return new {
             name = "ClrKernel.Core.ExtensionServer",
             version = typeof(NotebookServer).Assembly.GetName().Version?.ToString(),
-            languages = new[] { "csharp" },
+            // The full descriptor list: a client parses notebooks with exactly
+            // the languages this kernel can execute (C# is implicit — it is the
+            // unmatched fallthrough, not a registered language).
+            languages = _engine.Languages.Describe(),
         };
     }
+
+    /// <summary>The connection-provider descriptors for a language — same payload
+    /// the LSP surface serves via clrkernel/connections/describe.</summary>
+    [JsonRpcMethod("describeConnections")]
+    public object DescribeConnections(string languageId) =>
+        new { providers = _engine.ConnectionProvidersFor(languageId ?? string.Empty) };
 
     [JsonRpcMethod("execute")]
     public async Task<object> ExecuteAsync(string cellId, string code) {

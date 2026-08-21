@@ -37,6 +37,15 @@ public static class CellLanguages {
                 references: new[] { typeof(FabricConnection).Assembly },
                 imports: new[] { "ClrKernel.Database.Provider.Fabric" }),
         };
+        // The connection types shipped in the kernel. Opt-in providers
+        // (Oracle/Odbc/Jdbc) register theirs when #r loads them into a session.
+        ConnectionProviderRegistry.Default = new[] {
+            Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
+            Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
+            Database.Provider.Fabric.FabricConnectionProvider.Descriptor,
+            Language.Shell.SshConnectionProvider.Descriptor,
+            Language.PowerShell.PwshConnectionProvider.Descriptor,
+        };
     }
 
 }

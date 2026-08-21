@@ -240,7 +240,7 @@ from. They need real resources and cannot be faked locally:
 ## 13. Executable-markdown round-trip & samples
 
 - [ ] Open the repo's `samples/*.nb.md` (Sql, SqlQuery, Dax, MultiProvider, FabricWarehouse, HttpRequests, MermaidDiagrams, PowerShell, AnalysisServices) — each opens as a notebook and the cells you have backends for run.
-- [ ] Open a `.nb.md` in a plain text editor → it's readable Markdown with fenced blocks; edits round-trip back into cells (no serialization corruption).
+- [ ] Open a `.nb.md` in a plain text editor → it's readable Markdown with tagged code blocks; edits round-trip back into cells (no serialization corruption).
 - [ ] *(optional)* View a `.nb.md` on GitHub → renders as a clean document.
 
 ## 14. Headless / scheduled — **(SQL)** *(optional; the SQL Server Agent story)*

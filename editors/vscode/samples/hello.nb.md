@@ -2,7 +2,7 @@
 
 This file is a notebook in VS Code (via the ClrKernel Notebooks extension) and
 a plain markdown document everywhere else. The same file can be imported into
-any ClrKernel session with `#!import "hello.nb.md"` — the csharp fences run,
+any ClrKernel session with `#!import "hello.nb.md"` — the csharp blocks run,
 the prose doesn't.
 
 ```csharp

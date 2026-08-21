@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0 only (from Directory.Build.props): this tier is ASP.NET-bound; the
+         multi-TFM convention is for kernel-level projects. -->
+    <IsPackable>false</IsPackable>
+    <RootNamespace>ClrKernel.Jobs</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\ClrKernel.Jobs\ClrKernel.Jobs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared, not copied: the gate carries the reasoning for why a skipped live
+         test must be able to fail loudly (HANDOFF-17 §5), and one copy cannot drift. -->
+    <Compile Include="..\ClrKernel.Database.UnitTest\LiveTestGate.cs" Link="LiveTestGate.cs" />
+  </ItemGroup>
+
+</Project>

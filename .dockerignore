@@ -1,0 +1,18 @@
+# Keep the build context small and reproducible: everything the image needs is
+# built inside it, so local build output and dependencies must not leak in (a
+# stale wwwroot or bin/ would silently end up in the image).
+**/bin/
+**/obj/
+**/node_modules/
+src/ClrKernel.Jobs/wwwroot/
+editors/vscode/dist/
+editors/vscode/out/
+artifacts/
+.git/
+.github/
+.vs/
+.vscode/
+_to_delete/
+_delivery/
+**/*.user
+**/*.vsix

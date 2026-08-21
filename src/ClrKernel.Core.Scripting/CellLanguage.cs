@@ -18,12 +18,39 @@ public interface ICellLanguage {
     string Id { get; }
 
     /// <summary>
-    /// The <c>#!</c> selectors this language answers. A cell is routed here when
-    /// its first non-blank line starts with one of these followed by whitespace
-    /// or end-of-line. Order within the list does not matter — see
+    /// Every <c>#!</c> directive this language answers — <c>#!sql</c> and its verbs
+    /// <c>#!sql-connect</c>, <c>#!sql-bulk</c>, … — declared once, as the same
+    /// tables its parsers bind against, so routing, completion, diagnostics and
+    /// front ends can never drift from what actually parses.
+    /// <para>
+    /// A directive's name IS the language's routing token: the <b>first</b>
+    /// directive is the default one, the one serializers prepend to a bare cell.
+    /// Order beyond that does not matter for dispatch — see
     /// <see cref="CellLanguageRegistry"/>.
+    /// </para>
     /// </summary>
-    IReadOnlyList<string> Selectors { get; }
+    IReadOnlyList<DirectiveDefinition> Directives { get; }
+
+    /// <summary>
+    /// The routing tokens, derived from <see cref="Directives"/>: a selector is
+    /// simply a directive's name. A cell is routed here when its first non-blank
+    /// line starts with one of these followed by whitespace or end-of-line.
+    /// </summary>
+    IReadOnlyList<string> Selectors => Directives.Select(d => d.Selector).ToList();
+
+    /// <summary>The default routing token, prepended to a bare cell of this language.</summary>
+    string DefaultSelector => Directives.Count > 0 ? Directives[0].Selector : null;
+
+    /// <summary>Human-readable name for pickers and generated UI ("SQL", "PowerShell").</summary>
+    string DisplayName => Id;
+
+    /// <summary>
+    /// The code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
+    /// documents (<c>sql</c>, <c>tsql</c>; <c>bash</c>, <c>zsh</c>…). Parsers and
+    /// serializers consult these instead of hard-coding tag tables. Empty when the
+    /// language has no tagged-block form.
+    /// </summary>
+    IReadOnlyList<string> LanguageTags => Array.Empty<string>();
 
     /// <summary>
     /// What this language adds to the C# scripting session — assemblies, imported
@@ -181,11 +208,30 @@ public sealed class CellLanguageSet {
 
     public CellLanguageSet(IEnumerable<ICellLanguage> languages) {
         _languages = (languages ?? Array.Empty<ICellLanguage>()).Where(l => l != null).ToList();
-        _bySelector = _languages
+        _bySelector = new List<(string, ICellLanguage)>();
+        RebuildSelectorTable();
+    }
+
+    /// <summary>
+    /// Adds a language to this set at run time (a plugin loaded mid-session) and
+    /// re-derives the selector table, so longest-first dispatch keeps holding no
+    /// matter when a language arrived. Registration-order independence is the
+    /// same guarantee the constructor gives.
+    /// </summary>
+    public void Add(ICellLanguage language) {
+        if (language == null) {
+            return;
+        }
+        _languages.Add(language);
+        RebuildSelectorTable();
+    }
+
+    private void RebuildSelectorTable() {
+        _bySelector.Clear();
+        _bySelector.AddRange(_languages
             .SelectMany(l => (l.Selectors ?? Array.Empty<string>()).Select(s => (Selector: s, Language: l)))
             .OrderByDescending(p => p.Selector.Length)
-            .ThenBy(p => p.Selector, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .ThenBy(p => p.Selector, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>This engine's languages, in registration order.</summary>
@@ -202,6 +248,10 @@ public sealed class CellLanguageSet {
     /// <summary>Every registered language's script contribution.</summary>
     public IEnumerable<ScriptContribution> ScriptContributions =>
         _languages.Select(l => l.ScriptContribution).Where(c => c != null);
+
+    /// <summary>Wire descriptors for every registered language, in registration order.</summary>
+    public IReadOnlyList<LanguageDescriptor> Describe() =>
+        _languages.Select(LanguageDescriptor.From).ToList();
 
     /// <summary>
     /// Routes a cell, or returns null when no selector matches (the cell is C#).

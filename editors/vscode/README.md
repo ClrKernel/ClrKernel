@@ -6,7 +6,7 @@ PowerShell, shell, HTTP, or Mermaid** in the same notebook, sharing one session.
 Each notebook gets its **own session** — variables and connections never leak
 between notebooks open in the same window.
 
-Files matching `*.nb.md` open as notebooks: fenced ` ```csharp ` blocks are code
+Files matching `*.nb.md` open as notebooks: ` ```csharp `-tagged blocks are code
 cells (` ```sql `, ` ```dax `, ` ```powershell `, etc. select the other
 languages), everything else is markdown. The same file is a readable document on
 GitHub and runs headlessly in any ClrKernel session via `#!import` — one file,
@@ -38,11 +38,11 @@ three lives.
 - **NuGet packages in cells** — `#r "nuget: PackageName, Version"`, plus custom
   feeds via `#i "nuget:<feed-url>"`.
 - **HTTP request cells** — set a cell's language to **HTTP** (or use a
-  ` ```http ` fence) to make requests in the VS Code REST Client `.http` syntax:
+  ` ```http ` tag) to make requests in the VS Code REST Client `.http` syntax:
   variables, system variables (`{{$guid}}`, `{{$timestamp}}`), `###`-separated
   requests, and chaining (`{{login.response.body.$.token}}`). Responses render
   as rich cards — status, timing, collapsible headers, highlighted JSON.
-- **SQL cells** — set a cell's language to **SQL** (or use a ` ```sql ` fence) to
+- **SQL cells** — set a cell's language to **SQL** (or use a ` ```sql ` tag) to
   run T-SQL against Microsoft SQL Server, with T-SQL highlighting, live syntax
   checking, and completion. Connections are named and secret-free: click the
   **connection button** by the cell's language picker to add one through a guided
@@ -60,7 +60,7 @@ three lives.
   as dynamic or typed objects; plus bulk-copy, MERGE, and transactions. Opt-in
   provider packages (`ClrKernel.Database.Provider.Oracle`, `ClrKernel.Database.Provider.Odbc`) give the same
   experience against Oracle and ODBC sources.
-- **DAX & Analysis Services** — set a cell to **DAX** (or a ` ```dax ` fence) to
+- **DAX & Analysis Services** — set a cell to **DAX** (or a ` ```dax ` tag) to
   query SSAS / Azure AS / Fabric semantic models, with a cube **connection button**
   (add / edit cube). From C# the `AnalysisServices` and `Fabric` helpers query with DAX, read
   model metadata, process partitions, and bulk-load Fabric Warehouse tables.
@@ -70,16 +70,16 @@ three lives.
 - **Live output** — `Console.WriteLine` streams as it happens; displays created
   with `DisplayAs` update in place (progress, timers, tables).
 - **Mermaid diagram cells** — set a cell's language to **Mermaid** (or use a
-  ` ```mermaid ` fence) to render flowcharts, sequence diagrams, and more. They
+  ` ```mermaid ` tag) to render flowcharts, sequence diagrams, and more. They
   render fully offline (the library is embedded — no CDN), follow the editor
   theme, and can also be produced from C# with `source.DisplayMermaid()`.
 - **PowerShell cells** — set a cell's language to **PowerShell** (or use a
-  ` ```powershell ` fence) to run PowerShell in a persistent in-process runspace,
+  ` ```powershell ` tag) to run PowerShell in a persistent in-process runspace,
   with state shared across cells and native IntelliSense — completion, hover, and
   signature help (cmdlets, parameters, paths, and session variables). No separate
   PowerShell install required.
 - **Shell cells** — set a cell's language to **Shell Script** (or ` ```bash `,
-  ` ```zsh `, ` ```sh ` fences) to run shell commands like one terminal session:
+  ` ```zsh `, ` ```sh ` tags) to run shell commands like one terminal session:
   the working directory and exported environment persist across cells, ANSI
   colour renders, and a non-zero exit fails the cell with its exit code.
 - **Remote cells over SSH / PSRemoting** — register a target with

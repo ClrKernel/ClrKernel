@@ -63,8 +63,36 @@ check("initialize advertises hover", caps.get("hoverProvider") is True)
 check("initialize advertises signature help", bool(caps.get("signatureHelpProvider")))
 send("initialized", {}, notify=True)
 
+# 1b. the language descriptors ride the handshake and the dedicated request
+exp = caps.get("experimental", {}).get("clrkernel", {})
+langs = {l.get("id"): l for l in exp.get("languages", [])}
+check("handshake carries language descriptors", "sql" in langs and "dax" in langs)
+check("descriptors carry language tags", "tsql" in langs.get("sql", {}).get("languageTags", []))
+check("descriptors carry directives", any(
+    d.get("selector") == "#!sql-connect" for d in langs.get("sql", {}).get("directives", [])))
+
+req_langs = request("clrkernel/languages", {})
+check("clrkernel/languages answers with the same ids",
+      {l.get("id") for l in (req_langs or {}).get("languages", [])} == set(langs))
+
+# 1c. connection providers describe their settings schemas
+described = request("clrkernel/connections/describe",
+                    {"languageId": "sql", "notebookUri": "file:///tmp/harness.nb.md"})
+providers = {p.get("type"): p for p in (described or {}).get("providers", [])}
+check("sql describes the SqlServer provider", "SqlServer" in providers)
+sql_settings = {s.get("name"): s for s in providers.get("SqlServer", {}).get("settings", [])}
+check("provider settings carry enum auth modes", "entra" in sql_settings.get("auth", {}).get("enumValues", []))
+check("passwords are secretRef settings", sql_settings.get("password", {}).get("kind") == "secretRef")
+
+# Sessions are per notebook, keyed by the notebook path in each cell URI (the
+# part before '#') — exactly what VS Code cell URIs look like. Every cell here
+# shares one notebook so executed state is visible to language features, the
+# same way it is in the editor.
+def cell(fragment):
+    return f"vscode-notebook-cell:/tmp/clrkernel-harness.nb.md#{fragment}"
+
 # 2. execute a cell — its state must become visible to completion
-ex = request("clrkernel/execute", {"cellId": "c1", "code": 'var greeting = "hello"; var count = 42;'})
+ex = request("clrkernel/execute", {"cellId": cell("c1"), "code": 'var greeting = "hello"; var count = 42;'})
 check("execute returns ok", (ex or {}).get("status") == "ok")
 
 def open_doc(uri, text):
@@ -78,27 +106,27 @@ def labels(uri, text, line, ch):
     return [i["label"] for i in items]
 
 # 3. completion sees the executed variable, by member
-member = labels("mem://1", "greeting.", 0, 9)
+member = labels(cell("mem1"), "greeting.", 0, 9)
 check("member completion on executed var (ToUpper)", "ToUpper" in member)
 check("member completion on executed var (Length)", "Length" in member)
 
 # 4. completion sees the variable name itself
-names = labels("id://1", "coun", 0, 4)
+names = labels(cell("id1"), "coun", 0, 4)
 check("identifier completion of executed var (count)", "count" in names)
 
 # 5. BCL completion
-bcl = labels("bcl://1", "System.Console.Wri", 0, 18)
+bcl = labels(cell("bcl1"), "System.Console.Wri", 0, 18)
 check("BCL member completion (WriteLine)", "WriteLine" in bcl)
 
 # 6. hover on the executed variable
-open_doc("hov://1", "greeting")
-hov = request("textDocument/hover", {"textDocument": {"uri": "hov://1"}, "position": {"line": 0, "character": 3}})
+open_doc(cell("hov1"), "greeting")
+hov = request("textDocument/hover", {"textDocument": {"uri": cell("hov1")}, "position": {"line": 0, "character": 3}})
 hov_text = (hov or {}).get("contents", {}).get("value", "") if hov else ""
 check("hover reports string type", "string" in hov_text and "greeting" in hov_text)
 
 # 7. signature help inside a call
-open_doc("sig://1", "System.Console.WriteLine(")
-sig = request("textDocument/signatureHelp", {"textDocument": {"uri": "sig://1"}, "position": {"line": 0, "character": 25}})
+open_doc(cell("sig1"), "System.Console.WriteLine(")
+sig = request("textDocument/signatureHelp", {"textDocument": {"uri": cell("sig1")}, "position": {"line": 0, "character": 25}})
 sigs = (sig or {}).get("signatures", []) if sig else []
 check("signature help lists WriteLine overloads", any("WriteLine" in s.get("label", "") for s in sigs))
 

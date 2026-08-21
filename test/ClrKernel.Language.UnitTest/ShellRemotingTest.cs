@@ -95,12 +95,12 @@ public class ShellRemotingTest {
     }
 
     [TestMethod]
-    public void Pwsh_connect_inside_a_powershell_fence_passes_through() {
+    public void Pwsh_connect_inside_a_powershell_block_passes_through() {
         var blocks = NotebookImporter.ParseMarkdown(
             "```powershell\n#!pwsh-connect --name srv --host x\n```\n\n```powershell\nGet-Date\n```\n");
         Assert.AreEqual(2, blocks.Count);
-        StringAssert.StartsWith(blocks[0], "#!pwsh-connect", "the selector must not be buried under a prepended #!pwsh");
-        StringAssert.StartsWith(blocks[1], "#!pwsh\n");
+        StringAssert.StartsWith(blocks[0], "#!pwsh-connect", "the selector must not be buried under a prepended selector");
+        StringAssert.StartsWith(blocks[1], "#!powershell\n", "a tag with its own selector keeps it");
     }
 
     [TestMethod]

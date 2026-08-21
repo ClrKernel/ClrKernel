@@ -114,7 +114,7 @@ public class DaxCompletionTest {
 [TestClass]
 public class DaxImportTest {
     [TestMethod]
-    public void Markdown_dax_fence_and_connect_passthrough() {
+    public void Markdown_dax_tag_and_connect_passthrough() {
         var query = NotebookImporter.ParseMarkdown("```dax\nEVALUATE 'Sales'\n```\n");
         Assert.AreEqual(1, query.Count);
         StringAssert.StartsWith(query[0], "#!dax\n");

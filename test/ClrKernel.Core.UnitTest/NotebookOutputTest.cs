@@ -25,13 +25,58 @@ public class NotebookDocumentTest {
     }
 
     [TestMethod]
-    public void ParseMarkdown_leaves_non_csharp_fences_in_markdown() {
+    public void ParseMarkdown_leaves_non_csharp_blocks_in_markdown() {
         var md = "```python\nprint(1)\n```\n";
         var cells = NotebookDocument.ParseMarkdown(md);
 
         Assert.AreEqual(1, cells.Count);
         Assert.AreEqual(CellKind.Markdown, cells[0].Kind);
         StringAssert.Contains(cells[0].Source, "python");
+    }
+
+    // A descriptor as the kernel would serve it — Core.UnitTest deliberately
+    // references no Language.* package, and doesn't need to: descriptors are data.
+    private static ClrKernel.Core.Scripting.LanguageDescriptor SqlDescriptor() => new() {
+        Id = "sql",
+        DisplayName = "SQL",
+        DefaultSelector = "#!sql",
+        Selectors = new[] { "#!sql", "#!sql-connect" },
+        LanguageTags = new[] { "sql", "tsql" },
+    };
+
+    [TestMethod]
+    public void ParseMarkdown_executes_blocks_a_descriptor_claims() {
+        var md = "```sql\nSELECT 1\n```\n\n```tsql\nSELECT 2\n```\n\n```python\nprint(1)\n```\n";
+        var cells = NotebookDocument.ParseMarkdown(md, new[] { SqlDescriptor() });
+
+        Assert.AreEqual(3, cells.Count);
+        Assert.AreEqual(CellKind.Code, cells[0].Kind);
+        Assert.AreEqual("#!sql\nSELECT 1", cells[0].Source);
+        Assert.AreEqual("#!sql\nSELECT 2", cells[1].Source, "tsql has no own selector: the default applies");
+        Assert.AreEqual(CellKind.Markdown, cells[2].Kind, "unknown languages stay markdown");
+    }
+
+    [TestMethod]
+    public void ParseMarkdown_does_not_double_prepend_an_already_selectored_block() {
+        var md = "```sql\n#!sql-connect --name dw --server s\n```\n";
+        var cells = NotebookDocument.ParseMarkdown(md, new[] { SqlDescriptor() });
+
+        Assert.AreEqual(1, cells.Count);
+        StringAssert.StartsWith(cells[0].Source, "#!sql-connect");
+    }
+
+    [TestMethod]
+    public void ParseDib_sections_follow_the_descriptors() {
+        var dib = "#!csharp\nvar x = 1;\n#!sql\nSELECT 1\n#!fsharp\nlet y = 2\n";
+
+        var with = NotebookDocument.ParseDib(dib, new[] { SqlDescriptor() });
+        Assert.AreEqual(3, with.Count);
+        Assert.AreEqual(CellKind.Code, with[1].Kind);
+        Assert.AreEqual("#!sql\nSELECT 1", with[1].Source);
+        Assert.AreEqual(CellKind.Markdown, with[2].Kind, "other kernels' sections stay prose");
+
+        var without = NotebookDocument.ParseDib(dib);
+        Assert.AreEqual(CellKind.Markdown, without[1].Kind, "no descriptor: sql stays prose");
     }
 }
 

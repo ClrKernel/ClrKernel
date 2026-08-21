@@ -164,9 +164,10 @@ public static class InteractiveTable {
             s + " thead .ck-h th{position:sticky;top:0;cursor:pointer;user-select:none;background:var(--vscode-editorWidget-background,#eceff3);font-weight:600;z-index:3;padding-bottom:2px;box-shadow:inset 0 -1px 0 var(--vscode-panel-border,rgba(128,128,128,.3))}" +
             s + " thead .ck-h th:hover{background:var(--vscode-list-hoverBackground,rgba(128,128,128,.18))}" +
             s + " thead .ck-arrow{opacity:.5;font-size:10px;margin-left:4px}" +
-            s + " thead .ck-fbtn{opacity:.35;font-size:10px;margin-left:6px;padding:0 3px;border-radius:3px;cursor:pointer}" +
-            s + " thead .ck-fbtn:hover{opacity:.9;background:var(--vscode-toolbar-hoverBackground,rgba(128,128,128,.25))}" +
-            s + " thead .ck-fbtn.ck-active{opacity:1;color:var(--vscode-button-background,#0a64c2)}" +
+            s + " thead .ck-fbtn{opacity:.55;margin-left:5px;padding:1px 3px;border-radius:3px;cursor:pointer;display:inline-flex;vertical-align:middle;border:1px solid transparent}" +
+            s + " thead .ck-fbtn:hover{opacity:1;background:var(--vscode-toolbar-hoverBackground,rgba(128,128,128,.25));border-color:var(--vscode-panel-border,rgba(128,128,128,.45))}" +
+            s + " thead .ck-fbtn.ck-active{opacity:1;color:var(--vscode-button-background,#0a64c2);background:var(--vscode-toolbar-hoverBackground,rgba(128,128,128,.2))}" +
+            s + " thead .ck-fbtn svg{display:block;width:9px;height:9px;fill:currentColor}" +
             s + " thead .ck-f th{position:sticky;top:var(--ck-hh,26px);background:var(--vscode-editorWidget-background,#eceff3);padding:0 4px 4px;z-index:2;box-shadow:inset 0 -1px 0 var(--vscode-panel-border,rgba(128,128,128,.5))}" +
             s + " .ck-cfilter{width:100%;box-sizing:border-box;padding:2px 5px;font:inherit;font-size:11px;color:var(--vscode-input-foreground,inherit);background:var(--vscode-input-background,rgba(128,128,128,.10));border:1px solid var(--vscode-input-border,rgba(128,128,128,.3));border-radius:3px;outline:none}" +
             s + " td.ck-num{text-align:right;font-variant-numeric:tabular-nums}" +
@@ -203,7 +204,7 @@ var sortCol=-1,sortDir=1,gfilter='';
 var colText=cols.map(function(){return '';});
 var colSel=cols.map(function(){return null;});   // null = all values allowed
 var distinct=cols.map(function(){return null;});  // lazy per-column distinct list
-var NULLK=' null';
+var NULLK='\u0000null';
 var thead=root.querySelector('thead'),tbody=root.querySelector('tbody'),countEl=root.querySelector('.ck-count');
 thead.innerHTML='<tr class=""ck-h""></tr><tr class=""ck-f""></tr>';
 var hRow=thead.querySelector('.ck-h'),fRow=thead.querySelector('.ck-f');
@@ -228,7 +229,7 @@ function visibleRows(){var out=[];for(var r=0;r<rows.length;r++){if(passRow(rows
 if(sortCol>=0){var t=types[sortCol];out.sort(function(a,b){return cmp(a[sortCol],b[sortCol],t)*sortDir;});}return out;}
 function syncSticky(){root.style.setProperty('--ck-hh',(hRow.offsetHeight||26)+'px');}
 function buildHeader(){var h='';for(var i=0;i<cols.length;i++){var ar=sortCol===i?(sortDir>0?'▲':'▼'):'';
-h+='<th data-c=""'+i+'""><span class=""ck-lbl"">'+esc(cols[i])+'</span><span class=""ck-arrow"">'+ar+'</span><span class=""ck-fbtn'+(funnelActive(i)?' ck-active':'')+'"" data-f=""'+i+'"" title=""Filter this column"">▾</span></th>';}
+h+='<th data-c=""'+i+'""><span class=""ck-lbl"">'+esc(cols[i])+'</span><span class=""ck-arrow"">'+ar+'</span><span class=""ck-fbtn'+(funnelActive(i)?' ck-active':'')+'"" data-f=""'+i+'"" title=""Filter this column""><svg viewBox=""0 0 16 16"" aria-hidden=""true""><path d=""M1.5 2.5h13l-5 6v5l-3 1.5v-6.5z""/></svg></span></th>';}
 hRow.innerHTML=h;syncSticky();}
 function buildFilterRow(){var h='';for(var i=0;i<cols.length;i++){h+='<th><input class=""ck-cfilter"" type=""text"" data-c=""'+i+'"" placeholder=""filter"" value=""'+escA(colText[i])+'"" /></th>';}fRow.innerHTML=h;}
 function updateFunnels(){var fs=hRow.querySelectorAll('.ck-fbtn');for(var i=0;i<fs.length;i++){var c=+fs[i].getAttribute('data-f');fs[i].classList.toggle('ck-active',funnelActive(c));}}

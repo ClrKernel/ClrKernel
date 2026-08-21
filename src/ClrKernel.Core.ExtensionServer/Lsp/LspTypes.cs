@@ -142,6 +142,10 @@ public sealed class ServerCapabilities {
     public bool HoverProvider { get; set; }
     public SignatureHelpOptions SignatureHelpProvider { get; set; }
     public bool DefinitionProvider { get; set; }
+
+    // LSP's sanctioned extension slot: carries { clrkernel: { languages: [...] } }
+    // so a client learns the cell languages in the handshake, no extra round trip.
+    public object Experimental { get; set; }
 }
 
 public sealed class Location {

@@ -1,0 +1,4 @@
+{
+  "store": "postgres",
+  "connectionString": "Host=localhost;Port=55432;Database=clrkernel_jobs;Username=postgres;Password=devonly"
+}

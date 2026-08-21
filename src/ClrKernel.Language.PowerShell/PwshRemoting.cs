@@ -1,10 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Security;
-using System.Text;
-using System.Text.RegularExpressions;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database;
 
@@ -107,6 +105,36 @@ public static class PwshConnectionConfig {
 
 /// <summary>Parses <c>#!pwsh-connect</c> and the per-cell <c>--connection</c> flag.</summary>
 public static class PwshDirectives {
+    /// <summary>The declarative shape of a PowerShell cell directive
+    /// (<c>#!pwsh</c>, <c>#!powershell</c>) — also the language's routing tokens.</summary>
+    public static DirectiveDefinition CellDefinition(string selector) => new() {
+        Selector = selector,
+        Description = "Runs the cell in the session's PowerShell runspace.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connection", ValueRole = "connection", Description = "Named PSRemoting target to run on (local runspace when omitted)." },
+        },
+    };
+
+    /// <summary>The declarative shape of <c>#!pwsh-connect</c>.</summary>
+    public static readonly DirectiveDefinition ConnectDefinition = new() {
+        Selector = "#!pwsh-connect",
+        Description = "Registers a named PSRemoting target for #!pwsh cells.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--name", Aliases = new[] { "-n" }, Required = true, Description = "Connection name." },
+            new() { Name = "--host", Aliases = new[] { "--server", "--computer" }, Required = true, Description = "Remote host." },
+            new() { Name = "--user", Aliases = new[] { "--username", "-u" }, Description = "User name." },
+            new() { Name = "--port", Aliases = new[] { "-p" }, Description = "Port (22 for ssh, 5985/5986 for winrm)." },
+            new() { Name = "--ssh", Kind = DirectiveParameterKind.Flag, Description = "PowerShell-over-SSH transport (default)." },
+            new() { Name = "--winrm", Aliases = new[] { "--wsman" }, Kind = DirectiveParameterKind.Flag, Description = "WinRM transport." },
+            new() { Name = "--identity", Aliases = new[] { "-i" }, Description = "SSH identity file." },
+            new() { Name = "--secret", Aliases = new[] { "--secret-ref" }, Description = "Secret reference for the WinRM password." },
+            new() { Name = "--use-ssl", Aliases = new[] { "--ssl" }, Kind = DirectiveParameterKind.Flag, Description = "HTTPS for WinRM." },
+            new() { Name = "--password", Kind = DirectiveParameterKind.Forbidden,
+                ForbiddenMessage = "Passwords must not be placed in notebook cells. For WinRM, store the password " +
+                    "in the credential store and pass a --secret reference instead." },
+        },
+    };
+
     /// <summary>
     /// Parses a <c>#!pwsh-connect</c> line. Flags: <c>--name</c>, <c>--host</c>,
     /// <c>--user</c>, <c>--port</c>, <c>--ssh</c> (default) / <c>--winrm</c>,
@@ -114,84 +142,28 @@ public static class PwshDirectives {
     /// <c>--use-ssl</c>. A committed <c>--password</c> is rejected on purpose.
     /// </summary>
     public static PwshConnectionSpec ParseConnect(string line) {
-        var tokens = Tokenize(StripSelector(line, "#!pwsh-connect"));
-        var spec = new PwshConnectionSpec();
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--name": case "-n": spec.Name = Next(); break;
-                case "--host": case "--server": case "--computer": spec.Host = Next(); break;
-                case "--user": case "--username": case "-u": spec.User = Next(); break;
-                case "--port":
-                case "-p":
-                    spec.Port = int.TryParse(Next(), out var port)
-                        ? port
-                        : throw new FormatException("--port expects a number.");
-                    break;
-                case "--ssh": spec.Transport = PwshTransport.Ssh; break;
-                case "--winrm": case "--wsman": spec.Transport = PwshTransport.WinRm; break;
-                case "--identity": case "-i": spec.IdentityFile = Next(); break;
-                case "--secret": case "--secret-ref": spec.SecretRef = Next(); break;
-                case "--use-ssl": case "--ssl": spec.UseSsl = true; break;
-                case "--password":
-                    throw new FormatException(
-                        "Passwords must not be placed in notebook cells. For WinRM, store the password " +
-                        "in the credential store and pass a --secret reference instead.");
-                default:
-                    throw new FormatException($"Unknown #!pwsh-connect flag '{t}'.");
-            }
+        var args = DirectiveParser.Parse(ConnectDefinition, line);
+        var spec = new PwshConnectionSpec {
+            Name = args.Get("--name"),
+            Host = args.Get("--host"),
+            User = args.Get("--user"),
+            IdentityFile = args.Get("--identity"),
+            SecretRef = args.Get("--secret"),
+            UseSsl = args.Has("--use-ssl"),
+        };
+        if (args.Has("--port")) {
+            spec.Port = int.TryParse(args.Get("--port"), out var port)
+                ? port
+                : throw new FormatException("--port expects a number.");
         }
-        if (string.IsNullOrWhiteSpace(spec.Name)) {
-            throw new FormatException("#!pwsh-connect requires --name.");
-        }
-        if (string.IsNullOrWhiteSpace(spec.Host)) {
-            throw new FormatException("#!pwsh-connect requires --host.");
+        switch (args.LastOf("--ssh", "--winrm")) {
+            case "--ssh": spec.Transport = PwshTransport.Ssh; break;
+            case "--winrm": spec.Transport = PwshTransport.WinRm; break;
         }
         return spec;
     }
 
-    private static readonly Regex _connectionFlag = new(
-        @"--connection\s+(\S+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     /// <summary>The <c>--connection &lt;name&gt;</c> from a selector line, or null (local runspace).</summary>
-    public static string SelectorConnection(string firstLine) {
-        var match = _connectionFlag.Match(firstLine ?? string.Empty);
-        return match.Success ? match.Groups[1].Value : null;
-    }
-
-    private static string StripSelector(string line, string selector) {
-        var trimmed = (line ?? string.Empty).Trim();
-        return trimmed.StartsWith(selector, StringComparison.OrdinalIgnoreCase)
-            ? trimmed.Substring(selector.Length)
-            : trimmed;
-    }
-
-    private static List<string> Tokenize(string text) {
-        var tokens = new List<string>();
-        var current = new StringBuilder();
-        var quote = '\0';
-        foreach (var ch in text ?? string.Empty) {
-            if (quote != '\0') {
-                if (ch == quote) {
-                    quote = '\0';
-                } else {
-                    current.Append(ch);
-                }
-            } else if (ch == '"' || ch == '\'') {
-                quote = ch;
-            } else if (char.IsWhiteSpace(ch)) {
-                if (current.Length > 0) {
-                    tokens.Add(current.ToString());
-                    current.Clear();
-                }
-            } else {
-                current.Append(ch);
-            }
-        }
-        if (current.Length > 0) {
-            tokens.Add(current.ToString());
-        }
-        return tokens;
-    }
+    public static string SelectorConnection(string firstLine) =>
+        DirectiveParser.FindValue(firstLine, "--connection");
 }

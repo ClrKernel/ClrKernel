@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
+    <PackageReference Include="Nerdbank.Streams" Version="2.13.16" />
     <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
   </ItemGroup>
 
@@ -22,6 +23,8 @@
     <ProjectReference Include="..\..\src\ClrKernel.Language.Shell\ClrKernel.Language.Shell.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Language.Sql\ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Language.Dax\ClrKernel.Language.Dax.csproj" />
+    <!-- The LSP host, to prove diagnostics are retracted when a cell changes language. -->
+    <ProjectReference Include="..\..\src\ClrKernel.Core.ExtensionServer\ClrKernel.Core.ExtensionServer.csproj" />
   </ItemGroup>
 
 </Project>

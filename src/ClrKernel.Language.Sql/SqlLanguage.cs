@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Language.Sql;
 /// <summary>Hover info for a SQL token: markdown plus the span it covers.</summary>
@@ -92,45 +93,16 @@ public static class SqlLanguage {
         return completion;
     }
 
-    // Completion on a "#!..." line: the magic name while typing it, then its flags,
-    // and connection/auth values after the relevant flag.
+    // Completion on a "#!..." line, generated from the same DirectiveDefinition
+    // tables the parsers bind against — the flag vocabulary cannot drift.
     private static SqlCompletion CompleteMagicLine(string lineToCursor, int lineStart, SqlCompletionContext ctx) {
-        var leadingWs = lineToCursor.Length - lineToCursor.TrimStart().Length;
-        var afterWs = lineToCursor.Substring(leadingWs);
-        var endsWithSpace = lineToCursor.Length > 0 && char.IsWhiteSpace(lineToCursor[lineToCursor.Length - 1]);
-        var tokens = afterWs.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-
-        // Still typing the magic name (first token, no trailing space).
-        if (tokens.Count <= 1 && !endsWithSpace) {
-            var partial = tokens.Count == 1 ? tokens[0] : "#!";
-            var start = lineStart + lineToCursor.Length - partial.Length;
-            return Build(start, partial.Length, _magics
-                .Where(m => m.StartsWith(partial, StringComparison.OrdinalIgnoreCase))
-                .Select(m => Item(m, "magic", "cell magic")));
-        }
-
-        var magic = tokens[0].ToLowerInvariant();
-        var current = endsWithSpace ? "" : tokens[tokens.Count - 1];
-        var prev = endsWithSpace ? tokens[tokens.Count - 1] : (tokens.Count >= 2 ? tokens[tokens.Count - 2] : "");
-        var start2 = lineStart + lineToCursor.Length - current.Length;
-
-        // A value position right after a connection or auth flag.
-        if (_connectionFlags.Contains(prev.ToLowerInvariant())) {
-            return Build(start2, current.Length, ctx.ConnectionNames
-                .Where(n => n.StartsWith(current, StringComparison.OrdinalIgnoreCase))
-                .Select(n => Item(n, "connection", "connection")));
-        }
-        if (prev.Equals("--auth", StringComparison.OrdinalIgnoreCase) || prev.Equals("-a", StringComparison.OrdinalIgnoreCase)) {
-            return Build(start2, current.Length, _authValues
-                .Where(a => a.StartsWith(current, StringComparison.OrdinalIgnoreCase))
-                .Select(a => Item(a, "value", "auth mode")));
-        }
-
-        // Otherwise offer this magic's flags.
-        var flags = _magicFlags.TryGetValue(magic, out var f) ? f : Array.Empty<string>();
-        return Build(start2, current.Length, flags
-            .Where(fl => fl.StartsWith(current, StringComparison.OrdinalIgnoreCase))
-            .Select(fl => Item(fl, "flag", "flag")));
+        var generated = DirectiveCompletion.Complete(
+            SqlDirectives.AllDefinitions, lineToCursor, lineStart,
+            role => role == "connection" ? ctx.ConnectionNames : Enumerable.Empty<string>());
+        var completion = new SqlCompletion { ReplaceStart = generated.ReplaceStart, ReplaceLength = generated.ReplaceLength };
+        completion.Items.AddRange(generated.Items.Select(i =>
+            new SqlCompletionItem { Label = i.Label, InsertText = i.Label, Kind = i.Kind, Detail = i.Detail }));
+        return completion;
     }
 
     // Completion on a "-- ..." directive line: the directive keyword, then step
@@ -219,34 +191,7 @@ public static class SqlLanguage {
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
-    private static readonly string[] _magics = {
-        "#!sql", "#!sql-connect", "#!sql-bulk", "#!sql-merge", "#!sql-run", "#!sql-deploy",
-    };
-
     private static readonly string[] _directives = { "connections", "step", "needs" };
-
-    private static readonly HashSet<string> _connectionFlags = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-        "--from", "--to", "--connection", "--connections", "-c",
-    };
-
-    private static readonly string[] _authValues = {
-        "sql", "integrated", "entra", "entra-password", "entra-interactive",
-    };
-
-    private static readonly Dictionary<string, string[]> _magicFlags = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase) {
-        ["#!sql"] = new[] { "--connections" },
-        ["#!sql-connect"] = new[] {
-            "--name", "--server", "--database", "--auth", "--user", "--secret",
-            "--connection-string", "--encrypt", "--trust-cert", "--default",
-        },
-        ["#!sql-bulk"] = new[] {
-            "--from", "--to", "--query", "--from-table", "--table", "--batch-size",
-            "--timeout", "--truncate", "--create", "--no-lock", "--keep-identity", "--keep-nulls", "--no-progress", "--map",
-        },
-        ["#!sql-merge"] = new[] { "--connection", "--target", "--source", "--on", "--update", "--insert", "--delete" },
-        ["#!sql-run"] = new[] { "--select", "--max-parallel" },
-        ["#!sql-deploy"] = new[] { "--connection", "--path", "--recurse", "--dry-run", "--no-alter" },
-    };
 
     private static readonly HashSet<string> _keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
         "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "INSERT", "INTO", "VALUES",

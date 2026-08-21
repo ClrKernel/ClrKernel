@@ -6,6 +6,7 @@ import {
     State,
     TransportKind,
 } from 'vscode-languageclient/node';
+import { currentLanguages, LanguageDescriptor, setLanguages } from './languages';
 
 export interface DisplayNotification {
     cellId: string;
@@ -56,7 +57,15 @@ export class ServerClient {
             // Cell documents sync to the server, so completion/hover/signature help
             // work in cells. SQL cells also get live T-SQL diagnostics (the server
             // pushes textDocument/publishDiagnostics for sql documents).
-            documentSelector: [{ language: 'csharp-script' }, { language: 'sql' }, { language: 'dax' }],
+            //
+            // The selector is derived from the current language list (bundled until a
+            // handshake has run) — a LanguageClient's selector is fixed at construction,
+            // so a language plugged in mid-session gets editor features after the next
+            // server (re)start, while execution works immediately.
+            documentSelector: [
+                { language: 'csharp-script' },
+                ...currentLanguages().filter((l) => l.hasEditorServices).map((l) => ({ language: l.id })),
+            ],
             outputChannel: this.output,
         };
 
@@ -69,8 +78,16 @@ export class ServerClient {
         this.reportedKernelVersion = info?.version;
         this.output.appendLine(`server reports ${info?.name ?? 'ClrKernel'} ${info?.version ?? '(no version)'}`);
 
+        // The kernel's language list rides the handshake (0.10+). An older kernel
+        // has no experimental payload: the bundled defaults stay in force.
+        const experimental = this.client.initializeResult?.capabilities?.experimental as
+            { clrkernel?: { languages?: LanguageDescriptor[] } } | undefined;
+        setLanguages(experimental?.clrkernel?.languages);
+
         this.client.onNotification('clrkernel/display', (note: DisplayNotification) => this.displayHandler?.(note));
         this.client.onNotification('clrkernel/updateDisplay', (note: DisplayNotification) => this.updateHandler?.(note));
+        this.client.onNotification('clrkernel/languagesChanged',
+            (note: { languages?: LanguageDescriptor[] }) => setLanguages(note?.languages));
         this.output.appendLine('language server connected');
     }
 

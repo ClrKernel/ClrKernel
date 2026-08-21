@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Language.Sql;
 
@@ -19,53 +20,50 @@ public sealed class DeployDirective {
 
 /// <summary>Parses the <c>#!sql-run</c> and <c>#!sql-deploy</c> magics.</summary>
 public static class SqlOrchestrationDirectives {
+    /// <summary>The declarative shape of <c>#!sql-run</c>.</summary>
+    public static readonly DirectiveDefinition RunDefinition = new() {
+        Selector = "#!sql-run",
+        Description = "Runs the notebook's SQL pipeline steps.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--select", Aliases = new[] { "-s" }, Description = "Step names to run (comma-separated); default all." },
+            new() { Name = "--max-parallel", Aliases = new[] { "-p" }, Description = "Maximum parallel steps (default 4)." },
+        },
+    };
+
+    /// <summary>The declarative shape of <c>#!sql-deploy</c>.</summary>
+    public static readonly DirectiveDefinition DeployDefinition = new() {
+        Selector = "#!sql-deploy",
+        Description = "Deploys .sql files from a folder.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connection", Aliases = new[] { "-c" }, ValueRole = "connection", Description = "Connection name." },
+            new() { Name = "--path", Aliases = new[] { "--folder" }, Required = true, RequiredLabel = "--path <folder>", Description = "Folder of .sql files." },
+            new() { Name = "--recurse", Aliases = new[] { "-r" }, Kind = DirectiveParameterKind.Flag, Description = "Recurse into subfolders." },
+            new() { Name = "--dry-run", Kind = DirectiveParameterKind.Flag, Description = "Report without executing." },
+            new() { Name = "--no-alter", Kind = DirectiveParameterKind.Flag, Description = "Never ALTER existing objects." },
+        },
+    };
+
     public static RunDirective ParseRun(string line) {
-        var tokens = Tokenize(line, "#!sql-run");
+        var args = DirectiveParser.Parse(RunDefinition, line);
         var d = new RunDirective();
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--select":
-                case "-s":
-                    d.Select = Next().Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
-                    break;
-                case "--max-parallel":
-                case "-p":
-                    d.MaxParallel = int.TryParse(Next(), out var n) ? n : throw new FormatException("--max-parallel expects a number.");
-                    break;
-                default: throw new FormatException($"Unknown #!sql-run flag '{t}'.");
-            }
+        if (args.Has("--select")) {
+            d.Select = args.Get("--select").Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+        }
+        if (args.Has("--max-parallel")) {
+            d.MaxParallel = int.TryParse(args.Get("--max-parallel"), out var n)
+                ? n
+                : throw new FormatException("--max-parallel expects a number.");
         }
         return d;
     }
 
     public static DeployDirective ParseDeploy(string line) {
-        var tokens = Tokenize(line, "#!sql-deploy");
-        var d = new DeployDirective();
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--connection": case "-c": d.Connection = Next(); break;
-                case "--path": case "--folder": d.Options.Path = Next(); break;
-                case "--recurse": case "-r": d.Options.Recurse = true; break;
-                case "--dry-run": d.Options.DryRun = true; break;
-                case "--no-alter": d.Options.NoAlter = true; break;
-                default: throw new FormatException($"Unknown #!sql-deploy flag '{t}'.");
-            }
-        }
-        if (string.IsNullOrWhiteSpace(d.Options.Path)) {
-            throw new FormatException("#!sql-deploy requires --path <folder>.");
-        }
+        var args = DirectiveParser.Parse(DeployDefinition, line);
+        var d = new DeployDirective { Connection = args.Get("--connection") };
+        d.Options.Path = args.Get("--path");
+        d.Options.Recurse = args.Has("--recurse");
+        d.Options.DryRun = args.Has("--dry-run");
+        d.Options.NoAlter = args.Has("--no-alter");
         return d;
-    }
-
-    private static List<string> Tokenize(string line, string selector) {
-        var trimmed = (line ?? string.Empty).TrimStart();
-        if (trimmed.StartsWith(selector, StringComparison.OrdinalIgnoreCase)) {
-            trimmed = trimmed.Substring(selector.Length);
-        }
-        return SqlDirectives.Tokenize(trimmed);
     }
 }

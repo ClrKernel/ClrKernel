@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0] - 2026-08-19
+
+**Needs kernel 0.10.x.** The extension no longer hard-codes any language: it
+asks the kernel.
+
+- **Languages come from the kernel.** The cell-language picker, the selector
+  prepended when a cell runs, the language-tag map, and which cells get
+  completion/hover all follow the descriptor list the kernel reports at
+  connect time. A language added to the kernel — including one a notebook
+  loads at run time with `#r "nuget: …"` — appears without an extension
+  update.
+- **One connection wizard for every language.** The separate SQL and DAX
+  wizards are replaced by a single wizard generated from each provider's
+  settings schema, so new providers get a working connection UI for free.
+  Prompts now reflect what is actually required: credentials are asked for
+  (and required) only for auth modes that use them, and a Fabric workspace
+  asks for its semantic model.
+- PowerShell cells now get language features from the kernel.
+
 ## [0.6.2] - 2026-08-17
 
 - **Smaller, faster extension.** The extension is now bundled (esbuild): 17

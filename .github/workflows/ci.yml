@@ -54,6 +54,98 @@ jobs:
         run: npm test
         working-directory: editors/vscode
 
+  webapp:
+    name: Jobs web app (build + unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src/ClrKernel.Jobs/webapp/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: src/ClrKernel.Jobs/webapp
+
+      # tsc proves the SPA is type-correct and vite proves it bundles; the unit
+      # tests cover the renderer helpers, the only part with real logic.
+      - name: Build
+        run: npm run build
+        working-directory: src/ClrKernel.Jobs/webapp
+
+      - name: Test
+        run: npm test
+        working-directory: src/ClrKernel.Jobs/webapp
+
+  jobs-stores:
+    name: Jobs run-store contract (PostgreSQL + SQL Server)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: clrkernel_jobs
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'CiOnly!Passw0rd'
+        ports: ['1433:1433']
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'CiOnly!Passw0rd' -C -Q 'select 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # The same contract suite the other backends run, pointed at real servers:
+      # the per-provider migrations and dialect differences only show up here.
+      # CLRKERNEL_TEST_REQUIRE_LIVE makes a missing server fail the job rather than
+      # skip, so this can never go green without touching a database.
+      - name: Run the store contract tests
+        run: dotnet test test/ClrKernel.Jobs.UnitTest/ClrKernel.Jobs.UnitTest.csproj
+          --filter ClassName~RunStoreContractTest
+        env:
+          CLRKERNEL_TEST_REQUIRE_LIVE: '1'
+          CLRKERNEL_JOBS_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_jobs;Username=postgres;Password=ci-only
+          CLRKERNEL_JOBS_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_jobs;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
+
+  jobs-image:
+    name: Jobs Docker image (build + smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The Dockerfile builds the SPA and both tools from this commit, so this is
+      # also the check that a from-scratch build of the whole thing works.
+      - name: Build image
+        run: docker build -f src/ClrKernel.Jobs/Dockerfile -t clrkernel-jobs .
+
+      - name: Run a notebook job in the container
+        run: |
+          mkdir -p smoke && cat > smoke/hello.nb.md <<'EOF'
+          ```csharp
+          $"docker says {1 + 1}"
+          ```
+          EOF
+          cat > smoke/hello.jobs.yaml <<'EOF'
+          notebook: ./hello.nb.md
+          jobs:
+            - name: hello
+          EOF
+          docker run --rm -v "$PWD/smoke:/notebooks:ro" clrkernel-jobs run hello
+
   notebook-smoke:
     name: Headless notebook smoke test
     runs-on: ubuntu-latest

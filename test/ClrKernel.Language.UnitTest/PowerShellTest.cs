@@ -112,12 +112,15 @@ public class PowerShellTest {
     }
 
     [TestMethod]
-    public void Markdown_pwsh_fence_becomes_pwsh_block() {
-        var md = "# Title\n\n```powershell\nGet-Date\n```\n";
+    public void Markdown_pwsh_tag_becomes_pwsh_block() {
+        // A tag with its own selector keeps it (#!powershell); a bare alias tag
+        // (ps1) falls back to the language default (#!pwsh). Both route identically.
+        var md = "# Title\n\n```powershell\nGet-Date\n```\n\n```ps1\nGet-Item .\n```\n";
         var blocks = NotebookImporter.ParseMarkdown(md);
-        Assert.AreEqual(1, blocks.Count);
-        StringAssert.StartsWith(blocks[0], "#!pwsh\n");
+        Assert.AreEqual(2, blocks.Count);
+        StringAssert.StartsWith(blocks[0], "#!powershell\n");
         StringAssert.Contains(blocks[0], "Get-Date");
+        StringAssert.StartsWith(blocks[1], "#!pwsh\n");
     }
 
     [TestMethod]

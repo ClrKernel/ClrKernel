@@ -317,6 +317,25 @@ papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p ru
 A failing cell exits non-zero (job schedulers see the failure); papermill also
 persists the partially-executed output notebook as a diagnostic artifact.
 
+### Scheduling notebooks — ClrKernel Jobs (preview)
+
+`ClrKernel.Jobs` is a companion dotnet tool that runs notebooks as scheduled jobs
+and serves a web dashboard, so you don't need an external scheduler:
+
+```bash
+dotnet tool install --global ClrKernel.Jobs
+clrkernel-jobs serve --notebooks ./notebooks     # http://localhost:5000
+```
+
+Jobs are `*.jobs.yaml` files beside the notebooks (several jobs per notebook, each
+with its own cron and parameters), chained with `dependsOn`. Every run executes in
+an isolated kernel process, cell by cell, with live progress and an executed
+`.ipynb` kept as the artifact. Run history goes to SQLite, SQL Server, PostgreSQL,
+or plain files; failures notify over webhooks or SMTP — with passwords resolved from
+secret references, never stored in config. Also ships as a Docker image.
+
+See [docs/jobs.md](docs/jobs.md).
+
 ## Build & test
 
 A cross-platform task runner (built on [Nuke](https://nuke.build)) drives build,
@@ -350,6 +369,32 @@ bare `./build.sh` restores, builds, and tests in one go.
                                    # feed; tests the full packaged experience
 clrkernel --kernel-spec-details    # show which kernelspec the binary resolves
 ```
+
+### Extending the kernel: your own cell language
+
+A cell language is one class plus one assembly attribute. Implement
+`ICellLanguage` (from `ClrKernel.Core.Scripting`) — it declares its own
+`Selectors` (`#!kql`), `LanguageTags` (the ```` ```kql ```` tags it claims),
+`DisplayName`, and any `Directives` — then mark the assembly:
+
+```csharp
+[assembly: CellLanguageExport(typeof(MyKqlCellLanguage))]
+```
+
+A notebook that does `#r "nuget: My.ClrKernel.Language.Kql"` registers it in
+**that notebook's session only**: its selectors route immediately, its tags
+execute in `.nb.md` files, its directives get completion and diagnostics, and
+the VS Code cell-language picker refreshes. Other notebooks are untouched.
+
+Connection types work the same way — expose a static
+`ConnectionProviderDescriptor Descriptor` describing your settings (keys, auth
+modes, which need secrets) and mark the assembly
+`[assembly: ConnectionProviderExport(typeof(MyProvider))]`; the editor's
+connection wizard is generated from it, with no extension changes.
+
+One bound: syntax highlighting and file icons are VS Code *install-time*
+contributions, so a runtime-registered language gets full behaviour but plain
+text styling unless you ship a companion extension with a grammar.
 
 ## License
 

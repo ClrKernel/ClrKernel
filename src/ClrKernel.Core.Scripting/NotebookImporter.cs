@@ -28,22 +28,23 @@ public class NotebookImporter {
         @"^\s*#!(?:import|lib)\s+--register\s+(?:""(?<name>[^""]+)""|(?<uname>[^\s""]+))\s+(?:""(?<path>[^""]+)""|(?<upath>[^\s""]+))\s*$",
         RegexOptions.Compiled);
 
-    // Lines that separate sections in a .dib file. Any other #! line is cell content.
-    private static readonly Regex _dibSectionPattern = new(
-        @"^#!(csharp|c#|fsharp|f#|pwsh|powershell|html|http|javascript|js|markdown|md|meta|mermaid|value|sql|dax|kql|bash|zsh|sh|shell)\s*$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly HashSet<string> _csharpSectionNames =
+        new(StringComparer.OrdinalIgnoreCase) { "csharp", "c#", "cs" };
 
-    private static readonly string[] _csharpSectionNames = { "csharp", "c#" };
+    // .dib section names recognized as boundaries even when no registered language
+    // claims them — other kernels' cells and prose, skipped by the C# extractor.
+    private static readonly HashSet<string> _knownSections =
+        new(StringComparer.OrdinalIgnoreCase) {
+            "fsharp", "f#", "pwsh", "powershell", "html", "http", "javascript", "js", "markdown",
+            "md", "meta", "mermaid", "value", "sql", "dax", "kql", "bash", "zsh", "sh", "shell",
+        };
 
-    // These selectors mark sections/fences whose body is a non-C# executable
-    // language; the engine routes each to its handler. We re-emit the marker so
-    // the block is self-describing when it flows through execution.
-    private const string _httpSelector = "#!http";
-    private const string _mermaidSelector = "#!mermaid";
-    private const string _pwshSelector = "#!pwsh";
-    private const string _sqlSelector = "#!sql";
-    private const string _daxSelector = "#!dax";
-    private static readonly string[] _pwshSectionNames = { "pwsh", "powershell" };
+    /// <summary>
+    /// Provides the language descriptors this importer routes non-C# blocks with.
+    /// The engine wires this to its own live language set, so languages added
+    /// mid-session are seen; unset, the process-default registry applies.
+    /// </summary>
+    public Func<IReadOnlyList<LanguageDescriptor>> Languages { get; set; }
 
     private readonly HashSet<string> _importedPaths = new(
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -139,7 +140,7 @@ public class NotebookImporter {
 
         // Parse before marking: an unsupported or unreadable file is not
         // considered imported.
-        var blocks = ExtractCSharpBlocks(resolvedPath);
+        var blocks = ExtractCSharpBlocks(resolvedPath, Languages?.Invoke());
 
         // Mark before running: a failing import doesn't rerun implicitly (use --force),
         // and self/circular imports terminate instead of recursing forever.
@@ -159,59 +160,63 @@ public class NotebookImporter {
         return true;
     }
 
-    /// <summary>Extracts the executable C# blocks from a .dib, .ipynb, .csx, or .cs file.</summary>
-    public static IReadOnlyList<string> ExtractCSharpBlocks(string resolvedPath) {
+    /// <summary>Extracts the executable blocks from a .dib, .ipynb, .md, .csx, or .cs file.</summary>
+    public static IReadOnlyList<string> ExtractCSharpBlocks(
+        string resolvedPath, IReadOnlyList<LanguageDescriptor> languages = null) {
         var extension = Path.GetExtension(resolvedPath).ToLowerInvariant();
         var content = File.ReadAllText(resolvedPath);
 
         return extension switch {
-            ".dib" => ParseDib(content),
+            ".dib" => ParseDib(content, languages),
             ".ipynb" => ParseIpynb(content),
-            ".md" or ".markdown" => ParseMarkdown(content),
+            ".md" or ".markdown" => ParseMarkdown(content, languages),
             ".csx" or ".cs" => new[] { content },
             _ => throw new NotSupportedException(
                 $"#!import: unsupported file type '{extension}' (supported: .dib, .ipynb, .md, .csx, .cs)"),
         };
     }
 
+    // Null means "whatever the process default registry knows" — the historical
+    // behavior of these static parsers. The engine's importer instance passes its
+    // own live set instead (see Languages).
+    private static IReadOnlyList<LanguageDescriptor> Resolve(IReadOnlyList<LanguageDescriptor> languages) =>
+        languages ?? CellLanguageRegistry.Default.CreateSet().Describe();
+
     /// <summary>
     /// Splits a .dib document into sections at kernel-selector lines (#!csharp,
-    /// #!markdown, ...) and returns the C# sections. Content before the first
-    /// selector is treated as C#. Magic lines that are not kernel selectors
-    /// (e.g. a nested #!import) stay inside their section.
+    /// #!markdown, ...) and returns the executable sections — C# verbatim, a
+    /// registered language's section with its selector prepended. Content before
+    /// the first selector is treated as C#. Magic lines that are not kernel
+    /// selectors (e.g. a nested #!import) stay inside their section.
     /// </summary>
-    public static IReadOnlyList<string> ParseDib(string content) {
+    public static IReadOnlyList<string> ParseDib(string content, IReadOnlyList<LanguageDescriptor> languages = null) {
+        var byTag = LanguageDescriptor.ByTag(Resolve(languages));
         var blocks = new List<string>();
         var current = new List<string>();
-        var section = "csharp"; // leading content defaults to C#
+        var isCSharp = true; // leading content defaults to C#
+        LanguageDescriptor language = null;
+        string tag = null;
 
         void Flush() {
             var text = string.Join("\n", current).Trim();
             if (text.Length > 0) {
-                if (_csharpSectionNames.Contains(section)) {
+                if (isCSharp) {
                     blocks.Add(text);
-                } else if (section == "http") {
-                    blocks.Add(_httpSelector + "\n" + text);
-                } else if (section == "mermaid") {
-                    blocks.Add(_mermaidSelector + "\n" + text);
-                } else if (_pwshSectionNames.Contains(section)) {
-                    blocks.Add(PwshBlock(text));
-                } else if (section == "sql") {
-                    blocks.Add(SqlBlock(text));
-                } else if (section == "dax") {
-                    blocks.Add(DaxBlock(text));
-                } else if (_shellFenceTags.Contains(section)) {
-                    blocks.Add(ShellBlock(text, section));
+                } else if (language != null) {
+                    blocks.Add(language.BlockForTag(tag, text));
                 }
             }
             current.Clear();
         }
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
-            var match = _dibSectionPattern.Match(line);
-            if (match.Success) {
+            var section = DibSectionName(line);
+            if (section != null &&
+                (_csharpSectionNames.Contains(section) || _knownSections.Contains(section) || byTag.ContainsKey(section))) {
                 Flush();
-                section = match.Groups[1].Value.ToLowerInvariant();
+                isCSharp = _csharpSectionNames.Contains(section);
+                language = isCSharp ? null : byTag.GetValueOrDefault(section);
+                tag = section;
             } else {
                 current.Add(line);
             }
@@ -221,89 +226,55 @@ public class NotebookImporter {
         return blocks;
     }
 
-    // Fence opener for executable markdown: ``` or ~~~ followed by an executable
-    // language tag (C#, http, mermaid, or PowerShell).
-    private static readonly Regex _markdownFencePattern = new(
-        @"^(?<fence>`{3,}|~{3,})\s*(?<lang>csharp|c#|cs|http|mermaid|pwsh|powershell|ps1|sql|tsql|dax|bash|zsh|sh|shell)\s*$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    private static readonly string[] _pwshFenceTags = { "pwsh", "powershell", "ps1" };
-    private static readonly string[] _shellFenceTags = { "bash", "zsh", "sh", "shell" };
-    private static readonly string[] _sqlFenceTags = { "sql", "tsql" };
-    private static readonly string[] _daxFenceTags = { "dax" };
-
-    // A SQL block already carrying a #!sql / #!sql-connect selector (e.g. a
-    // connection-setup fence) is passed through as-is; a bare query gets the
-    // #!sql selector prepended so the engine routes it.
-    private static string SqlBlock(string text) =>
-        text.TrimStart().StartsWith("#!sql", StringComparison.OrdinalIgnoreCase)
-            ? text
-            : _sqlSelector + "\n" + text;
-
-    // A PowerShell block already carrying a #!pwsh selector (e.g. #!pwsh-connect)
-    // passes through; a bare script gets #!pwsh prepended.
-    private static string PwshBlock(string text) =>
-        text.TrimStart().StartsWith("#!pwsh", StringComparison.OrdinalIgnoreCase)
-            ? text
-            : _pwshSelector + "\n" + text;
-
-    // A shell block already carrying its selector passes through; a bare script
-    // gets the selector matching its fence tag ("shell" means bash).
-    private static string ShellBlock(string text, string tag) {
-        if (text.TrimStart().StartsWith("#!", StringComparison.Ordinal)) {
-            return text;
+    // A bare "#!name" line is a .dib section marker; a line with arguments
+    // ("#!sql-connect --name x") is a directive that belongs to its section.
+    private static string DibSectionName(string line) {
+        var trimmed = line.Trim();
+        if (!trimmed.StartsWith("#!", StringComparison.Ordinal) || trimmed.Length <= 2) {
+            return null;
         }
-        var shell = tag.Equals("shell", StringComparison.OrdinalIgnoreCase) ? "bash" : tag.ToLowerInvariant();
-        return "#!" + shell + "\n" + text;
+        var name = trimmed.Substring(2);
+        return name.Any(char.IsWhiteSpace) ? null : name;
     }
 
-    private static string DaxBlock(string text) =>
-        text.TrimStart().StartsWith("#!dax", StringComparison.OrdinalIgnoreCase)
-            ? text
-            : _daxSelector + "\n" + text;
+    // Tagged-block opener for executable markdown: ``` or ~~~ with a language tag.
+    private static readonly Regex _taggedBlockPattern = new(
+        @"^(?<delim>`{3,}|~{3,})\s*(?<lang>[^\s`~]*)\s*$",
+        RegexOptions.Compiled);
 
     /// <summary>
     /// Extracts executable blocks from a markdown document ("executable
-    /// markdown"): fenced code blocks tagged csharp/c#/cs (C#), http (a .http
+    /// markdown"): tagged code blocks tagged csharp/c#/cs (C#), http (a .http
     /// request), mermaid (a diagram), or pwsh/powershell/ps1 (PowerShell) run;
-    /// prose and fences with other language tags are ignored.
+    /// prose and blocks with other language tags are ignored.
     /// </summary>
-    public static IReadOnlyList<string> ParseMarkdown(string content) {
+    public static IReadOnlyList<string> ParseMarkdown(string content, IReadOnlyList<LanguageDescriptor> languages = null) {
+        var byTag = LanguageDescriptor.ByTag(Resolve(languages));
         var blocks = new List<string>();
         List<string> current = null;
-        string closingFence = null;
-        var isHttp = false;
-        var isMermaid = false;
-        var isPwsh = false;
-        var isSql = false;
-        var isDax = false;
-        string shellTag = null;
+        string closingDelimiter = null;
+        var isCSharp = false;
+        LanguageDescriptor language = null;
+        string tag = null;
 
         foreach (var line in content.Replace("\r\n", "\n").Split('\n')) {
             if (current == null) {
-                var match = _markdownFencePattern.Match(line);
-                if (match.Success) {
-                    current = new List<string>();
-                    closingFence = match.Groups["fence"].Value;
-                    isHttp = match.Groups["lang"].Value.Equals("http", StringComparison.OrdinalIgnoreCase);
-                    isMermaid = match.Groups["lang"].Value.Equals("mermaid", StringComparison.OrdinalIgnoreCase);
-                    isPwsh = _pwshFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
-                    isSql = _sqlFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
-                    isDax = _daxFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant());
-                    shellTag = _shellFenceTags.Contains(match.Groups["lang"].Value.ToLowerInvariant())
-                        ? match.Groups["lang"].Value.ToLowerInvariant()
-                        : null;
+                var match = _taggedBlockPattern.Match(line);
+                if (!match.Success) {
+                    continue;
                 }
-            } else if (line.Trim() == closingFence) {
+                tag = match.Groups["lang"].Value;
+                isCSharp = _csharpSectionNames.Contains(tag);
+                language = isCSharp ? null : byTag.GetValueOrDefault(tag);
+                if (isCSharp || language != null) {
+                    current = new List<string>();
+                    closingDelimiter = match.Groups["delim"].Value;
+                }
+                // Unknown-language and untagged blocks are prose: skipped entirely.
+            } else if (line.Trim() == closingDelimiter) {
                 var text = string.Join("\n", current).Trim();
                 if (text.Length > 0) {
-                    blocks.Add(isHttp ? _httpSelector + "\n" + text
-                        : isMermaid ? _mermaidSelector + "\n" + text
-                        : isPwsh ? PwshBlock(text)
-                        : isSql ? SqlBlock(text)
-                        : isDax ? DaxBlock(text)
-                        : shellTag != null ? ShellBlock(text, shellTag)
-                        : text);
+                    blocks.Add(language == null ? text : language.BlockForTag(tag, text));
                 }
                 current = null;
             } else {

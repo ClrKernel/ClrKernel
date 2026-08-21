@@ -76,5 +76,6 @@ public sealed class SqlCellLanguageServices : ICellLanguageServices {
                 Code = d.Number,
                 Message = d.Message,
             })
+            .Concat(DirectiveCompletion.Check(SqlDirectives.AllDefinitions, text))
             .ToList();
 }

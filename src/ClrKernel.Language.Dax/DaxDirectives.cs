@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.AnalysisServices;
 
@@ -30,18 +30,48 @@ public sealed class DaxCellRequest {
 
 /// <summary>Parses the <c>#!dax-connect</c> magic and the per-cell cube selector.</summary>
 public static class DaxDirectives {
+    /// <summary>The declarative shape of the bare <c>#!dax</c> selector line.</summary>
+    public static readonly DirectiveDefinition CellDefinition = new() {
+        Selector = "#!dax",
+        Description = "Runs the cell as DAX against a registered cube.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--connections", Aliases = new[] { "--connection", "--cube", "-c" }, ValueRole = "cube", Description = "Cube to query (default cube when omitted)." },
+        },
+    };
+
+    /// <summary>The declarative shape of <c>#!dax-connect</c>.</summary>
+    public static readonly DirectiveDefinition ConnectDefinition = new() {
+        Selector = "#!dax-connect",
+        Description = "Registers a named semantic model / cube for #!dax cells.",
+        Parameters = new DirectiveParameter[] {
+            new() { Name = "--name", Aliases = new[] { "-n" }, Required = true, Description = "Cube name." },
+            new() { Name = "--server", Aliases = new[] { "--host", "-s" }, Description = "XMLA server (or powerbi:// / asazure:// endpoint)." },
+            new() { Name = "--database", Aliases = new[] { "-d" }, Description = "Database / model." },
+            new() { Name = "--user", Aliases = new[] { "--username", "-u" }, Description = "User name (SQL-style auth)." },
+            new() { Name = "--secret", Aliases = new[] { "--secret-ref" }, Description = "Secret reference for the password." },
+            new() { Name = "--auth", Aliases = new[] { "-a" }, EnumValues = new[] { "integrated", "sql", "user", "aad", "entra" }, ValueDetail = "auth mode", Description = "Authentication mode." },
+            new() { Name = "--workspace", Description = "Fabric / Power BI workspace." },
+            new() { Name = "--model", Aliases = new[] { "--dataset" }, Description = "Fabric / Power BI semantic model." },
+            new() { Name = "--connection-string", Aliases = new[] { "--cs" }, Description = "Raw ADOMD connection string." },
+            new() { Name = "--fabric", Kind = DirectiveParameterKind.Flag, Description = "Connect to a Fabric / Power BI workspace (needs --workspace and --model)." },
+            new() { Name = "--integrated", Aliases = new[] { "--sspi", "--windows" }, Kind = DirectiveParameterKind.Flag, Description = "Use the signed-in Windows identity." },
+            new() { Name = "--azure-as", Aliases = new[] { "--aas" }, Kind = DirectiveParameterKind.Flag, Description = "Azure Analysis Services (Entra token)." },
+            new() { Name = "--default", Kind = DirectiveParameterKind.Flag, Description = "Make this the default cube." },
+            new() { Name = "--password", Aliases = new[] { "-p" }, Kind = DirectiveParameterKind.Forbidden,
+                ForbiddenMessage = "Passwords must not be placed in notebook cells. Use --secret <env-var> " +
+                    "(resolved from an environment variable), Integrated auth, or Entra instead." },
+        },
+    };
+
+    /// <summary>Every DAX directive's shape, in the order pickers should list them.</summary>
+    public static IReadOnlyList<DirectiveDefinition> AllDefinitions { get; } = new[] {
+        CellDefinition, ConnectDefinition,
+    };
+
     /// <summary>The <c>--secret</c> reference on a connect line, or null. Lets a caller put the
     /// password in the store under the right key before the line is parsed.</summary>
-    public static string SecretRefOf(string line) {
-        var tokens = Tokenize(StripSelector(line ?? string.Empty, "#!dax-connect"));
-        for (var i = 0; i < tokens.Count - 1; i++) {
-            var t = tokens[i].ToLowerInvariant();
-            if (t == "--secret" || t == "--secret-ref") {
-                return tokens[i + 1];
-            }
-        }
-        return null;
-    }
+    public static string SecretRefOf(string line) =>
+        DirectiveParser.FindValue(line, "--secret", "--secret-ref");
 
     /// <summary>
     /// Parses a <c>#!dax-connect</c> line. Flags: <c>--name</c>, <c>--server</c>,
@@ -55,40 +85,19 @@ public static class DaxDirectives {
     /// which reads the OS credential manager and the <c>CLRKERNEL_SECRET_*</c> environment
     /// variables — the same places a SQL connection's password comes from.</param>
     public static DaxConnectDirective ParseConnect(string line, SecretStore secrets = null) {
-        var tokens = Tokenize(StripSelector(line, "#!dax-connect"));
-        string name = null, server = null, database = null, user = null, secret = null,
-               auth = null, workspace = null, model = null, connectionString = null;
-        bool fabric = false, azureAs = false, isDefault = false, integrated = false;
-
-        for (var i = 0; i < tokens.Count; i++) {
-            var t = tokens[i];
-            string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
-            switch (t.ToLowerInvariant()) {
-                case "--name": case "-n": name = Next(); break;
-                case "--server": case "--host": case "-s": server = Next(); break;
-                case "--database": case "-d": database = Next(); break;
-                case "--user": case "--username": case "-u": user = Next(); break;
-                case "--secret": case "--secret-ref": secret = Next(); break;
-                case "--auth": case "-a": auth = Next().ToLowerInvariant(); break;
-                case "--workspace": workspace = Next(); break;
-                case "--model": case "--dataset": model = Next(); break;
-                case "--connection-string": case "--cs": connectionString = Next(); break;
-                case "--fabric": fabric = true; break;
-                case "--integrated": case "--sspi": case "--windows": integrated = true; break;
-                case "--azure-as": case "--aas": azureAs = true; break;
-                case "--default": isDefault = true; break;
-                case "--password":
-                case "-p":
-                    throw new FormatException(
-                        "Passwords must not be placed in notebook cells. Use --secret <env-var> " +
-                        "(resolved from an environment variable), Integrated auth, or Entra instead.");
-                default: throw new FormatException($"Unknown #!dax-connect flag '{t}'.");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(name)) {
-            throw new FormatException("#!dax-connect requires --name.");
-        }
+        var args = DirectiveParser.Parse(ConnectDefinition, line);
+        var name = args.Get("--name");
+        var server = args.Get("--server");
+        var database = args.Get("--database");
+        var user = args.Get("--user");
+        var secret = args.Get("--secret");
+        var auth = args.Get("--auth")?.ToLowerInvariant();
+        var workspace = args.Get("--workspace");
+        var model = args.Get("--model");
+        var connectionString = args.Get("--connection-string");
+        var fabric = args.Has("--fabric");
+        var integrated = args.Has("--integrated");
+        var azureAs = args.Has("--azure-as");
 
         SsasConnectionSpec spec;
         if (!string.IsNullOrWhiteSpace(connectionString)) {
@@ -125,7 +134,7 @@ public static class DaxDirectives {
             spec = AnalysisServices.Connect(server, database).Spec;
         }
 
-        return new DaxConnectDirective(name, spec, isDefault);
+        return new DaxConnectDirective(name, spec, args.Has("--default"));
     }
 
     /// <summary>
@@ -162,56 +171,12 @@ public static class DaxDirectives {
     }
 
     /// <summary>Reads the cube name from a <c>#!dax --connections name</c> line.</summary>
-    public static string SelectorConnection(string selectorLine) {
-        var tokens = Tokenize(StripSelector(selectorLine ?? string.Empty, "#!dax"));
-        for (var i = 0; i < tokens.Count - 1; i++) {
-            var t = tokens[i].ToLowerInvariant();
-            if (t == "--connections" || t == "--connection" || t == "--cube" || t == "-c") {
-                return tokens[i + 1];
-            }
-        }
-        return null;
-    }
+    public static string SelectorConnection(string selectorLine) =>
+        DirectiveParser.FindValue(selectorLine, "--connections", "--connection", "--cube", "-c");
 
     private static void RequireServer(string server) {
         if (string.IsNullOrWhiteSpace(server)) {
             throw new FormatException("#!dax-connect requires --server (or --connection-string / --fabric).");
         }
-    }
-
-    // Resolves a secret ref from an environment variable, matching the SQL
-    // convention: the ref itself, or CLRKERNEL_SECRET_<REF> (upper, non-alnum → '_').
-
-    private static string StripSelector(string line, string selector) {
-        var t = (line ?? string.Empty).TrimStart();
-        return t.StartsWith(selector, StringComparison.OrdinalIgnoreCase) ? t.Substring(selector.Length) : t;
-    }
-
-    internal static List<string> Tokenize(string input) {
-        var tokens = new List<string>();
-        if (string.IsNullOrWhiteSpace(input)) {
-            return tokens;
-        }
-        var sb = new StringBuilder();
-        char quote = '\0';
-        var inToken = false;
-        foreach (var c in input) {
-            if (quote != '\0') {
-                if (c == quote) { quote = '\0'; } else { sb.Append(c); }
-                inToken = true;
-            } else if (c == '"' || c == '\'') {
-                quote = c;
-                inToken = true;
-            } else if (char.IsWhiteSpace(c)) {
-                if (inToken) { tokens.Add(sb.ToString()); sb.Clear(); inToken = false; }
-            } else {
-                sb.Append(c);
-                inToken = true;
-            }
-        }
-        if (inToken) {
-            tokens.Add(sb.ToString());
-        }
-        return tokens;
     }
 }
