@@ -49,15 +49,22 @@ public sealed class NotebookSession : IDisposable {
     private int _executionCount;
 
     private readonly Func<CancellationToken, Task<KernelProcess>> _startKernel;
+    private readonly Action<IReadOnlyList<LanguageDescriptor>> _onLanguages;
 
+    /// <param name="onLanguages">Called whenever this session's language set is
+    /// established or changes. The set decides how a notebook's fenced blocks become
+    /// cells, and parsing happens outside any session — so a set that only lives here
+    /// would leave a language loaded by <c>#r</c> executable but unparseable.</param>
     public NotebookSession(
         string id, string notebookPath, string clrkernelPath, Action<string> log = null,
-        Func<CancellationToken, Task<KernelProcess>> startKernel = null) {
+        Func<CancellationToken, Task<KernelProcess>> startKernel = null,
+        Action<IReadOnlyList<LanguageDescriptor>> onLanguages = null) {
         Id = id;
         NotebookPath = notebookPath;
         NotebookUri = ToNotebookUri(notebookPath);
         _clrkernelPath = clrkernelPath;
         _log = log;
+        _onLanguages = onLanguages;
         // Tests supply a kernel over an in-memory stream; production spawns one.
         _startKernel = startKernel ?? DefaultStartAsync;
         LastActivity = DateTime.UtcNow;
@@ -116,7 +123,7 @@ public sealed class NotebookSession : IDisposable {
         // running the rest of the session against the set that existed at startup.
         kernel.Client.LanguagesChanged += reply => {
             if (reply?.Languages is { Count: > 0 } languages) {
-                Languages = languages;
+                SetLanguages(languages);
             }
         };
         var info = await kernel.InitializeAsync(cancellationToken).ConfigureAwait(false);
@@ -124,8 +131,8 @@ public sealed class NotebookSession : IDisposable {
         KernelVersion = info.Version;
         // The handshake answers from a fresh registry (no session exists yet); this
         // asks the notebook's own session. Falls back when the kernel has no such call.
-        Languages = await kernel.Client.LanguagesAsync(NotebookUri, cancellationToken).ConfigureAwait(false)
-            ?? info.Languages;
+        SetLanguages(await kernel.Client.LanguagesAsync(NotebookUri, cancellationToken).ConfigureAwait(false)
+            ?? info.Languages);
         _kernel = kernel;
         return kernel;
     }
@@ -252,6 +259,13 @@ public sealed class NotebookSession : IDisposable {
 
     // display appends; updateDisplay replaces the output it first created —
     // otherwise a progress bar would emit hundreds of outputs and hit the cap.
+    //
+    // ponytail: outputs are ordered by arrival, so a cell's stdout can land AFTER its
+    // trailing result even though the kernel sent it first — the notification handler
+    // and the reply's continuation race on the threadpool. Pre-existing and identical
+    // under both kernel surfaces (measured, not assumed), so it is not an lsp
+    // regression. Fixing it properly means carrying a sequence number on the wire and
+    // sorting by it; worth doing when someone is bothered enough to notice.
     private void Record(DisplayNotification notification) {
         if (notification?.CellId == null || notification.Data == null) {
             return;
@@ -319,6 +333,17 @@ public sealed class NotebookSession : IDisposable {
     private void SetExecutionCount(string id, int count) {
         lock (_stateGate) {
             State(id).ExecutionCount = count;
+        }
+    }
+
+    // Executing a cell and parsing the file into cells read this set from two
+    // different places, so they are told together or they drift: the language would
+    // run when you pressed ▶ and its fenced block would stop being a code cell on
+    // the next reload.
+    private void SetLanguages(IReadOnlyList<LanguageDescriptor> languages) {
+        Languages = languages ?? Array.Empty<LanguageDescriptor>();
+        if (Languages.Count > 0) {
+            _onLanguages?.Invoke(Languages);
         }
     }
 

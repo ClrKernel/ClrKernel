@@ -115,8 +115,10 @@ public sealed class KernelClient : IDisposable {
     /// <summary>The connection providers a language offers, and the settings each
     /// one takes — the schema the editor's connection wizard renders. Same payload
     /// the LSP surface serves, so the web UI and VS Code build the same directive.</summary>
+    /// <param name="notebookUri">Required, not optional: the lsp surface resolves the
+    /// session from it, and answers <c>{ok: false}</c> without one.</param>
     public Task<DescribeConnectionsReply> DescribeConnectionsAsync(
-        string languageId, string notebookUri = null, CancellationToken cancellationToken = default) =>
+        string languageId, string notebookUri, CancellationToken cancellationToken = default) =>
         Lsp
             ? _rpc.InvokeWithParameterObjectAsync<DescribeConnectionsReply>(
                 "clrkernel/connections/describe", new { notebookUri, languageId }, cancellationToken)

@@ -151,10 +151,9 @@ public static class JobsApi {
                 }
                 var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
                 try {
+                    // The session seeds kernelLanguages itself, on start and again
+                    // whenever #r adds one — one place, so the two cannot drift.
                     var session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
-                    // The session's kernel is authoritative about languages; save the
-                    // editor a separate probe.
-                    kernelLanguages.Seed(session.Languages);
                     return Results.Ok(SessionView.From(session, false));
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(resolved)?.KernelLog() });

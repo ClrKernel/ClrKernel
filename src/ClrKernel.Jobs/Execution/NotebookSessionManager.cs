@@ -30,11 +30,14 @@ public sealed class NotebookSessionManager : BackgroundService {
     private readonly ConcurrentDictionary<string, NotebookSession> _sessions = new(StringComparer.Ordinal);
     private readonly JobsOptions _options;
     private readonly ILogger _logger;
+    private readonly KernelLanguages _languages;
     private readonly SemaphoreSlim _starting = new(1, 1);
 
-    public NotebookSessionManager(JobsOptions options, ILogger<NotebookSessionManager> logger) {
+    public NotebookSessionManager(
+        JobsOptions options, ILogger<NotebookSessionManager> logger, KernelLanguages languages = null) {
         _options = options;
         _logger = logger;
+        _languages = languages;
     }
 
     /// <summary>An existing session for this notebook, or null.</summary>
@@ -62,7 +65,11 @@ public sealed class NotebookSessionManager : BackgroundService {
             MakeRoom();
             var session = new NotebookSession(
                 Guid.NewGuid().ToString("N"), notebookPath, _options.ClrKernelPath,
-                line => _logger.LogDebug("[{Notebook}] {Line}", notebookPath, line));
+                line => _logger.LogDebug("[{Notebook}] {Line}", notebookPath, line),
+                // A live kernel outranks the cached probe, and keeps outranking it: a
+                // language registered mid-session by #r has to reach the parser too,
+                // or its cells stop being cells the next time the file is read.
+                onLanguages: languages => _languages?.Seed(languages));
             // Start the kernel here rather than on first run, so a broken
             // configuration is reported when the editor opens, not mid-cell.
             await session.EnsureKernelAsync(cancellationToken).ConfigureAwait(false);

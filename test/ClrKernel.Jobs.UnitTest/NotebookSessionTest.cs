@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Runner;
+using ClrKernel.Core.Scripting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nerdbank.Streams;
 using StreamJsonRpc;
@@ -100,6 +101,20 @@ public class NotebookSessionTest {
                     });
                 }
             }
+            if (code.Contains("plugin")) {
+                // What `#r "nuget: ClrKernel.Language.Foo"` looks like from out here:
+                // the session's language set grows while the notebook is open.
+                await Rpc.NotifyWithParameterObjectAsync("clrkernel/languagesChanged", new {
+                    notebookUri = "vscode-notebook-cell:/tmp/notebook.nb.md",
+                    languages = new object[] {
+                        TheLanguages[0],
+                        new {
+                            id = "foo", displayName = "Foo", defaultSelector = "#!foo",
+                            selectors = new[] { "#!foo" }, languageTags = new[] { "foo" },
+                        },
+                    },
+                });
+            }
             if (code.Contains("boom")) {
                 return new {
                     cellId,
@@ -130,14 +145,18 @@ public class NotebookSessionTest {
         }
     }
 
-    private (NotebookSession Session, FakeKernel Kernel) NewSession() {
+    /// <param name="seeded">Collects what the session published to the process-level
+    /// language cache — what the notebook <em>parser</em> will use.</param>
+    private (NotebookSession Session, FakeKernel Kernel) NewSession(
+        List<IReadOnlyList<LanguageDescriptor>> seeded = null) {
         var (clientStream, serverStream) = FullDuplexStream.CreatePair();
         var fake = new FakeKernel();
         var serverRpc = JsonRpc.Attach(serverStream, fake);
         fake.Rpc = serverRpc;
         var client = new KernelClient(clientStream, clientStream, KernelMode.Lsp);
         var session = new NotebookSession("s1", "/tmp/notebook.nb.md", null, null,
-            _ => Task.FromResult(KernelProcess.ForClient(client)));
+            _ => Task.FromResult(KernelProcess.ForClient(client)),
+            onLanguages: languages => seeded?.Add(languages));
         _disposables.Add(serverRpc);
         _disposables.Add(session);
         return (session, fake);
@@ -209,6 +228,25 @@ public class NotebookSessionTest {
 
         // And the outputs still come back filed under the id the editor knows.
         Assert.AreEqual("succeeded", session.Snapshot()["c0"].Status);
+    }
+
+    [TestMethod]
+    public async Task A_language_registered_mid_session_reaches_the_notebook_parser() {
+        var seeded = new List<IReadOnlyList<LanguageDescriptor>>();
+        var (session, _) = NewSession(seeded);
+        await RunAsync(session, "load a plugin");
+
+        await SettleAsync(
+            () => session.Languages.Any(l => l.Id == "foo"),
+            "the languagesChanged notification never arrived");
+
+        // Executing the cell is only half of it. Parsing a notebook into cells happens
+        // outside any session, against the cached set — so a language that reaches the
+        // session but not the cache runs when you press play and stops being a code
+        // cell on the next reload.
+        Assert.IsTrue(seeded.Count >= 2, "seeded on start and again when the set changed");
+        CollectionAssert.AreEquivalent(
+            new[] { "sql", "foo" }, seeded[^1].Select(l => l.Id).ToArray());
     }
 
     [TestMethod]
