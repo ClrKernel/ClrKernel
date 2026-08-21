@@ -203,6 +203,41 @@ public static class JobsApi {
                     : Results.Json(new { error = "This notebook is already running a cell." }, statusCode: 409);
             });
 
+        // What the editor currently has open, so completion and hover have documents
+        // to answer about. Called on a debounce while typing, so it must stay cheap
+        // and must never start a kernel: a broken configuration would otherwise
+        // attempt a spawn every few hundred milliseconds for as long as someone types.
+        // The editor starts its session when it opens the notebook.
+        api.MapPost("/envs/{env}/notebooks/sync", async (
+            HttpContext context, JobCatalog catalog, JobsOptions options,
+            NotebookSessionManager sessions, string env, string path) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                SyncWrite request;
+                try {
+                    request = await JsonSerializer.DeserializeAsync<SyncWrite>(context.Request.Body, _bodyJson);
+                } catch (JsonException e) {
+                    return Results.BadRequest(new { error = "Could not read the cells: " + e.Message });
+                }
+                if (request?.Cells == null) {
+                    return Results.BadRequest(new { error = "Body must be { cells: [...] }." });
+                }
+                if (request.Cells.Count > 1000) {
+                    return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var session = sessions.Find(resolved);
+                if (session == null) {
+                    return Results.Ok(new { started = false, sent = 0 });
+                }
+                try {
+                    return Results.Ok(new { started = true, sent = await session.SyncAsync(request.Cells, context.RequestAborted) });
+                } catch (Exception e) {
+                    return Results.BadRequest(new { error = e.Message });
+                }
+            });
+
         api.MapGet("/envs/{env}/notebooks/session/status", async (
             HttpContext context, JobCatalog catalog, JobsOptions options, IRunStore store,
             NotebookSessionManager sessions, string env, string path) => {
@@ -768,6 +803,11 @@ public sealed class CellView {
         BlankLinesAfter = cell.BlankLinesAfter,
         Closed = cell.Closed,
     };
+}
+
+/// <summary>The editor's open documents: every code cell it is showing.</summary>
+public sealed class SyncWrite {
+    public List<NotebookSyncCell> Cells { get; set; }
 }
 
 /// <summary>The editor's save: the whole notebook, as cells.</summary>

@@ -13,6 +13,7 @@ import {
   setCellLanguage,
   toApiCells,
   toRunCells,
+  toSyncCells,
   withIds,
 } from './notebook';
 
@@ -104,6 +105,36 @@ describe('toRunCells', () => {
     expect(posted[0].id).toBe(cells[1].id);
     expect(posted[0].source).toBe('b');
     expect(toApiCells(cells)[0].id).toBeUndefined();
+  });
+});
+
+describe('toSyncCells', () => {
+  it('names C# the way the kernel does, not the way Monaco does', () => {
+    // The trap: monacoLanguage() answers 'csharp' for the same cell, and that is
+    // the right answer for highlighting and the wrong one for the wire — the
+    // server dispatches its language services off what we send here, and it has
+    // no language called 'csharp'. 'csharp-script' is what VS Code sends.
+    const cells = withIds([cell({ tag: 'csharp', languageId: null, source: 'var a = 1;' })]);
+    expect(monacoLanguage(cells[0].languageId, cells[0].tag)).toBe('csharp');
+    expect(toSyncCells(cells)).toEqual([
+      { id: cells[0].id, languageId: 'csharp-script', source: 'var a = 1;' },
+    ]);
+  });
+
+  it('passes a real language id through untouched', () => {
+    const cells = withIds([cell({ tag: 'sql', languageId: 'sql', source: 'select 1' })]);
+    expect(toSyncCells(cells)[0].languageId).toBe('sql');
+  });
+
+  it('leaves markdown out, so prose is never parsed as code', () => {
+    // Every open document in a notebook feeds completion context. A markdown cell
+    // opened as C# would put its prose into the completion of every code cell —
+    // and dropping it here is also what closes one that used to be code.
+    const cells = withIds([
+      cell({ kind: 'markdown', tag: null, source: '# Heading' }),
+      cell({ tag: 'csharp', source: 'code' }),
+    ]);
+    expect(toSyncCells(cells).map((c) => c.source)).toEqual(['code']);
   });
 });
 

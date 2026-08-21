@@ -199,6 +199,40 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task Sync_without_a_session_is_a_no_op_rather_than_a_kernel_spawn() {
+        // The editor calls this on a debounce while someone types. If it started a
+        // kernel, a machine with no clrkernel — or a broken one — would attempt a
+        // spawn every few hundred milliseconds for as long as the typing went on.
+        // No test here can start a kernel, which is exactly the condition being
+        // asserted: it answers, it says nothing was sent, and it does not fail.
+        var response = await _client.PostAsJsonAsync(
+            $"/api/envs/dev/notebooks/sync?path={_notebook}",
+            new { cells = new[] { new { id = "c0", languageId = "csharp-script", source = "var a = 1;" } } },
+            _json);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.IsFalse(body.GetProperty("started").GetBoolean());
+        Assert.AreEqual(0, body.GetProperty("sent").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task Sync_is_gated_like_execution_because_it_drives_a_live_kernel() {
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/envs/dev/notebooks/sync?path=../../../etc/passwd",
+                new { cells = Array.Empty<object>() }, _json)).StatusCode);
+
+        // prod has no session and never runs anything from the editor.
+        Assert.AreNotEqual(HttpStatusCode.OK,
+            (await _client.PostAsJsonAsync($"/api/envs/prod/notebooks/sync?path={_notebook}",
+                new { cells = Array.Empty<object>() }, _json)).StatusCode);
+
+        var malformed = await _client.PostAsync($"/api/envs/dev/notebooks/sync?path={_notebook}",
+            new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));
+        Assert.AreEqual(HttpStatusCode.BadRequest, malformed.StatusCode);
+    }
+
+    [TestMethod]
     public async Task A_malformed_body_is_a_clear_error_not_a_500() {
         var response = await _client.PutAsync($"/api/envs/dev/notebooks/cells?path={_notebook}",
             new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));

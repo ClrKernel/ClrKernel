@@ -62,6 +62,17 @@ export interface ApiCell {
   closed?: boolean;
 }
 
+/**
+ * One open cell, as the kernel's language server needs to see it. `languageId` is
+ * the kernel's name for the language and not Monaco's, and `source` is the cell's
+ * own text — positions are offsets into it, so nothing may be prepended.
+ */
+export interface ApiSyncCell {
+  id: string;
+  languageId: string;
+  source: string;
+}
+
 /** One parameter a directive accepts — 'flag' is a bare switch, anything else
  *  takes a value. The connection wizard needs this to know how to write a flag. */
 export interface ApiDirectiveParameter {
@@ -329,6 +340,19 @@ export const api = {
   connectionProviders: (path: string, languageId: string) =>
     request<{ providers: ApiConnectionProvider[] }>(
       `/envs/dev/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
+    ),
+  /** Starts (or touches) the notebook's kernel. Opening the editor does this, so
+   *  language features work on the first keystroke rather than the first run. */
+  startSession: (path: string) =>
+    request<ApiSession>(`/envs/dev/notebooks/session?path=${encodeURIComponent(path)}`, {
+      method: 'POST',
+    }),
+  /** Tells the kernel which cells are open, so completion and hover have documents
+   *  to answer about. Authoritative: cells left out are closed. */
+  syncCells: (path: string, cells: ApiSyncCell[]) =>
+    request<{ started: boolean; sent: number }>(
+      `/envs/dev/notebooks/sync?path=${encodeURIComponent(path)}`,
+      { method: 'POST', body: JSON.stringify({ cells }) },
     ),
   sessionStatus: (path: string) =>
     request<ApiSession>(`/envs/dev/notebooks/session/status?path=${encodeURIComponent(path)}`),

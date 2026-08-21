@@ -1,4 +1,4 @@
-import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession } from './api';
+import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession, ApiSyncCell } from './api';
 import type { NotebookOutput } from './ipynb';
 
 /**
@@ -56,6 +56,29 @@ export function monacoLanguage(languageId: string | null | undefined, tag?: stri
     return tag == null ? 'markdown' : 'csharp';
   }
   return 'plaintext';
+}
+
+/**
+ * The cells to keep open on the kernel, for completion and hover.
+ *
+ * Two things this is deliberately not:
+ *
+ * - **Not `monacoLanguage`.** That is a syntax-highlighting choice; this is what the
+ *   server dispatches its language services on. Monaco calls a C# cell `csharp`, and
+ *   the kernel has no such language — `csharp-script` is the name that falls through
+ *   to the script engine, and it is what VS Code sends, so both editors take one path.
+ * - **Not the markdown cells.** They would be opened as C# documents, and completion
+ *   in a code cell gathers context from every open document in the notebook — prose
+ *   parsed as C#. Dropping them here is also what closes one that used to be code.
+ */
+export function toSyncCells(cells: EditorCell[]): ApiSyncCell[] {
+  return cells
+    .filter((cell) => cell.kind === 'code')
+    .map((cell) => ({
+      id: cell.id,
+      languageId: cell.languageId ?? 'csharp-script',
+      source: cell.source,
+    }));
 }
 
 /**

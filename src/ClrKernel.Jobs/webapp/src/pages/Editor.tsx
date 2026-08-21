@@ -19,6 +19,7 @@ import {
   setCellLanguage,
   toApiCells,
   toRunCells,
+  toSyncCells,
   withIds,
   type EditorCell,
 } from '../notebook';
@@ -112,6 +113,30 @@ export function Editor() {
         .catch((e) => setError((e as Error).message));
     }
   }, [path, isNotebook]);
+
+  // Opening a notebook starts its kernel, the way opening one in VS Code starts the
+  // language server. Without this a session appears only on the first run, and
+  // completion would be dead until then — which is the wrong way round, since the
+  // reason to want completion is that you have not run anything yet. Failures are
+  // not reported here: the status poll below is what tells the user, once.
+  useEffect(() => {
+    if (isNotebook) {
+      api.startSession(path).catch(() => undefined);
+    }
+  }, [path, isNotebook]);
+
+  // What the editor has open, told to the kernel on a debounce. Language features
+  // answer about documents the server holds, so this is what makes them work at all
+  // — and it is authoritative, so a deleted cell stops contributing its symbols.
+  useEffect(() => {
+    if (!isNotebook || cells == null || !canRun) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      api.syncCells(path, toSyncCells(cells)).catch(() => undefined);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [path, isNotebook, cells, canRun]);
 
   async function save() {
     setError(null);

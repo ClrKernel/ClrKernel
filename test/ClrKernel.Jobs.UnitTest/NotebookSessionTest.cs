@@ -125,6 +125,46 @@ public class NotebookSessionTest {
             return new { cellId, status = "ok", data = new Dictionary<string, object> { ["text/plain"] = "42" } };
         }
 
+        /// <summary>Every document notification, in order: "didOpen c0 csharp-script".</summary>
+        public List<string> DocumentEvents { get; } = new();
+
+        public sealed class DidOpenParams {
+            public DocumentPayload TextDocument { get; set; }
+        }
+
+        public sealed class DidChangeParams {
+            public DocumentPayload TextDocument { get; set; }
+            public List<ChangePayload> ContentChanges { get; set; }
+        }
+
+        public sealed class DocumentPayload {
+            public string Uri { get; set; }
+            public string LanguageId { get; set; }
+            public int Version { get; set; }
+            public string Text { get; set; }
+        }
+
+        public sealed class ChangePayload {
+            public string Text { get; set; }
+        }
+
+        private static string Cell(string uri) {
+            var hash = uri?.IndexOf('#') ?? -1;
+            return hash < 0 ? uri : uri[(hash + 1)..];
+        }
+
+        [JsonRpcMethod("textDocument/didOpen", UseSingleObjectParameterDeserialization = true)]
+        public void DidOpen(DidOpenParams p) => DocumentEvents.Add(
+            $"didOpen {Cell(p?.TextDocument?.Uri)} {p?.TextDocument?.LanguageId} v{p?.TextDocument?.Version} " +
+            $"{p?.TextDocument?.Text}");
+
+        [JsonRpcMethod("textDocument/didChange", UseSingleObjectParameterDeserialization = true)]
+        public void DidChange(DidChangeParams p) => DocumentEvents.Add(
+            $"didChange {Cell(p?.TextDocument?.Uri)} v{p?.TextDocument?.Version} {p?.ContentChanges?[^1].Text}");
+
+        [JsonRpcMethod("textDocument/didClose", UseSingleObjectParameterDeserialization = true)]
+        public void DidClose(DidOpenParams p) => DocumentEvents.Add($"didClose {Cell(p?.TextDocument?.Uri)}");
+
         [JsonRpcMethod("shutdown")]
         public object Shutdown() => null;
 
@@ -149,17 +189,22 @@ public class NotebookSessionTest {
     /// language cache — what the notebook <em>parser</em> will use.</param>
     private (NotebookSession Session, FakeKernel Kernel) NewSession(
         List<IReadOnlyList<LanguageDescriptor>> seeded = null) {
+        var (client, fake) = NewKernel();
+        var session = new NotebookSession("s1", "/tmp/notebook.nb.md", null, null,
+            _ => Task.FromResult(KernelProcess.ForClient(client)),
+            onLanguages: languages => seeded?.Add(languages));
+        _disposables.Add(session);
+        return (session, fake);
+    }
+
+    /// <summary>One fake kernel on the far end of an in-memory duplex stream.</summary>
+    private (KernelClient Client, FakeKernel Kernel) NewKernel() {
         var (clientStream, serverStream) = FullDuplexStream.CreatePair();
         var fake = new FakeKernel();
         var serverRpc = JsonRpc.Attach(serverStream, fake);
         fake.Rpc = serverRpc;
-        var client = new KernelClient(clientStream, clientStream, KernelMode.Lsp);
-        var session = new NotebookSession("s1", "/tmp/notebook.nb.md", null, null,
-            _ => Task.FromResult(KernelProcess.ForClient(client)),
-            onLanguages: languages => seeded?.Add(languages));
         _disposables.Add(serverRpc);
-        _disposables.Add(session);
-        return (session, fake);
+        return (new KernelClient(clientStream, clientStream, KernelMode.Lsp), fake);
     }
 
     private static IReadOnlyList<MarkdownCell> Cells(params string[] sources) =>
@@ -247,6 +292,103 @@ public class NotebookSessionTest {
         Assert.IsTrue(seeded.Count >= 2, "seeded on start and again when the set changed");
         CollectionAssert.AreEquivalent(
             new[] { "sql", "foo" }, seeded[^1].Select(l => l.Id).ToArray());
+    }
+
+    private static NotebookSyncCell Sync(string id, string languageId, string source) =>
+        new() { Id = id, LanguageId = languageId, Source = source };
+
+    /// <summary>Notifications are fire-and-forget, so the fake sees them slightly
+    /// after SyncAsync returns.</summary>
+    private static Task SettleEvents(FakeKernel kernel, int count) =>
+        SettleAsync(() => kernel.DocumentEvents.Count >= count,
+            $"expected {count} document notifications");
+
+    [TestMethod]
+    public async Task Only_what_changed_is_sent_so_a_keystroke_costs_one_notification() {
+        var (session, kernel) = NewSession();
+        var cells = new[] { Sync("c0", "csharp-script", "var a = 1;"), Sync("c1", "sql", "select 1") };
+
+        Assert.AreEqual(2, await session.SyncAsync(cells, CancellationToken.None));
+        await SettleEvents(kernel, 2);
+
+        // Same cells again: nothing to say. This is what makes it safe to call on
+        // every keystroke rather than only on blur.
+        Assert.AreEqual(0, await session.SyncAsync(cells, CancellationToken.None));
+
+        var edited = new[] { cells[0], Sync("c1", "sql", "select 2") };
+        Assert.AreEqual(1, await session.SyncAsync(edited, CancellationToken.None));
+        await SettleEvents(kernel, 3);
+
+        CollectionAssert.AreEqual(new[] {
+            "didOpen c0 csharp-script v1 var a = 1;",
+            "didOpen c1 sql v1 select 1",
+            "didChange c1 v2 select 2",
+        }, kernel.DocumentEvents.ToArray());
+    }
+
+    [TestMethod]
+    public async Task A_cell_the_editor_no_longer_lists_is_closed() {
+        var (session, kernel) = NewSession();
+        await session.SyncAsync(
+            new[] { Sync("c0", "csharp-script", "one"), Sync("c1", "csharp-script", "two") },
+            CancellationToken.None);
+        await SettleEvents(kernel, 2);
+
+        // Deleting a cell has to close its document. Completion gathers context from
+        // every open document in the notebook, so a cell that is gone from the file
+        // but still open would keep offering its symbols for the life of the session.
+        await session.SyncAsync(new[] { Sync("c0", "csharp-script", "one") }, CancellationToken.None);
+        await SettleEvents(kernel, 3);
+
+        Assert.AreEqual("didClose c1", kernel.DocumentEvents[^1]);
+    }
+
+    [TestMethod]
+    public async Task Changing_a_cells_language_closes_and_reopens_it() {
+        var (session, kernel) = NewSession();
+        await session.SyncAsync(new[] { Sync("c0", "sql", "select 1") }, CancellationToken.None);
+        await SettleEvents(kernel, 1);
+
+        // Not a didChange: the server dispatches services and diagnostics off the
+        // languageId it was given at open, and a reopen is what retracts the old
+        // language's problems instead of leaving them on screen.
+        await session.SyncAsync(new[] { Sync("c0", "csharp-script", "select 1") }, CancellationToken.None);
+        await SettleEvents(kernel, 3);
+
+        CollectionAssert.AreEqual(new[] {
+            "didOpen c0 sql v1 select 1",
+            "didClose c0",
+            "didOpen c0 csharp-script v2 select 1",
+        }, kernel.DocumentEvents.ToArray());
+    }
+
+    [TestMethod]
+    public async Task A_replaced_kernel_is_told_about_the_documents_again() {
+        var kernels = new List<FakeKernel>();
+        var dead = false;
+        var session = new NotebookSession("s1", "/tmp/notebook.nb.md", null, null, _ => {
+            var (client, fake) = NewKernel();
+            kernels.Add(fake);
+            return Task.FromResult(KernelProcess.ForClient(client, () => dead && kernels.Count == 1));
+        });
+        _disposables.Add(session);
+
+        await session.SyncAsync(new[] { Sync("c0", "sql", "select 1") }, CancellationToken.None);
+        await SettleEvents(kernels[0], 1);
+
+        // The kernel died and a fresh one took over: it holds no documents. Sending it
+        // a didChange would land the text but not the languageId, and the cell would
+        // quietly drop to the C# fallback instead of its own language's services.
+        dead = true;
+        Assert.AreEqual(1, await session.SyncAsync(
+            new[] { Sync("c0", "sql", "select 1") }, CancellationToken.None),
+            "the same text is news again — the new process never saw it");
+
+        Assert.AreEqual(2, kernels.Count, "the dead kernel was replaced");
+        Assert.IsTrue(session.KernelRestarted);
+        await SettleEvents(kernels[1], 1);
+        Assert.AreEqual("didOpen c0 sql v1 select 1", kernels[1].DocumentEvents[^1],
+            "reopened with its language, not changed");
     }
 
     [TestMethod]

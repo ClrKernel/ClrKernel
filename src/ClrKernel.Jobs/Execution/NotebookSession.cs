@@ -11,6 +11,23 @@ using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Jobs;
 
+/// <summary>
+/// One cell as the editor currently has it, for document sync. <see cref="Source"/>
+/// is the cell's own text — <em>not</em> what executing it would run: the editor's
+/// cursor positions are offsets into this, and a prepended selector line would shift
+/// every one of them by a line.
+/// </summary>
+public sealed class NotebookSyncCell {
+    public string Id { get; set; }
+
+    /// <summary>The cell's language as the kernel names it — <c>sql</c>, <c>pwsh</c>,
+    /// <c>csharp-script</c> for C#. Not the editor's syntax mode: Monaco calls C#
+    /// cells <c>csharp</c>, and the server dispatches its language services off this.</summary>
+    public string LanguageId { get; set; }
+
+    public string Source { get; set; }
+}
+
 /// <summary>What a cell did, for the editor to render.</summary>
 public sealed class SessionCellState {
     public string Status { get; set; } = "pending";
@@ -50,6 +67,16 @@ public sealed class NotebookSession : IDisposable {
 
     private readonly Func<CancellationToken, Task<KernelProcess>> _startKernel;
     private readonly Action<IReadOnlyList<LanguageDescriptor>> _onLanguages;
+
+    /// <summary>What this session has told the kernel is open, by cell URI. Only ever
+    /// touched from <see cref="SyncAsync"/>, which the API serializes per notebook.</summary>
+    private readonly Dictionary<string, OpenDocument> _synced = new(StringComparer.Ordinal);
+
+    private sealed class OpenDocument {
+        public string LanguageId { get; set; }
+        public string Text { get; set; }
+        public int Version { get; set; }
+    }
 
     /// <param name="onLanguages">Called whenever this session's language set is
     /// established or changes. The set decides how a notebook's fenced blocks become
@@ -113,6 +140,11 @@ public sealed class NotebookSession : IDisposable {
             _kernel.Dispose();
             _kernel = null;
         }
+        // A fresh process holds no documents. Keeping the old record would make the
+        // next sync send didChange for cells it never opened: the text would land,
+        // but the languageId would not, and the cell would silently drop to the
+        // C# fallback instead of its own language's services.
+        _synced.Clear();
         var kernel = await _startKernel(cancellationToken).ConfigureAwait(false);
         // Subscribed for the kernel's whole life, not per run: a display that
         // arrives just after a cell's reply — a progress bar finishing, or
@@ -211,6 +243,64 @@ public sealed class NotebookSession : IDisposable {
                 failed = !reply.Ok;
             }
         }
+    }
+
+    /// <summary>
+    /// Tells the kernel what the editor currently has open, so language features have
+    /// something to answer about. The diff is <em>authoritative</em>, not additive: a
+    /// cell the caller does not list is closed. Completion gathers context from every
+    /// open document in the notebook, so a cell that was deleted but never closed
+    /// would keep offering its symbols for the life of the session.
+    /// <para>
+    /// Cheap when nothing changed, which is what makes it safe to call on a keystroke:
+    /// the work is a dictionary comparison, and only differences go on the wire.
+    /// </para>
+    /// </summary>
+    public async Task<int> SyncAsync(IReadOnlyList<NotebookSyncCell> cells, CancellationToken cancellationToken) {
+        var kernel = await EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
+        Touch();
+
+        var wanted = new Dictionary<string, NotebookSyncCell>(StringComparer.Ordinal);
+        foreach (var cell in cells ?? Array.Empty<NotebookSyncCell>()) {
+            if (!string.IsNullOrEmpty(cell?.Id)) {
+                wanted[CellUri(cell.Id)] = cell; // a duplicate id is the later cell
+            }
+        }
+
+        var sent = 0;
+        foreach (var uri in _synced.Keys.Where(u => !wanted.ContainsKey(u)).ToList()) {
+            await kernel.Client.DidCloseAsync(uri).ConfigureAwait(false);
+            _synced.Remove(uri);
+            sent++;
+        }
+
+        foreach (var (uri, cell) in wanted) {
+            var languageId = string.IsNullOrEmpty(cell.LanguageId) ? "csharp-script" : cell.LanguageId;
+            var source = cell.Source ?? string.Empty;
+            if (!_synced.TryGetValue(uri, out var open)) {
+                await kernel.Client.DidOpenAsync(uri, languageId, 1, source).ConfigureAwait(false);
+                _synced[uri] = new OpenDocument { LanguageId = languageId, Text = source, Version = 1 };
+                sent++;
+            } else if (!string.Equals(open.LanguageId, languageId, StringComparison.Ordinal)) {
+                // A language change is a close and a reopen, not an edit — the same
+                // thing VS Code does, and what makes the old language's diagnostics
+                // get retracted instead of outliving the cell.
+                await kernel.Client.DidCloseAsync(uri).ConfigureAwait(false);
+                await kernel.Client.DidOpenAsync(uri, languageId, open.Version + 1, source).ConfigureAwait(false);
+                _synced[uri] = new OpenDocument {
+                    LanguageId = languageId,
+                    Text = source,
+                    Version = open.Version + 1,
+                };
+                sent++;
+            } else if (!string.Equals(open.Text, source, StringComparison.Ordinal)) {
+                open.Version++;
+                await kernel.Client.DidChangeAsync(uri, open.Version, source).ConfigureAwait(false);
+                open.Text = source;
+                sent++;
+            }
+        }
+        return sent;
     }
 
     /// <summary>The connection providers a language offers in <em>this</em> session —

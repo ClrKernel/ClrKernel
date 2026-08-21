@@ -14,11 +14,13 @@ namespace ClrKernel.Jobs;
 public sealed class KernelProcess : IDisposable {
     private readonly Process _process;
     private readonly Action<string> _log;
+    private readonly Func<bool> _hasExited;
 
-    private KernelProcess(Process process, KernelClient client, Action<string> log) {
+    private KernelProcess(Process process, KernelClient client, Action<string> log, Func<bool> hasExited = null) {
         _process = process;
         Client = client;
         _log = log;
+        _hasExited = hasExited;
     }
 
     public KernelClient Client { get; }
@@ -26,14 +28,19 @@ public sealed class KernelProcess : IDisposable {
     /// <summary>A kernel backed by an existing connection rather than a child
     /// process — the seam that lets sessions be tested against a fake kernel over
     /// an in-memory stream, with no clrkernel binary present.</summary>
-    internal static KernelProcess ForClient(KernelClient client) => new(null, client, null);
+    /// <param name="hasExited">Lets a test say the kernel died, which is the only way
+    /// to reach the respawn path without a real process to kill.</param>
+    internal static KernelProcess ForClient(KernelClient client, Func<bool> hasExited = null) =>
+        new(null, client, null, hasExited);
 
     /// <summary>True when the kernel has died — a cell can call Environment.Exit,
     /// and shutdown does exactly that.</summary>
     public bool HasExited {
         get {
             if (_process == null) {
-                return false; // an injected connection lives as long as its owner
+                // An injected connection lives as long as its owner, unless a test
+                // says otherwise.
+                return _hasExited?.Invoke() ?? false;
             }
             try {
                 return _process.HasExited;

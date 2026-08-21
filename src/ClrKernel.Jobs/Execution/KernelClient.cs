@@ -108,6 +108,37 @@ public sealed class KernelClient : IDisposable {
         }
     }
 
+    // --- Document sync -----------------------------------------------------
+    //
+    // Language features answer about a document the server holds, not about text
+    // passed in with the question, so a cell has to be open before completion or
+    // hover can say anything about it. Notifications, so typing never waits on a
+    // round trip. No-ops on serve, which has no documents.
+
+    public Task DidOpenAsync(string uri, string languageId, int version, string text) =>
+        Lsp
+            ? _rpc.NotifyWithParameterObjectAsync("textDocument/didOpen", new {
+                textDocument = new { uri, languageId, version, text },
+            })
+            : Task.CompletedTask;
+
+    public Task DidChangeAsync(string uri, int version, string text) =>
+        Lsp
+            ? _rpc.NotifyWithParameterObjectAsync("textDocument/didChange", new {
+                textDocument = new { uri, version },
+                // Full sync: one change carrying the whole document, which is what
+                // the server advertises (textDocumentSync: 1).
+                contentChanges = new[] { new { text } },
+            })
+            : Task.CompletedTask;
+
+    public Task DidCloseAsync(string uri) =>
+        Lsp
+            ? _rpc.NotifyWithParameterObjectAsync("textDocument/didClose", new {
+                textDocument = new { uri },
+            })
+            : Task.CompletedTask;
+
     public Task<ExecuteReply> ExecuteAsync(string cellId, string code, CancellationToken cancellationToken = default) =>
         _rpc.InvokeWithParameterObjectAsync<ExecuteReply>(
             Lsp ? "clrkernel/execute" : "execute", new { cellId, code }, cancellationToken);
