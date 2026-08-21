@@ -11,6 +11,12 @@ const alertVariants = cva(
         default: "bg-card text-card-foreground",
         destructive:
           "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
+        // Not shipped by shadcn. Reads --status-warning like every other
+        // warning surface in the app, rather than a hardcoded amber.
+        warning:
+          "bg-card text-status-warning *:data-[slot=alert-description]:text-status-warning/90 *:[svg]:text-current",
+        success:
+          "bg-card text-status-success *:data-[slot=alert-description]:text-status-success/90 *:[svg]:text-current",
       },
     },
     defaultVariants: {

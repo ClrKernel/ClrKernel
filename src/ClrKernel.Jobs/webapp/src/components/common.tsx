@@ -1,12 +1,78 @@
+import { CircleAlert } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import type { CellStatus, RunStatus } from '../api';
 
+/** Which `--status-*` token a run or cell state paints with. */
+const STATUS_TOKEN: Record<string, string> = {
+  running: 'bg-status-running',
+  succeeded: 'bg-status-success',
+  failed: 'bg-status-error',
+  cancelled: 'bg-status-warning',
+  skipped: 'bg-status-idle',
+  pending: 'bg-status-idle',
+  queued: 'bg-status-idle',
+};
+
+/**
+ * Status as a neutral chip with a coloured dot, not a coloured chip.
+ *
+ * Colour is reserved for what is actually communicating state — here, the dot.
+ * A row of fully-tinted badges makes a table of runs read as a warning even
+ * when every one of them succeeded.
+ */
 export function StatusBadge({ status }: { status: RunStatus | CellStatus }) {
-  return <span className={`badge badge-${status.toLowerCase()}`}>{status}</span>;
+  const key = status.toLowerCase();
+  return (
+    <Badge variant="secondary" className="gap-1.5 font-normal">
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full ${STATUS_TOKEN[key] ?? 'bg-status-idle'} ${
+          key === 'running' ? 'animate-pulse' : ''
+        }`}
+      />
+      {status}
+    </Badge>
+  );
 }
 
 export function ErrorBanner({ error }: { error: string | null }) {
-  return error ? <div className="banner banner-error">{error}</div> : null;
+  return error ? (
+    <Alert variant="destructive" className="my-3">
+      <CircleAlert aria-hidden="true" />
+      <AlertDescription className="text-destructive">{error}</AlertDescription>
+    </Alert>
+  ) : null;
+}
+
+/**
+ * A page's title row. Title on the left, page-level actions on the right — the
+ * top bar says where you are, this says what you can do here.
+ */
+export function PageHeader({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: React.ReactNode;
+  /** Right-aligned actions. */
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+        {/* Cells and tables take the full width; sentences do not. A 1600px
+            line of prose is unreadable. */}
+        {description && (
+          <p className="mt-0.5 max-w-[78ch] text-sm text-muted-foreground">{description}</p>
+        )}
+      </div>
+      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+    </div>
+  );
 }
 
 /**

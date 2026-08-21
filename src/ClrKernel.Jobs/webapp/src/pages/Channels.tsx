@@ -1,6 +1,9 @@
+import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { api, type Channel } from '../api';
-import { ErrorBanner, usePolling } from '../components/common';
+import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 
 const WEBHOOK_TEMPLATE: Channel = {
   name: 'ops',
@@ -112,29 +115,40 @@ export function Channels() {
 
   return (
     <div>
-      <h1>Notification channels</h1>
+      <PageHeader
+        title="Notification channels"
+        description={
+          <>
+            Stored in <code className="font-mono">notifications.yaml</code> beside your notebooks.
+            Passwords and tokens are never kept here — only a <em>reference</em> (
+            <code className="font-mono">bearerSecretRef</code>,{' '}
+            <code className="font-mono">passwordSecretRef</code>) that the server resolves from the
+            OS credential store or a <code className="font-mono">CLRKERNEL_SECRET_*</code> variable.
+          </>
+        }
+      />
       <ErrorBanner error={error} />
       <ErrorBanner error={saveError} />
-      {notice && <div className="banner banner-ok">{notice}</div>}
+      {notice && (
+        <Alert variant="success" className="mb-3">
+          <AlertDescription className="text-status-success">{notice}</AlertDescription>
+        </Alert>
+      )}
       {problems.length > 0 && (
-        <div className="banner banner-warn">
-          <ul>
-            {problems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        </div>
+        <Alert variant="warning" className="mb-3">
+          <AlertDescription>
+            <ul className="list-disc pl-4">
+              {problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
       )}
 
-      <p className="muted">
-        Stored in <code>notifications.yaml</code> beside your notebooks. Passwords and tokens are
-        never kept here — only a <em>reference</em> (<code>bearerSecretRef</code>,{' '}
-        <code>passwordSecretRef</code>) that the server resolves from the OS credential store or a{' '}
-        <code>CLRKERNEL_SECRET_*</code> variable.
-      </p>
-
       {channels.length > 0 && (
-        <table className="table">
+        <div className="table-box">
+          <table className="table">
           <thead>
             <tr>
               <th>Channel</th>
@@ -146,38 +160,57 @@ export function Channels() {
           <tbody>
             {channels.map((channel) => (
               <tr key={channel.name}>
-                <td>{channel.name}</td>
-                <td className="muted">{channel.type}</td>
-                <td className="muted">{describe(channel)}</td>
+                <td className="font-medium">{channel.name}</td>
+                <td className="text-muted-foreground">{channel.type}</td>
+                <td className="font-mono text-muted-foreground">{describe(channel)}</td>
                 <td>
-                  <button className="link-button" onClick={() => test(channel.name)} disabled={busy}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => test(channel.name)}
+                    disabled={busy}
+                  >
                     send test
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
 
-      <h2>Edit</h2>
-      <div className="form">
-        <div className="row-gap">
-          <button className="button" onClick={() => addTemplate(WEBHOOK_TEMPLATE)}>
-            + webhook
-          </button>
-          <button className="button" onClick={() => addTemplate(EMAIL_TEMPLATE)}>
-            + email
-          </button>
+      <h2 className="mb-2 mt-5 text-sm font-semibold">Edit</h2>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => addTemplate(WEBHOOK_TEMPLATE)}>
+            <Plus className="size-3.5" aria-hidden="true" />
+            webhook
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => addTemplate(EMAIL_TEMPLATE)}>
+            <Plus className="size-3.5" aria-hidden="true" />
+            email
+          </Button>
         </div>
-        <textarea rows={18} value={draft} onChange={(e) => setDraft(e.target.value)} />
-        <div className="row-gap">
-          <button className="button button-primary" onClick={save} disabled={busy}>
+        <textarea
+          rows={18}
+          value={draft}
+          aria-label="Channels JSON"
+          className="w-full rounded-md border border-border bg-card p-2 font-mono text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={save} disabled={busy}>
             Save channels
-          </button>
-          <button className="button" onClick={() => data && setDraft(asDraft(data.channels))}>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => data && setDraft(asDraft(data.channels))}
+          >
             Revert
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { api, apiKey, setApiKey, type SettingField, type SettingsSection } from '../api';
-import { ErrorBanner, usePolling } from '../components/common';
+import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 
 /**
  * The API key the browser sends on every request. It lives here rather than in
@@ -21,8 +23,8 @@ function ApiKeySection() {
 
   return (
     <section className="settings-section">
-      <h2>Browser</h2>
-      <p className="muted">
+      <h2 className="mb-1 text-sm font-semibold">Browser</h2>
+      <p className="mb-2 text-sm text-muted-foreground">
         Sent as <code>X-Api-Key</code> on every request. Required only when the server was started
         with a key; stored in this browser, never written to the server.
       </p>
@@ -54,7 +56,11 @@ function ApiKeySection() {
 
 function FieldValue({ field }: { field: SettingField }) {
   if (field.type === 'secret') {
-    return <span className={field.isSet ? '' : 'muted'}>{field.isSet ? '(set)' : '(not set)'}</span>;
+    return (
+      <span className={field.isSet ? '' : 'text-muted-foreground'}>
+        {field.isSet ? '(set)' : '(not set)'}
+      </span>
+    );
   }
   return <span>{String(field.value ?? '')}</span>;
 }
@@ -89,16 +95,23 @@ function Section({ section }: { section: SettingsSection }) {
 
   return (
     <section className="settings-section">
-      <h2>{section.title}</h2>
-      {section.description && <p className="muted">{section.description}</p>}
+      <h2 className="mb-1 text-sm font-semibold">{section.title}</h2>
+      {section.description && (
+        <p className="mb-2 text-sm text-muted-foreground">{section.description}</p>
+      )}
       <ErrorBanner error={error} />
-      {notice && <div className="banner banner-ok">{notice}</div>}
+      {notice && (
+        <Alert variant="success" className="mb-2">
+          <AlertDescription className="text-status-success">{notice}</AlertDescription>
+        </Alert>
+      )}
 
       {section.linkTo ? (
-        <Link className="button" to={section.linkTo}>
-          Open editor
-        </Link>
+        <Button asChild variant="outline" size="sm">
+          <Link to={section.linkTo}>Open editor</Link>
+        </Button>
       ) : (
+        <div className="table-box">
         <table className="table">
           <tbody>
             {section.fields.map((field) => {
@@ -108,7 +121,9 @@ function Section({ section }: { section: SettingsSection }) {
                 <tr key={field.name}>
                   <td className="settings-label">
                     {field.label}
-                    {field.help && <div className="muted small">{field.help}</div>}
+                    {field.help && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">{field.help}</div>
+                    )}
                   </td>
                   <td>
                     {locked ? (
@@ -120,8 +135,9 @@ function Section({ section }: { section: SettingsSection }) {
                         onChange={(e) => setEdits({ ...edits, [field.name]: e.target.checked })}
                       />
                     ) : (
-                      <input
+                      <Input
                         type={field.type === 'int' ? 'number' : 'text'}
+                        className="h-8 max-w-sm"
                         value={String(edits[field.name] ?? field.value ?? '')}
                         onChange={(e) =>
                           setEdits({
@@ -132,24 +148,37 @@ function Section({ section }: { section: SettingsSection }) {
                       />
                     )}
                   </td>
-                  <td className="muted small">
-                    {field.source !== 'default' && <span className="chip chip-muted">{field.source}</span>}
-                    {!field.webWritable && <span className="chip chip-muted">host-only</span>}
-                    {field.restartRequired && field.webWritable && (
-                      <span className="chip chip-muted">restart to apply</span>
-                    )}
+                  <td>
+                    <span className="flex flex-wrap gap-1">
+                      {field.source !== 'default' && (
+                        <Badge variant="outline" className="font-normal">
+                          {field.source}
+                        </Badge>
+                      )}
+                      {!field.webWritable && (
+                        <Badge variant="outline" className="font-normal">
+                          host-only
+                        </Badge>
+                      )}
+                      {field.restartRequired && field.webWritable && (
+                        <Badge variant="outline" className="font-normal">
+                          restart to apply
+                        </Badge>
+                      )}
+                    </span>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        </div>
       )}
 
       {editable.length > 0 && (
-        <button className="button button-primary" onClick={save} disabled={busy || !dirty}>
+        <Button className="mt-3" size="sm" onClick={save} disabled={busy || !dirty}>
           Save {section.title.toLowerCase()}
-        </button>
+        </Button>
       )}
     </section>
   );
@@ -159,12 +188,11 @@ export function Settings() {
   const { data, error } = usePolling(() => api.settings(), null);
   return (
     <div>
-      <h1>Settings</h1>
+      <PageHeader
+        title="Settings"
+        description="Values pinned by a flag or environment variable are shown locked — change those on the host. Security and execution settings are host-only by design."
+      />
       <ErrorBanner error={error} />
-      <p className="muted">
-        Values pinned by a flag or environment variable are shown locked — change those on the
-        host. Security and execution settings are host-only by design.
-      </p>
       <ApiKeySection />
       {(data?.sections ?? []).map((section) => (
         <Section key={section.key} section={section} />

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { api, type Job, type Run } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
 import { RunTable } from './Dashboard';
@@ -67,15 +70,19 @@ function NotifyPicker({
     <div className="notify-row">
       <span className="notify-label">{label}</span>
       {names.length === 0 ? (
-        <span className="muted">
-          No channels yet — add one under <Link to="/channels">Channels</Link>.
+        <span className="text-sm text-muted-foreground">
+          No channels yet — add one under{' '}
+          <Link className="text-primary hover:underline" to="/channels">
+            Channels
+          </Link>
+          .
         </span>
       ) : (
         names.map((name) => (
           <label key={name} className="checkbox">
             <input type="checkbox" checked={selected.includes(name)} onChange={() => toggle(name)} />
             {name}
-            {!channels.includes(name) && <span className="chip chip-muted">unknown</span>}
+            {!channels.includes(name) && <Badge variant="outline" className="font-normal">unknown</Badge>}
           </label>
         ))
       )}
@@ -199,42 +206,55 @@ export function JobDetail() {
 
   return (
     <div>
-      <div className="row-between">
-        <h1>{isNew ? 'New job' : name}{env !== 'default' && <span className={`chip env-${env}`}>{env}</span>}</h1>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <h1 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight">
+          <span className="truncate">{isNew ? 'New job' : name}</span>
+          {env !== 'default' && (
+            <Badge variant="secondary" className="font-mono text-[11px]">
+              {env}
+            </Badge>
+          )}
+        </h1>
         {!isNew && (
-          <div className="row-gap">
-            <button className="button" onClick={() => runNow(false)} disabled={busy}>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => runNow(false)} disabled={busy}>
               Run now
-            </button>
-            <button className="button" onClick={() => runNow(true)} disabled={busy}>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => runNow(true)} disabled={busy}>
               Run with parameters…
-            </button>
-            <button className="button button-danger" onClick={remove} disabled={busy}>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={remove}
+              disabled={busy}
+            >
               Delete
-            </button>
+            </Button>
           </div>
         )}
       </div>
       <ErrorBanner error={error} />
       <ErrorBanner error={saveError} />
       {job && (
-        <p className="muted">
-          Defined in <code>{job.jobsFile}</code>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Defined in <code className="font-mono">{job.jobsFile}</code>
         </p>
       )}
 
       <div className="form">
         <label>
           Name
-          <input value={form.name} onChange={(e) => update('name', e.target.value)} />
+          <Input value={form.name} onChange={(e) => update('name', e.target.value)} />
         </label>
         <label>
           Notebook <span className="muted">(relative to the notebooks root)</span>
-          <input value={form.notebook} onChange={(e) => update('notebook', e.target.value)} />
+          <Input value={form.notebook} onChange={(e) => update('notebook', e.target.value)} />
         </label>
         <label>
           Cron <span className="muted">(empty = manual or dependency-triggered)</span>
-          <input
+          <Input
             value={form.cron}
             placeholder="0 2 * * *"
             onChange={(e) => update('cron', e.target.value)}
@@ -242,19 +262,19 @@ export function JobDetail() {
         </label>
         <label>
           Depends on <span className="muted">(comma-separated job names)</span>
-          <input value={form.dependsOn} onChange={(e) => update('dependsOn', e.target.value)} />
+          <Input value={form.dependsOn} onChange={(e) => update('dependsOn', e.target.value)} />
         </label>
         <div className="form-row">
           <label>
             Timeout (seconds)
-            <input
+            <Input
               value={form.timeoutSeconds}
               onChange={(e) => update('timeoutSeconds', e.target.value)}
             />
           </label>
           <label>
             Retries
-            <input value={form.retryCount} onChange={(e) => update('retryCount', e.target.value)} />
+            <Input value={form.retryCount} onChange={(e) => update('retryCount', e.target.value)} />
           </label>
           <label className="checkbox">
             <input
@@ -289,19 +309,19 @@ export function JobDetail() {
             onChange={(next) => update('onSuccess', next)}
           />
         </fieldset>
-        <div className="row-gap">
-          <button className="button button-primary" onClick={save} disabled={busy}>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={save} disabled={busy}>
             {isNew ? 'Create job' : 'Save changes'}
-          </button>
-          <Link className="button" to="/jobs">
-            Cancel
-          </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/jobs">Cancel</Link>
+          </Button>
         </div>
       </div>
 
       {!isNew && (
         <>
-          <h2>Run history</h2>
+          <h2 className="mb-2 mt-6 text-sm font-semibold">Run history</h2>
           <RunTable runs={runs ?? []} showJob={false} />
         </>
       )}

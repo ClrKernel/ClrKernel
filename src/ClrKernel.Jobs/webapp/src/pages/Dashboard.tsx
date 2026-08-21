@@ -1,48 +1,77 @@
 import { Link } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
 import { api, isActive, type Run, type Stats } from '../api';
+import { ErrorBanner, PageHeader, StatusBadge, usePolling } from '../components/common';
 import { duration, timeAgo } from '../ipynb';
-import { ErrorBanner, StatusBadge, usePolling } from '../components/common';
 
 export function RunTable({ runs, showJob = true }: { runs: Run[]; showJob?: boolean }) {
   if (runs.length === 0) {
-    return <p className="muted">No runs yet.</p>;
+    return <p className="text-sm text-muted-foreground">No runs yet.</p>;
   }
   return (
-    <table className="table">
-      <thead>
-        <tr>
-          <th>Status</th>
-          {showJob && <th>Job</th>}
-          <th>Trigger</th>
-          <th>Started</th>
-          <th>Took</th>
-          <th />
-        </tr>
-      </thead>
-      <tbody>
-        {runs.map((run) => (
-          <tr key={run.id}>
-            <td>
-              <StatusBadge status={run.status} />
-            </td>
-            {showJob && (
-              <td>
-                <Link to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}>{run.jobName}</Link>
-                {run.environment !== 'default' && (
-                  <span className={`chip env-${run.environment}`}>{run.environment}</span>
-                )}
-              </td>
-            )}
-            <td className="muted">{run.trigger}</td>
-            <td className="muted">{timeAgo(run.startedAt ?? run.createdAt)}</td>
-            <td className="muted">{duration(run.startedAt, run.finishedAt)}</td>
-            <td>
-              <Link to={`/runs/${run.id}`}>details</Link>
-            </td>
+    <div className="table-box">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            {showJob && <th>Job</th>}
+            <th>Trigger</th>
+            <th>Started</th>
+            <th>Took</th>
+            <th />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.id}>
+              <td>
+                <StatusBadge status={run.status} />
+              </td>
+              {showJob && (
+                <td>
+                  <Link
+                    className="text-primary hover:underline"
+                    to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}
+                  >
+                    {run.jobName}
+                  </Link>
+                  {run.environment !== 'default' && (
+                    <Badge variant="secondary" className="ml-2 font-mono text-[11px]">
+                      {run.environment}
+                    </Badge>
+                  )}
+                </td>
+              )}
+              <td className="text-muted-foreground">{run.trigger}</td>
+              <td className="text-muted-foreground">
+                {timeAgo(run.startedAt ?? run.createdAt)}
+              </td>
+              <td className="text-muted-foreground">
+                {duration(run.startedAt, run.finishedAt)}
+              </td>
+              <td>
+                <Link className="text-primary hover:underline" to={`/runs/${run.id}`}>
+                  details
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * One number and its label. Hairline border, no shadow — the white surface on
+ * the near-white page is what separates it.
+ */
+function StatCard({ value, label, tone }: { value: string; label: string; tone?: string }) {
+  return (
+    <div className="rounded-md border border-border bg-card px-3 py-2.5">
+      <div className={`font-mono text-xl leading-tight ${tone ?? ''}`}>{value}</div>
+      <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
+    </div>
   );
 }
 
@@ -59,29 +88,22 @@ export function Dashboard() {
 
   return (
     <div>
-      <h1>Dashboard</h1>
+      <PageHeader title="Dashboard" />
       <ErrorBanner error={error} />
 
-      <div className="cards">
-        <div className="card">
-          <div className="card-value">{stats?.total ?? '—'}</div>
-          <div className="card-label">runs (7 days)</div>
-        </div>
-        <div className="card">
-          <div className="card-value">{rate == null ? '—' : `${rate}%`}</div>
-          <div className="card-label">success rate</div>
-        </div>
-        <div className="card">
-          <div className="card-value card-failed">{stats?.failed ?? '—'}</div>
-          <div className="card-label">failed</div>
-        </div>
-        <div className="card">
-          <div className="card-value">{running}</div>
-          <div className="card-label">in flight</div>
-        </div>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard value={`${stats?.total ?? '—'}`} label="runs (7 days)" />
+        <StatCard value={rate == null ? '—' : `${rate}%`} label="success rate" />
+        <StatCard
+          value={`${stats?.failed ?? '—'}`}
+          label="failed"
+          // The only coloured number on the page, and only when it is non-zero.
+          tone={stats?.failed ? 'text-status-error' : undefined}
+        />
+        <StatCard value={`${running}`} label="in flight" />
       </div>
 
-      <h2>Recent runs</h2>
+      <h2 className="mb-2 text-sm font-semibold">Recent runs</h2>
       <RunTable runs={runs} />
     </div>
   );

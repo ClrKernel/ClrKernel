@@ -49,63 +49,18 @@
 
   /* --- layout ------------------------------------------------------------- */
 
-  .nav {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.75rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--muted);
-  }
 
-  .brand {
-    font-weight: 600;
-  }
 
-  .nav a {
-    color: var(--muted-foreground);
-    text-decoration: none;
-  }
 
-  .nav a.active {
-    color: var(--foreground);
-    font-weight: 600;
-  }
 
   .spacer {
     flex: 1;
   }
 
-  .api-key {
-    display: flex;
-    gap: 0.35rem;
-  }
 
-  .api-key input {
-    width: 12rem;
-  }
 
-  /* Element-qualified on purpose. Monaco's suggest widget builds rows out of
-     `div.main` and `div.tree`, and a bare `.main { padding: 1.5rem }` applied to
-     them — pushing the completion label out of its own 20px row and behind the
-     cell footer, which looked like an empty blue box. Ours are <main> and <ul>;
-     Monaco's are <div>. Keep new layout classes specific enough not to collide. */
-  main.main {
-    max-width: 60rem;
-    margin: 0 auto;
-    padding: 1.5rem;
-  }
 
-  /* The editor is not prose: cells want room, and a side-by-side diff at 60rem is
-     two 27rem panes of wrapped code. */
-  main.main-wide {
-    max-width: 100rem;
-  }
 
-  /* Code takes the width; sentences do not — a 100rem line is unreadable. */
-  main.main-wide p {
-    max-width: 60rem;
-  }
 
   h1 {
     font-size: 1.4rem;
@@ -183,14 +138,6 @@
     color: var(--status-error);
   }
 
-  .link-button {
-    background: none;
-    border: none;
-    color: var(--primary);
-    cursor: pointer;
-    font: inherit;
-    padding: 0 0.35rem;
-  }
 
   .form {
     display: flex;
@@ -220,72 +167,58 @@
 
   /* --- data --------------------------------------------------------------- */
 
-  .cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-    gap: 0.75rem;
-    margin: 1rem 0;
-  }
 
-  .card {
-    padding: 0.85rem;
+
+
+
+
+  /* A table is the one thing that can genuinely exceed the content width, so
+     it scrolls inside its own box rather than widening the page. */
+  .table-box {
+    overflow-x: auto;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--muted);
-  }
-
-  .card-value {
-    font-size: 1.6rem;
-    font-weight: 600;
-  }
-
-  .card-failed {
-    color: var(--status-error);
-  }
-
-  .card-label {
-    color: var(--muted-foreground);
-    font-size: 0.85rem;
+    border-radius: var(--radius);
+    background: var(--card);
   }
 
   .table {
     width: 100%;
     border-collapse: collapse;
-    margin: 0.5rem 0;
   }
 
   .table th,
   .table td {
     text-align: left;
-    padding: 0.45rem 0.5rem;
+    padding: 0.375rem 0.75rem;
     border-bottom: 1px solid var(--border);
-    font-size: 0.9rem;
-    vertical-align: top;
+    font-size: 0.8125rem;
+    vertical-align: middle;
+  }
+
+  .table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .table tbody tr:hover {
+    background: color-mix(in srgb, var(--muted) 60%, transparent);
   }
 
   .table th {
     color: var(--muted-foreground);
     font-weight: 500;
+    background: color-mix(in srgb, var(--muted) 50%, transparent);
   }
 
   .row-active {
     background: color-mix(in srgb, var(--primary) 10%, transparent);
   }
 
-  .cell-index {
-    color: var(--muted-foreground);
-    white-space: nowrap;
-  }
 
   .preview {
     white-space: pre-wrap;
     word-break: break-word;
   }
 
-  .error-text {
-    color: var(--status-error);
-    font-size: 0.85rem;
-  }
 
   .badge {
     display: inline-block;
@@ -335,10 +268,6 @@
     border: 1px solid;
   }
 
-  .banner-error {
-    color: var(--status-error);
-    border-color: var(--status-error);
-  }
 
   .banner-warn {
     color: var(--status-warning);
@@ -350,28 +279,8 @@
     padding-left: 1.2rem;
   }
 
-  .meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.9rem;
-    color: var(--muted-foreground);
-    font-size: 0.85rem;
-    margin-bottom: 0.75rem;
-  }
 
-  .progress {
-    height: 4px;
-    background: var(--border);
-    border-radius: 999px;
-    overflow: hidden;
-    margin: 0.5rem 0;
-  }
 
-  .progress-bar {
-    height: 100%;
-    background: var(--status-success);
-    transition: width 0.3s;
-  }
 
   .tabs {
     display: flex;
@@ -397,29 +306,9 @@
 
   /* --- tree --------------------------------------------------------------- */
 
-  ul.tree,
-  ul.tree ul {
-    list-style: none;
-    padding-left: 1rem;
-    margin: 0.25rem 0;
-  }
 
-  .tree-toggle {
-    background: none;
-    border: none;
-    color: var(--foreground);
-    cursor: pointer;
-    font: inherit;
-    padding: 0.15rem 0;
-  }
 
-  .tree-file {
-    padding: 0.15rem 0;
-  }
 
-  .tree-jobsfile .tree-name {
-    color: var(--muted-foreground);
-  }
 
   /* --- notebook ----------------------------------------------------------- */
 

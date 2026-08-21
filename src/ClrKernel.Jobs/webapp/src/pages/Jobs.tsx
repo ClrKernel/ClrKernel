@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { api, type Job } from '../api';
-import { ErrorBanner, usePolling } from '../components/common';
+import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 
 export function Jobs() {
   const { data, error } = usePolling<{ jobs: Job[]; errors: string[] }>(() => api.jobs(), 5000);
@@ -12,30 +15,36 @@ export function Jobs() {
 
   return (
     <div>
-      <div className="row-between">
-        <h1>Jobs</h1>
-        <Link className="button" to={`/jobs/${editableEnv}/new`}>
-          New job
-        </Link>
-      </div>
+      <PageHeader title="Jobs">
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/jobs/${editableEnv}/new`}>New job</Link>
+        </Button>
+      </PageHeader>
       <ErrorBanner error={error} />
       {problems.length > 0 && (
-        <div className="banner banner-warn">
-          <strong>Catalog problems</strong>
-          <ul>
-            {problems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        </div>
+        <Alert variant="warning" className="mb-4">
+          <AlertTitle>Catalog problems</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc pl-4">
+              {problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
       )}
 
       {jobs.length === 0 ? (
-        <p className="muted">
-          No jobs yet. Add one from the <Link to="/notebooks">Notebooks</Link> tab.
+        <p className="text-sm text-muted-foreground">
+          No jobs yet. Add one from the{' '}
+          <Link className="text-primary hover:underline" to="/notebooks">
+            Notebooks
+          </Link>{' '}
+          tab.
         </p>
       ) : (
-        <table className="table">
+        <div className="table-box">
+          <table className="table">
           <thead>
             <tr>
               <th>Job</th>
@@ -48,19 +57,33 @@ export function Jobs() {
             {jobs.map((job) => (
               <tr key={`${job.environment}/${job.name}`}>
                 <td>
-                  <Link to={`/jobs/${job.environment}/${encodeURIComponent(job.name)}`}>{job.name}</Link>
+                  <Link
+                    className="text-primary hover:underline"
+                    to={`/jobs/${job.environment}/${encodeURIComponent(job.name)}`}
+                  >
+                    {job.name}
+                  </Link>
                   {job.environment !== 'default' && (
-                    <span className={`chip env-${job.environment}`}>{job.environment}</span>
+                    <Badge variant="secondary" className="ml-2 font-mono text-[11px]">
+                      {job.environment}
+                    </Badge>
                   )}
-                  {!job.enabled && <span className="chip chip-muted">disabled</span>}
+                  {!job.enabled && (
+                    <Badge variant="outline" className="ml-2 font-normal">
+                      disabled
+                    </Badge>
+                  )}
                 </td>
-                <td className="muted">{job.notebook}</td>
-                <td className="muted">{job.cron ? <code>{job.cron}</code> : 'manual'}</td>
-                <td className="muted">{job.dependsOn.join(', ') || '—'}</td>
+                <td className="font-mono text-muted-foreground">{job.notebook}</td>
+                <td className="text-muted-foreground">
+                  {job.cron ? <code className="font-mono">{job.cron}</code> : 'manual'}
+                </td>
+                <td className="text-muted-foreground">{job.dependsOn.join(', ') || '—'}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </div>
   );
