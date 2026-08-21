@@ -73,27 +73,31 @@ export function CellEditor({
     <div className={`notebook-cell notebook-cell-${cell.kind}${run ? ` cell-${run.status}` : ''}`}>
       <div className="cell-main">
         {/* The gutter: run at the top beside the first line, the execution count
-            at the bottom, exactly where a notebook puts them. */}
-        <div className="cell-gutter-bar">
-          {!isMarkdown && canRun ? (
-            <button
-              className="cell-run-button"
-              onClick={() => onRun('one')}
-              disabled={busy}
-              title="Run this cell"
+            at the bottom, exactly where a notebook puts them. Code cells only —
+            a markdown cell has neither, and an empty 40px column beside prose is
+            just a margin that looks like a mistake. */}
+        {!isMarkdown && (
+          <div className="cell-gutter-bar">
+            {canRun ? (
+              <button
+                className="cell-run-button"
+                onClick={() => onRun('one')}
+                disabled={busy}
+                title="Run this cell"
+              >
+                ▶
+              </button>
+            ) : (
+              <span className="cell-run-spacer" />
+            )}
+            <span
+              className="cell-gutter-index"
+              title={run?.executionCount != null ? 'Execution count' : 'Not run yet'}
             >
-              ▶
-            </button>
-          ) : (
-            <span className="cell-run-spacer" />
-          )}
-          <span
-            className="cell-gutter-index"
-            title={run?.executionCount != null ? 'Execution count' : 'Not run yet'}
-          >
-            {isMarkdown ? '' : `[${run?.executionCount ?? ' '}]`}
-          </span>
-        </div>
+              {`[${run?.executionCount ?? ' '}]`}
+            </span>
+          </div>
+        )}
 
         <div className="cell-content">
           {/* Structural actions float over the editor and appear on hover, so a

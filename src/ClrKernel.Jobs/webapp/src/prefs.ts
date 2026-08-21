@@ -22,7 +22,7 @@ export interface LayoutPrefs {
 }
 
 export const DEFAULT_LAYOUT: LayoutPrefs = {
-  sidebarWidth: 260,
+  sidebarWidth: 240,
   sidebarCollapsed: false,
   splitRatio: 0.5,
   explorerWidth: 218,

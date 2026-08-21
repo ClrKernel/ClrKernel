@@ -284,14 +284,21 @@ when the volume is mounted at a different path.
 
 ## Getting around
 
-Navigation is a fixed icon rail on the left — Dashboard, Jobs, Notebooks, Channels —
-with the label on hover. The bar across the top is a context strip and nothing else: a
-breadcrumb saying where you are, a theme picker, and settings. What you can *do* lives
-on the page, not in the chrome.
+Navigation is a fixed 48px icon rail on the left — Dashboard, Jobs, Notebooks,
+Channels, and Settings at the foot — with the label on hover. The bar across the top is
+a context strip and nothing else: a breadcrumb saying where you are, a search box, and
+the theme picker. What you can *do* lives on the page, not in the chrome.
 
-The theme picker offers five accents on one shared neutral base — blue, violet,
-emerald, amber, rose. Only the accent changes, so the app does not look like five
-different apps, and the choice is remembered in your browser. Light only for now.
+The search box filters what is in front of you — the run table on the Dashboard, the
+job table on Jobs — and it keeps the query in the URL as `?q=`, so a filtered view is
+something you can bookmark or paste to someone else. It only appears on those two
+pages; elsewhere there is nothing for it to filter.
+
+The theme picker offers five accents on one shared neutral base — green (the default),
+blue, violet, amber, rose. Only the accent changes, so the app does not look like five
+different apps, and the choice is remembered in your browser. Environment and run-status
+colours never follow it: `prod` is green and a failure is red whichever accent you pick.
+Light only for now.
 
 The **API key** the browser sends lives on the Settings page under *Browser*. It is
 stored in that browser and never written to the server; you only need it when the
@@ -299,8 +306,13 @@ server was started with `--api-key`.
 
 ## The notebook editor
 
-Dev notebooks get an **edit** link in the tree. The editor is a notebook, not a text
-box: each cell is a Monaco editor with syntax highlighting, a language picker fed by
+Dev notebooks get an **edit** link in the tree, and the editor carries a file explorer
+of its own down the left: the notebook tree for one environment, with the file you have
+open highlighted. Drag its right edge to resize it, or collapse it to a thin strip and
+click that strip to bring it back — the width and the collapsed state are remembered
+across notebooks.
+
+The editor is a notebook, not a text box: each cell is a Monaco editor with syntax highlighting, a language picker fed by
 whatever the kernel declares (so a `#!sql` cell highlights as SQL and a shell cell as
 shell), and controls to add, delete and reorder cells. A **Source** tab shows the raw
 file when you want to see exactly what is on disk, and **Diff vs production** shows

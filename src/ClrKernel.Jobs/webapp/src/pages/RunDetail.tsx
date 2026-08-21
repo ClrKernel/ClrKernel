@@ -32,7 +32,7 @@ function CellProgress({ cells }: { cells: RunCell[] }) {
                 <td className="w-[52px] whitespace-nowrap font-mono text-code text-muted-subtle">
                   {cell.cellIndex + 1}/{cells.length}
                 </td>
-                <td>
+                <td className="w-[110px]">
                   <StatusBadge status={cell.status} />
                 </td>
                 <td>

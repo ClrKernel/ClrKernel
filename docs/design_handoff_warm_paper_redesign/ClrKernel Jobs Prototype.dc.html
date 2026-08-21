@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#faf9f6;}
+a{color:#0e6e43;text-decoration:none;}
+a:hover{color:#0a5636;text-decoration:underline;}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;font-family:'Instrument Sans',sans-serif;color:#22251f;font-size:13.5px;overflow:hidden;background:#faf9f6;">
+  <div style="width:48px;background:#fffefb;border-right:1px solid #e6e2d8;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px;flex-shrink:0;">
+    <div onClick="{{ nav.dashboard.go }}" style="width:28px;height:28px;border-radius:7px;background:#0e6e43;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:14px;margin-bottom:10px;cursor:pointer;">&gt;_</div>
+    <div onClick="{{ nav.dashboard.go }}" title="Dashboard" style="width:32px;height:32px;border-radius:7px;background:{{ nav.dashboard.bg }};color:{{ nav.dashboard.color }};display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:#eef3ee;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></div>
+    <div onClick="{{ nav.jobs.go }}" title="Jobs" style="width:32px;height:32px;border-radius:7px;background:{{ nav.jobs.bg }};color:{{ nav.jobs.color }};display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:#eef3ee;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg></div>
+    <div onClick="{{ nav.notebooks.go }}" title="Notebooks" style="width:32px;height:32px;border-radius:7px;background:{{ nav.notebooks.bg }};color:{{ nav.notebooks.color }};display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:#eef3ee;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>
+    <div onClick="{{ nav.channels.go }}" title="Channels" style="width:32px;height:32px;border-radius:7px;background:{{ nav.channels.bg }};color:{{ nav.channels.color }};display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:#eef3ee;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg></div>
+    <div style="flex:1;"></div>
+    <div onClick="{{ nav.settings.go }}" title="Settings" style="width:32px;height:32px;border-radius:7px;background:{{ nav.settings.bg }};color:{{ nav.settings.color }};display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:#eef3ee;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+    <div style="height:46px;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #e6e2d8;background:#fffefb;flex-shrink:0;">
+      <span onClick="{{ nav.dashboard.go }}" style="font-weight:600;cursor:pointer;">ClrKernel Jobs</span>
+      <span style="color:#b6b0a2;">/</span>
+      <span onClick="{{ crumb2Go }}" style="color:#6f6b60;cursor:pointer;" style-hover="color:#22251f;">{{ crumb2 }}</span>
+      <sc-if value="{{ crumb3 }}" hint-placeholder-val="{{ false }}">
+        <span style="color:#b6b0a2;">/</span><span style="font-weight:600;">{{ crumb3 }}</span>
+      </sc-if>
+      <div style="flex:1;"></div>
+      <div style="display:flex;align-items:center;gap:8px;border:1px solid #e6e2d8;border-radius:7px;padding:4px 10px;width:230px;color:#8a8577;background:#faf9f6;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input value="{{ q }}" onChange="{{ setQ }}" placeholder="Search jobs…" style="border:none;outline:none;background:transparent;font:inherit;color:#22251f;width:100%;padding:0;">
+      </div>
+      <span style="font-size:12px;font-weight:600;color:#b45309;background:#fdf3e3;border:1px solid #f0dcbb;border-radius:999px;padding:2px 10px;">dev</span>
+      <div style="width:26px;height:26px;border-radius:50%;background:#0e6e43;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">CW</div>
+    </div>
+    <div style="flex:1;display:flex;min-height:0;">
+      <sc-if value="{{ showExplorer }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ exOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="width:{{ exW }};background:#f5f3ee;border-right:1px solid #e6e2d8;display:flex;flex-direction:column;flex-shrink:0;min-height:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 6px 14px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#8a8577;">
+              <span>EXPLORER</span>
+              <span onClick="{{ exToggle }}" style="border:1px solid #ded9cd;border-radius:5px;padding:0 6px;cursor:pointer;font-weight:400;" style-hover="color:#0e6e43;border-color:#0e6e43;">‹</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:0 10px 10px 14px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a8577" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+              <select value="{{ branch }}" onChange="{{ setBranch }}" style="flex:1;min-width:0;padding:3px 6px;border:1px solid #ded9cd;border-radius:6px;background:#fffefb;font-size:11.5px;color:#22251f;font-family:'JetBrains Mono',monospace;">
+                <option value="prod">prod</option>
+                <option value="test">test</option>
+                <option value="dev-jsadams">dev-jsadams</option>
+              </select>
+            </div>
+            <div style="flex:1;overflow:auto;">
+              <sc-for list="{{ nbTree }}" as="it" hint-placeholder-count="8">
+                <div style="display:flex;align-items:center;gap:5px;padding:3px 10px 3px {{ it.pl }};font-family:{{ it.ff }};font-size:{{ it.fs }};color:{{ it.color }};font-weight:{{ it.fw }};background:{{ it.bg }};border-left:2px solid {{ it.bl }};overflow:hidden;" style-hover="background:#eae7de;">
+                  <span onClick="{{ it.click }}" style="width:11px;color:#8a8577;font-size:9px;flex-shrink:0;cursor:pointer;">{{ it.arrow }}</span>
+                  <span onClick="{{ it.click }}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;" style-hover="color:#0e6e43;">{{ it.name }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div onMouseDown="{{ exDrag }}" style="flex:0 0 5px;cursor:col-resize;background:#e6e2d8;" style-hover="background:#0e6e43;"></div>
+        </sc-if>
+        <sc-if value="{{ exClosed }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ exToggle }}" title="Show explorer" style="flex:0 0 16px;border-right:1px solid #e6e2d8;background:#f5f3ee;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#8a8577;font-size:10px;" style-hover="background:#eae7de;color:#0e6e43;">›</div>
+        </sc-if>
+      </sc-if>
+      <div style="flex:1;padding:20px 28px;min-width:0;overflow:auto;">
+
+        <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:19px;font-weight:700;margin-bottom:14px;">Dashboard</div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px;max-width:820px;">
+            <div style="border:1px solid #e6e2d8;border-radius:9px;background:#fffefb;padding:12px 14px;"><div style="font-size:22px;font-weight:700;">{{ statTotal }}</div><div style="font-size:12px;color:#8a8577;">runs · 7 days</div></div>
+            <div style="border:1px solid #e6e2d8;border-radius:9px;background:#fffefb;padding:12px 14px;"><div style="font-size:22px;font-weight:700;color:#0e6e43;">{{ statRate }}</div><div style="font-size:12px;color:#8a8577;">success rate</div></div>
+            <div style="border:1px solid #e6e2d8;border-radius:9px;background:#fffefb;padding:12px 14px;"><div style="font-size:22px;font-weight:700;color:#b91c1c;">{{ statFailed }}</div><div style="font-size:12px;color:#8a8577;">failed</div></div>
+            <div style="border:1px solid #e6e2d8;border-radius:9px;background:#fffefb;padding:12px 14px;"><div style="font-size:22px;font-weight:700;color:#1d4ed8;">{{ statLive }}</div><div style="font-size:12px;color:#8a8577;">in flight</div></div>
+          </div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Recent runs</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Status</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Job</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Notebook</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Trigger</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Started</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Took</th>
+            </tr></thead>
+            <tbody>
+              <sc-for list="{{ dashRuns }}" as="r" hint-placeholder-count="6">
+                <tr onClick="{{ r.open }}" style="cursor:pointer;" style-hover="background:#f3f1ea;">
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="border:1px solid {{ r.sc }};color:{{ r.sc }};border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:500;">{{ r.status }}</span></td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="font-weight:600;color:#0e6e43;">{{ r.job }}</span> <span style="font-size:10.5px;font-weight:600;color:{{ r.ec }};background:{{ r.ebg }};border:1px solid {{ r.ebd }};border-radius:999px;padding:1px 7px;margin-left:4px;">{{ r.env }}</span></td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;font-family:'JetBrains Mono',monospace;font-size:12px;color:#6f6b60;">{{ r.nb }}</td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ r.trig }}</td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ r.started }}</td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ r.took }}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </sc-if>
+
+        <sc-if value="{{ isJobs }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <span style="font-size:19px;font-weight:700;">Jobs</span>
+            <div style="flex:1;"></div>
+            <span onClick="{{ newJob }}" style="border:1px solid #0e6e43;border-radius:7px;padding:5px 12px;background:#0e6e43;color:#fff;font-weight:600;cursor:pointer;" style-hover="background:#0a5636;">New job</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Job</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Notebook</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Schedule</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Depends on</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Last run</th>
+            </tr></thead>
+            <tbody>
+              <sc-for list="{{ jobRows }}" as="j" hint-placeholder-count="5">
+                <tr onClick="{{ j.open }}" style="cursor:pointer;" style-hover="background:#f3f1ea;">
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="font-weight:600;color:#0e6e43;">{{ j.name }}</span> <span style="font-size:10.5px;font-weight:600;color:{{ j.ec }};background:{{ j.ebg }};border:1px solid {{ j.ebd }};border-radius:999px;padding:1px 7px;margin-left:4px;">{{ j.env }}</span></td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;font-family:'JetBrains Mono',monospace;font-size:12px;color:#6f6b60;">{{ j.notebook }}</td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;font-family:'JetBrains Mono',monospace;font-size:12px;">{{ j.schedule }}</td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ j.depends }}</td>
+                  <td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="border:1px solid {{ j.lsc }};color:{{ j.lsc }};border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:500;">{{ j.last }}</span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </sc-if>
+
+        <sc-if value="{{ isJob }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:19px;font-weight:700;">{{ jobTitle }}</span>
+            <span style="font-size:11px;font-weight:600;color:{{ jobEc }};background:{{ jobEbg }};border:1px solid {{ jobEbd }};border-radius:999px;padding:1px 8px;">{{ jobEnv }}</span>
+            <div style="flex:1;"></div>
+            <sc-if value="{{ notNew }}" hint-placeholder-val="{{ true }}">
+              <span onClick="{{ runNowSel }}" style="border:1px solid #ded9cd;border-radius:7px;padding:5px 12px;background:#fffefb;font-weight:500;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">Run now</span>
+              <span onClick="{{ promote }}" style="border:1px solid #0e6e43;border-radius:7px;padding:5px 12px;background:#0e6e43;color:#fff;font-weight:600;cursor:pointer;" style-hover="background:#0a5636;">Promote to production</span>
+              <span onClick="{{ deleteJob }}" style="border:1px solid #ded9cd;border-radius:7px;padding:5px 12px;background:#fffefb;font-weight:500;color:#6f6b60;cursor:pointer;" style-hover="border-color:#b91c1c;color:#b91c1c;">Delete</span>
+            </sc-if>
+          </div>
+          <sc-if value="{{ banner }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:12px;border:1px solid {{ bannerBd }};color:{{ bannerColor }};background:{{ bannerBg }};border-radius:7px;padding:9px 12px;font-size:13px;">{{ banner }}</div>
+          </sc-if>
+          <div style="display:flex;gap:2px;border-bottom:1px solid #e6e2d8;margin:14px 0 16px;">
+            <sc-for list="{{ jobTabs }}" as="t" hint-placeholder-count="3">
+              <span onClick="{{ t.click }}" style="padding:7px 12px;cursor:pointer;font-weight:{{ t.fw }};color:{{ t.color }};border-bottom:2px solid {{ t.bc }};margin-bottom:-1px;">{{ t.label }}</span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ jobTabOverview }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:13px;max-width:560px;">
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;">Name
+                <input value="{{ form.name }}" onChange="{{ fName }}" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font:inherit;color:#22251f;">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;">Notebook <span style="color:#8a8577;font-weight:400;">(relative to the notebooks root)</span>
+                <input value="{{ form.notebook }}" onChange="{{ fNotebook }}" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#22251f;">
+              </label>
+              <div style="display:flex;gap:12px;">
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;flex:1;">Cron <span style="color:#8a8577;font-weight:400;">(empty = manual)</span>
+                  <input value="{{ form.cron }}" onChange="{{ fCron }}" placeholder="0 2 * * *" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#22251f;">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;flex:1;">Depends on
+                  <input value="{{ form.depends }}" onChange="{{ fDepends }}" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font:inherit;color:#22251f;">
+                </label>
+              </div>
+              <div style="display:flex;gap:12px;align-items:flex-end;">
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;width:150px;">Timeout (seconds)
+                  <input value="{{ form.timeout }}" onChange="{{ fTimeout }}" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font:inherit;color:#22251f;">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;width:100px;">Retries
+                  <input value="{{ form.retries }}" onChange="{{ fRetries }}" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font:inherit;color:#22251f;">
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding-bottom:7px;cursor:pointer;">
+                  <input type="checkbox" checked="{{ form.enabled }}" onChange="{{ fEnabled }}">Enabled
+                </label>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;">Parameters <span style="color:#8a8577;font-weight:400;">(JSON, injected into the notebook)</span>
+                <textarea rows="5" value="{{ form.params }}" onChange="{{ fParams }}" style="padding:6px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#22251f;resize:vertical;"></textarea>
+              </label>
+              <div style="display:flex;gap:8px;">
+                <span onClick="{{ save }}" style="border:1px solid #0e6e43;border-radius:7px;padding:6px 14px;background:#0e6e43;color:#fff;font-weight:600;cursor:pointer;" style-hover="background:#0a5636;">{{ saveLabel }}</span>
+                <span onClick="{{ nav.jobs.go }}" style="border:1px solid #ded9cd;border-radius:7px;padding:6px 14px;background:#fffefb;cursor:pointer;">Cancel</span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ jobTabRuns }}" hint-placeholder-val="{{ false }}">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <tbody>
+                <sc-for list="{{ jobRuns }}" as="r" hint-placeholder-count="3">
+                  <tr onClick="{{ r.open }}" style="cursor:pointer;" style-hover="background:#f3f1ea;">
+                    <td style="padding:7px 10px;border-bottom:1px solid #efece4;width:110px;"><span style="border:1px solid {{ r.sc }};color:{{ r.sc }};border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:500;">{{ r.status }}</span></td>
+                    <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ r.trig }}</td>
+                    <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ r.started }}</td>
+                    <td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ r.took }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ jobTabYaml }}" hint-placeholder-val="{{ false }}">
+            <pre style="margin:0;border:1px solid #e6e2d8;border-radius:9px;background:#f5f3ee;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.6;color:#3d4038;white-space:pre-wrap;">{{ jobYaml }}</pre>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ isRun }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span onClick="{{ runJobOpen }}" style="font-size:19px;font-weight:700;color:#0e6e43;cursor:pointer;" style-hover="text-decoration:underline;">{{ runJob }}</span>
+            <span style="border:1px solid {{ runSc }};color:{{ runSc }};border-radius:999px;padding:2px 10px;font-size:12px;font-weight:500;">{{ runStatus }}</span>
+            <div style="flex:1;"></div>
+            <sc-if value="{{ runLive }}" hint-placeholder-val="{{ false }}">
+              <span style="color:#8a8577;font-size:12.5px;">live · refreshing</span>
+              <span onClick="{{ cancelRun }}" style="border:1px solid #ded9cd;border-radius:7px;padding:5px 12px;background:#fffefb;font-weight:500;cursor:pointer;" style-hover="border-color:#b91c1c;color:#b91c1c;">Cancel run</span>
+            </sc-if>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;color:#8a8577;font-size:12.5px;margin:10px 0 4px;">
+            <span style="font-family:'JetBrains Mono',monospace;">{{ runNb }}</span>
+            <span>{{ runTrig }}</span>
+            <span>started {{ runStarted }}</span>
+            <span>took {{ runTook }}</span>
+          </div>
+          <sc-if value="{{ runError }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:8px;border:1px solid #ecc9c5;color:#b91c1c;background:#fdf1ef;border-radius:7px;padding:9px 12px;font-size:13px;font-family:'JetBrains Mono',monospace;">{{ runError }}</div>
+          </sc-if>
+          <div style="height:4px;background:#e6e2d8;border-radius:999px;overflow:hidden;margin:12px 0;">
+            <div style="height:100%;background:{{ progressColor }};width:{{ progressPct }};transition:width .3s;"></div>
+          </div>
+          <div style="display:flex;gap:2px;border-bottom:1px solid #e6e2d8;margin:0 0 14px;">
+            <sc-for list="{{ runTabs }}" as="t" hint-placeholder-count="3">
+              <span onClick="{{ t.click }}" style="padding:7px 12px;cursor:pointer;font-weight:{{ t.fw }};color:{{ t.color }};border-bottom:2px solid {{ t.bc }};margin-bottom:-1px;">{{ t.label }}</span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ runTabCells }}" hint-placeholder-val="{{ true }}">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <tbody>
+                <sc-for list="{{ runCells }}" as="c" hint-placeholder-count="5">
+                  <tr style="background:{{ c.rowBg }};">
+                    <td style="padding:8px 10px;border-bottom:1px solid #efece4;color:#8a8577;font-family:'JetBrains Mono',monospace;font-size:12px;width:52px;white-space:nowrap;">{{ c.idx }}</td>
+                    <td style="padding:8px 10px;border-bottom:1px solid #efece4;width:110px;"><span style="border:1px solid {{ c.sc }};color:{{ c.sc }};border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:500;">{{ c.status }}</span></td>
+                    <td style="padding:8px 10px;border-bottom:1px solid #efece4;"><pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:12px;color:#3d4038;white-space:pre-wrap;word-break:break-word;">{{ c.src }}</pre><sc-if value="{{ c.err }}" hint-placeholder-val="{{ false }}"><div style="color:#b91c1c;font-size:12px;margin-top:4px;font-family:'JetBrains Mono',monospace;">{{ c.err }}</div></sc-if></td>
+                    <td style="padding:8px 10px;border-bottom:1px solid #efece4;color:#8a8577;width:70px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;">{{ c.dur }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ runTabLog }}" hint-placeholder-val="{{ false }}">
+            <pre style="margin:0;border:1px solid #e6e2d8;border-radius:9px;background:#f5f3ee;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;color:#3d4038;white-space:pre-wrap;max-height:480px;overflow:auto;">{{ runLog }}</pre>
+          </sc-if>
+          <sc-if value="{{ runTabNb }}" hint-placeholder-val="{{ false }}">
+            <p style="color:#8a8577;font-size:13px;">{{ runNbNote }}</p>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ isNotebooks }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:19px;font-weight:700;margin-bottom:6px;">Notebooks</div>
+          <p style="color:#8a8577;font-size:13px;margin:0 0 14px;">Every <code style="font-family:'JetBrains Mono',monospace;font-size:12px;background:#f0ede4;border-radius:4px;padding:1px 5px;">*.jobs.yaml</code> found here defines jobs. Pick a notebook to add one. Click a notebook name to open the editor.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8577" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+            <select value="{{ branch }}" onChange="{{ setBranch }}" style="padding:5px 9px;border:1px solid #ded9cd;border-radius:7px;background:#fffefb;font:inherit;font-size:13px;color:#22251f;font-family:'JetBrains Mono',monospace;">
+              <option value="prod">prod</option>
+              <option value="test">test</option>
+              <option value="dev-jsadams">dev-jsadams</option>
+            </select>
+            <sc-if value="{{ branchReadOnly }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10.5px;font-weight:600;color:#8a8577;border:1px solid #e6e2d8;border-radius:999px;padding:1px 8px;">read-only</span>
+            </sc-if>
+          </div>
+          <div style="border:1px solid #e6e2d8;border-radius:9px;background:#fffefb;padding:10px 0;max-width:640px;">
+            <sc-for list="{{ nbTree }}" as="it" hint-placeholder-count="8">
+              <div style="display:flex;align-items:center;gap:6px;padding:5px 16px 5px {{ it.pl }};font-family:{{ it.ff }};font-size:{{ it.fs }};color:{{ it.color }};font-weight:{{ it.fw }};" style-hover="background:#f5f3ee;">
+                <span onClick="{{ it.click }}" style="width:12px;color:#8a8577;font-size:10px;flex-shrink:0;cursor:pointer;">{{ it.arrow }}</span>
+                <span onClick="{{ it.click }}" style="white-space:nowrap;cursor:pointer;" style-hover="color:#0e6e43;text-decoration:underline;">{{ it.name }}</span>
+                <sc-for list="{{ it.chips }}" as="ch" hint-placeholder-count="0">
+                  <span onClick="{{ ch.open }}" style="font-size:10.5px;font-weight:600;color:#0e6e43;background:#e9f3ec;border:1px solid #cfe4d6;border-radius:999px;padding:1px 8px;cursor:pointer;font-family:'Instrument Sans',sans-serif;" style-hover="background:#dcecdf;">{{ ch.name }}</span>
+                </sc-for>
+                <sc-if value="{{ it.addable }}" hint-placeholder-val="{{ false }}">
+                  <span onClick="{{ it.addJob }}" style="color:#8a8577;font-size:11.5px;cursor:pointer;font-family:'Instrument Sans',sans-serif;" style-hover="color:#0e6e43;">+ job</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isEditor }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:-20px -28px;display:flex;flex-direction:column;height:calc(100vh - 46px);min-height:0;background:#faf9f6;">
+            <div style="display:flex;align-items:center;gap:6px;padding:0 16px;height:44px;border-bottom:1px solid #e6e2d8;background:#fffefb;flex-shrink:0;white-space:nowrap;overflow-x:auto;">
+              <sc-for list="{{ editorTabs }}" as="t" hint-placeholder-count="3">
+                <span onClick="{{ t.click }}" style="padding:12px 10px 10px;cursor:pointer;font-weight:{{ t.fw }};color:{{ t.color }};border-bottom:2px solid {{ t.bc }};font-size:13px;">{{ t.label }}</span>
+              </sc-for>
+              <div style="flex:1;"></div>
+              <span style="display:inline-flex;align-items:center;gap:6px;color:#8a8577;font-family:'JetBrains Mono',monospace;font-size:11.5px;"><span style="width:7px;height:7px;border-radius:50%;background:#15803d;display:inline-block;"></span>ClrKernel 0.10.0.0 · idle</span>
+              <span style="display:inline-flex;border:1px solid #ded9cd;border-radius:7px;overflow:hidden;margin:0 4px;">
+                <span onClick="{{ setNormal }}" style="padding:4px 11px;font-size:12.5px;cursor:pointer;background:{{ normalBg }};color:{{ normalColor }};font-weight:{{ normalFw }};">Normal</span>
+                <span onClick="{{ setFocus }}" style="padding:4px 11px;font-size:12.5px;cursor:pointer;background:{{ focusBg }};color:{{ focusColor }};font-weight:{{ focusFw }};border-left:1px solid #ded9cd;">Focus</span>
+              </span>
+              <span onClick="{{ runAll }}" style="border:1px solid #ded9cd;border-radius:7px;padding:4px 11px;background:#fffefb;font-size:12.5px;font-weight:500;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">▷ Run All</span>
+              <span onClick="{{ restart }}" style="border:1px solid #ded9cd;border-radius:7px;padding:4px 11px;background:#fffefb;font-size:12.5px;font-weight:500;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">↺ Restart kernel</span>
+              <span onClick="{{ saveNb }}" style="border:1px solid #ded9cd;border-radius:7px;padding:4px 11px;background:#fffefb;font-size:12.5px;font-weight:500;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">{{ saveLabelNb }}</span>
+              <span onClick="{{ promoteNb }}" style="border-radius:7px;padding:5px 11px;background:{{ promoteBg }};color:#fff;font-size:12.5px;font-weight:600;cursor:{{ promoteCursor }};">Promote to production</span>
+            </div>
+            <sc-if value="{{ notPromotable }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:12px 16px 0;border:1px solid #e6e2d8;border-radius:8px;background:#fffefb;padding:10px 14px;flex-shrink:0;">
+                <div style="font-weight:600;color:#b45309;font-size:13px;">Not promotable yet</div>
+                <div style="color:#b45309;font-size:12.5px;margin-top:3px;">• No jobs are defined for this notebook in {{ branch }} — nothing proves it works.</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ editorTabNb }}" hint-placeholder-val="{{ true }}">
+              <sc-if value="{{ modeNormal }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;">
+                  <sc-for list="{{ nbCells }}" as="cell" hint-placeholder-count="4">
+                    <div style="border:1px solid #e6e2d8;border-radius:8px;background:{{ cell.bg }};overflow:hidden;border-left:3px solid {{ cell.edge }};flex-shrink:0;">
+                      <div style="display:flex;align-items:stretch;">
+                        <sc-if value="{{ cell.isCode }}" hint-placeholder-val="{{ true }}">
+                          <div style="display:flex;flex-direction:column;justify-content:space-between;align-items:center;flex:0 0 40px;padding:8px 0;background:#f5f3ee;border-right:1px solid #e6e2d8;">
+                            <span onClick="{{ runAll }}" style="color:#8a8577;cursor:pointer;font-size:12px;" style-hover="color:#0e6e43;">▶</span>
+                            <span style="color:#8a8577;font-family:'JetBrains Mono',monospace;font-size:10.5px;">{{ cell.exec }}</span>
+                          </div>
+                        </sc-if>
+                        <div style="flex:1;min-width:0;padding:{{ cell.pad }};">
+                          <sc-if value="{{ cell.title }}" hint-placeholder-val="{{ false }}">
+                            <div style="font-size:16px;font-weight:700;margin-bottom:6px;">{{ cell.title }}</div>
+                          </sc-if>
+                          <sc-if value="{{ cell.isMd }}" hint-placeholder-val="{{ false }}">
+                            <div style="font-size:13px;line-height:1.55;color:#3d4038;max-width:960px;">{{ cell.text }}</div>
+                          </sc-if>
+                          <sc-if value="{{ cell.isCode }}" hint-placeholder-val="{{ true }}">
+                            <pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.6;color:#3d4038;white-space:pre-wrap;word-break:break-word;">{{ cell.code }}</pre>
+                          </sc-if>
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-top:1px solid #e6e2d8;background:#f5f3ee;font-size:11.5px;min-height:24px;">
+                        <sc-if value="{{ cell.status }}" hint-placeholder-val="{{ false }}">
+                          <span style="display:inline-flex;align-items:center;gap:5px;color:{{ cell.statusColor }};"><span style="width:6px;height:6px;border-radius:50%;background:{{ cell.statusColor }};display:inline-block;"></span>{{ cell.status }}</span>
+                        </sc-if>
+                        <div style="flex:1;"></div>
+                        <sc-if value="{{ cell.connect }}" hint-placeholder-val="{{ false }}">
+                          <span style="border:1px solid #ded9cd;border-radius:6px;padding:2px 9px;background:#fffefb;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">⛁ Connect</span>
+                        </sc-if>
+                        <span style="color:#8a8577;cursor:pointer;" style-hover="color:#22251f;">{{ cell.lang }} ▾</span>
+                      </div>
+                      <sc-if value="{{ cell.hasTable }}" hint-placeholder-val="{{ false }}">
+                        <div style="border-top:1px solid #e6e2d8;background:#faf9f6;padding:10px 14px 14px 44px;">
+                          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                            <input value="{{ gridQ }}" onChange="{{ setGridQ }}" placeholder="Filter all columns…" style="padding:4px 9px;border:1px solid #ded9cd;border-radius:6px;background:#fffefb;font:inherit;font-size:12px;width:260px;color:#22251f;">
+                            <span onClick="{{ clearGridQ }}" style="border:1px solid #ded9cd;border-radius:6px;padding:3px 10px;background:#fffefb;font-size:12px;cursor:pointer;">Clear</span>
+                            <span style="border:1px solid #ded9cd;border-radius:6px;padding:3px 10px;background:#fffefb;font-size:12px;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">Analyze</span>
+                            <span style="color:#8a8577;font-size:11.5px;">{{ gridCount }} rows</span>
+                          </div>
+                          <table style="border-collapse:collapse;font-size:12px;min-width:560px;">
+                            <thead>
+                              <tr>
+                                <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Id ▾</th>
+                                <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Name ▾</th>
+                                <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Category ▾</th>
+                                <th style="text-align:right;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Qty ▾</th>
+                                <th style="text-align:right;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Price ▾</th>
+                                <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Active ▾</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <sc-for list="{{ gridRows }}" as="g" hint-placeholder-count="6">
+                                <tr style-hover="background:#f3f1ea;">
+                                  <td style="padding:3px 10px;border-bottom:1px solid #efece4;text-align:right;color:#6f6b60;font-family:'JetBrains Mono',monospace;font-size:11.5px;">{{ g.id }}</td>
+                                  <td style="padding:3px 10px;border-bottom:1px solid #efece4;">{{ g.name }}</td>
+                                  <td style="padding:3px 10px;border-bottom:1px solid #efece4;">{{ g.cat }}</td>
+                                  <td style="padding:3px 10px;border-bottom:1px solid #efece4;text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;">{{ g.qty }}</td>
+                                  <td style="padding:3px 10px;border-bottom:1px solid #efece4;text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;">{{ g.price }}</td>
+                                  <td style="padding:3px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ g.act }}</td>
+                                </tr>
+                              </sc-for>
+                            </tbody>
+                          </table>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ modeFocus }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:1;display:flex;min-height:0;margin:12px 16px 16px;border:1px solid #e6e2d8;border-radius:8px;overflow:hidden;background:#fffefb;">
+                  <div style="width:240px;background:#f5f3ee;border-right:1px solid #e6e2d8;overflow:auto;flex-shrink:0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;font-size:10.5px;font-weight:600;letter-spacing:.06em;color:#8a8577;border-bottom:1px solid #e6e2d8;position:sticky;top:0;background:#f5f3ee;">CONTENTS<span style="border:1px solid #ded9cd;border-radius:5px;padding:0 5px;cursor:pointer;">‹</span></div>
+                    <sc-for list="{{ toc }}" as="t" hint-placeholder-count="10">
+                      <div onClick="{{ t.click }}" style="display:flex;align-items:center;gap:5px;padding:3px 8px 3px {{ t.pl }};font-size:11.5px;cursor:pointer;white-space:nowrap;overflow:hidden;background:{{ t.bg }};color:{{ t.color }};font-weight:{{ t.fw }};font-family:{{ t.ff }};" style-hover="background:#eae7de;">
+                        <span style="flex-shrink:0;font-size:10px;color:{{ t.pc }};">{{ t.prefix }}</span>
+                        <span style="overflow:hidden;text-overflow:ellipsis;">{{ t.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid #e6e2d8;background:#f5f3ee;flex-shrink:0;font-size:12px;">
+                      <span style="font-family:'JetBrains Mono',monospace;color:#8a8577;">Cell {{ focusExec }}</span>
+                      <span onClick="{{ runAll }}" style="border:1px solid #ded9cd;border-radius:6px;padding:2px 9px;background:#fffefb;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">▶ Run</span>
+                      <span style="display:inline-flex;align-items:center;gap:5px;color:{{ focusStatusColor }};"><span style="width:6px;height:6px;border-radius:50%;background:{{ focusStatusColor }};display:inline-block;"></span>{{ focusStatus }}</span>
+                      <div style="flex:1;"></div>
+                      <span style="border:1px solid #ded9cd;border-radius:6px;padding:2px 9px;background:#fffefb;cursor:pointer;">Clear output</span>
+                      <span style="color:#8a8577;cursor:pointer;">{{ focusLang }} ▾</span>
+                      <span style="color:#b91c1c;cursor:pointer;font-weight:600;">×</span>
+                    </div>
+                    <div style="flex:0 1 auto;max-height:55%;overflow:auto;padding:10px 0;background:#fffefb;">
+                      <sc-for list="{{ focusLines }}" as="ln" hint-placeholder-count="6">
+                        <div style="display:flex;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.65;">
+                          <span style="width:38px;text-align:right;padding-right:14px;color:#c2bcae;flex-shrink:0;font-size:11px;">{{ ln.n }}</span>
+                          <pre style="margin:0;font:inherit;color:#3d4038;white-space:pre-wrap;word-break:break-word;flex:1;">{{ ln.el }}</pre>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="flex:1;border-top:1px solid #e6e2d8;background:#faf9f6;overflow:auto;padding:12px 16px;">
+                      <sc-if value="{{ focusHasTable }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                          <input value="{{ gridQ }}" onChange="{{ setGridQ }}" placeholder="Filter all columns…" style="padding:4px 9px;border:1px solid #ded9cd;border-radius:6px;background:#fffefb;font:inherit;font-size:12px;width:260px;color:#22251f;">
+                          <span onClick="{{ clearGridQ }}" style="border:1px solid #ded9cd;border-radius:6px;padding:3px 10px;background:#fffefb;font-size:12px;cursor:pointer;">Clear</span>
+                          <span style="border:1px solid #ded9cd;border-radius:6px;padding:3px 10px;background:#fffefb;font-size:12px;cursor:pointer;" style-hover="border-color:#0e6e43;color:#0e6e43;">Analyze</span>
+                          <span style="color:#8a8577;font-size:11.5px;">{{ gridCount }} rows</span>
+                        </div>
+                        <table style="border-collapse:collapse;font-size:12px;min-width:560px;background:#fffefb;">
+                          <thead>
+                            <tr>
+                              <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Id ▾</th>
+                              <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Name ▾</th>
+                              <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Category ▾</th>
+                              <th style="text-align:right;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Qty ▾</th>
+                              <th style="text-align:right;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Price ▾</th>
+                              <th style="text-align:left;padding:4px 10px;color:#6f6b60;font-weight:600;border-bottom:1px solid #ded9cd;background:#f0ede4;">Active ▾</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <sc-for list="{{ gridRows }}" as="g" hint-placeholder-count="6">
+                              <tr style-hover="background:#f3f1ea;">
+                                <td style="padding:3px 10px;border-bottom:1px solid #efece4;text-align:right;color:#6f6b60;font-family:'JetBrains Mono',monospace;font-size:11.5px;">{{ g.id }}</td>
+                                <td style="padding:3px 10px;border-bottom:1px solid #efece4;">{{ g.name }}</td>
+                                <td style="padding:3px 10px;border-bottom:1px solid #efece4;">{{ g.cat }}</td>
+                                <td style="padding:3px 10px;border-bottom:1px solid #efece4;text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;">{{ g.qty }}</td>
+                                <td style="padding:3px 10px;border-bottom:1px solid #efece4;text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;">{{ g.price }}</td>
+                                <td style="padding:3px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">{{ g.act }}</td>
+                              </tr>
+                            </sc-for>
+                          </tbody>
+                        </table>
+                      </sc-if>
+                      <sc-if value="{{ focusNoOutput }}" hint-placeholder-val="{{ false }}">
+                        <span style="color:#8a8577;font-size:12.5px;">No output — run the cell.</span>
+                      </sc-if>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-if>
+            <sc-if value="{{ editorTabSrc }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1;overflow:auto;padding:16px;">
+                <pre style="margin:0;border:1px solid #e6e2d8;border-radius:8px;background:#fffefb;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;color:#3d4038;white-space:pre-wrap;">{{ nbSource }}</pre>
+              </div>
+            </sc-if>
+            <sc-if value="{{ editorTabDiff }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1;padding:16px;">
+                <p style="color:#8a8577;font-size:13px;">No differences — {{ branch }} matches production for this notebook.</p>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isChannels }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:19px;font-weight:700;margin-bottom:6px;">Channels</div>
+          <p style="color:#8a8577;font-size:13px;margin:0 0 14px;">Where job notifications go. Reference these from a job's Notify section.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;max-width:640px;">
+            <thead><tr>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Name</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Type</th>
+              <th style="text-align:left;padding:7px 10px;color:#8a8577;font-weight:500;border-bottom:1px solid #e6e2d8;">Target</th>
+            </tr></thead>
+            <tbody>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;font-weight:600;">ops-teams</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">Teams webhook</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;font-family:'JetBrains Mono',monospace;font-size:12px;">https://outlook.office.com/webhook/…</td></tr>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;font-weight:600;">data-alerts</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;">Slack</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;font-family:'JetBrains Mono',monospace;font-size:12px;">#data-alerts</td></tr>
+            </tbody>
+          </table>
+        </sc-if>
+
+        <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:19px;font-weight:700;margin-bottom:6px;">Settings</div>
+          <p style="color:#8a8577;font-size:13px;margin:0 0 18px;max-width:560px;">Values pinned by a flag or environment variable are shown locked — change those on the host. Security and execution settings are host-only by design.</p>
+          <sc-if value="{{ banner }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-bottom:14px;border:1px solid {{ bannerBd }};color:{{ bannerColor }};background:{{ bannerBg }};border-radius:7px;padding:9px 12px;font-size:13px;max-width:640px;">{{ banner }}</div>
+          </sc-if>
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Server</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;max-width:640px;margin-bottom:8px;">
+            <tbody>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;width:220px;">Port</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"><input defaultValue="5199" style="padding:4px 8px;border:1px solid #ded9cd;border-radius:6px;background:#fffefb;font:inherit;width:90px;color:#22251f;"></td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="font-size:10.5px;color:#8a8577;border:1px solid #e6e2d8;border-radius:999px;padding:1px 7px;">restart to apply</span></td></tr>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;">API key</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#8a8577;">(set)</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="font-size:10.5px;color:#8a8577;border:1px solid #e6e2d8;border-radius:999px;padding:1px 7px;">env: CLRK_API_KEY</span></td></tr>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;">Max parallel runs</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"><input defaultValue="4" style="padding:4px 8px;border:1px solid #ded9cd;border-radius:6px;background:#fffefb;font:inherit;width:90px;color:#22251f;"></td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"></td></tr>
+            </tbody>
+          </table>
+          <div style="font-size:14px;font-weight:600;margin:18px 0 6px;">Git workflow</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;max-width:640px;margin-bottom:12px;">
+            <tbody>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;width:220px;">dev → prod promotion</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"><input type="checkbox" defaultChecked="{{ true }}"></td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"></td></tr>
+              <tr><td style="padding:7px 10px;border-bottom:1px solid #efece4;">Notebooks root</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;color:#6f6b60;font-family:'JetBrains Mono',monospace;font-size:12px;">/data/notebooks</td><td style="padding:7px 10px;border-bottom:1px solid #efece4;"><span style="font-size:10.5px;color:#8a8577;border:1px solid #e6e2d8;border-radius:999px;padding:1px 7px;">host-only</span></td></tr>
+            </tbody>
+          </table>
+          <span onClick="{{ saveSettings }}" style="border:1px solid #0e6e43;border-radius:7px;padding:6px 14px;background:#0e6e43;color:#fff;font-weight:600;cursor:pointer;display:inline-block;" style-hover="background:#0a5636;">Save settings</span>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    page: 'dashboard', jobSel: null, runSel: null, jobTab: 'overview', runTab: 'cells',
+    treeOpen: { etl: true, reporting: true }, form: null, isNew: false, banner: null, bannerKind: 'ok', q: '',
+    branch: 'dev-jsadams', editorPath: null, editorMode: 'normal', editorTab: 'nb', focusIdx: 1, editorRan: false, editorSaved: false, gridQ: '',
+    exW: 218, exOpen: true,
+    jobs: [
+      { name: 'nightly-etl', notebook: 'etl/SqlEtl.nb.md', cron: '0 2 * * *', dependsOn: [], enabled: true, env: 'dev', timeout: '3600', retries: '1', params: '{\n  "fullRefresh": false\n}' },
+      { name: 'fabric-reload', notebook: 'reporting/FabricWarehouse.nb.md', cron: '', dependsOn: ['nightly-etl'], enabled: true, env: 'prod', timeout: '', retries: '0', params: '{}' },
+      { name: 'dax-refresh', notebook: 'reporting/Dax.nb.md', cron: '', dependsOn: ['fabric-reload'], enabled: true, env: 'prod', timeout: '900', retries: '0', params: '{}' },
+      { name: 'http-healthcheck', notebook: 'reporting/HttpRequests.nb.md', cron: '*/15 * * * *', dependsOn: [], enabled: true, env: 'dev', timeout: '120', retries: '2', params: '{}' },
+      { name: 'shell-backup', notebook: 'etl/Shell.nb.md', cron: '0 4 * * *', dependsOn: [], enabled: false, env: 'prod', timeout: '', retries: '0', params: '{}' },
+    ],
+    runs: [
+      { id: 'r8', job: 'http-healthcheck', env: 'dev', nb: 'reporting/HttpRequests.nb.md', status: 'Failed', trig: 'cron */15 * * * *', started: '12 m ago', took: '21 s', err: 'Cell 3 failed: HttpRequestException: 503 Service Unavailable from https://api.internal/health' },
+      { id: 'r7', job: 'http-healthcheck', env: 'dev', nb: 'reporting/HttpRequests.nb.md', status: 'Succeeded', trig: 'cron */15 * * * *', started: '27 m ago', took: '19 s' },
+      { id: 'r6', job: 'fabric-reload', env: 'prod', nb: 'reporting/FabricWarehouse.nb.md', status: 'Succeeded', trig: 'manual', started: '34 m ago', took: '3 m 40 s' },
+      { id: 'r5', job: 'dax-refresh', env: 'prod', nb: 'reporting/Dax.nb.md', status: 'Succeeded', trig: 'dependency', started: '1 h ago', took: '58 s' },
+      { id: 'r4', job: 'nightly-etl', env: 'dev', nb: 'etl/SqlEtl.nb.md', status: 'Succeeded', trig: 'cron 0 2 * * *', started: '2 h ago', took: '4 m 12 s' },
+      { id: 'r3', job: 'shell-backup', env: 'prod', nb: 'etl/Shell.nb.md', status: 'Succeeded', trig: 'cron 0 4 * * *', started: '16 h ago', took: '2 m 03 s' },
+      { id: 'r2', job: 'nightly-etl', env: 'dev', nb: 'etl/SqlEtl.nb.md', status: 'Succeeded', trig: 'cron 0 2 * * *', started: 'yesterday', took: '4 m 55 s' },
+      { id: 'r1', job: 'dax-refresh', env: 'prod', nb: 'reporting/Dax.nb.md', status: 'Succeeded', trig: 'dependency', started: 'yesterday', took: '1 m 01 s' },
+    ],
+    liveId: null, liveProgress: 0, liveTick: 0, liveTicks: 0, nextRunNo: 9,
+  };
+  componentDidMount() { this.timer = setInterval(() => this.tick(), 650); }
+  componentWillUnmount() { clearInterval(this.timer); }
+  cells() {
+    return [
+      { src: '#!connect mssql --name warehouse', dur: '1.2 s' },
+      { src: 'var since = DateTime.UtcNow.AddDays(-1);', dur: '0.1 s' },
+      { src: '#!sql --connection warehouse\nSELECT * INTO #staging FROM dbo.Sales WHERE ModifiedAt >= @since', dur: '2 m 41 s' },
+      { src: 'await warehouse.BulkLoadAsync("dbo.SalesDaily", staged)', dur: '48 s' },
+      { src: '#!pwsh\nWrite-Host "etl complete: $($staged.Count) rows"', dur: '0.4 s' },
+    ];
+  }
+  tick() {
+    const { liveId } = this.state;
+    if (!liveId) return;
+    this.setState((s) => {
+      let { liveProgress, liveTick, liveTicks } = s;
+      const n = this.cells().length;
+      liveTicks += 1; liveTick += 1;
+      if (liveTick >= 2) { liveTick = 0; liveProgress += 1; }
+      if (liveProgress >= n) {
+        const took = this.fmt(liveTicks * 0.65);
+        return { liveId: null, liveProgress: 0, liveTick: 0, liveTicks: 0, runs: s.runs.map((r) => r.id === liveId ? { ...r, status: 'Succeeded', took } : r) };
+      }
+      return { liveProgress, liveTick, liveTicks };
+    });
+  }
+  fmt(sec) { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return m > 0 ? m + ' m ' + s + ' s' : s + ' s'; }
+  editorCells() {
+    return [
+      { type: 'md', title: 'SQL smoke test — AdventureWorksDW2025', text: "A runnable, top-to-bottom check of ClrKernel's SQL functionality against Microsoft's sample warehouse AdventureWorksDW2025 (any AdventureWorksDW20xx restore works — the tables used here exist in all of them). Edit the #!sql-connect cell below (server / auth) — or use the connection button next to the cell language picker — then Run All. Every cell after the connect line should succeed; scratch tables are prefixed ClrKernelSmoke_ and dropped by the last cell.", section: 0 },
+      { type: 'code', lang: 'C#', succ: true, src: 'var body2 = Enumerable.Range(1, 10).Select(i => new {\n    Id = i,\n    Name = $"Item {i}",\n    Category = new[] { "Alpha", "Beta", "Gamma" }[i % 3],\n    Qty = i * 3,\n    Price = Math.Round(9.99m * i, 2),\n    Active = i % 2 == 0\n}).ToList();\nbody2.DisplayTable()', out: 'table', section: 0 },
+      { type: 'code', lang: 'SQL', src: '#!sql-connect --name advdw --server localhost --database AdventureWorksDW2025 --auth integrated --default', connect: true, section: 0 },
+      { type: 'md', text: '--auth integrated is Windows Integrated auth on Windows and Microsoft Entra "Default" on macOS/Linux. For a SQL login use --auth sql --user <name> and store the password once via the connection button (or CLRKERNEL_SECRET_SQL_ADVDW for headless runs). The --name advdw also binds a C# variable advdw, which the C# cells below use.', section: 0 },
+      { type: 'code', lang: 'SQL', src: 'SELECT TOP (200) * FROM DimCustomer', section: 1 },
+      { type: 'code', lang: 'SQL', src: 'SELECT d.CalendarYear, SUM(f.SalesAmount) AS Sales\nFROM FactInternetSales f JOIN DimDate d ON d.DateKey = f.OrderDateKey\nGROUP BY d.CalendarYear ORDER BY d.CalendarYear', section: 1 },
+      { type: 'code', lang: 'C#', src: 'advdw.Query(@"SELECT TOP 50 EnglishProductName, ListPrice FROM DimProduct").DisplayTable()', section: 2 },
+      { type: 'code', lang: 'C#', src: 'record Product(string EnglishProductName, decimal? ListPrice);\nvar typed = advdw.Query<Product>("SELECT EnglishProductName, ListPrice FROM DimProduct");', section: 3 },
+    ];
+  }
+  editorVals() {
+    const S = this.state;
+    const set = (p) => this.setState(p);
+    if (S.page !== 'editor') return { isEditor: false };
+    const cells = this.editorCells();
+    const sections = ['SQL smoke test — AdventureWorksDW2025', 'SQL cells → interactive grid', 'Query from C# → the same grid', 'Typed results'];
+    let n = 0;
+    const nbCells = cells.map((c) => {
+      const succ = c.succ || (S.editorRan && c.type === 'code');
+      if (succ) n += 1;
+      return {
+        isMd: c.type === 'md', isCode: c.type === 'code', title: c.title || null, text: c.text || '',
+        code: this.colorize(c.src || ''), lang: c.lang || 'Markdown',
+        exec: c.type === 'code' ? (succ ? '[' + n + ']' : '[ ]') : '',
+        status: c.type === 'code' ? (succ ? 'succeeded' : 'idle') : '',
+        statusColor: succ ? '#15803d' : '#b6b0a2',
+        edge: c.type === 'code' && succ ? '#15803d' : 'transparent',
+        bg: c.type === 'md' ? '#fffefb' : '#fffefb',
+        pad: c.type === 'md' ? '14px 18px' : '10px 14px',
+        hasTable: c.out === 'table' && succ, connect: !!c.connect,
+      };
+    });
+    const toc = [];
+    sections.forEach((label, si) => {
+      toc.push({ prefix: '▾', label, pl: '8px', bg: 'transparent', color: '#22251f', fw: '600', ff: "'Instrument Sans',sans-serif", pc: '#8a8577', click: () => {} });
+      cells.forEach((c, i) => {
+        if (c.section !== si) return;
+        const active = i === S.focusIdx;
+        const succ = c.succ || (S.editorRan && c.type === 'code');
+        toc.push({
+          prefix: c.type === 'md' ? '¶' : succ ? '[1]' : '[ ]',
+          label: (c.title || (c.src || c.text || '').split('\n')[0]).slice(0, 34),
+          pl: '20px', bg: active ? '#0e6e43' : 'transparent', color: active ? '#fff' : '#3d4038',
+          fw: '400', ff: "'JetBrains Mono',monospace", pc: active ? '#cfe4d6' : c.type === 'md' ? '#a49f92' : '#8a8577',
+          click: () => set({ focusIdx: i }),
+        });
+      });
+    });
+    const fc = cells[S.focusIdx] || cells[1];
+    const fSucc = fc.succ || (S.editorRan && fc.type === 'code');
+    const focusLines = (fc.src || ((fc.title ? '# ' + fc.title + '\n\n' : '') + (fc.text || ''))).split('\n').map((t, i) => ({ n: i + 1, el: this.colorize(t) }));
+    const gq = S.gridQ.toLowerCase();
+    const gridRows = Array.from({ length: 10 }, (_, k) => {
+      const i = k + 1;
+      return { id: i, name: 'Item ' + i, cat: ['Alpha', 'Beta', 'Gamma'][i % 3], qty: i * 3, price: (9.99 * i).toFixed(2), act: i % 2 === 0 ? 'True' : 'False' };
+    }).filter((g) => !gq || g.name.toLowerCase().includes(gq) || g.cat.toLowerCase().includes(gq) || String(g.qty).includes(gq) || g.price.includes(gq) || g.act.toLowerCase().includes(gq));
+    const promotable = S.jobs.some((j) => j.notebook === S.editorPath);
+    const mode = S.editorMode;
+    const tabs = [['nb', 'Notebook'], ['src', 'Source'], ['diff', 'Diff vs production']].map(([key, label]) => ({
+      label, click: () => set({ editorTab: key }), fw: S.editorTab === key ? '600' : '400',
+      color: S.editorTab === key ? '#22251f' : '#6f6b60', bc: S.editorTab === key ? '#0e6e43' : 'transparent',
+    }));
+    return {
+      isEditor: true, editorTabs: tabs, editorTabNb: S.editorTab === 'nb', editorTabSrc: S.editorTab === 'src', editorTabDiff: S.editorTab === 'diff',
+      modeNormal: mode === 'normal', modeFocus: mode === 'focus',
+      setNormal: () => set({ editorMode: 'normal' }), setFocus: () => set({ editorMode: 'focus' }),
+      normalBg: mode === 'normal' ? '#0e6e43' : '#fffefb', normalColor: mode === 'normal' ? '#fff' : '#6f6b60', normalFw: mode === 'normal' ? '600' : '400',
+      focusBg: mode === 'focus' ? '#0e6e43' : '#fffefb', focusColor: mode === 'focus' ? '#fff' : '#6f6b60', focusFw: mode === 'focus' ? '600' : '400',
+      runAll: () => set({ editorRan: true }), restart: () => set({ editorRan: false }),
+      saveNb: () => set({ editorSaved: true }), saveLabelNb: S.editorSaved ? 'Saved' : 'Save',
+      promoteNb: () => {}, promoteBg: promotable ? '#0e6e43' : '#a8c4b4', promoteCursor: promotable ? 'pointer' : 'default',
+      notPromotable: !promotable, nbCells, toc,
+      focusExec: fc.type === 'code' ? (fSucc ? '[' + '1' + ']' : '[ ]') : '[md]',
+      focusStatus: fc.type === 'code' ? (fSucc ? 'succeeded' : 'idle') : 'markdown',
+      focusStatusColor: fSucc ? '#15803d' : '#b6b0a2', focusLang: fc.lang || 'Markdown', focusLines,
+      focusHasTable: fc.out === 'table' && fSucc, focusNoOutput: !(fc.out === 'table' && fSucc),
+      gridRows, gridCount: gridRows.length, gridQ: S.gridQ,
+      setGridQ: (e) => set({ gridQ: e.target.value }), clearGridQ: () => set({ gridQ: '' }),
+      nbSource: cells.map((c) => c.type === 'md' ? (c.title ? '# ' + c.title + '\n\n' : '') + c.text : '```' + (c.lang === 'C#' ? 'csharp' : 'sql') + '\n' + c.src + '\n```').join('\n\n'),
+    };
+  }
+  colorize(text) {
+    const re = /(\$?"(?:[^"\\]|\\.)*")|(#!\S+)|\b(var|new|await|record|string|decimal|int|bool|SELECT|FROM|JOIN|ON|GROUP BY|ORDER BY|TOP|SUM|AS|INTO|WHERE)\b|(\b\d+(?:\.\d+)?m?\b)/g;
+    const parts = []; let last = 0, m, k = 0;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      const color = m[1] ? '#b45309' : m[2] ? '#b91c1c' : m[3] ? '#1d4ed8' : '#0e6e43';
+      parts.push(React.createElement('span', { key: k++, style: { color } }, m[0]));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return React.createElement(React.Fragment, null, parts);
+  }
+  renderVals() {
+    const S = this.state;
+    const set = (p) => this.setState(p);
+    const SC = { Succeeded: '#15803d', Failed: '#b91c1c', Running: '#1d4ed8', Cancelled: '#8a8577', Pending: '#b6b0a2', Skipped: '#b6b0a2' };
+    const ENV = { dev: ['#b45309', '#fdf3e3', '#f0dcbb'], prod: ['#0e6e43', '#e9f3ec', '#cfe4d6'] };
+    const go = (page) => () => set({ page, banner: null });
+    const openJob = (name) => () => {
+      const j = S.jobs.find((x) => x.name === name);
+      if (!j) return;
+      set({ page: 'job', jobSel: name, isNew: false, jobTab: 'overview', banner: null, form: { name: j.name, notebook: j.notebook, cron: j.cron, depends: j.dependsOn.join(', '), timeout: j.timeout, retries: j.retries, enabled: j.enabled, params: j.params } });
+    };
+    const openRun = (id) => () => set({ page: 'run', runSel: id, runTab: 'cells', banner: null });
+    const deco = (r) => ({ ...r, sc: SC[r.status], ec: ENV[r.env][0], ebg: ENV[r.env][1], ebd: ENV[r.env][2], open: openRun(r.id) });
+    const q = S.q.toLowerCase();
+    const runs = S.runs.filter((r) => !q || r.job.includes(q) || r.nb.toLowerCase().includes(q));
+    const nav = {};
+    ['dashboard', 'jobs', 'notebooks', 'channels', 'settings'].forEach((p) => {
+      const active = S.page === p || (p === 'jobs' && (S.page === 'job' || S.page === 'run')) || (p === 'notebooks' && S.page === 'editor');
+      nav[p] = { go: go(p), bg: active ? '#eef3ee' : 'transparent', color: active ? '#0e6e43' : '#8a8577' };
+    });
+    const crumbs = { dashboard: 'Dashboard', jobs: 'Jobs', job: 'Jobs', run: 'Jobs', notebooks: 'Notebooks', editor: 'Notebooks', channels: 'Channels', settings: 'Settings' };
+    const openEditor = (path) => () => set({ page: 'editor', editorPath: path, editorMode: 'normal', editorTab: 'nb', focusIdx: 1, banner: null });
+    const liveRun = S.runs.find((r) => r.id === S.liveId);
+    const selRun = S.runs.find((r) => r.id === S.runSel);
+    const selJob = S.jobs.find((j) => j.name === S.jobSel);
+    // sidebar + notebooks tree
+    const files = {
+      etl: [{ f: 'SqlEtl.nb.md' }, { f: 'SqlPipeline.nb.md' }, { f: 'Shell.nb.md' }, { f: 'Shell.jobs.yaml', jobsFile: true }],
+      reporting: [{ f: 'Dax.nb.md' }, { f: 'FabricWarehouse.nb.md' }, { f: 'HttpRequests.nb.md' }, { f: 'reporting.jobs.yaml', jobsFile: true }],
+    };
+    const mkTree = (withChips) => {
+      const items = [];
+      Object.keys(files).forEach((dir) => {
+        const open = S.treeOpen[dir];
+        items.push({ name: dir, arrow: open ? '▾' : '▸', pl: '14px', bg: 'transparent', bl: 'transparent', ff: "'Instrument Sans',sans-serif", fs: '13px', color: '#22251f', fw: '600', chips: [], addable: false, click: () => set({ treeOpen: { ...S.treeOpen, [dir]: !open } }) });
+        if (open) files[dir].forEach((x) => {
+          const path = dir + '/' + x.f;
+          const active = (S.page === 'editor' && S.editorPath === path) || (selJob && selJob.notebook === path && S.page !== 'notebooks');
+          const jobChips = withChips ? S.jobs.filter((j) => j.notebook === path).map((j) => ({ name: j.name, open: openJob(j.name) })) : [];
+          items.push({
+            name: x.f, arrow: '', pl: '30px', bg: active ? '#eae7de' : 'transparent', bl: active ? '#0e6e43' : 'transparent',
+            ff: "'JetBrains Mono',monospace", fs: '12px', color: x.jobsFile ? '#a49f92' : '#3d4038', fw: '400',
+            chips: jobChips, addable: withChips && !x.jobsFile,
+            addJob: () => set({ page: 'job', jobSel: null, isNew: true, jobTab: 'overview', banner: null, form: { name: '', notebook: path, cron: '', depends: '', timeout: '', retries: '0', enabled: true, params: '{}' } }),
+            click: x.jobsFile ? () => {} : openEditor(path),
+          });
+        });
+      });
+      return items;
+    };
+    // job page
+    const form = S.form || { name: '', notebook: '', cron: '', depends: '', timeout: '', retries: '0', enabled: true, params: '{}' };
+    const ff = (key, checkbox) => (e) => set({ form: { ...form, [key]: checkbox ? e.target.checked : e.target.value } });
+    const jobEnvKey = selJob ? selJob.env : 'dev';
+    const jobTabs = [['overview', 'Overview'], ['runs', 'Runs'], ['yaml', 'YAML']].map(([key, label]) => ({
+      label, click: () => set({ jobTab: key }), fw: S.jobTab === key ? '600' : '400',
+      color: S.jobTab === key ? '#22251f' : '#6f6b60', bc: S.jobTab === key ? '#0e6e43' : 'transparent',
+    }));
+    const lastRunOf = (name) => S.runs.find((r) => r.job === name);
+    const save = () => {
+      try { JSON.parse(form.params || '{}'); } catch (e) { set({ banner: 'Parameters must be valid JSON: ' + e.message, bannerKind: 'error' }); return; }
+      const job = { name: form.name.trim() || 'untitled-job', notebook: form.notebook.trim(), cron: form.cron.trim(), dependsOn: form.depends.split(',').map((d) => d.trim()).filter(Boolean), enabled: form.enabled, env: jobEnvKey, timeout: form.timeout, retries: form.retries, params: form.params };
+      if (S.isNew) set({ jobs: [...S.jobs, job], jobSel: job.name, isNew: false, banner: 'Created. The jobs file was committed to dev.', bannerKind: 'ok' });
+      else set({ jobs: S.jobs.map((j) => (j.name === S.jobSel ? job : j)), jobSel: job.name, banner: 'Saved. The jobs file was committed to dev.', bannerKind: 'ok' });
+    };
+    const runNowSel = () => {
+      const id = 'r' + S.nextRunNo;
+      const run = { id, job: selJob.name, env: selJob.env, nb: selJob.notebook, status: 'Running', trig: 'manual', started: 'just now', took: '—' };
+      set({ runs: [run, ...S.runs], nextRunNo: S.nextRunNo + 1, liveId: id, liveProgress: 0, liveTick: 0, liveTicks: 0, page: 'run', runSel: id, runTab: 'cells', banner: null });
+    };
+    const promote = () => {
+      const last = lastRunOf(selJob.name);
+      if (last && last.status === 'Failed') set({ banner: 'Not promotable: the last run failed. Fix the notebook and get a green run first.', bannerKind: 'error' });
+      else set({ banner: "Promoted '" + selJob.name + "' to production. Prod picks it up on the next scheduled run.", bannerKind: 'ok' });
+    };
+    const deleteJob = () => set({ jobs: S.jobs.filter((j) => j.name !== S.jobSel), page: 'jobs', banner: null });
+    const yaml = '- name: ' + (form.name || 'untitled-job') + '\n  notebook: ' + form.notebook + (form.cron ? '\n  cron: "' + form.cron + '"' : '') + (form.depends ? '\n  dependsOn: [' + form.depends + ']' : '') + '\n  enabled: ' + form.enabled + (form.timeout ? '\n  timeoutSeconds: ' + form.timeout : '') + '\n  retryCount: ' + (form.retries || '0') + '\n  parameters: ' + (form.params || '{}').replace(/\n\s*/g, ' ');
+    // run page
+    const isLive = selRun && selRun.id === S.liveId;
+    const baseCells = this.cells();
+    let runCells = [];
+    if (selRun) {
+      if (isLive) runCells = baseCells.map((c, i) => {
+        const st = i < S.liveProgress ? 'Succeeded' : i === S.liveProgress ? 'Running' : 'Pending';
+        return { idx: (i + 1) + '/' + baseCells.length, src: c.src, status: st, sc: SC[st], dur: st === 'Succeeded' ? '1.3 s' : '', err: null, rowBg: st === 'Running' ? '#eef3ee' : 'transparent' };
+      });
+      else if (selRun.status === 'Failed') runCells = baseCells.map((c, i) => {
+        const st = i < 2 ? 'Succeeded' : i === 2 ? 'Failed' : 'Skipped';
+        return { idx: (i + 1) + '/' + baseCells.length, src: c.src, status: st, sc: SC[st], dur: i < 3 ? c.dur : '', err: i === 2 ? selRun.err : null, rowBg: st === 'Failed' ? '#fdf1ef' : 'transparent' };
+      });
+      else if (selRun.status === 'Cancelled') runCells = baseCells.map((c, i) => {
+        const st = i < 2 ? 'Succeeded' : 'Skipped';
+        return { idx: (i + 1) + '/' + baseCells.length, src: c.src, status: st, sc: SC[st], dur: i < 2 ? c.dur : '', err: null, rowBg: 'transparent' };
+      });
+      else runCells = baseCells.map((c, i) => ({ idx: (i + 1) + '/' + baseCells.length, src: c.src, status: 'Succeeded', sc: SC.Succeeded, dur: c.dur, err: null, rowBg: 'transparent' }));
+    }
+    const doneCount = runCells.filter((c) => c.status === 'Succeeded').length;
+    const runTabs = [['cells', 'Cells'], ['log', 'Log'], ['notebook', 'Notebook']].map(([key, label]) => ({
+      label, click: () => set({ runTab: key }), fw: S.runTab === key ? '600' : '400',
+      color: S.runTab === key ? '#22251f' : '#6f6b60', bc: S.runTab === key ? '#0e6e43' : 'transparent',
+    }));
+    const cancelRun = () => set({ liveId: null, liveProgress: 0, liveTick: 0, liveTicks: 0, runs: S.runs.map((r) => (r.id === S.liveId ? { ...r, status: 'Cancelled', took: this.fmt(S.liveTicks * 0.65) } : r)) });
+    const logLines = runCells.map((c) => (c.status === 'Succeeded' ? '[ok]   ' : c.status === 'Failed' ? '[FAIL] ' : '[--]   ') + c.src.split('\n')[0]).join('\n');
+    const runLog = selRun ? '── clrkernel-jobs run ' + selRun.id + ' · ' + selRun.job + ' ──\nkernel: ClrKernel 0.10.0.0\nnotebook: ' + selRun.nb + '\n\n' + logLines + (selRun.err ? '\n\n' + selRun.err : '') + (isLive ? '\n\n… running' : '\n\nartifact written to runs/' + selRun.id + '/artifact.ipynb') : '';
+    const banners = { ok: ['#0e6e43', '#e9f3ec', '#cfe4d6'], error: ['#b91c1c', '#fdf1ef', '#ecc9c5'] };
+    const bk = banners[S.bannerKind];
+    return {
+      nav, q: S.q, setQ: (e) => set({ q: e.target.value }),
+      showSidebar: (this.props.showSidebar ?? true) && S.page !== 'notebooks' && S.page !== 'editor',
+      crumb2: crumbs[S.page], crumb2Go: go(S.page === 'job' || S.page === 'run' ? 'jobs' : S.page === 'editor' ? 'notebooks' : S.page),
+      crumb3: S.page === 'job' ? (S.isNew ? 'new' : S.jobSel) : S.page === 'run' && selRun ? selRun.job + ' · ' + selRun.id : S.page === 'editor' && S.editorPath ? S.editorPath.split('/').pop() + ' · ' + S.branch : null,
+      isDashboard: S.page === 'dashboard', isJobs: S.page === 'jobs', isJob: S.page === 'job', isRun: S.page === 'run', isEditor: S.page === 'editor',
+      isNotebooks: S.page === 'notebooks', isChannels: S.page === 'channels', isSettings: S.page === 'settings',
+      branch: S.branch, branchUpper: S.branch.toUpperCase(), branchReadOnly: S.branch === 'prod',
+      setBranch: (e) => set({ branch: e.target.value }),
+      showExplorer: S.page === 'editor', exOpen: S.exOpen, exClosed: !S.exOpen, exW: S.exW + 'px',
+      exToggle: () => set({ exOpen: !S.exOpen }),
+      exDrag: (e) => {
+        e.preventDefault();
+        const startX = e.clientX, startW = this.state.exW;
+        const move = (ev) => this.setState({ exW: Math.max(150, Math.min(420, startW + ev.clientX - startX)) });
+        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+      },
+      statTotal: 120 + S.runs.length, statRate: Math.round((S.runs.filter((r) => r.status === 'Succeeded').length / S.runs.length) * 100) + '%',
+      statFailed: S.runs.filter((r) => r.status === 'Failed').length + 4, statLive: S.runs.filter((r) => r.status === 'Running').length,
+      dashRuns: runs.map(deco),
+      jobRows: S.jobs.filter((j) => !q || j.name.includes(q) || j.notebook.toLowerCase().includes(q)).map((j) => {
+        const last = lastRunOf(j.name);
+        return { name: j.name, env: j.env, ec: ENV[j.env][0], ebg: ENV[j.env][1], ebd: ENV[j.env][2], notebook: j.notebook, schedule: j.cron || (j.dependsOn.length ? 'after ' + j.dependsOn[0] : 'manual'), depends: j.dependsOn.join(', ') || '—', last: last ? last.status : '—', lsc: last ? SC[last.status] : '#b6b0a2', open: openJob(j.name) };
+      }),
+      tree: mkTree(false), nbTree: mkTree(true),
+      jobTitle: S.isNew ? 'New job' : S.jobSel, jobEnv: jobEnvKey, jobEc: ENV[jobEnvKey][0], jobEbg: ENV[jobEnvKey][1], jobEbd: ENV[jobEnvKey][2],
+      notNew: !S.isNew, jobTabs, jobTabOverview: S.jobTab === 'overview', jobTabRuns: S.jobTab === 'runs', jobTabYaml: S.jobTab === 'yaml',
+      form, fName: ff('name'), fNotebook: ff('notebook'), fCron: ff('cron'), fDepends: ff('depends'), fTimeout: ff('timeout'), fRetries: ff('retries'), fEnabled: ff('enabled', true), fParams: ff('params'),
+      save, saveLabel: S.isNew ? 'Create job' : 'Save changes', runNowSel, promote, deleteJob, jobYaml: yaml,
+      jobRuns: S.runs.filter((r) => r.job === S.jobSel).map(deco),
+      banner: S.banner, bannerColor: bk[0], bannerBg: bk[1], bannerBd: bk[2],
+      runJob: selRun ? selRun.job : '', runJobOpen: selRun ? openJob(selRun.job) : () => {}, runStatus: selRun ? selRun.status : '', runSc: selRun ? SC[selRun.status] : '#8a8577',
+      runLive: !!isLive, cancelRun, runNb: selRun ? selRun.nb : '', runTrig: selRun ? selRun.trig : '', runStarted: selRun ? selRun.started : '', runTook: selRun ? selRun.took : '',
+      runError: selRun && selRun.status === 'Failed' ? selRun.err : null,
+      progressPct: runCells.length ? Math.round((doneCount / runCells.length) * 100) + '%' : '0%',
+      progressColor: selRun && selRun.status === 'Failed' ? '#b91c1c' : '#15803d',
+      runTabs, runTabCells: S.runTab === 'cells', runTabLog: S.runTab === 'log', runTabNb: S.runTab === 'notebook',
+      runCells, runLog,
+      runNbNote: isLive ? 'The artifact notebook is written when the run finishes.' : 'Rendered artifact notebook — cell outputs as they ran. (Next screen to design: the notebook editor.)',
+      saveSettings: () => set({ banner: 'Saved. Restart the server to apply the port change.', bannerKind: 'ok' }),
+      ...this.editorVals(),
+    };
+  }
+}
+</script>
+</body>
+</html>

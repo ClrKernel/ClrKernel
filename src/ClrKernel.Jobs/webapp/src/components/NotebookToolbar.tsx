@@ -1,5 +1,5 @@
 import { MoreHorizontal, Play, RotateCcw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -17,14 +17,26 @@ import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
 const RESTART_HINT =
   'Kills the kernel. This is also the only way to stop a cell that will not finish.';
 
-/** Re-renders on resize so the toolbar can shed detail rather than wrap. */
-function useWindowWidth(): number {
+/**
+ * Re-renders on resize so the toolbar can shed detail rather than wrap.
+ *
+ * A ResizeObserver on the bar itself, not `window.innerWidth`: the editor's file
+ * explorer sits between the two, so the window can be 250px wider than the space
+ * the toolbar has — and dragging the explorer wider fires no window resize at
+ * all. Starts at the viewport width so the first paint is not the narrowest
+ * layout.
+ */
+function useBarWidth(ref: React.RefObject<HTMLElement | null>): number {
   const [width, setWidth] = useState(() => window.innerWidth);
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+    const node = ref.current;
+    if (node == null) {
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref]);
   return width;
 }
 
@@ -71,14 +83,15 @@ export interface NotebookToolbarProps {
  * label and the kernel version, then folds the execution controls into a menu.
  */
 export function NotebookToolbar(props: NotebookToolbarProps) {
-  const layout = toolbarLayout(useWindowWidth());
+  const bar = useRef<HTMLDivElement>(null);
+  const layout = toolbarLayout(useBarWidth(bar));
   const execution = showsExecution(props.tab) && props.canRun;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
 
   const runAll = (
     <Button
       variant="outline"
-      size="sm"
+      size="xs"
       onClick={props.onRunAll}
       disabled={props.running}
       aria-label="Run all cells"
@@ -91,7 +104,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   const restart = (
     <Button
       variant="outline"
-      size="sm"
+      size="xs"
       onClick={props.onRestart}
       aria-label="Restart kernel"
       title={RESTART_HINT}
@@ -104,7 +117,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   return (
     // Sticky, so Run All stays reachable while scrolling a long notebook in
     // Normal Mode. The tabs' underline sits on the row's own bottom border.
-    <div className="nb-toolbar sticky top-0 z-20 flex h-[44px] shrink-0 items-stretch gap-1.5 border-b border-border bg-card px-4">
+    <div ref={bar} className="nb-toolbar sticky top-0 z-20 flex h-[44px] shrink-0 items-stretch gap-1.5 overflow-x-auto whitespace-nowrap border-b border-border bg-card px-4">
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
         <TabsList variant="line">
           {props.isNotebook && <TabsTrigger value="notebook">Notebook</TabsTrigger>}
@@ -120,6 +133,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         <div className="flex items-center gap-2">
           {/* Information before controls: you read what the kernel is doing
               before you reach the buttons that change it. */}
+          {layout.showKernel && (
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-xs text-muted-subtle">
             <span
               aria-hidden="true"
@@ -127,6 +141,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             />
             {kernel.text}
           </span>
+          )}
 
           <ToggleGroup
             type="single"
@@ -153,7 +168,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           {layout.collapse ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" aria-label="Execution controls">
+                <Button variant="outline" size="xs" aria-label="Execution controls">
                   <MoreHorizontal className="size-3.5" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
@@ -198,19 +213,23 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       <div className="flex items-center gap-2">
       <Button
         variant="secondary"
-        size="sm"
+        size="xs"
         onClick={props.onSave}
         disabled={props.busy || !props.dirty}
       >
         {props.dirty ? 'Save' : 'Saved'}
       </Button>
       <Button
-        size="sm"
+        size="xs"
         onClick={props.onPromote}
         disabled={props.busy || !props.promotion?.eligible}
         title={props.promotion?.eligible ? 'Ship to production' : props.promotion?.reasons.join('\n')}
       >
-        {props.promotion?.isDeletion ? 'Promote deletion' : 'Promote to production'}
+        {props.promotion?.isDeletion
+          ? 'Promote deletion'
+          : layout.shortPromote
+            ? 'Promote'
+            : 'Promote to production'}
       </Button>
       </div>
     </div>

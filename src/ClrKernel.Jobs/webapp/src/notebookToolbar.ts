@@ -5,9 +5,15 @@
  * rows on chrome is what this redesign is undoing. So instead of letting flex
  * wrap, it sheds detail in a fixed order as the window narrows.
  *
- * React-free and measured in viewport pixels, because the rail is a fixed 48px
- * and the content region is everything else: the mapping is constant, and these
- * are the numbers the spec is written in.
+ * React-free, and measured against the *toolbar's own* width rather than the
+ * window's. It used to take the viewport, on the reasoning that the rail is a
+ * fixed 48px so the mapping is constant — but the editor grew a file explorer,
+ * and a 218px sidebar makes the window a fifth wider than the space the toolbar
+ * actually has. Dragging that sidebar fires no window resize at all.
+ *
+ * The numbers below are measured, not guessed: the full layout needs about
+ * 1088px of bar, and each tier below it is what remains once that tier's label
+ * has gone. Re-measure if the controls change size.
  */
 
 export interface ToolbarLayout {
@@ -17,15 +23,32 @@ export interface ToolbarLayout {
   restartIconOnly: boolean;
   /** The kernel badge keeps its status word and dot but drops the version. */
   showKernelVersion: boolean;
+  /** Below this the kernel badge goes entirely — it is the one thing here that
+   *  reports rather than does. */
+  showKernel: boolean;
+  /** 'Promote' rather than 'Promote to production'. */
+  shortPromote: boolean;
 }
 
-/** Widths at which something has to give. */
-export const BREAKPOINTS = { collapse: 1024, tight: 1200, compact: 1400 } as const;
+/** Toolbar widths at which something has to give. */
+export const BREAKPOINTS = { narrow: 780, collapse: 880, tight: 1000, compact: 1100 } as const;
 
 export function toolbarLayout(width: number): ToolbarLayout {
+  if (width < BREAKPOINTS.narrow) {
+    // Everything that can go, has gone. Below this the bar scrolls sideways
+    // rather than growing a second row.
+    return {
+      collapse: true,
+      runAllIconOnly: true,
+      restartIconOnly: true,
+      showKernelVersion: false,
+      showKernel: false,
+      shortPromote: true,
+    };
+  }
   if (width < BREAKPOINTS.collapse) {
     // The icon-only flags stay set even though the collapsed menu renders
-    // labels: the layout only ever sheds detail as the window narrows, and a
+    // labels: the layout only ever sheds detail as the bar narrows, and a
     // flag that flips back on at the narrowest size is a trap for the next
     // reader.
     return {
@@ -33,6 +56,8 @@ export function toolbarLayout(width: number): ToolbarLayout {
       runAllIconOnly: true,
       restartIconOnly: true,
       showKernelVersion: false,
+      showKernel: true,
+      shortPromote: true,
     };
   }
   if (width < BREAKPOINTS.tight) {
@@ -41,6 +66,8 @@ export function toolbarLayout(width: number): ToolbarLayout {
       runAllIconOnly: true,
       restartIconOnly: true,
       showKernelVersion: false,
+      showKernel: true,
+      shortPromote: true,
     };
   }
   if (width < BREAKPOINTS.compact) {
@@ -50,6 +77,8 @@ export function toolbarLayout(width: number): ToolbarLayout {
       // Restart is the less-used of the two, so it sheds its label first.
       restartIconOnly: true,
       showKernelVersion: true,
+      showKernel: true,
+      shortPromote: false,
     };
   }
   return {
@@ -57,6 +86,8 @@ export function toolbarLayout(width: number): ToolbarLayout {
     runAllIconOnly: false,
     restartIconOnly: false,
     showKernelVersion: true,
+    showKernel: true,
+    shortPromote: false,
   };
 }
 
