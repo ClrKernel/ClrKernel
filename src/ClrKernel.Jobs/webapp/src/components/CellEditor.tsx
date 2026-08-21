@@ -1,4 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { StatusBadge } from './common';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import type { LspDiagnostic } from '../monaco/lsp';
@@ -91,38 +101,35 @@ export function CellEditor({
           <div className="cell-float-actions">
             {!isMarkdown && canRun && (
               <>
-                <button
-                  className="button button-small"
+                <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
                   onClick={() => onRun('before')}
                   disabled={busy || index === 0}
                   title="Run every cell above this one"
                 >
                   ▶ above
-                </button>
-                <button
-                  className="button button-small"
+                </Button>
+                <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
                   onClick={() => onRun('after')}
                   disabled={busy}
                   title="Run this cell and everything below it"
                 >
                   ▶ below
-                </button>
+                </Button>
               </>
             )}
-            <button className="button button-small" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
               ↑
-            </button>
-            <button
-              className="button button-small"
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
               onClick={() => onMove(index + 1)}
               disabled={index === count - 1}
               title="Move down"
             >
               ↓
-            </button>
-            <button className="button button-small button-danger" onClick={onDelete} title="Delete this cell">
+            </Button>
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} title="Delete this cell">
               ✕
-            </button>
+            </Button>
           </div>
 
           {showPreview ? (
@@ -143,35 +150,37 @@ export function CellEditor({
 
           <div className="cell-footer">
             <span className="cell-footer-status">
-              {run && <span className={`badge badge-${run.status}`}>{run.status}</span>}
-              {run?.stale && <span className="chip chip-muted" title="This cell changed since it ran">edited since run</span>}
+              {run && <StatusBadge status={run.status} />}
+              {run?.stale && <Badge variant="outline" className="font-normal" title="This cell changed since it ran">edited since run</Badge>}
             </span>
             <span className="spacer" />
             {connectable && (
-              <button
-                className="button button-small"
+              <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
                 onClick={onConnect}
                 title={`Build a ${connectable.displayName} connection directive`}
               >
                 ⛁ Connect
-              </button>
+              </Button>
             )}
-            <select
-              className="cell-language"
+            <Select
               value={isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp')}
-              onChange={(e) => onLanguage(e.target.value)}
-              title="Cell language"
+              onValueChange={onLanguage}
             >
-              {languageOptions(languages).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-xs shadow-none" aria-label="Cell language">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {languageOptions(languages).map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {/* The tag as written, when it differs from the language's own name —
                 ```zsh against the shellscript language, say. */}
             {cell.tag && cell.tag !== cell.languageId && cell.tag !== 'csharp' && (
-              <span className="chip chip-muted">{cell.tag}</span>
+              <Badge variant="outline" className="font-mono font-normal">{cell.tag}</Badge>
             )}
           </div>
         </div>
@@ -305,12 +314,12 @@ export function CellInserter({
 }) {
   return (
     <div className={always ? 'cell-inserter cell-inserter-always' : 'cell-inserter'}>
-      <button className="button button-small" onClick={() => onInsert('code')}>
+      <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onInsert('code')}>
         + Code
-      </button>
-      <button className="button button-small" onClick={() => onInsert('markdown')}>
+      </Button>
+      <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onInsert('markdown')}>
         + Markdown
-      </button>
+      </Button>
     </div>
   );
 }

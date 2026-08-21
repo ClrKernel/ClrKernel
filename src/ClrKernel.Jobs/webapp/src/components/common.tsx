@@ -21,8 +21,12 @@ const STATUS_TOKEN: Record<string, string> = {
  * Colour is reserved for what is actually communicating state — here, the dot.
  * A row of fully-tinted badges makes a table of runs read as a warning even
  * when every one of them succeeded.
+ *
+ * `status` is widened to `string` because a cell's run state carries one: the
+ * dot falls back to idle for anything unrecognised rather than rendering
+ * nothing, so an unknown status still shows its name.
  */
-export function StatusBadge({ status }: { status: RunStatus | CellStatus }) {
+export function StatusBadge({ status }: { status: RunStatus | CellStatus | string }) {
   const key = status.toLowerCase();
   return (
     <Badge variant="secondary" className="gap-1.5 font-normal">

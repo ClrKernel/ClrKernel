@@ -3,8 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
+import { NotebookToolbar } from '../components/NotebookToolbar';
 import { registerLanguageProviders } from '../monaco/language';
 import { releaseCellModels } from '../monaco/models';
 import {
@@ -37,32 +40,6 @@ import {
 
 type Tab = 'notebook' | 'source' | 'diff';
 
-/**
- * Normal ⇄ Focus. Deliberately the only way out of Focus Mode: the spec asks for
- * Esc to keep meaning what it means inside Monaco (dismiss the suggest widget,
- * leave find), so there is no global key handler for this anywhere.
- */
-function ModeToggle({ mode, onMode }: { mode: 'normal' | 'focus'; onMode: (m: 'normal' | 'focus') => void }) {
-  return (
-    <div className="mode-toggle" role="group" aria-label="Notebook view">
-      <button
-        className={mode === 'normal' ? 'active' : ''}
-        aria-pressed={mode === 'normal'}
-        onClick={() => onMode('normal')}
-      >
-        Normal
-      </button>
-      <button
-        className={mode === 'focus' ? 'active' : ''}
-        aria-pressed={mode === 'focus'}
-        onClick={() => onMode('focus')}
-        title="One cell at a time, with its output below"
-      >
-        Focus
-      </button>
-    </div>
-  );
-}
 
 /**
  * The dev notebook editor: cells with syntax highlighting and a language picker,
@@ -414,105 +391,94 @@ export function Editor() {
     setNotice('Connection cell added. Run it to open the connection.');
   }
 
+  const focusing = mode === 'focus' && tab === 'notebook';
+
   return (
-    <div>
-      <div className="row-between">
-        <h1>
-          <code>{path}</code> <span className="chip env-dev">dev</span>
-        </h1>
-        <div className="row-gap">
-          <button className="button button-primary" onClick={save} disabled={busy || !dirty}>
-            {dirty ? 'Save (commits to dev)' : 'Saved'}
-          </button>
-          <button
-            className="button"
-            onClick={promote}
-            disabled={busy || !promotion?.eligible}
-            title={promotion?.eligible ? 'Ship to production' : promotion?.reasons.join('\n')}
-          >
-            {promotion?.isDeletion ? 'Promote deletion' : 'Promote to production'}
-          </button>
-        </div>
-      </div>
-      <ErrorBanner error={error} />
-      {notice && <div className="banner banner-ok">{notice}</div>}
+    // Focus Mode measures itself to the bottom of the scroll container and gives
+    // back whatever overflows, so page padding below it is viewport it cannot
+    // use. Every other view wants the gutter.
+    <div className={focusing ? undefined : 'pb-8'}>
+      <NotebookToolbar
+        tab={tab}
+        onTab={(next) => (next === 'diff' ? showDiff() : setTab(next as Tab))}
+        isNotebook={isNotebook}
+        canRun={canRun}
+        running={running}
+        session={session}
+        mode={mode}
+        onMode={setMode}
+        onRunAll={() => run(0, 'all')}
+        onRestart={restartKernel}
+        dirty={dirty}
+        busy={busy}
+        onSave={save}
+        onPromote={promote}
+        promotion={promotion}
+      />
 
-      {promotion && !promotion.eligible && (
-        <div className="banner banner-warn">
-          <strong>Not promotable yet</strong>
-          <ul>
-            {promotion.reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="tabs">
-        {isNotebook && (
-          <button className={tab === 'notebook' ? 'active' : ''} onClick={() => setTab('notebook')}>
-            Notebook
-          </button>
+      <div className="px-6 pt-3">
+        <ErrorBanner error={error} />
+        {notice && (
+          <Alert variant="success" className="mb-3">
+            <AlertDescription className="text-status-success">{notice}</AlertDescription>
+          </Alert>
         )}
-        <button className={tab === 'source' ? 'active' : ''} onClick={() => setTab('source')}>
-          Source
-        </button>
-        <button className={tab === 'diff' ? 'active' : ''} onClick={showDiff}>
-          Diff vs production
-        </button>
+
+        {promotion && !promotion.eligible && (
+          <Alert variant="warning" className="mb-3">
+            <AlertTitle>Not promotable yet</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc pl-4">
+                {promotion.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {tab === 'notebook' &&
         (cells == null ? (
-          <p className="muted">Loading…</p>
+          <p className="px-6 text-sm text-muted-foreground">Loading…</p>
         ) : (
           <div className="notebook-editor">
-            {canRun ? (
-              <div className="notebook-toolbar">
-                <button className="button" onClick={() => run(0, 'all')} disabled={running}>
-                  ▶ Run All
-                </button>
-                <button
-                  className="button"
-                  onClick={restartKernel}
-                  title="Kills the kernel. This is also the only way to stop a cell that will not finish."
-                >
-                  ⟳ Restart kernel {running && '(stops the running cell)'}
-                </button>
-                <span className="spacer" />
-                <ModeToggle mode={mode} onMode={setMode} />
-                <span className={running ? 'chip chip-running' : 'chip chip-muted'}>
-                  {running
-                    ? 'running…'
-                    : session?.started
-                      ? `${session.kernel ?? 'kernel'} ${session.version ?? ''} · idle`
-                      : 'kernel not started'}
-                </span>
-              </div>
-            ) : (
-              isNotebook && (
-                <p className="muted small">
-                  Running cells is unavailable here: {sessionError}
-                </p>
-              )
+            {/* Run All, Restart, the kernel badge and the mode toggle all live
+                in the one toolbar now. What is left here is the notices, which
+                are about this notebook rather than about the page. */}
+            {!canRun && isNotebook && (
+              <p className="px-6 text-sm text-muted-foreground">
+                Running cells is unavailable here: {sessionError}
+              </p>
             )}
 
             {session?.scheduledRunActive && (
-              <div className="banner banner-warn">
-                A scheduled run of this notebook is in flight. It executes in its own kernel from
-                the committed file, so what you run here does not affect it — but saving now
-                changes what the <em>next</em> run picks up.
-              </div>
+              <Alert variant="warning" className="mx-6 mb-3 w-auto">
+                <AlertDescription>
+                  A scheduled run of this notebook is in flight. It executes in its own kernel from
+                  the committed file, so what you run here does not affect it — but saving now
+                  changes what the <em>next</em> run picks up.
+                </AlertDescription>
+              </Alert>
             )}
 
             {session?.kernelRestarted && !restartDismissed && (
-              <div className="banner banner-warn">
-                The kernel exited on its own and was replaced — variables from earlier cells are
-                gone. Re-run the cells you need.{' '}
-                <button className="button button-small" onClick={() => setRestartDismissed(true)}>
-                  Dismiss
-                </button>
-              </div>
+              <Alert variant="warning" className="mx-6 mb-3 w-auto">
+                <AlertDescription className="flex flex-wrap items-center gap-2">
+                  <span>
+                    The kernel exited on its own and was replaced — variables from earlier cells
+                    are gone. Re-run the cells you need.
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setRestartDismissed(true)}
+                  >
+                    Dismiss
+                  </Button>
+                </AlertDescription>
+              </Alert>
             )}
 
             {mode === 'focus' ? (
@@ -551,7 +517,7 @@ export function Editor() {
                 }}
               />
             ) : (
-              <>
+              <div className="px-6">
             <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
             {cells.map((cell, index) => (
               <div key={cell.id} data-cell-id={cell.id}>
@@ -580,28 +546,42 @@ export function Editor() {
                 />
               </div>
             ))}
-              </>
+              </div>
             )}
           </div>
         ))}
 
-      {tab === 'source' &&
-        (source == null ? <p className="muted">Loading…</p> : <SourceEditor value={source} language={fileLanguage(path)} onChange={setSource} />)}
+      {tab === 'source' && (
+        <div className="px-6">
+          {source == null ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <SourceEditor value={source} language={fileLanguage(path)} onChange={setSource} />
+          )}
+        </div>
+      )}
 
-      {tab === 'diff' &&
-        (prod == null || savedSource == null ? (
-          <p className="muted">Loading…</p>
-        ) : prod === savedSource ? (
-          <p className="muted">No differences — dev and production are identical for this file.</p>
-        ) : (
-          <>
-            <p className="muted small">
-              Production (left) vs dev (right){prod === '' && ' — this file does not exist in production yet'}
-              {dirty && '. Unsaved edits are not shown: this compares what is committed on each branch.'}
+      {tab === 'diff' && (
+        <div className="px-6">
+          {prod == null || savedSource == null ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : prod === savedSource ? (
+            <p className="text-sm text-muted-foreground">
+              No differences — dev and production are identical for this file.
             </p>
-            <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
-          </>
-        ))}
+          ) : (
+            <>
+              <p className="mb-2 max-w-[78ch] text-xs text-muted-foreground">
+                Production (left) vs dev (right)
+                {prod === '' && ' — this file does not exist in production yet'}
+                {dirty &&
+                  '. Unsaved edits are not shown: this compares what is committed on each branch.'}
+              </p>
+              <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
+            </>
+          )}
+        </div>
+      )}
 
       {connectFor != null && cells?.[connectFor] &&
         connectableLanguage(cells[connectFor].languageId, languages) && (
@@ -613,7 +593,7 @@ export function Editor() {
           />
         )}
 
-      <p className="muted editor-footnote">
+      <p className="editor-footnote mt-6 max-w-[78ch] px-6 text-xs text-muted-foreground">
         Every save commits to the dev branch. Cells you run here execute in a warm kernel that is
         dropped after 30 idle minutes; those runs never appear in run history and never count
         towards promotion. Run the notebook's jobs from the <Link to="/jobs">Jobs</Link> page —

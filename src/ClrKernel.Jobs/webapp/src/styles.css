@@ -100,7 +100,7 @@
     padding: 0.4rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--background);
+    background: var(--card);
     color: var(--foreground);
     font: inherit;
   }
@@ -496,7 +496,7 @@
   .notebook-cell {
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--background);
+    background: var(--card);
     overflow: hidden;
     margin: 0;
   }
@@ -554,7 +554,7 @@
   .cell-run-button:hover:not(:disabled) {
     color: var(--primary);
     border-color: var(--border);
-    background: var(--background);
+    background: var(--card);
   }
 
   .cell-run-button:disabled {
@@ -735,7 +735,7 @@
 
   .output-menu-button:hover {
     border-color: var(--border);
-    background: var(--background);
+    background: var(--card);
     color: var(--foreground);
   }
 
@@ -745,7 +745,7 @@
     position: fixed;
     min-width: 9rem;
     z-index: 40;
-    background: var(--background);
+    background: var(--popover);
     border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
@@ -801,7 +801,7 @@
   }
 
   .modal {
-    background: var(--background);
+    background: var(--popover);
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { api, type ApiConnectionProvider, type ApiConnectionSetting, type ApiLanguage } from '../api';
 import { composeConnectDirective, isSecret, sameKind } from '../connectionDirective';
 import { ErrorBanner } from './common';
@@ -73,9 +74,9 @@ export function ConnectionWizard({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="row-between">
           <h2 style={{ margin: 0 }}>New {language.displayName} connection</h2>
-          <button className="button button-small" onClick={onClose}>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onClose}>
             ✕
-          </button>
+          </Button>
         </div>
         <ErrorBanner error={error} />
 
@@ -126,16 +127,16 @@ export function ConnectionWizard({
             )}
 
             <div className="row-gap">
-              <button
-                className="button button-primary"
+              <Button
+                size="sm"
                 disabled={missing.length > 0}
                 onClick={() => onInsert(directive)}
               >
                 Insert as a new cell
-              </button>
-              <button className="button" onClick={onClose}>
+              </Button>
+              <Button variant="outline" size="sm" onClick={onClose}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </>
         )}

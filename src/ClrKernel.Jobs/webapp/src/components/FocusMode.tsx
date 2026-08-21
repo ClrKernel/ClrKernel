@@ -1,4 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { StatusBadge } from './common';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useFocusEditor } from '../monaco/useMonaco';
@@ -257,15 +267,17 @@ export function FocusMode({
           <div className="focus-sidebar" style={{ width: layout.sidebarWidth }}>
             <div className="focus-sidebar-head">
               <span>Contents</span>
-              <button
+              <Button
                 type="button"
-                className="button button-small"
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
                 title="Hide contents"
                 aria-label="Hide contents"
                 onClick={() => onLayout({ ...layout, sidebarCollapsed: true })}
               >
                 ⟨
-              </button>
+              </Button>
             </div>
             {cells.length === 0 ? (
               <p className="focus-empty">No cells yet.</p>
@@ -294,9 +306,9 @@ export function FocusMode({
         {active == null ? (
           <div className="focus-empty-state">
             <p>This notebook has no cells.</p>
-            <button className="button button-small" onClick={() => onInsert(null, 'code')}>
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onInsert(null, 'code')}>
               + Code
-            </button>
+            </Button>
           </div>
         ) : (
           <>
@@ -305,46 +317,48 @@ export function FocusMode({
                 Cell [{activeRun?.executionCount ?? ' '}]
               </span>
               {canRun && !isMarkdown && (
-                <button
-                  className="button button-small"
+                <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
                   disabled={busy}
                   onClick={() => onRun(active.id)}
                   title="Run this cell (⌘/Ctrl+Enter)"
                 >
                   ▶ Run
-                </button>
+                </Button>
               )}
-              {activeRun && <span className={`badge badge-${activeRun.status}`}>{activeRun.status}</span>}
+              {activeRun && <StatusBadge status={activeRun.status} />}
               {activeRun?.stale && (
-                <span className="chip chip-muted" title="This cell changed since it ran">
+                <Badge variant="outline" className="font-normal" title="This cell changed since it ran">
                   edited since run
-                </span>
+                </Badge>
               )}
               <span className="spacer" />
-              <button
-                className="button button-small"
+              <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
                 onClick={() => onClearOutput(active.id)}
                 title="Clear this cell's output"
               >
                 Clear output
-              </button>
-              <select
-                className="cell-language"
+              </Button>
+              <Select
                 value={isMarkdown ? 'markdown' : (active.languageId ?? 'csharp')}
-                onChange={(e) => onLanguage(active.id, e.target.value)}
-                title="Cell language"
+                onValueChange={(value) => onLanguage(active.id, value)}
               >
-                {languageOptions(languages).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              <button
-                className="button button-small button-danger"
+                <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-xs shadow-none" aria-label="Cell language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {languageOptions(languages).map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm" className="h-6 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => onDelete(active.id)}
                 title="Delete this cell"
               >
                 ✕
-              </button>
+              </Button>
             </div>
 
             {/* Height comes from the split ratio alone, so long output can never
