@@ -95,7 +95,7 @@
   }
 
   textarea {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.9375rem;
     width: 100%;
   }
@@ -343,7 +343,7 @@
      underneath but visibly a different kind of thing. */
   .notebook-cell {
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-xl);
     background: var(--card);
     overflow: hidden;
     margin: 0;
@@ -369,7 +369,7 @@
   }
 
   .notebook-cell-markdown .cell-source {
-    background: var(--muted);
+    background: var(--card);
   }
 
   .cell-main {
@@ -383,9 +383,11 @@
     flex-direction: column;
     justify-content: space-between;
     align-items: center;
-    flex: 0 0 2.6rem;
-    padding: 0.35rem 0 0.3rem;
-    background: var(--muted);
+    /* 40px, in px: the output pane indents past this gutter, and a rem width
+       would put the two out of alignment on a non-16px browser default. */
+    flex: 0 0 40px;
+    padding: 8px 0;
+    background: var(--surface-panel);
     border-right: 1px solid var(--border);
   }
 
@@ -416,9 +418,9 @@
   }
 
   .cell-gutter-index {
-    color: var(--muted-foreground);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.8125rem;
+    color: var(--muted-subtle);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
     white-space: pre;
   }
 
@@ -455,12 +457,12 @@
   .cell-footer {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.2rem 0.5rem;
+    gap: 8px;
+    padding: 4px 12px;
     border-top: 1px solid var(--border);
-    background: var(--muted);
-    font-size: 0.875rem;
-    min-height: 1.9rem;
+    background: var(--surface-panel);
+    font-size: var(--text-xs);
+    min-height: 24px;
   }
 
   .cell-footer-status {
@@ -516,11 +518,14 @@
 
   /* Output is attached to the cell but is not the cell: inset, on the page
      background, and separated by a rule. */
+  /* Output belongs to the cell but is not the cell: it sits on the canvas
+     colour rather than the card, and indents past the 40px gutter so it lines
+     up with the code that produced it. */
   .cell-outputs {
     position: relative;
     border-top: 1px solid var(--border);
-    background: var(--muted);
-    padding: 0.35rem 0.6rem 0.35rem 3.1rem;
+    background: var(--background);
+    padding: 10px 14px 14px 44px;
     max-height: 32rem;
     overflow: auto;
   }
@@ -693,8 +698,10 @@
     /* Height is measured in JS from this element's own top, because what sits
        above it changes. This is only the floor. */
     min-height: 16rem;
+    margin: 12px 16px 16px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
+    background: var(--card);
     overflow: hidden;
   }
 
@@ -702,7 +709,8 @@
     display: flex;
     flex-direction: column;
     flex: 0 0 auto;
-    background: var(--muted);
+    background: var(--surface-panel);
+    border-right: 1px solid var(--border);
     overflow: auto;
   }
 
@@ -711,32 +719,34 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.4rem 0.5rem;
-    font-size: 0.8125rem;
+    padding: 7px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted-foreground);
+    letter-spacing: 0.06em;
+    color: var(--muted-subtle);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    background: var(--muted);
+    background: var(--surface-panel);
   }
 
   /* The reveal affordance when the sidebar is collapsed to nothing: a thin rail,
      so the contents are always one click away rather than lost. */
   .focus-rail {
-    flex: 0 0 14px;
+    flex: 0 0 16px;
     border: 0;
     border-right: 1px solid var(--border);
-    background: var(--muted);
+    background: var(--surface-panel);
     cursor: pointer;
-    color: var(--muted-foreground);
-    font-size: 0.8125rem;
+    color: var(--muted-subtle);
+    font-size: 10px;
     padding: 0;
   }
 
   .focus-rail:hover {
-    background: var(--border);
+    background: var(--surface-panel-strong);
+    color: var(--primary);
   }
 
   ul.focus-toc,
@@ -754,9 +764,9 @@
   .focus-toc-section {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.15rem 0.4rem;
-    font-size: 0.875rem;
+    gap: 5px;
+    padding: 3px 8px;
+    font-size: 11.5px;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
@@ -764,7 +774,7 @@
 
   .focus-toc-leaf:hover,
   .focus-toc-section:hover {
-    background: var(--border);
+    background: var(--surface-panel-strong);
   }
 
   .focus-toc-active {
@@ -795,14 +805,14 @@
 
   .focus-toc-count {
     color: var(--muted-foreground);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.8125rem;
   }
 
   .focus-toc-label {
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
   }
 
   .focus-toc-dot {
@@ -835,15 +845,16 @@
   .focus-cell-toolbar {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.3rem 0.5rem;
+    gap: 8px;
+    padding: 5px 10px;
     border-bottom: 1px solid var(--border);
-    background: var(--muted);
+    background: var(--surface-panel);
+    font-size: var(--text-code);
     flex: 0 0 auto;
   }
 
   .focus-cell-title {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.875rem;
     color: var(--muted-foreground);
   }
@@ -854,6 +865,7 @@
   .focus-editor-pane {
     flex: 0 1 auto;
     min-height: 80px;
+    background: var(--card);
     overflow: hidden;
   }
 
@@ -864,8 +876,10 @@
   .focus-output-pane {
     flex: 1 1 auto;
     min-height: 80px;
+    border-top: 1px solid var(--border);
+    background: var(--background);
     overflow: auto;
-    padding: 0.5rem 0.6rem;
+    padding: 12px 16px;
   }
 
   .focus-markdown-preview {
@@ -888,13 +902,11 @@
   }
 
   .focus-splitter {
-    flex: 0 0 6px;
+    flex: 0 0 5px;
     background: var(--border);
-    opacity: 0.6;
   }
 
   .focus-splitter:hover {
-    opacity: 1;
     background: var(--primary);
   }
 

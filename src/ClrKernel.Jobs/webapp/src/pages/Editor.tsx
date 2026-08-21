@@ -7,10 +7,16 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
+import { NotebookExplorer } from '../components/NotebookExplorer';
 import { NotebookToolbar } from '../components/NotebookToolbar';
+import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
 import { releaseCellModels } from '../monaco/models';
 import {
+  DEFAULT_LAYOUT,
+  MAX_EXPLORER,
+  MIN_EXPLORER,
+  clamp,
   loadLayout,
   loadNotebookState,
   saveLayout,
@@ -76,6 +82,9 @@ export function Editor() {
   // The source each cell had when it was last run, so an edit can dim its output
   // instead of silently leaving a result that no longer matches the code.
   const ranSource = useRef<Record<string, string>>({});
+  // The explorer's drag reports a viewport X; the sidebar's width is that minus
+  // wherever this row actually starts, which is not the window's edge.
+  const shell = useRef<HTMLDivElement>(null);
 
   const { data: promotion, reload: reloadPromotion } = usePolling(
     () => api.promotionStatus(path),
@@ -394,10 +403,33 @@ export function Editor() {
   const focusing = mode === 'focus' && tab === 'notebook';
 
   return (
-    // Focus Mode measures itself to the bottom of the scroll container and gives
-    // back whatever overflows, so page padding below it is viewport it cannot
-    // use. Every other view wants the gutter.
-    <div className={focusing ? undefined : 'pb-8'}>
+    // The editor is the one page with its own sidebar: file tree on the left,
+    // toolbar and work area on the right.
+    <div className="flex min-h-0 flex-1 overflow-hidden" ref={shell}>
+      <NotebookExplorer
+        path={path}
+        width={layout.explorerWidth}
+        collapsed={layout.explorerCollapsed}
+        onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
+      />
+      {!layout.explorerCollapsed && (
+        <Splitter
+          orientation="vertical"
+          label="Explorer width"
+          onDrag={(clientX) =>
+            setLayout({
+              ...layout,
+              explorerWidth: clamp(
+                clientX - (shell.current?.getBoundingClientRect().left ?? 0),
+                MIN_EXPLORER,
+                MAX_EXPLORER,
+              ),
+            })
+          }
+          onReset={() => setLayout({ ...layout, explorerWidth: DEFAULT_LAYOUT.explorerWidth })}
+        />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <NotebookToolbar
         tab={tab}
         onTab={(next) => (next === 'diff' ? showDiff() : setTab(next as Tab))}
@@ -416,7 +448,11 @@ export function Editor() {
         promotion={promotion}
       />
 
-      <div className="px-6 pt-3">
+      {/* Focus Mode measures itself to the bottom of this scroller and gives
+          back whatever overflows, so padding below it is viewport it cannot
+          use. Every other view wants the gutter. */}
+      <div className={focusing ? 'flex min-h-0 flex-1 flex-col' : 'min-h-0 flex-1 overflow-auto pb-8'}>
+      <div className="px-4 pt-3">
         <ErrorBanner error={error} />
         {notice && (
           <Alert variant="success" className="mb-3">
@@ -440,20 +476,20 @@ export function Editor() {
 
       {tab === 'notebook' &&
         (cells == null ? (
-          <p className="px-6 text-base text-muted-foreground">Loading…</p>
+          <p className="px-4 text-base text-muted-foreground">Loading…</p>
         ) : (
           <div className="notebook-editor">
             {/* Run All, Restart, the kernel badge and the mode toggle all live
                 in the one toolbar now. What is left here is the notices, which
                 are about this notebook rather than about the page. */}
             {!canRun && isNotebook && (
-              <p className="px-6 text-base text-muted-foreground">
+              <p className="px-4 text-base text-muted-foreground">
                 Running cells is unavailable here: {sessionError}
               </p>
             )}
 
             {session?.scheduledRunActive && (
-              <Alert variant="warning" className="mx-6 mb-3 w-auto">
+              <Alert variant="warning" className="mx-4 mb-3 w-auto">
                 <AlertDescription>
                   A scheduled run of this notebook is in flight. It executes in its own kernel from
                   the committed file, so what you run here does not affect it — but saving now
@@ -463,7 +499,7 @@ export function Editor() {
             )}
 
             {session?.kernelRestarted && !restartDismissed && (
-              <Alert variant="warning" className="mx-6 mb-3 w-auto">
+              <Alert variant="warning" className="mx-4 mb-3 w-auto">
                 <AlertDescription className="flex flex-wrap items-center gap-2">
                   <span>
                     The kernel exited on its own and was replaced — variables from earlier cells
@@ -517,7 +553,7 @@ export function Editor() {
                 }}
               />
             ) : (
-              <div className="px-6">
+              <div className="px-4">
             <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
             {cells.map((cell, index) => (
               <div key={cell.id} data-cell-id={cell.id}>
@@ -552,7 +588,7 @@ export function Editor() {
         ))}
 
       {tab === 'source' && (
-        <div className="px-6">
+        <div className="px-4">
           {source == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
           ) : (
@@ -562,7 +598,7 @@ export function Editor() {
       )}
 
       {tab === 'diff' && (
-        <div className="px-6">
+        <div className="px-4">
           {prod == null || savedSource == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
           ) : prod === savedSource ? (
@@ -593,13 +629,15 @@ export function Editor() {
           />
         )}
 
-      <p className="editor-footnote mt-6 max-w-[78ch] px-6 text-base text-muted-foreground">
+      <p className="editor-footnote mt-6 max-w-[78ch] px-4 text-base text-muted-foreground">
         Every save commits to the dev branch. Cells you run here execute in a warm kernel that is
         dropped after 30 idle minutes; those runs never appear in run history and never count
         towards promotion. Run the notebook's jobs from the <Link to="/jobs">Jobs</Link> page —
         promotion unlocks when every job on this notebook has a clean green run of exactly this
         content.
       </p>
+      </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { MoreHorizontal, Play, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -30,24 +29,13 @@ function useWindowWidth(): number {
 }
 
 /**
- * shadcn's default segmented list: a muted track with the active tab lifted out
- * of it. The active pill is `--card`, not `--background` — in this palette the
- * page is grey and the raised surface is white, which is the opposite way round
- * from stock shadcn, where `--background` is the white one.
- *
- * Neutral, not accent: the accent is reserved for the primary action, and
- * `Promote to production` is the only accent-filled control on this page.
- */
-const TAB = 'px-3 data-active:bg-card data-active:text-foreground';
-
-/**
- * `bg-muted` is nearly the toolbar's own background, so the default selected
- * state is not visible here. A tinted foreground fill reads at a glance and
- * stays neutral — the accent belongs to the primary action.
+ * The segmented Normal|Focus control. `data-[state=on]` is the *selected* half,
+ * and it takes the accent fill: this is a view switch, so which half is live has
+ * to be unmistakable at a glance.
  */
 const TOGGLE =
-  'text-muted-foreground data-[state=on]:bg-foreground/10 data-[state=on]:font-medium ' +
-  'data-[state=on]:text-foreground';
+  'text-muted-foreground data-[state=on]:bg-primary data-[state=on]:font-medium ' +
+  'data-[state=on]:text-primary-foreground';
 
 const DOT: Record<string, string> = {
   running: 'bg-status-running animate-pulse',
@@ -116,16 +104,12 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   return (
     // Sticky, so Run All stays reachable while scrolling a long notebook in
     // Normal Mode. The tabs' underline sits on the row's own bottom border.
-    <div className="nb-toolbar sticky top-0 z-20 flex h-[48px] items-stretch gap-2 border-b border-border bg-muted px-6">
+    <div className="nb-toolbar sticky top-0 z-20 flex h-[44px] shrink-0 items-stretch gap-1.5 border-b border-border bg-card px-4">
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
-        <TabsList variant="line" className="h-full! gap-1 bg-transparent p-0">
-          {props.isNotebook && <TabsTrigger value="notebook" className={TAB}>Notebook</TabsTrigger>}
-          <TabsTrigger value="source" className={TAB}>
-            Source
-          </TabsTrigger>
-          <TabsTrigger value="diff" className={TAB}>
-            Diff vs production
-          </TabsTrigger>
+        <TabsList variant="line">
+          {props.isNotebook && <TabsTrigger value="notebook">Notebook</TabsTrigger>}
+          <TabsTrigger value="source">Source</TabsTrigger>
+          <TabsTrigger value="diff">Diff vs production</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -136,13 +120,13 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         <div className="flex items-center gap-2">
           {/* Information before controls: you read what the kernel is doing
               before you reach the buttons that change it. */}
-          <Badge variant="secondary" className="gap-1.5 font-mono text-xs font-normal">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-xs text-muted-subtle">
             <span
               aria-hidden="true"
-              className={`size-1.5 shrink-0 rounded-full ${DOT[kernel.state]}`}
+              className={`size-[7px] shrink-0 rounded-full ${DOT[kernel.state]}`}
             />
             {kernel.text}
-          </Badge>
+          </span>
 
           <ToggleGroup
             type="single"

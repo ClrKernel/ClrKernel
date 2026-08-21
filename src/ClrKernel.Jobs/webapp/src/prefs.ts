@@ -15,12 +15,18 @@ export interface LayoutPrefs {
   sidebarCollapsed: boolean;
   /** Editor pane's share of the work area, 0-1. */
   splitRatio: number;
+  /** The file explorer down the left of the editor — a different panel from the
+   *  Focus-mode contents sidebar above, and separately sized. */
+  explorerWidth: number;
+  explorerCollapsed: boolean;
 }
 
 export const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebarWidth: 260,
   sidebarCollapsed: false,
   splitRatio: 0.5,
+  explorerWidth: 218,
+  explorerCollapsed: false,
 };
 
 export interface NotebookState {
@@ -55,6 +61,8 @@ export function loadLayout(): LayoutPrefs {
     sidebarWidth: clamp(layout.sidebarWidth, MIN_SIDEBAR, MAX_SIDEBAR),
     sidebarCollapsed: layout.sidebarCollapsed === true,
     splitRatio: clamp(layout.splitRatio, 0.1, 0.9),
+    explorerWidth: clamp(layout.explorerWidth, MIN_EXPLORER, MAX_EXPLORER),
+    explorerCollapsed: layout.explorerCollapsed === true,
   };
 }
 
@@ -64,6 +72,9 @@ export function saveLayout(layout: LayoutPrefs): void {
 
 export const MIN_SIDEBAR = 180;
 export const MAX_SIDEBAR = 640;
+
+export const MIN_EXPLORER = 150;
+export const MAX_EXPLORER = 420;
 
 export function clamp(value: number, min: number, max: number): number {
   return Number.isFinite(value) ? Math.min(Math.max(value, min), max) : min;

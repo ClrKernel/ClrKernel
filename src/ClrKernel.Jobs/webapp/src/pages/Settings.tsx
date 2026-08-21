@@ -23,7 +23,7 @@ function ApiKeySection() {
 
   return (
     <section className="settings-section">
-      <h2 className="mb-1 text-base font-semibold">Browser</h2>
+      <h2 className="mb-1 text-lg font-semibold">Browser</h2>
       <p className="mb-2 text-base text-muted-foreground">
         Sent as <code>X-Api-Key</code> on every request. Required only when the server was started
         with a key; stored in this browser, never written to the server.
@@ -95,7 +95,7 @@ function Section({ section }: { section: SettingsSection }) {
 
   return (
     <section className="settings-section">
-      <h2 className="mb-1 text-base font-semibold">{section.title}</h2>
+      <h2 className="mb-1 text-lg font-semibold">{section.title}</h2>
       {section.description && (
         <p className="mb-2 text-base text-muted-foreground">{section.description}</p>
       )}
