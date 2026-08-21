@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { bindCell, unbindCell } from './language';
+import { bindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
+import { getCellModel } from './models';
 import { cellEditorOptions, monaco } from './setup';
 
 /** Identifies a cell to the language providers. Absent for editors that are not
@@ -31,9 +32,10 @@ const MAX_DIFF_HEIGHT = 720;
  * A Monaco editor for one notebook cell: it sizes itself to its content, swaps
  * language without losing undo history, and disposes cleanly.
  *
- * Disposing the *model* as well as the editor matters — Monaco models are global
- * and outlive the editor that showed them, so a notebook scrolled through a few
- * times would otherwise leak one per cell.
+ * With a binding it shows the notebook's model for that cell rather than one of
+ * its own, so the document survives the editor — that is what lets Focus Mode
+ * show one cell at a time and still find the others as you left them. Without
+ * one (the Source tab, the diff) it makes and disposes its own.
  */
 export function useCellEditor(
   language: string,
@@ -55,10 +57,15 @@ export function useCellEditor(
     if (!container.current) {
       return;
     }
+    // A cell's model belongs to the notebook and outlives this editor, so that
+    // switching cells in Focus Mode keeps undo history and cursor position. The
+    // Source tab and the diff are not cells: they get a model of their own, made
+    // and disposed here as before.
+    const binding = latestBinding.current;
+    const shared = binding == null ? null : getCellModel(binding.cellId, language, value);
     const created = monaco.editor.create(container.current, {
       ...cellEditorOptions,
-      value,
-      language,
+      ...(shared == null ? { value, language } : { model: shared }),
       readOnly,
     });
     editor.current = created;
@@ -66,10 +73,10 @@ export function useCellEditor(
     // Claim this model as a cell. Monaco's providers are global per language, so
     // this is what separates a cell from the Source tab and the diff panes.
     const model = created.getModel();
-    if (model != null && latestBinding.current != null) {
+    if (model != null && binding != null) {
       bindCell(model, {
-        path: latestBinding.current.path,
-        cellId: latestBinding.current.cellId,
+        path: binding.path,
+        cellId: binding.cellId,
         languageId: () => latestBinding.current?.languageId ?? 'csharp-script',
         enabled: () => latestBinding.current?.enabled ?? true,
       });
@@ -92,13 +99,13 @@ export function useCellEditor(
     return () => {
       sizeListener.dispose();
       changeListener.dispose();
-      // Before the model goes: the definition registry is a strong map, so a cell
-      // that is not unregistered both leaks its model and stays reachable as a
-      // Go to Definition target after it has been deleted.
-      if (latestBinding.current != null) {
-        unbindCell(latestBinding.current.cellId);
+      // A cell's model is the notebook's, not this editor's: unmounting a cell
+      // editor (switching modes, scrolling a cell out of the tree) must not take
+      // the document with it. releaseCellModels disposes them when the cell is
+      // actually gone. Anything else made its own model here and owns it.
+      if (shared == null) {
+        created.getModel()?.dispose();
       }
-      created.getModel()?.dispose();
       created.dispose();
       editor.current = null;
     };

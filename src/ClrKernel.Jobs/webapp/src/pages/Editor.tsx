@@ -5,6 +5,7 @@ import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { ErrorBanner, usePolling } from '../components/common';
 import { registerLanguageProviders } from '../monaco/language';
+import { releaseCellModels } from '../monaco/models';
 import { useCellEditor, useDiffEditor } from '../monaco/useMonaco';
 import {
   cellsToRun,
@@ -125,6 +126,16 @@ export function Editor() {
         .catch((e) => setError((e as Error).message));
     }
   }, [path, isNotebook]);
+
+  // Cell models belong to the notebook, so they are freed when a cell is deleted
+  // and when the notebook is closed — not when an editor unmounts, which now
+  // happens routinely without the cell going anywhere.
+  useEffect(() => {
+    if (cells != null) {
+      releaseCellModels(cells.map((cell) => cell.id));
+    }
+  }, [cells]);
+  useEffect(() => () => releaseCellModels([]), [path]);
 
   // Opening a notebook starts its kernel, the way opening one in VS Code starts the
   // language server. Without this a session appears only on the first run, and
