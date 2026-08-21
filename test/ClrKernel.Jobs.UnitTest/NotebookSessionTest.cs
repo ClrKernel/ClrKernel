@@ -17,40 +17,76 @@ namespace ClrKernel.Jobs.UnitTest;
 /// </summary>
 [TestClass]
 public class NotebookSessionTest {
-    /// <summary>Speaks the serve protocol. "boom" fails, "display" emits two
-    /// display notifications sharing a display_id, "flood" emits many.</summary>
+    /// <summary>
+    /// Speaks the lsp protocol, which is what an editor session drives: an LSP
+    /// handshake, <c>clrkernel/execute</c>, and displays under the <c>clrkernel/</c>
+    /// names. "boom" fails, "display" emits two display notifications sharing a
+    /// display_id, "flood" emits many.
+    /// </summary>
     private sealed class FakeKernel {
         public JsonRpc Rpc { get; set; }
         public List<string> Executed { get; } = new();
+        public List<string> CellUris { get; } = new();
         public TaskCompletionSource Gate { get; set; }
 
-        [JsonRpcMethod("initialize")]
-        public object Initialize() => new {
-            name = "fake-kernel",
-            version = "9.9.9",
-            languages = new[] {
-                new {
-                    id = "sql", displayName = "SQL", defaultSelector = "#!sql",
-                    selectors = new[] { "#!sql", "#!sql-connect" },
-                    languageTags = new[] { "sql", "tsql" },
-                },
+        /// <summary>What clrkernel/languages was asked about, or null if it never was.</summary>
+        public string LanguagesAskedFor { get; private set; }
+
+        private static object[] TheLanguages => new[] {
+            new {
+                id = "sql", displayName = "SQL", defaultSelector = "#!sql",
+                selectors = new[] { "#!sql", "#!sql-connect" },
+                languageTags = new[] { "sql", "tsql" },
             },
         };
 
-        [JsonRpcMethod("execute")]
-        public async Task<object> Execute(string cellId, string code) {
+        // Every binding below mirrors LspServer's: single-object parameter
+        // deserialization, so a client that sends the wrong shape fails here the way
+        // it would against the real server rather than being quietly tolerated.
+        [JsonRpcMethod("initialize", UseSingleObjectParameterDeserialization = true)]
+        public object Initialize(object _) => new {
+            serverInfo = new { name = "fake-kernel", version = "9.9.9" },
+            // Deliberately NOT the real language set: the handshake answers from a
+            // fresh registry, so a session that trusted it would miss anything a
+            // notebook loaded for itself. The session must ask clrkernel/languages.
+            capabilities = new { experimental = new { clrkernel = new { languages = Array.Empty<object>() } } },
+        };
+
+        [JsonRpcMethod("initialized")]
+        public void Initialized() { }
+
+        public sealed class NotebookParams {
+            public string NotebookUri { get; set; }
+        }
+
+        public sealed class ExecuteParams {
+            public string CellId { get; set; }
+            public string Code { get; set; }
+        }
+
+        [JsonRpcMethod("clrkernel/languages", UseSingleObjectParameterDeserialization = true)]
+        public object Languages(NotebookParams p) {
+            LanguagesAskedFor = p?.NotebookUri;
+            return new { languages = TheLanguages };
+        }
+
+        [JsonRpcMethod("clrkernel/execute", UseSingleObjectParameterDeserialization = true)]
+        public async Task<object> Execute(ExecuteParams p) {
+            var cellId = p?.CellId;
+            var code = p?.Code ?? string.Empty;
             Executed.Add(code);
+            CellUris.Add(cellId);
             if (Gate != null) {
                 await Gate.Task;
             }
             if (code.Contains("display")) {
                 // Two notifications with one display_id: the second replaces the first.
-                await Rpc.NotifyWithParameterObjectAsync("display", new {
+                await Rpc.NotifyWithParameterObjectAsync("clrkernel/display", new {
                     cellId,
                     data = new Dictionary<string, object> { ["text/plain"] = "50%" },
                     transient = new Dictionary<string, object> { ["display_id"] = "bar" },
                 });
-                await Rpc.NotifyWithParameterObjectAsync("updateDisplay", new {
+                await Rpc.NotifyWithParameterObjectAsync("clrkernel/updateDisplay", new {
                     cellId,
                     data = new Dictionary<string, object> { ["text/plain"] = "100%" },
                     transient = new Dictionary<string, object> { ["display_id"] = "bar" },
@@ -58,7 +94,7 @@ public class NotebookSessionTest {
             }
             if (code.Contains("flood")) {
                 for (var i = 0; i < 260; i++) {
-                    await Rpc.NotifyWithParameterObjectAsync("display", new {
+                    await Rpc.NotifyWithParameterObjectAsync("clrkernel/display", new {
                         cellId,
                         data = new Dictionary<string, object> { ["text/plain"] = $"line {i}" },
                     });
@@ -75,7 +111,10 @@ public class NotebookSessionTest {
         }
 
         [JsonRpcMethod("shutdown")]
-        public void Shutdown() { }
+        public object Shutdown() => null;
+
+        [JsonRpcMethod("exit")]
+        public void Exit() { }
     }
 
     private readonly List<IDisposable> _disposables = new();
@@ -96,7 +135,7 @@ public class NotebookSessionTest {
         var fake = new FakeKernel();
         var serverRpc = JsonRpc.Attach(serverStream, fake);
         fake.Rpc = serverRpc;
-        var client = new KernelClient(clientStream, clientStream);
+        var client = new KernelClient(clientStream, clientStream, KernelMode.Lsp);
         var session = new NotebookSession("s1", "/tmp/notebook.nb.md", null, null,
             _ => Task.FromResult(KernelProcess.ForClient(client)));
         _disposables.Add(serverRpc);
@@ -148,8 +187,36 @@ public class NotebookSessionTest {
 
         CollectionAssert.AreEqual(new[] { "var a = 1;", "a + 1", "a + 2" }, kernel.Executed.ToArray());
         Assert.AreEqual("fake-kernel", session.KernelName);
+        // The handshake offered none, so this can only have come from the
+        // per-notebook clrkernel/languages call.
         Assert.AreEqual("sql", session.Languages.Single().Id);
         Assert.AreEqual(3, session.Snapshot()["c9"].ExecutionCount, "the counter carries across runs");
+    }
+
+    [TestMethod]
+    public async Task Cells_are_addressed_by_notebook_qualified_uri() {
+        var (session, kernel) = NewSession();
+        await RunAsync(session, "one", "two");
+
+        // The lsp surface keys its engine off the path in the cell URI. Bare ids
+        // ("c0") parse to a key of their own, which would silently give every cell
+        // its own kernel and its own variables.
+        CollectionAssert.AreEqual(
+            new[] { "vscode-notebook-cell:/tmp/notebook.nb.md#c0", "vscode-notebook-cell:/tmp/notebook.nb.md#c1" },
+            kernel.CellUris.ToArray());
+        Assert.AreEqual("vscode-notebook-cell:/tmp/notebook.nb.md", kernel.LanguagesAskedFor,
+            "the language set is asked for by notebook, not globally");
+
+        // And the outputs still come back filed under the id the editor knows.
+        Assert.AreEqual("succeeded", session.Snapshot()["c0"].Status);
+    }
+
+    [TestMethod]
+    public void A_path_with_a_space_is_escaped_so_the_kernel_can_parse_it_back() {
+        var session = new NotebookSession("s", "/tmp/my notebooks/a b.nb.md", null);
+        // The other half of the round trip — that the server unescapes this back to
+        // the file — is pinned by NotebookKeyTest, which can see it.
+        Assert.AreEqual("vscode-notebook-cell:/tmp/my%20notebooks/a%20b.nb.md#c0", session.CellUri("c0"));
     }
 
     [TestMethod]

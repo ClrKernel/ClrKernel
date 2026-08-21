@@ -55,6 +55,7 @@ public sealed class NotebookSession : IDisposable {
         Func<CancellationToken, Task<KernelProcess>> startKernel = null) {
         Id = id;
         NotebookPath = notebookPath;
+        NotebookUri = ToNotebookUri(notebookPath);
         _clrkernelPath = clrkernelPath;
         _log = log;
         // Tests supply a kernel over an in-memory stream; production spawns one.
@@ -64,10 +65,23 @@ public sealed class NotebookSession : IDisposable {
 
     private Task<KernelProcess> DefaultStartAsync(CancellationToken cancellationToken) =>
         Task.FromResult(KernelProcess.Start(
-            _clrkernelPath, System.IO.Path.GetDirectoryName(NotebookPath), Note));
+            _clrkernelPath, System.IO.Path.GetDirectoryName(NotebookPath), Note, KernelMode.Lsp));
 
     public string Id { get; }
     public string NotebookPath { get; }
+
+    /// <summary>
+    /// This notebook as the kernel addresses it. The <c>lsp</c> surface keys its
+    /// sessions off the path parsed out of a cell URI, so the ids the editor uses
+    /// (<c>c0</c>, <c>c1</c>) have to be qualified by the notebook before they go on
+    /// the wire — bare ones would give every cell a kernel of its own. Same URI shape
+    /// VS Code sends, so cells from the web editor take the server's one code path.
+    /// </summary>
+    public string NotebookUri { get; }
+
+    /// <summary>One cell's URI: <c>vscode-notebook-cell:/path/to/nb.md#c3</c>.</summary>
+    public string CellUri(string cellId) => $"{NotebookUri}#{cellId}";
+
     public DateTime LastActivity { get; private set; }
     public IReadOnlyList<LanguageDescriptor> Languages { get; private set; } = Array.Empty<LanguageDescriptor>();
     public string KernelName { get; private set; }
@@ -97,10 +111,21 @@ public sealed class NotebookSession : IDisposable {
         // arrives just after a cell's reply — a progress bar finishing, or
         // background work reporting — still belongs to that cell.
         kernel.Client.DisplayReceived += Record;
+        // A package loaded with #r can register a cell language mid-notebook, and the
+        // language set is what decides how cells parse. Take the update rather than
+        // running the rest of the session against the set that existed at startup.
+        kernel.Client.LanguagesChanged += reply => {
+            if (reply?.Languages is { Count: > 0 } languages) {
+                Languages = languages;
+            }
+        };
         var info = await kernel.InitializeAsync(cancellationToken).ConfigureAwait(false);
         KernelName = info.Name;
         KernelVersion = info.Version;
-        Languages = info.Languages;
+        // The handshake answers from a fresh registry (no session exists yet); this
+        // asks the notebook's own session. Falls back when the kernel has no such call.
+        Languages = await kernel.Client.LanguagesAsync(NotebookUri, cancellationToken).ConfigureAwait(false)
+            ?? info.Languages;
         _kernel = kernel;
         return kernel;
     }
@@ -166,7 +191,7 @@ public sealed class NotebookSession : IDisposable {
                 var code = NotebookMarkdown.ExecutableSource(cells[i], languages);
                 ExecuteReply reply;
                 try {
-                    reply = await kernel.Client.ExecuteAsync(id, code, cancellationToken).ConfigureAwait(false);
+                    reply = await kernel.Client.ExecuteAsync(CellUri(id), code, cancellationToken).ConfigureAwait(false);
                 } catch (Exception e) when (e is not OperationCanceledException) {
                     // The kernel died mid-cell: report it on the cell rather than
                     // losing the run silently.
@@ -188,7 +213,7 @@ public sealed class NotebookSession : IDisposable {
         string languageId, CancellationToken cancellationToken) {
         var kernel = await EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
         Touch();
-        var reply = await kernel.Client.DescribeConnectionsAsync(languageId, cancellationToken)
+        var reply = await kernel.Client.DescribeConnectionsAsync(languageId, NotebookUri, cancellationToken)
             .ConfigureAwait(false);
         return reply?.Providers ?? Array.Empty<ConnectionProviderDescriptor>();
     }
@@ -239,7 +264,9 @@ public sealed class NotebookSession : IDisposable {
                 : null;
 
         lock (_stateGate) {
-            var cell = State(notification.CellId);
+            // The kernel echoes the cell URI it was given; the editor's state is
+            // keyed by the plain id.
+            var cell = State(CellIdFrom(notification.CellId));
             if (displayId != null && cell.ByDisplayId.TryGetValue(displayId, out var index) &&
                 index < cell.Outputs.Count) {
                 cell.Outputs[index] = output;
@@ -293,6 +320,22 @@ public sealed class NotebookSession : IDisposable {
         lock (_stateGate) {
             State(id).ExecutionCount = count;
         }
+    }
+
+    private static string ToNotebookUri(string notebookPath) {
+        try {
+            // AbsolutePath, not the raw path: a notebook with a space in its name
+            // must escape it, and NotebookKeyFor unescapes on the way back.
+            return "vscode-notebook-cell:" + new Uri(notebookPath).AbsolutePath;
+        } catch (UriFormatException) {
+            return "vscode-notebook-cell:" + notebookPath;
+        }
+    }
+
+    // The cell id the editor knows, back out of the URI the kernel answers with.
+    private static string CellIdFrom(string cellUri) {
+        var hash = cellUri?.IndexOf('#') ?? -1;
+        return hash < 0 ? cellUri : cellUri[(hash + 1)..];
     }
 
     private static Dictionary<string, object> ToBundle(Dictionary<string, JsonElement> data) =>

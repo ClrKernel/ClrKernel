@@ -310,6 +310,13 @@ it and everything after. The toolbar adds **Run All** and **Restart kernel**.
 - A scheduled run of the same notebook is fine — it executes the committed file in its
   own kernel, and the editor says so while it is in flight.
 
+The editor's kernel is `clrkernel lsp`, the same server the VS Code extension drives, so
+a cell behaves here the way it does there and language features arrive in both at once.
+Scheduled runs stay on `clrkernel serve`, which has no language features and does not
+need any. Both are fronts for the same engine and take the same code path through it,
+but they are two hosts rather than one: a difference in execution behaviour between the
+editor and a scheduled run would be a bug in one of them, and is worth reporting as such.
+
 **Runs from the editor are never promotion evidence.** They write nothing to run
 history: no run rows, no cell rows, no trigger updates. Nothing you do here can make a
 notebook look promotable, and nothing you do here can un-promote one. Promotion still

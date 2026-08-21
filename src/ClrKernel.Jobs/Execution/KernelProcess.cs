@@ -6,10 +6,10 @@ using System.Threading.Tasks;
 namespace ClrKernel.Jobs;
 
 /// <summary>
-/// A running <c>clrkernel serve</c> and the JSON-RPC client attached to it —
+/// A running <c>clrkernel</c> child and the JSON-RPC client attached to it —
 /// owned together, because the client's Dispose closes the connection but never
-/// kills the process. Used by job runs (one per run) and by the editor's warm
-/// notebook sessions (one per notebook).
+/// kills the process. Used by job runs (one <c>serve</c> per run) and by the
+/// editor's warm notebook sessions (one <c>lsp</c> per notebook).
 /// </summary>
 public sealed class KernelProcess : IDisposable {
     private readonly Process _process;
@@ -45,12 +45,18 @@ public sealed class KernelProcess : IDisposable {
 
     /// <summary>Spawns a kernel with its working directory set so a notebook's
     /// <c>#!import</c> and <c>connections.json</c> resolve beside it.</summary>
-    public static KernelProcess Start(string configuredPath, string workingDirectory, Action<string> log) {
+    /// <param name="mode">Which surface to start. Job runs take the default
+    /// <c>serve</c>; the editor takes <c>lsp</c>, so its cells reach the same server
+    /// VS Code drives and get language features from it.</param>
+    public static KernelProcess Start(
+        string configuredPath, string workingDirectory, Action<string> log,
+        KernelMode mode = KernelMode.Serve) {
         var clrkernel = ClrKernelLocator.Find(configuredPath);
+        var argument = mode == KernelMode.Lsp ? "lsp" : "serve";
         var process = new Process {
             StartInfo = new ProcessStartInfo {
                 FileName = clrkernel,
-                Arguments = "serve",
+                Arguments = argument,
                 WorkingDirectory = workingDirectory,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -64,10 +70,11 @@ public sealed class KernelProcess : IDisposable {
                 log?.Invoke($"kernel: {e.Data}");
             }
         };
-        log?.Invoke($"Starting {clrkernel} serve (cwd {workingDirectory})");
+        log?.Invoke($"Starting {clrkernel} {argument} (cwd {workingDirectory})");
         process.Start();
         process.BeginErrorReadLine();
-        var client = new KernelClient(process.StandardInput.BaseStream, process.StandardOutput.BaseStream);
+        var client = new KernelClient(
+            process.StandardInput.BaseStream, process.StandardOutput.BaseStream, mode);
         return new KernelProcess(process, client, log);
     }
 
