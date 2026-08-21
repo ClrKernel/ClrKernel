@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { bindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { getCellModel } from './models';
@@ -148,6 +148,142 @@ export function useCellEditor(
   }, [value]);
 
   return container;
+}
+
+/** Focus Mode's editor fills its pane and scrolls itself, unlike a cell editor
+ *  which grows to its content and never scrolls. */
+export const focusEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
+  ...cellEditorOptions,
+  lineNumbers: 'on',
+  lineNumbersMinChars: 3,
+  lineDecorationsWidth: 10,
+  scrollBeyondLastLine: false,
+  // The pane is the scroll container; Monaco owns the scrollbar inside it, which
+  // is why the pane itself must not be overflow:auto.
+  scrollbar: { alwaysConsumeMouseWheel: true, vertical: 'auto', horizontal: 'auto' },
+};
+
+export interface FocusEditorOptions {
+  binding: CellBinding | null;
+  language: string;
+  /** The active cell's text, for seeding a model the notebook has not made yet. */
+  value: string;
+  onChange: (value: string) => void;
+  onRun: () => void;
+  onRunAndAdvance: () => void;
+  onStep: (delta: number) => void;
+}
+
+/**
+ * The single editor behind Focus Mode.
+ *
+ * One instance for the whole notebook, with `setModel` on every cell change —
+ * creating and disposing an editor per switch is slow and throws away undo
+ * history. Cursor, selection, scroll and folds ride along in a view state saved
+ * before each switch, so a cell comes back exactly as you left it.
+ */
+export function useFocusEditor({
+  binding, language, value, onChange, onRun, onRunAndAdvance, onStep,
+}: FocusEditorOptions) {
+  const container = useRef<HTMLDivElement | null>(null);
+  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const viewStates = useRef(new Map<string, monaco.editor.ICodeEditorViewState | null>());
+  const showing = useRef<string | null>(null);
+
+  // Commands are bound once, at creation, so everything they touch is read
+  // through a ref — a handler that closed over the first render's props would
+  // run the first cell forever.
+  const latest = useRef({ binding, language, value, onChange, onRun, onRunAndAdvance, onStep });
+  latest.current = { binding, language, value, onChange, onRun, onRunAndAdvance, onStep };
+
+  useEffect(() => {
+    if (!container.current) {
+      return;
+    }
+    const created = monaco.editor.create(container.current, focusEditorOptions);
+    editor.current = created;
+
+    const changeListener = created.onDidChangeModelContent(() =>
+      latest.current.onChange(created.getValue()),
+    );
+
+    created.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => latest.current.onRun());
+    created.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>
+      latest.current.onRunAndAdvance());
+    created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.UpArrow, () => latest.current.onStep(-1));
+    created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.DownArrow, () => latest.current.onStep(1));
+
+    return () => {
+      // Only the editor: every model here belongs to the notebook.
+      changeListener.dispose();
+      created.dispose();
+      editor.current = null;
+      showing.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Swap the model when the active cell changes, saving where you were first.
+  useEffect(() => {
+    const current = editor.current;
+    if (current == null) {
+      return;
+    }
+    if (binding == null) {
+      current.setModel(null);
+      showing.current = null;
+      return;
+    }
+    if (showing.current === binding.cellId) {
+      return;
+    }
+    if (showing.current != null) {
+      viewStates.current.set(showing.current, current.saveViewState());
+    }
+    const model = getCellModel(binding.cellId, language, value);
+    current.setModel(model);
+    monaco.editor.setModelLanguage(model, language);
+    // Re-claim the model for the language providers with THIS component's
+    // getters: the binding Normal Mode registered closes over a component that
+    // is no longer mounted, and would answer with whatever it last saw.
+    bindCell(model, {
+      path: binding.path,
+      cellId: binding.cellId,
+      languageId: () => latest.current.binding?.languageId ?? 'csharp-script',
+      enabled: () => latest.current.binding?.enabled ?? true,
+    });
+    const saved = viewStates.current.get(binding.cellId);
+    if (saved != null) {
+      current.restoreViewState(saved);
+    }
+    showing.current = binding.cellId;
+    current.focus();
+  }, [binding, language, value]);
+
+  // The picker can change the language without the cell changing.
+  useEffect(() => {
+    const model = editor.current?.getModel();
+    if (model != null) {
+      monaco.editor.setModelLanguage(model, language);
+    }
+  }, [language]);
+
+  useEffect(() => {
+    const model = editor.current?.getModel();
+    if (model == null || binding?.diagnostics == null) {
+      return;
+    }
+    monaco.editor.setModelMarkers(
+      model,
+      MARKER_OWNER,
+      binding.diagnostics.map((d) => toMonacoMarker(d, monaco.MarkerSeverity as never)),
+    );
+  }, [binding?.diagnostics, binding?.cellId]);
+
+  /** Re-measures after a splitter drag or a sidebar resize. */
+  const relayout = useCallback(() => editor.current?.layout(), []);
+
+  return { container, relayout };
 }
 
 /**

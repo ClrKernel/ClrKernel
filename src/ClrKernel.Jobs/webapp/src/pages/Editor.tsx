@@ -4,9 +4,18 @@ import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { ErrorBanner, usePolling } from '../components/common';
+import { FocusMode } from '../components/FocusMode';
 import { registerLanguageProviders } from '../monaco/language';
 import { releaseCellModels } from '../monaco/models';
+import {
+  loadLayout,
+  loadNotebookState,
+  saveLayout,
+  saveNotebookState,
+  type LayoutPrefs,
+} from '../prefs';
 import { useCellEditor, useDiffEditor } from '../monaco/useMonaco';
+import { neighbourCell } from '../toc';
 import {
   cellsToRun,
   connectableLanguage,
@@ -27,6 +36,33 @@ import {
 } from '../notebook';
 
 type Tab = 'notebook' | 'source' | 'diff';
+
+/**
+ * Normal ⇄ Focus. Deliberately the only way out of Focus Mode: the spec asks for
+ * Esc to keep meaning what it means inside Monaco (dismiss the suggest widget,
+ * leave find), so there is no global key handler for this anywhere.
+ */
+function ModeToggle({ mode, onMode }: { mode: 'normal' | 'focus'; onMode: (m: 'normal' | 'focus') => void }) {
+  return (
+    <div className="mode-toggle" role="group" aria-label="Notebook view">
+      <button
+        className={mode === 'normal' ? 'active' : ''}
+        aria-pressed={mode === 'normal'}
+        onClick={() => onMode('normal')}
+      >
+        Normal
+      </button>
+      <button
+        className={mode === 'focus' ? 'active' : ''}
+        aria-pressed={mode === 'focus'}
+        onClick={() => onMode('focus')}
+        title="One cell at a time, with its output below"
+      >
+        Focus
+      </button>
+    </div>
+  );
+}
 
 /**
  * The dev notebook editor: cells with syntax highlighting and a language picker,
@@ -55,6 +91,11 @@ export function Editor() {
   const [restartDismissed, setRestartDismissed] = useState(false);
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const [connectFor, setConnectFor] = useState<number | null>(null);
+  // Focus Mode: one cell at a time. Per notebook, so switching files takes you
+  // back to how you were working in that file.
+  const [mode, setMode] = useState<'normal' | 'focus'>(() => loadNotebookState(path).mode ?? 'normal');
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<LayoutPrefs>(() => loadLayout());
   // The source each cell had when it was last run, so an edit can dim its output
   // instead of silently leaving a result that no longer matches the code.
   const ranSource = useRef<Record<string, string>>({});
@@ -126,6 +167,50 @@ export function Editor() {
         .catch((e) => setError((e as Error).message));
     }
   }, [path, isNotebook]);
+
+  // Mode and layout are remembered, but nothing here ever reaches the notebook
+  // file — how you were looking at it is not part of what it says.
+  useEffect(() => {
+    setMode(loadNotebookState(path).mode ?? 'normal');
+    setActiveId(loadNotebookState(path).activeCellId ?? null);
+  }, [path]);
+  useEffect(() => saveLayout(layout), [layout]);
+
+  // Focus Mode owns the viewport: the work area is fixed to it and each pane
+  // scrolls on its own, so the page behind must not scroll as well.
+  useEffect(() => {
+    const on = mode === 'focus' && tab === 'notebook';
+    document.body.classList.toggle('focus-mode-on', on);
+    return () => document.body.classList.remove('focus-mode-on');
+  }, [mode, tab]);
+
+  // Leaving Focus Mode puts you back where you were in the list rather than at
+  // the top — round-tripping should not cost you your place.
+  useEffect(() => {
+    if (mode !== 'normal' || activeId == null) {
+      return;
+    }
+    const cell = document.querySelector(`[data-cell-id="${activeId}"]`);
+    cell?.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, [mode, activeId]);
+  useEffect(() => saveNotebookState(path, { mode }), [path, mode]);
+  useEffect(() => {
+    if (activeId != null) {
+      saveNotebookState(path, { activeCellId: activeId });
+    }
+  }, [path, activeId]);
+
+  // The active cell has to exist. It may not on first load (a remembered id from
+  // before an edit), and it stops existing when you delete it — in which case the
+  // next cell takes over, or the previous one if it was last.
+  useEffect(() => {
+    if (cells == null || cells.length === 0) {
+      return;
+    }
+    if (activeId == null || !cells.some((cell) => cell.id === activeId)) {
+      setActiveId(cells[0].id);
+    }
+  }, [cells, activeId]);
 
   // Cell models belong to the notebook, so they are freed when a cell is deleted
   // and when the notebook is closed — not when an editor unmounts, which now
@@ -395,6 +480,7 @@ export function Editor() {
                   ⟳ Restart kernel {running && '(stops the running cell)'}
                 </button>
                 <span className="spacer" />
+                <ModeToggle mode={mode} onMode={setMode} />
                 <span className={running ? 'chip chip-running' : 'chip chip-muted'}>
                   {running
                     ? 'running…'
@@ -429,9 +515,46 @@ export function Editor() {
               </div>
             )}
 
+            {mode === 'focus' ? (
+              <FocusMode
+                cells={cells}
+                path={path}
+                languages={languages}
+                runState={runState}
+                activeId={activeId}
+                canRun={canRun}
+                busy={running}
+                cleared={cleared}
+                layout={layout}
+                onActivate={setActiveId}
+                onChange={(cellId, value) =>
+                  setCells((current) =>
+                    (current ?? []).map((c) => (c.id === cellId ? { ...c, source: value } : c)))}
+                onLanguage={(cellId, value) =>
+                  setCells((current) =>
+                    (current ?? []).map((c) =>
+                      c.id === cellId ? setCellLanguage(c, value, languages) : c))}
+                onRun={(cellId) => run(cells.findIndex((c) => c.id === cellId), 'one')}
+                onClearOutput={(cellId) => setCleared((current) => new Set(current).add(cellId))}
+                onLayout={setLayout}
+                onDelete={(cellId) => {
+                  const index = cells.findIndex((c) => c.id === cellId);
+                  const remaining = removeCell(cells, index);
+                  setCells(remaining);
+                  setActiveId(neighbourCell(remaining, index));
+                }}
+                onInsert={(afterId, kind) => {
+                  const at = afterId == null ? 0 : cells.findIndex((c) => c.id === afterId) + 1;
+                  const cell = emptyCell(kind);
+                  setCells(insertCell(cells, at, cell));
+                  setActiveId(cell.id);
+                }}
+              />
+            ) : (
+              <>
             <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
             {cells.map((cell, index) => (
-              <div key={cell.id}>
+              <div key={cell.id} data-cell-id={cell.id}>
                 <CellEditor
                   cell={cell}
                   index={index}
@@ -457,6 +580,8 @@ export function Editor() {
                 />
               </div>
             ))}
+              </>
+            )}
           </div>
         ))}
 
@@ -488,7 +613,7 @@ export function Editor() {
           />
         )}
 
-      <p className="muted">
+      <p className="muted editor-footnote">
         Every save commits to the dev branch. Cells you run here execute in a warm kernel that is
         dropped after 30 idle minutes; those runs never appear in run history and never count
         towards promotion. Run the notebook's jobs from the <Link to="/jobs">Jobs</Link> page —

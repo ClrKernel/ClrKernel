@@ -952,3 +952,260 @@ ul.tree ul {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ---------------------------------------------------------------------------
+   Focus Mode: one cell at a time, editor above output, contents on the left.
+   Every class here is prefixed `focus-` on purpose. Monaco's own DOM uses names
+   like .main, .tree and .contents, and unprefixed rules of ours have landed on
+   its widgets before — a blank suggest popup that took a while to explain.
+   --------------------------------------------------------------------------- */
+
+/* Focus Mode fixes its work area to the viewport; the page behind must not also
+   scroll, or you get two scrollbars fighting for the same wheel. */
+body.focus-mode-on {
+  overflow: hidden;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.mode-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.focus-shell {
+  display: flex;
+  /* Height is measured in JS from this element's own top, because what sits
+     above it changes. This is only the floor. */
+  min-height: 16rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.focus-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  background: var(--panel);
+  overflow: auto;
+}
+
+.focus-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+
+/* The reveal affordance when the sidebar is collapsed to nothing: a thin rail,
+   so the contents are always one click away rather than lost. */
+.focus-rail {
+  flex: 0 0 14px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0;
+}
+
+.focus-rail:hover {
+  background: var(--border);
+}
+
+ul.focus-toc,
+ul.focus-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.focus-toc ul.focus-toc-children {
+  padding-left: 0.75rem;
+}
+
+.focus-toc-leaf,
+.focus-toc-section {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.focus-toc-leaf:hover,
+.focus-toc-section:hover {
+  background: var(--border);
+}
+
+.focus-toc-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.focus-toc-active .focus-toc-count {
+  color: #fff;
+}
+
+.focus-toc-chevron {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0 0.15rem;
+  font-size: 0.7rem;
+}
+
+.focus-toc-section-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.focus-toc-count {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.focus-toc-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.focus-toc-dot {
+  font-size: 0.7rem;
+  width: 0.9em;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.focus-toc-dot-idle { color: var(--muted); opacity: 0.5; }
+.focus-toc-dot-pending { color: var(--muted); }
+.focus-toc-dot-running { color: var(--accent); }
+.focus-toc-dot-succeeded { color: #16a34a; }
+.focus-toc-dot-skipped { color: var(--muted); opacity: 0.6; }
+.focus-toc-dot-md { color: var(--muted); opacity: 0.6; }
+
+/* An errored cell has to be findable from the tree without opening every cell. */
+.focus-toc-dot-failed {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.focus-work {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.focus-cell-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+
+.focus-cell-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* flex-basis carries the split ratio; min-height keeps a pane from vanishing.
+   No overflow here — Monaco owns the scrollbar inside, and wrapping it would
+   nest two. */
+.focus-editor-pane {
+  flex: 0 1 auto;
+  min-height: 80px;
+  overflow: hidden;
+}
+
+.focus-editor {
+  height: 100%;
+}
+
+.focus-output-pane {
+  flex: 1 1 auto;
+  min-height: 80px;
+  overflow: auto;
+  padding: 0.5rem 0.6rem;
+}
+
+.focus-markdown-preview {
+  border: 0;
+  padding: 0;
+}
+
+.focus-empty,
+.focus-empty-state {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.6rem;
+}
+
+.focus-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.focus-splitter {
+  flex: 0 0 6px;
+  background: var(--border);
+  opacity: 0.6;
+}
+
+.focus-splitter:hover {
+  opacity: 1;
+  background: var(--accent);
+}
+
+.focus-splitter-vertical {
+  cursor: col-resize;
+}
+
+.focus-splitter-horizontal {
+  cursor: row-resize;
+}
+
+/* The work area is measured to the bottom of the window, so anything after it
+   would be clipped rather than reachable. Hide it instead of leaving text that
+   exists but cannot be read. */
+body.focus-mode-on .editor-footnote {
+  display: none;
+}
