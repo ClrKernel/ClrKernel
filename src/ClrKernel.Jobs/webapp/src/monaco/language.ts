@@ -90,6 +90,39 @@ export function registerLanguageProviders(
   }
   registered = true;
 
+  // Go to Definition, as opposed to Peek. Each cell is its own editor, so a
+  // definition is always in another model — even one cell up — and Monaco's
+  // standalone editor does nothing about that unless something claims it.
+  monaco.editor.registerEditorOpener({
+    openCodeEditor: (source, resource, selectionOrPosition) => {
+      const model = monaco.editor.getModel(resource);
+      const editor = model == null
+        ? undefined
+        : monaco.editor.getEditors().find((e) => e.getModel() === model);
+      if (editor == null) {
+        // Nothing on screen shows this: a decompiled framework symbol, which has
+        // no cell to scroll to. VS Code would open it in a tab and there are no
+        // tabs here, so show it the way a browser can — the peek widget, which
+        // renders the model in place.
+        return peekInstead(source);
+      }
+      const position = selectionOrPosition == null
+        ? undefined
+        : 'lineNumber' in selectionOrPosition
+          ? selectionOrPosition
+          : { lineNumber: selectionOrPosition.startLineNumber, column: selectionOrPosition.startColumn };
+      editor.focus();
+      if (position != null) {
+        editor.setPosition(position);
+        editor.revealPositionInCenterIfOutsideViewport(position);
+      }
+      // The cell sits in the page, not inside a scrolling editor, so the page has
+      // to move too — Monaco only ever scrolls its own viewport.
+      editor.getContainerDomNode().scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return true;
+    },
+  });
+
   for (const language of LANGUAGES) {
     monaco.languages.registerCompletionItemProvider(language, {
       triggerCharacters: completionTriggers,
@@ -184,6 +217,28 @@ export function registerLanguageProviders(
       },
     });
   }
+}
+
+/**
+ * Shows the peek widget for whatever Go to Definition was aiming at.
+ *
+ * Re-entrant by nature: peek asks the definition provider again, and activating
+ * a result inside the peek comes back through openCodeEditor. The guard is a
+ * short window rather than a flag cleared synchronously, because the round trip
+ * between the two is asynchronous.
+ */
+let peeking = false;
+
+function peekInstead(source: monaco.editor.ICodeEditor): boolean {
+  if (peeking) {
+    return false;
+  }
+  peeking = true;
+  setTimeout(() => {
+    peeking = false;
+  }, 1000);
+  source.trigger('clrkernel', 'editor.action.peekDefinition', null);
+  return true;
 }
 
 /**
