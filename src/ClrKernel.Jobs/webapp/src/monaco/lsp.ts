@@ -200,6 +200,44 @@ export function toMonacoMarker(
   };
 }
 
+export interface LspLocationLink {
+  targetUri: string;
+  /** What a peek frames — the whole declaration, when the server knows it. */
+  targetRange: LspRange;
+  /** The name token, highlighted inside the peek. */
+  targetSelectionRange?: LspRange;
+}
+
+/**
+ * What a definition target points at. The server answers with a URI the browser
+ * has never seen — a cell URI carrying the kernel's absolute path, or a
+ * `clrkernel-metadata:` key for a decompiled framework symbol — so this is the
+ * one place that reads them.
+ */
+export type DefinitionTarget =
+  | { kind: 'cell'; cellId: string }
+  | { kind: 'metadata'; key: string }
+  | { kind: 'unknown' };
+
+export function definitionTarget(targetUri: string | undefined | null): DefinitionTarget {
+  if (!targetUri) {
+    return { kind: 'unknown' };
+  }
+  if (targetUri.startsWith('clrkernel-metadata:')) {
+    // "clrkernel-metadata:/System.Console" — the key is the path, unescaped.
+    return { kind: 'metadata', key: decodeURIComponent(targetUri.slice('clrkernel-metadata:'.length).replace(/^\//, '')) };
+  }
+  const hash = targetUri.indexOf('#');
+  if (hash >= 0) {
+    // A cell URI. Only the fragment is usable here: the path in it is the
+    // kernel's absolute path to the notebook, which the browser never learns —
+    // and does not need to, since a session only ever answers about its own
+    // notebook, so the cell id alone identifies the cell.
+    return { kind: 'cell', cellId: targetUri.slice(hash + 1) };
+  }
+  return { kind: 'unknown' };
+}
+
 export function toMonacoHover(hover: LspHover | null | undefined): monacoType.languages.Hover | null {
   const contents = markdown(hover?.contents);
   if (contents == null) {

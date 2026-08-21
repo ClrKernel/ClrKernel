@@ -873,8 +873,9 @@ public sealed class LanguageRequest {
     public int Line { get; set; }
     public int Character { get; set; }
 
-    /// <summary>For <c>resolve</c> only: the completion item to fill in, round-tripped
-    /// from the list that produced it.</summary>
+    /// <summary>The whole payload for the kinds that ask about something rather than
+    /// about a position: the completion item for <c>resolve</c>, <c>{key}</c> for
+    /// <c>metadataSource</c>. Forwarded verbatim — the server produced it.</summary>
     public JsonElement? Item { get; set; }
 }
 

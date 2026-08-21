@@ -77,7 +77,7 @@ export interface ApiSyncCell {
 /** One language question about one cell, at one position. `source` is what the
  *  editor has right now, so the position means what the cursor means. */
 export interface ApiLanguageRequest {
-  kind: 'completion' | 'resolve' | 'hover' | 'signatureHelp';
+  kind: 'completion' | 'resolve' | 'hover' | 'signatureHelp' | 'definition' | 'metadataSource';
   cellId: string;
   languageId: string;
   source: string;

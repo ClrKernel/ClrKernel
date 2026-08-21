@@ -1,11 +1,14 @@
 import { api } from '../api';
 import {
+  definitionTarget,
   toMonacoCompletion,
   toMonacoHover,
+  toMonacoRange,
   toMonacoSignatureHelp,
   type LspCompletionItem,
   type LspCompletionList,
   type LspHover,
+  type LspLocationLink,
   type LspSignatureHelp,
 } from './lsp';
 import { monaco } from './setup';
@@ -40,8 +43,24 @@ interface CellRef {
  */
 const cells = new WeakMap<monaco.editor.ITextModel, CellRef>();
 
+/**
+ * The same relation the other way, for Go to Definition: a target lands on a cell
+ * id and has to reach that cell's model. Not weak — a Map keyed by string would
+ * hold the model alive — so cells unregister when their editor is disposed.
+ *
+ * Cell models keep Monaco's generated URIs deliberately. Giving them URIs of our
+ * own would make this lookup a one-liner and would also throw the first time two
+ * models claimed the same URI, which React's double-mount arranges for free.
+ */
+const models = new Map<string, monaco.editor.ITextModel>();
+
 export function bindCell(model: monaco.editor.ITextModel, ref: CellRef): void {
   cells.set(model, ref);
+  models.set(ref.cellId, model);
+}
+
+export function unbindCell(cellId: string): void {
+  models.delete(cellId);
 }
 
 /**
@@ -70,6 +89,43 @@ export function registerLanguageProviders(
     return;
   }
   registered = true;
+
+  // Go to Definition, as opposed to Peek. Monaco's standalone editor does nothing
+  // for a target in another model unless something claims it — each cell is its
+  // own editor, so "jump to where this is defined" is always another model, even
+  // one cell up. Returning false leaves Peek (which renders inline and needs no
+  // opener) as the answer, which is what a decompiled framework symbol gets:
+  // there is no cell to scroll to.
+  monaco.editor.registerEditorOpener({
+    openCodeEditor: (_source, resource, selectionOrPosition) => {
+      const model = monaco.editor.getModel(resource);
+      const editor = model == null
+        ? undefined
+        : monaco.editor.getEditors().find((e) => e.getModel() === model);
+      if (editor == null) {
+        // Nothing on screen shows this: a decompiled framework symbol, which has no
+        // cell to scroll to. VS Code opens those in a tab and there are no tabs
+        // here, so F12 on one does nothing and Peek Definition is the way to read
+        // it — which does work, because peek renders the model inline rather than
+        // needing somewhere to put it.
+        return false;
+      }
+      const position = selectionOrPosition == null
+        ? undefined
+        : 'lineNumber' in selectionOrPosition
+          ? selectionOrPosition
+          : { lineNumber: selectionOrPosition.startLineNumber, column: selectionOrPosition.startColumn };
+      editor.focus();
+      if (position != null) {
+        editor.setPosition(position);
+        editor.revealPositionInCenterIfOutsideViewport(position);
+      }
+      // The cell is inside the page, not inside a scrolling editor, so the page
+      // has to move too — Monaco only ever scrolls its own viewport.
+      editor.getContainerDomNode().scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return true;
+    },
+  });
 
   for (const language of LANGUAGES) {
     monaco.languages.registerCompletionItemProvider(language, {
@@ -126,6 +182,21 @@ export function registerLanguageProviders(
       },
     });
 
+    monaco.languages.registerDefinitionProvider(language, {
+      provideDefinition: async (model, position) => {
+        const ref = cells.get(model);
+        if (ref == null || !ref.enabled()) {
+          return null;
+        }
+        const links = await ask<LspLocationLink[]>(ref, 'definition', model, position);
+        if (links == null || links.length === 0) {
+          return null;
+        }
+        const resolved = await Promise.all(links.map((link) => toDefinition(ref, link)));
+        return resolved.filter((link): link is monaco.languages.LocationLink => link != null);
+      },
+    });
+
     monaco.languages.registerHoverProvider(language, {
       provideHover: async (model, position) => {
         const ref = cells.get(model);
@@ -153,6 +224,54 @@ export function registerLanguageProviders(
 }
 
 /**
+ * A definition target as somewhere Monaco can actually show.
+ *
+ * A cell target resolves to that cell's live model, so a peek shows the code as it
+ * is now, still being edited. A framework symbol has no model until we make one:
+ * the kernel decompiled it and is holding the text under a key, so it is fetched
+ * and turned into a model here, BEFORE the location is returned — peek resolves
+ * the URI by lookup and would find nothing if we created it afterwards.
+ */
+async function toDefinition(
+  ref: CellRef,
+  link: LspLocationLink,
+): Promise<monaco.languages.LocationLink | null> {
+  const range = toMonacoRange(link.targetRange);
+  if (range == null) {
+    return null;
+  }
+  const target = definitionTarget(link.targetUri);
+  if (target.kind === 'cell') {
+    const model = models.get(target.cellId);
+    return model == null
+      ? null // the cell was deleted between asking and answering
+      : { uri: model.uri, range, targetSelectionRange: toMonacoRange(link.targetSelectionRange) };
+  }
+  if (target.kind !== 'metadata') {
+    return null;
+  }
+  const uri = monaco.Uri.parse(`clrkernel-metadata:/${encodeURIComponent(target.key)}`);
+  if (monaco.editor.getModel(uri) == null) {
+    const source = await api.languageRequest<{ text?: string }>(ref.path, {
+      kind: 'metadataSource',
+      cellId: ref.cellId,
+      languageId: ref.languageId(),
+      source: '',
+      line: 0,
+      character: 0,
+      item: { key: target.key },
+    });
+    if (source?.text == null) {
+      return null;
+    }
+    // Read-only by construction: nothing gives this model an editor to type into,
+    // and the kernel is the only writer of decompiled source.
+    monaco.editor.createModel(source.text, 'csharp', uri);
+  }
+  return { uri, range, targetSelectionRange: toMonacoRange(link.targetSelectionRange) };
+}
+
+/**
  * The cell whose completion list is on screen. Monaco's resolveCompletionItem is
  * handed the item and nothing else — no model, no position — so the cell has to
  * be remembered from the request that produced the list. There is only ever one
@@ -162,7 +281,7 @@ let lastCell: CellRef | null = null;
 
 async function ask<T>(
   ref: CellRef,
-  kind: 'completion' | 'hover' | 'signatureHelp',
+  kind: 'completion' | 'hover' | 'signatureHelp' | 'definition',
   model: monaco.editor.ITextModel,
   position: monaco.Position,
 ): Promise<T | null> {

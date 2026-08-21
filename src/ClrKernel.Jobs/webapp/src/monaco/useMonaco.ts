@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { bindCell } from './language';
+import { bindCell, unbindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { cellEditorOptions, monaco } from './setup';
 
@@ -92,6 +92,12 @@ export function useCellEditor(
     return () => {
       sizeListener.dispose();
       changeListener.dispose();
+      // Before the model goes: the definition registry is a strong map, so a cell
+      // that is not unregistered both leaks its model and stays reachable as a
+      // Go to Definition target after it has been deleted.
+      if (latestBinding.current != null) {
+        unbindCell(latestBinding.current.cellId);
+      }
       created.getModel()?.dispose();
       created.dispose();
       editor.current = null;

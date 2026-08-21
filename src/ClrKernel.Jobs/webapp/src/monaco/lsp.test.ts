@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   completionKind,
+  definitionTarget,
   markdown,
   toMonacoCompletion,
   toMonacoHover,
@@ -108,6 +109,34 @@ describe('toMonacoMarker', () => {
     expect(marker.code).toBe('46010');
     expect(marker.startLineNumber).toBe(3);
     expect(marker.startColumn).toBe(5);
+  });
+});
+
+describe('definitionTarget', () => {
+  it('reads the cell from the fragment and ignores the path', () => {
+    // The path in a cell URI is the kernel's absolute path to the notebook, which
+    // the browser never learns. It does not need to: a session only answers about
+    // its own notebook, so the fragment alone identifies the cell.
+    expect(definitionTarget('vscode-notebook-cell:/srv/notebooks/dev/etl.nb.md#c3'))
+      .toEqual({ kind: 'cell', cellId: 'c3' });
+    expect(definitionTarget('vscode-notebook-cell:/C:/work/etl.nb.md#c11'))
+      .toEqual({ kind: 'cell', cellId: 'c11' });
+  });
+
+  it('reads a decompiled symbol by its key', () => {
+    expect(definitionTarget('clrkernel-metadata:/System.Console'))
+      .toEqual({ kind: 'metadata', key: 'System.Console' });
+    // Keys with generics arrive percent-encoded.
+    expect(definitionTarget('clrkernel-metadata:/System.Collections.Generic.List%601'))
+      .toEqual({ kind: 'metadata', key: 'System.Collections.Generic.List`1' });
+  });
+
+  it('refuses to guess at anything else', () => {
+    // A target with no fragment and no known scheme has nowhere to go; returning
+    // a wrong cell id would peek at unrelated code.
+    expect(definitionTarget('file:///etc/passwd')).toEqual({ kind: 'unknown' });
+    expect(definitionTarget('')).toEqual({ kind: 'unknown' });
+    expect(definitionTarget(null)).toEqual({ kind: 'unknown' });
   });
 });
 

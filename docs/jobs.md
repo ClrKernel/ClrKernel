@@ -310,9 +310,14 @@ it and everything after. The toolbar adds **Run All** and **Restart kernel**.
 - A scheduled run of the same notebook is fine — it executes the committed file in its
   own kernel, and the editor says so while it is in flight.
 
-Cells have **IntelliSense**: completion, hover, signature help, and live diagnostics,
-answered by the notebook's own kernel. A `#!sql` cell is syntax-checked as you type and
-the squiggle clears when you fix it. It sees the live session, so a variable a cell defined and ran is
+Cells have **IntelliSense**: completion, hover, signature help, live diagnostics, and
+Go to / Peek Definition, answered by the notebook's own kernel. A `#!sql` cell is
+syntax-checked as you type and the squiggle clears when you fix it. **Peek Definition**
+(⌥F12, or right-click) shows a definition inline without leaving the cell — including
+decompiled source for framework symbols, so peeking `Console` shows `System.Console`
+with its documentation. **Go to Definition** (F12) jumps to the cell a symbol was defined
+in; on a framework symbol it does nothing, because there is no cell to jump to and no
+editor tab to open — use Peek for those. It sees the live session, so a variable a cell defined and ran is
 a variable the next cell completes against — and a `#!sql` cell gets SQL completion
 rather than C#'s, because the kernel dispatches on the cell's language. Opening a
 notebook starts its kernel for this reason; before, a session appeared only on the first

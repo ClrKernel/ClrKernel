@@ -350,7 +350,14 @@ public sealed class NotebookSession : IDisposable {
         ["resolve"] = "completionItem/resolve",
         ["hover"] = "textDocument/hover",
         ["signatureHelp"] = "textDocument/signatureHelp",
+        ["definition"] = "textDocument/definition",
+        ["metadataSource"] = "clrkernel/metadataSource",
     };
+
+    // Kinds that ask about something the server already produced rather than about a
+    // position in a document: they carry their own routing and need no sync.
+    private static bool IsAboutAnItem(string method) =>
+        method is "completionItem/resolve" or "clrkernel/metadataSource";
 
     public static bool IsLanguageRequest(string kind) => kind != null && _languageMethods.ContainsKey(kind);
 
@@ -370,9 +377,7 @@ public sealed class NotebookSession : IDisposable {
 
         var kernel = await EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
 
-        // resolve asks about an item the server already produced, not about a
-        // position, so it needs no document and carries its own routing.
-        if (method == "completionItem/resolve") {
+        if (IsAboutAnItem(method)) {
             return await kernel.Client.LanguageRequestAsync(
                 method, item ?? default, cancellationToken).ConfigureAwait(false);
         }

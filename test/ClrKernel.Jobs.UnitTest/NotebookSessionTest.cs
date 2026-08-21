@@ -506,6 +506,8 @@ public class NotebookSessionTest {
         Assert.IsTrue(NotebookSession.IsLanguageRequest("resolve"));
         Assert.IsTrue(NotebookSession.IsLanguageRequest("hover"));
         Assert.IsTrue(NotebookSession.IsLanguageRequest("signatureHelp"));
+        Assert.IsTrue(NotebookSession.IsLanguageRequest("definition"));
+        Assert.IsTrue(NotebookSession.IsLanguageRequest("metadataSource"));
         Assert.IsFalse(NotebookSession.IsLanguageRequest("clrkernel/execute"));
         Assert.IsFalse(NotebookSession.IsLanguageRequest("textDocument/completion"));
         Assert.IsFalse(NotebookSession.IsLanguageRequest(null));
