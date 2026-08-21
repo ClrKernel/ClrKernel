@@ -1,4 +1,5 @@
-import { DEFAULT_ACCENT, isAccentName, type AccentName } from './palette';
+import { createContext, useContext } from 'react';
+import { ACCENTS, DEFAULT_ACCENT, isAccentName, type Accent, type AccentName } from './palette';
 
 /**
  * Which accent is in force. Stored under its own key rather than inside the
@@ -24,4 +25,22 @@ export function applyAccent(accent: AccentName): void {
   } catch {
     // Same as above: the accent still applies for this session.
   }
+}
+
+/**
+ * The live accent, for the few places that need its literal value rather than a
+ * CSS variable — today just the sandboxed output frame, which is its own
+ * document and cannot see the app's tokens.
+ *
+ * A context rather than a read of `document.documentElement.dataset.accent`:
+ * that read happens during render and nothing re-runs it, so a frame rendered
+ * before the accent changed would keep painting the old one. Consumers of a
+ * context re-render when it changes, which is the property actually needed.
+ */
+export const AccentContext = createContext<Accent>(
+  ACCENTS.find((a) => a.name === DEFAULT_ACCENT) ?? ACCENTS[0],
+);
+
+export function useAccent(): Accent {
+  return useContext(AccentContext);
 }

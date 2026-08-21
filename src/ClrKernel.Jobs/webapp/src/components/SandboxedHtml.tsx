@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ACCENTS, NEUTRAL } from '../theme/palette';
+import type { Accent } from '../theme/palette';
+import { useAccent } from '../theme/accent';
+import { NEUTRAL } from '../theme/palette';
 
 /**
  * Kernel output that needs its own scripts to run — the interactive grid builds
@@ -21,6 +23,7 @@ export function SandboxedHtml({ html }: { html: string }) {
   // every one of them posts to the same window.
   const token = useRef(`ck-${Math.random().toString(36).slice(2)}`);
 
+  const accent = useAccent();
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       const data = event.data;
@@ -41,7 +44,7 @@ export function SandboxedHtml({ html }: { html: string }) {
       title="Notebook output"
       sandbox="allow-scripts"
       style={{ height }}
-      srcDoc={document_(html, token.current)}
+      srcDoc={document_(html, token.current, accent)}
     />
   );
 }
@@ -56,10 +59,7 @@ export function SandboxedHtml({ html }: { html: string }) {
  * hand-written copy. Light only, matching the app — a frame that followed the OS
  * would render dark output inside a light page.
  */
-function document_(html: string, token: string): string {
-  // Output frames are re-rendered on an accent change, so reading the live
-  // accent here is enough — no listener inside the frame.
-  const accent = ACCENTS.find((a) => a.name === document.documentElement.dataset.accent) ?? ACCENTS[0];
+function document_(html: string, token: string, accent: Accent): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 :root {

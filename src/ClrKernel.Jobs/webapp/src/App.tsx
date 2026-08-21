@@ -12,7 +12,8 @@ import { Jobs } from './pages/Jobs';
 import { Notebooks } from './pages/Notebooks';
 import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
-import { applyAccent, loadAccent } from './theme/accent';
+import { AccentContext, applyAccent, loadAccent } from './theme/accent';
+import { ACCENTS } from './theme/palette';
 
 export function App() {
   // The inline script in index.html already put the accent on <html> before
@@ -20,7 +21,10 @@ export function App() {
   const [accent, setAccent] = useState(loadAccent);
   const isEditor = useLocation().pathname === '/edit';
 
+  const accentValue = ACCENTS.find((a) => a.name === accent) ?? ACCENTS[0];
+
   return (
+    <AccentContext.Provider value={accentValue}>
     <TooltipProvider delayDuration={300}>
       {/* Fixed rail, fixed top bar, scrolling content — the page itself never
           scrolls, so the chrome cannot slide away under a long notebook.
@@ -65,5 +69,6 @@ export function App() {
       </div>
       <Toaster position="bottom-right" richColors closeButton />
     </TooltipProvider>
+    </AccentContext.Provider>
   );
 }
