@@ -49,6 +49,10 @@ public sealed class KernelClient : IDisposable {
     /// notebook's cells are parsed, so a stale one is not cosmetic.</summary>
     public event Action<LanguagesReply> LanguagesChanged;
 
+    /// <summary>Raised when the server reports (or retracts) a document's problems.
+    /// Push, not reply: it arrives after a didOpen/didChange, unprompted.</summary>
+    public event Action<DiagnosticsNotification> DiagnosticsReceived;
+
     /// <param name="sendingStream">Stream requests are written to (the child's stdin).</param>
     /// <param name="receivingStream">Stream replies are read from (the child's stdout).</param>
     /// <param name="mode">Which surface the child was started with.</param>
@@ -238,7 +242,25 @@ public sealed class KernelClient : IDisposable {
 
         [JsonRpcMethod("clrkernel/languagesChanged", UseSingleObjectParameterDeserialization = true)]
         public void LspLanguagesChanged(LanguagesReply notification) => _client.LanguagesChanged?.Invoke(notification);
+
+        [JsonRpcMethod("textDocument/publishDiagnostics", UseSingleObjectParameterDeserialization = true)]
+        public void PublishDiagnostics(DiagnosticsNotification notification) =>
+            _client.DiagnosticsReceived?.Invoke(notification);
     }
+}
+
+/// <summary>
+/// Problems the server found in one document. An <em>empty</em> list is the
+/// retraction — the server sends one when a cell's last error is fixed, or when a
+/// language change means the previous language's complaints no longer apply — so
+/// treating empty as "nothing to do" leaves a fixed error on screen forever.
+/// </summary>
+public sealed class DiagnosticsNotification {
+    [JsonPropertyName("uri")]
+    public string Uri { get; set; }
+
+    [JsonPropertyName("diagnostics")]
+    public JsonElement? Diagnostics { get; set; }
 }
 
 /// <summary>The cell languages a kernel reports — the payload of both

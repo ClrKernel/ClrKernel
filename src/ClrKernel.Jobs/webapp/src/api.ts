@@ -2,6 +2,7 @@
 // kept in localStorage — the SPA is served by the same tool, so same-origin.
 
 import type { NotebookOutput } from './ipynb';
+import type { LspDiagnostic } from './monaco/lsp';
 
 export type RunStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut';
 export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipped';
@@ -141,6 +142,9 @@ export interface ApiSession {
    *  exactly the characters the server answers on. */
   completionTriggers?: string[];
   signatureTriggers?: string[];
+  /** What the kernel says is wrong in each cell, by cell id. An empty array is a
+   *  real answer — it is how a fixed error stops being drawn. */
+  diagnostics?: Record<string, LspDiagnostic[]>;
   cells?: Record<string, ApiCellRun>;
 }
 

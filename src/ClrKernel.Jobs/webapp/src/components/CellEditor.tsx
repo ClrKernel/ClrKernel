@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
+import type { LspDiagnostic } from '../monaco/lsp';
 import { useCellEditor } from '../monaco/useMonaco';
 import {
   connectableLanguage,
@@ -22,6 +23,8 @@ interface Props {
   /** The notebook this cell belongs to — the kernel's sessions are keyed by it,
    *  so a language request has to name it. */
   path: string;
+  /** What the kernel says is wrong in this cell. */
+  diagnostics?: LspDiagnostic[];
   /** What this cell did in the session, if it has run. */
   run: CellRunState | null;
   /** False when this deployment cannot execute — no git workflow, or a server
@@ -47,7 +50,7 @@ interface Props {
  * other. A markdown cell shows its rendered prose until you click into it.
  */
 export function CellEditor({
-  cell, index, count, languages, path, run, canRun, busy, cleared,
+  cell, index, count, languages, path, diagnostics, run, canRun, busy, cleared,
   onChange, onLanguage, onMove, onDelete, onRun, onClearOutput, onConnect,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
@@ -132,6 +135,7 @@ export function CellEditor({
               isMarkdown={isMarkdown}
               path={path}
               languages={languages}
+              diagnostics={diagnostics}
               onChange={onChange}
               onBlur={() => setEditing(false)}
             />
@@ -263,12 +267,13 @@ function OutputMenu({ onClear }: { onClear: () => void }) {
 }
 
 function CellBody({
-  cell, isMarkdown, path, languages, onChange, onBlur,
+  cell, isMarkdown, path, languages, diagnostics, onChange, onBlur,
 }: {
   cell: EditorCell;
   isMarkdown: boolean;
   path: string;
   languages: ApiLanguage[];
+  diagnostics?: LspDiagnostic[];
   onChange: (source: string) => void;
   onBlur: () => void;
 }) {
@@ -282,6 +287,7 @@ function CellBody({
       cellId: cell.id,
       languageId: cell.languageId ?? 'csharp-script',
       enabled: hasEditorServices(cell.languageId, languages),
+      diagnostics,
     });
   return <div className="cell-editor" ref={container} onBlur={onBlur} />;
 }

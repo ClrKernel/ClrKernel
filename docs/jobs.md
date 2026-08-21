@@ -310,8 +310,9 @@ it and everything after. The toolbar adds **Run All** and **Restart kernel**.
 - A scheduled run of the same notebook is fine — it executes the committed file in its
   own kernel, and the editor says so while it is in flight.
 
-Cells have **IntelliSense**: completion, hover, and signature help, answered by the
-notebook's own kernel. It sees the live session, so a variable a cell defined and ran is
+Cells have **IntelliSense**: completion, hover, signature help, and live diagnostics,
+answered by the notebook's own kernel. A `#!sql` cell is syntax-checked as you type and
+the squiggle clears when you fix it. It sees the live session, so a variable a cell defined and ran is
 a variable the next cell completes against — and a `#!sql` cell gets SQL completion
 rather than C#'s, because the kernel dispatches on the cell's language. Opening a
 notebook starts its kernel for this reason; before, a session appeared only on the first

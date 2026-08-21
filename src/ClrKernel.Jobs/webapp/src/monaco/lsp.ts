@@ -153,6 +153,53 @@ export function toMonacoCompletion(
   } as monacoType.languages.CompletionItem & { _lsp: LspCompletionItem };
 }
 
+export interface LspDiagnostic {
+  range: LspRange;
+  /** 1 Error, 2 Warning, 3 Information, 4 Hint. */
+  severity?: number;
+  code?: string | number;
+  source?: string;
+  message: string;
+}
+
+/**
+ * LSP severities to Monaco's, by name for the same reason completion kinds are:
+ * Monaco's MarkerSeverity is a bit flag set (Hint 1, Info 2, Warning 4, Error 8)
+ * and LSP's is a plain 1-based ordinal, so the two agree on 1 and 2 and mean
+ * opposite things by them. A number-to-number table that looked right would show
+ * every SQL syntax error as a hint.
+ */
+const SEVERITY_NAMES: Record<number, string> = {
+  1: 'Error',
+  2: 'Warning',
+  3: 'Info',
+  4: 'Hint',
+};
+
+/**
+ * One diagnostic as a Monaco marker. An unknown severity becomes Error: a syntax
+ * error shown too loudly is a smaller failure than one shown as a grey hint.
+ */
+export function toMonacoMarker(
+  diagnostic: LspDiagnostic,
+  severities: Record<string, number>,
+): monacoType.editor.IMarkerData {
+  const name = diagnostic.severity != null ? SEVERITY_NAMES[diagnostic.severity] : undefined;
+  const range = toMonacoRange(diagnostic.range) ?? {
+    startLineNumber: 1,
+    startColumn: 1,
+    endLineNumber: 1,
+    endColumn: 1,
+  };
+  return {
+    ...range,
+    severity: (name != null ? severities[name] : undefined) ?? severities.Error ?? 8,
+    message: diagnostic.message,
+    source: diagnostic.source,
+    code: diagnostic.code == null ? undefined : String(diagnostic.code),
+  };
+}
+
 export function toMonacoHover(hover: LspHover | null | undefined): monacoType.languages.Hover | null {
   const contents = markdown(hover?.contents);
   if (contents == null) {

@@ -150,11 +150,16 @@ public sealed class NotebookSession : IDisposable {
         // but the languageId would not, and the cell would silently drop to the
         // C# fallback instead of its own language's services.
         _synced.Clear();
+        // Its opinions about those documents went with it.
+        lock (_stateGate) {
+            _diagnostics.Clear();
+        }
         var kernel = await _startKernel(cancellationToken).ConfigureAwait(false);
         // Subscribed for the kernel's whole life, not per run: a display that
         // arrives just after a cell's reply — a progress bar finishing, or
         // background work reporting — still belongs to that cell.
         kernel.Client.DisplayReceived += Record;
+        kernel.Client.DiagnosticsReceived += RecordDiagnostics;
         // A package loaded with #r can register a cell language mid-notebook, and the
         // language set is what decides how cells parse. Take the update rather than
         // running the rest of the session against the set that existed at startup.
@@ -392,6 +397,29 @@ public sealed class NotebookSession : IDisposable {
         var reply = await kernel.Client.DescribeConnectionsAsync(languageId, NotebookUri, cancellationToken)
             .ConfigureAwait(false);
         return reply?.Providers ?? Array.Empty<ConnectionProviderDescriptor>();
+    }
+
+    // Problems the server reported, by cell id. An empty list is kept rather than
+    // removed: it is the retraction, and the editor has to be told to clear the
+    // squiggle it is still drawing.
+    private readonly Dictionary<string, JsonElement> _diagnostics = new(StringComparer.Ordinal);
+
+    private void RecordDiagnostics(DiagnosticsNotification notification) {
+        if (notification?.Uri == null || notification.Diagnostics is not { } diagnostics) {
+            return;
+        }
+        lock (_stateGate) {
+            _diagnostics[CellIdFrom(notification.Uri)] = diagnostics.Clone();
+        }
+    }
+
+    /// <summary>What the server currently says is wrong in each cell, for the editor
+    /// to draw. Empty for a cell means "nothing wrong", which is not the same as the
+    /// cell being absent — absent means the server never had an opinion.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Diagnostics() {
+        lock (_stateGate) {
+            return new Dictionary<string, JsonElement>(_diagnostics, StringComparer.Ordinal);
+        }
     }
 
     /// <summary>The state of every cell this session has run, for polling.</summary>

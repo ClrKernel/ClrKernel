@@ -4,6 +4,7 @@ import {
   markdown,
   toMonacoCompletion,
   toMonacoHover,
+  toMonacoMarker,
   toMonacoRange,
   toMonacoSignatureHelp,
 } from './lsp';
@@ -76,6 +77,37 @@ describe('toMonacoCompletion', () => {
     const original = { label: 'WriteLine', data: '7:3:/tmp/nb.md' };
     const item = toMonacoCompletion(original, fallback, kinds) as { _lsp?: unknown };
     expect(item._lsp).toBe(original);
+  });
+});
+
+describe('toMonacoMarker', () => {
+  // Monaco's MarkerSeverity is a bit-flag set; LSP's is a plain ordinal.
+  const severities = { Hint: 1, Info: 2, Warning: 4, Error: 8 };
+
+  it('maps severities by name, because the two scales collide on 1 and 2', () => {
+    // LSP 1 is Error and Monaco 1 is Hint; LSP 2 is Warning and Monaco 2 is Info.
+    // A number-to-number table would look plausible and show every SQL syntax
+    // error as a faint grey hint.
+    expect(toMonacoMarker({ range, message: 'x', severity: 1 }, severities).severity).toBe(severities.Error);
+    expect(toMonacoMarker({ range, message: 'x', severity: 2 }, severities).severity).toBe(severities.Warning);
+    expect(toMonacoMarker({ range, message: 'x', severity: 3 }, severities).severity).toBe(severities.Info);
+    expect(toMonacoMarker({ range, message: 'x', severity: 4 }, severities).severity).toBe(severities.Hint);
+  });
+
+  it('treats an unstated severity as an error rather than a hint', () => {
+    expect(toMonacoMarker({ range, message: 'x' }, severities).severity).toBe(severities.Error);
+  });
+
+  it('carries the message, source and code, and shifts the range', () => {
+    const marker = toMonacoMarker(
+      { range, message: 'Incorrect syntax near ;', source: 'clrkernel-sql', code: 46010 },
+      severities,
+    );
+    expect(marker.message).toBe('Incorrect syntax near ;');
+    expect(marker.source).toBe('clrkernel-sql');
+    expect(marker.code).toBe('46010');
+    expect(marker.startLineNumber).toBe(3);
+    expect(marker.startColumn).toBe(5);
   });
 });
 

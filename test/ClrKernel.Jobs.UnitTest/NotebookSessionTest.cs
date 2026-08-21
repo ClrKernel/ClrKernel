@@ -167,6 +167,22 @@ public class NotebookSessionTest {
         [JsonRpcMethod("textDocument/didClose", UseSingleObjectParameterDeserialization = true)]
         public void DidClose(DidOpenParams p) => DocumentEvents.Add($"didClose {Cell(p?.TextDocument?.Uri)}");
 
+        /// <summary>Pushes diagnostics for a cell, the way the server does after a
+        /// didOpen/didChange. An empty list is the retraction.</summary>
+        public Task PublishAsync(string cellUri, params string[] messages) =>
+            Rpc.NotifyWithParameterObjectAsync("textDocument/publishDiagnostics", new {
+                uri = cellUri,
+                diagnostics = messages.Select(m => new {
+                    range = new {
+                        start = new { line = 0, character = 0 },
+                        end = new { line = 0, character = 5 },
+                    },
+                    severity = 1,
+                    source = "clrkernel-sql",
+                    message = m,
+                }).ToArray(),
+            });
+
         /// <summary>Language requests, as "method uri line:char".</summary>
         public List<string> LanguageCalls { get; } = new();
 
@@ -496,6 +512,40 @@ public class NotebookSessionTest {
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => session.LanguageAsync(
             "clrkernel/execute", Sync("c0", "csharp-script", "x"), 0, 0, null, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task Diagnostics_are_kept_per_cell_and_an_empty_list_retracts_them() {
+        var (session, kernel) = NewSession();
+        await session.SyncAsync(new[] { Sync("c0", "sql", "select ;") }, CancellationToken.None);
+        await SettleEvents(kernel, 1);
+
+        await kernel.PublishAsync(session.CellUri("c0"), "Incorrect syntax near ;");
+        await SettleAsync(() => session.Diagnostics().ContainsKey("c0"), "no diagnostics arrived");
+
+        var problems = session.Diagnostics()["c0"];
+        Assert.AreEqual(1, problems.GetArrayLength());
+        Assert.AreEqual("Incorrect syntax near ;", problems[0].GetProperty("message").GetString());
+
+        // The retraction. An empty list is the server saying the cell is clean now,
+        // and dropping it as "nothing to do" leaves a fixed error underlined forever
+        // — which looks like the diagnostics being broken rather than stale.
+        await kernel.PublishAsync(session.CellUri("c0"));
+        await SettleAsync(
+            () => session.Diagnostics()["c0"].GetArrayLength() == 0,
+            "the empty list never took effect");
+    }
+
+    [TestMethod]
+    public async Task Diagnostics_are_filed_under_the_cell_not_the_uri() {
+        var (session, kernel) = NewSession();
+        // Nothing is subscribed until the session has a kernel, so open something first.
+        await session.SyncAsync(new[] { Sync("c7", "sql", "select 1") }, CancellationToken.None);
+        await kernel.PublishAsync(session.CellUri("c7"), "a problem");
+        await SettleAsync(() => session.Diagnostics().ContainsKey("c7"), "no diagnostics arrived");
+
+        // The kernel answers with the cell URI; the editor draws by cell id.
+        CollectionAssert.AreEqual(new[] { "c7" }, session.Diagnostics().Keys.ToArray());
     }
 
     [TestMethod]

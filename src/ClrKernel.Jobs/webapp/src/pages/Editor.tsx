@@ -144,11 +144,28 @@ export function Editor() {
     if (!isNotebook || cells == null || !canRun) {
       return;
     }
+    let followUp: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
-      api.syncCells(path, toSyncCells(cells)).catch(() => undefined);
+      api
+        .syncCells(path, toSyncCells(cells))
+        .then(() => {
+          // Diagnostics are pushed to the server after it processes the change,
+          // and there is no push channel on to the browser — so one status read
+          // shortly after the sync is how the squiggles arrive. Deliberately not
+          // a poll: it fires because something changed, and an idle notebook
+          // stays silent. ponytail: SSE would make this a subscription and
+          // delete the delay; it is the documented upgrade path.
+          followUp = setTimeout(() => reloadSession(), 400);
+        })
+        .catch(() => undefined);
     }, 300);
-    return () => clearTimeout(timer);
-  }, [path, isNotebook, cells, canRun]);
+    return () => {
+      clearTimeout(timer);
+      if (followUp != null) {
+        clearTimeout(followUp);
+      }
+    };
+  }, [path, isNotebook, cells, canRun, reloadSession]);
 
   async function save() {
     setError(null);
@@ -410,6 +427,7 @@ export function Editor() {
                   count={cells.length}
                   languages={languages}
                   path={path}
+                  diagnostics={session?.diagnostics?.[cell.id]}
                   run={runState[cell.id] ?? null}
                   canRun={canRun}
                   busy={running}

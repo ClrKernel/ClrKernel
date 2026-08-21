@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { bindCell } from './language';
+import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { cellEditorOptions, monaco } from './setup';
 
 /** Identifies a cell to the language providers. Absent for editors that are not
@@ -12,7 +13,13 @@ export interface CellBinding {
   languageId: string;
   /** False when the kernel has no editor services for this language. */
   enabled: boolean;
+  /** What the kernel says is wrong in this cell. An empty array clears the
+   *  squiggles; undefined means the kernel has never had an opinion. */
+  diagnostics?: LspDiagnostic[];
 }
+
+/** Who owns the markers we set, so clearing ours never clears Monaco's own. */
+const MARKER_OWNER = 'clrkernel';
 
 /** Tallest a single cell grows before it scrolls internally. */
 const MAX_CELL_HEIGHT = 600;
@@ -93,6 +100,21 @@ export function useCellEditor(
     // never rebuilds the editor (which would drop the cursor and undo stack).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Squiggles. The kernel pushes these after a document changes, and an empty
+  // list is a real answer — it is how a fixed error stops being drawn — so this
+  // runs on [] as readily as on a list of problems.
+  useEffect(() => {
+    const model = editor.current?.getModel();
+    if (model == null || binding?.diagnostics == null) {
+      return;
+    }
+    monaco.editor.setModelMarkers(
+      model,
+      MARKER_OWNER,
+      binding.diagnostics.map((d) => toMonacoMarker(d, monaco.MarkerSeverity as never)),
+    );
+  }, [binding?.diagnostics]);
 
   // Language changes when the picker moves; setModelLanguage keeps the model,
   // so undo history and the cursor survive.

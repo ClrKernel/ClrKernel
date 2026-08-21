@@ -935,6 +935,10 @@ public sealed class SessionView {
     public IReadOnlyList<string> CompletionTriggers { get; set; }
     public IReadOnlyList<string> SignatureTriggers { get; set; }
 
+    /// <summary>What the kernel says is wrong in each cell, by cell id. An empty list
+    /// is meaningful — it is how a fixed error stops being drawn.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Diagnostics { get; set; }
+
     public Dictionary<string, CellRunView> Cells { get; set; }
 
     public static SessionView From(NotebookSession session, bool scheduledRunActive) => new() {
@@ -948,6 +952,7 @@ public sealed class SessionView {
         Languages = session.Languages,
         CompletionTriggers = session.CompletionTriggers,
         SignatureTriggers = session.SignatureTriggers,
+        Diagnostics = session.Diagnostics(),
         Cells = session.Snapshot().ToDictionary(kv => kv.Key, kv => new CellRunView {
             Status = kv.Value.Status,
             ExecutionCount = kv.Value.ExecutionCount,
