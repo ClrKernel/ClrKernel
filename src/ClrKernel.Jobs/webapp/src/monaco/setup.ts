@@ -27,9 +27,22 @@ self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 monaco.editor.defineTheme('clrkernel-light', {
   base: 'vs',
   inherit: true,
-  rules: [],
+  /* Warm Paper gives four syntax hues. Monaco's `vs` base assigns its own, so
+     these are re-stated against the standard token scopes rather than left to
+     inherit — otherwise a C# cell renders in VS blue-and-red on cream. */
+  rules: [
+    { token: 'keyword', foreground: EDITOR.keyword.slice(1) },
+    { token: 'string', foreground: EDITOR.string.slice(1) },
+    { token: 'number', foreground: EDITOR.number.slice(1) },
+    { token: 'comment', foreground: EDITOR.comment.slice(1) },
+    { token: 'annotation', foreground: EDITOR.directive.slice(1) },
+    { token: 'metatag', foreground: EDITOR.directive.slice(1) },
+    { token: 'keyword.directive', foreground: EDITOR.directive.slice(1) },
+    { token: 'type', foreground: EDITOR.keyword.slice(1) },
+  ],
   colors: {
     'editor.background': EDITOR.background,
+    'editor.foreground': EDITOR.foreground,
     'editor.lineHighlightBackground': EDITOR.lineHighlight,
     'editorLineNumber.foreground': EDITOR.lineNumber,
     'editorIndentGuide.background1': EDITOR.indentGuide,
@@ -54,7 +67,8 @@ export const cellEditorOptions: monaco.editor.IStandaloneEditorConstructionOptio
   scrollBeyondLastLine: false,
   scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },
   wordWrap: 'on',
-  fontSize: 14,
+  /* 12.5px is the design's code size. Monaco takes a number, not a token. */
+  fontSize: 12.5,
   fontFamily: FONT_MONO,
   padding: { top: 8, bottom: 8 },
   renderLineHighlight: 'none',

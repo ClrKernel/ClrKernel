@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ACCENTS, EDITOR, NEUTRAL, STATUS, isAccentName } from './palette';
+import { ACCENTS, EDITOR, ENV, NEUTRAL, STATUS, isAccentName } from './palette';
 
 // Read, not import: vitest stubs CSS imports to an empty string, so `?raw`
 // would silently hand this test nothing to check.
@@ -63,11 +63,28 @@ describe('tokens.css mirrors palette.ts', () => {
     ['foreground', NEUTRAL.foreground],
     ['card', NEUTRAL.card],
     ['popover', NEUTRAL.popover],
-    ['muted', NEUTRAL.muted],
+    ['muted', NEUTRAL.panel],
     ['muted-foreground', NEUTRAL.mutedForeground],
     ['border', NEUTRAL.border],
+    ['border-subtle', NEUTRAL.borderSubtle],
+    ['input', NEUTRAL.input],
+    ['accent', NEUTRAL.hover],
+    ['muted-subtle', NEUTRAL.mutedSubtle],
+    ['surface-panel', NEUTRAL.panel],
+    ['surface-panel-strong', NEUTRAL.panelStrong],
     ['destructive', NEUTRAL.destructive],
-    ['surface-rail', NEUTRAL.surfaceRail],
+    ['env-dev', ENV.dev.fg],
+    ['env-dev-bg', ENV.dev.bg],
+    ['env-dev-border', ENV.dev.border],
+    ['env-prod', ENV.prod.fg],
+    ['env-prod-bg', ENV.prod.bg],
+    ['env-prod-border', ENV.prod.border],
+    ['code-fg', EDITOR.foreground],
+    ['line-number', EDITOR.lineNumber],
+    ['syntax-keyword', EDITOR.keyword],
+    ['syntax-string', EDITOR.string],
+    ['syntax-number', EDITOR.number],
+    ['syntax-directive', EDITOR.directive],
     ['status-idle', STATUS.idle],
     ['status-running', STATUS.running],
     ['status-error', STATUS.error],
@@ -82,27 +99,41 @@ describe('tokens.css mirrors palette.ts', () => {
   });
 
   /**
-   * The first palette put page, card, border and rail inside a 10-unit band and
-   * the whole app read as one flat grey; the second over-corrected into a grey
-   * page with white cards, which read heavy. The model now is a white canvas
-   * with tinted chrome, so what has to hold is: the chrome is tinted enough to
-   * be chrome, the rail is a step past it, and the border reads on white.
+   * Warm Paper inverts the usual light theme: the canvas is a warm cream and
+   * cards sit *above* it, lighter. Panels — gutters, footers, the explorer —
+   * step down from the canvas instead of up. Getting this ordering backwards
+   * is exactly the "everything fades into everything else" failure, so it is
+   * asserted rather than eyeballed.
    */
-  it('separates chrome from canvas by enough to see', () => {
-    const value = (hex: string) => parseInt(hex.slice(1, 3), 16);
-    expect(value(NEUTRAL.background)).toBe(0xff);
-    expect(value(NEUTRAL.card)).toBe(0xff);
-    // Chrome is tinted against the white canvas...
-    expect(value(NEUTRAL.card) - value(NEUTRAL.muted)).toBeGreaterThanOrEqual(6);
-    // ...and the rail is a further step past the chrome bars.
-    expect(value(NEUTRAL.muted) - value(NEUTRAL.surfaceRail)).toBeGreaterThanOrEqual(5);
-    // A border has to be visible against the lightest surface it sits on.
-    expect(value(NEUTRAL.card) - value(NEUTRAL.border)).toBeGreaterThanOrEqual(30);
+  it('stacks card above canvas above panel', () => {
+    const surfaces = [NEUTRAL.card, NEUTRAL.background, NEUTRAL.panel, NEUTRAL.panelStrong];
+    for (let i = 1; i < surfaces.length; i++) {
+      expect(
+        luminance(surfaces[i - 1]) - luminance(surfaces[i]),
+        `${surfaces[i - 1]} should sit clearly above ${surfaces[i]}`,
+      ).toBeGreaterThan(0.02);
+    }
   });
 
-  /** A white card on a white page is only a card because it is lifted. */
-  it('lifts panels off the canvas', () => {
-    expect(token(':root {', 'shadow-card')).toMatch(/rgb\(0 0 0 \/ 0\.0[3-9]\)/);
+  /**
+   * Borders carry the hierarchy in this design, which only works if they are
+   * actually visible on the lightest surface — and if the row rule is fainter
+   * than the region border, or a table reads as a grid of boxes.
+   */
+  it('gives borders enough to carry the hierarchy', () => {
+    expect(contrast(NEUTRAL.border, NEUTRAL.card)).toBeGreaterThan(1.2);
+    expect(luminance(NEUTRAL.borderSubtle)).toBeGreaterThan(luminance(NEUTRAL.border));
+    expect(luminance(NEUTRAL.input)).toBeLessThan(luminance(NEUTRAL.border));
+  });
+
+  /**
+   * "Shadows: essentially none — borders carry hierarchy." A card shadow token
+   * is how the previous palette separated surfaces; leaving one defined is an
+   * invitation to reintroduce it one component at a time.
+   */
+  it('has no card elevation, only floating layers', () => {
+    expect(tokensCss).not.toMatch(/--shadow-card/);
+    expect(token(':root {', 'shadow-popover')).toBe('0 4px 14px rgb(0 0 0 / 0.16)');
   });
 
   it.each(ACCENTS)('$label overrides primary, its foreground and the ring', (accent) => {
@@ -112,5 +143,25 @@ describe('tokens.css mirrors palette.ts', () => {
     // The focus ring is the accent: a neutral ring on a coloured button reads
     // as an unstyled focus state.
     expect(token(selector, 'ring')).toBe(accent.primary);
+  });
+
+  /**
+   * Secondary text lands on three of the four surfaces. `panelStrong` is not in
+   * the list on purpose: it is a *selection* fill — the explorer's active row —
+   * and selected rows carry `--foreground`, which is checked separately. Muted
+   * text on it measures 4.3:1, so putting it there is the thing to avoid.
+   */
+  it.each([
+    ['card', NEUTRAL.card],
+    ['background', NEUTRAL.background],
+    ['panel', NEUTRAL.panel],
+  ])('muted text stays legible on %s', (_name, surface) => {
+    expect(contrast(NEUTRAL.mutedForeground, surface)).toBeGreaterThanOrEqual(4.5);
+    // The subtle tier is labels and hints, so it takes the 3:1 large-text bar.
+    expect(contrast(NEUTRAL.mutedSubtle, surface)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps a selected row readable', () => {
+    expect(contrast(NEUTRAL.foreground, NEUTRAL.panelStrong)).toBeGreaterThanOrEqual(4.5);
   });
 });

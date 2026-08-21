@@ -36,7 +36,7 @@ function RailLink({ to, label, icon: Icon, end }: (typeof NAV)[number]) {
             // `relative` anchors the active bar, which sits flush to the rail's
             // left edge rather than inside the item's own padding.
             'relative flex size-[40px] items-center justify-center rounded-md outline-none transition-colors',
-            'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-rail',
+            'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
             active
               ? 'bg-accent text-primary'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -60,14 +60,14 @@ export function Rail() {
   return (
     <nav
       aria-label="Sections"
-      className="flex w-full flex-col items-center gap-1 border-r border-border bg-surface-rail py-2"
+      className="flex w-full flex-col items-center gap-1 border-r border-border bg-card py-2"
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <Link
             to="/"
             aria-label="ClrKernel Jobs — go to dashboard"
-            className="mb-1 flex size-[32px] items-center justify-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-rail"
+            className="mb-1 flex size-[32px] items-center justify-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
           >
             {/* The wordmark does not fit a 48px rail, so the mark stands in. */}
             <svg viewBox="0 0 16 16" className="size-[20px]" aria-hidden="true">

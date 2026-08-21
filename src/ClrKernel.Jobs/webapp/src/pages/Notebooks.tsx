@@ -149,7 +149,7 @@ export function Notebooks() {
                 )}
               </h2>
             )}
-            <ul className="rounded-md border border-border bg-card px-3 py-2 shadow-[var(--shadow-card)]">
+            <ul className="rounded-md border border-border bg-card px-3 py-2">
               {(environment.tree!.children ?? []).map((child) => (
                 <Node
                   key={`${environment.name}/${child.path}`}

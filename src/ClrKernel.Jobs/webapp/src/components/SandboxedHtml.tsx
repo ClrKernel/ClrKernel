@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Accent } from '../theme/palette';
 import { useAccent } from '../theme/accent';
-import { NEUTRAL } from '../theme/palette';
+import { FONT_MONO, FONT_SANS, NEUTRAL } from '../theme/palette';
 
 /**
  * Kernel output that needs its own scripts to run — the interactive grid builds
@@ -64,21 +64,22 @@ function document_(html: string, token: string, accent: Accent): string {
 <html><head><meta charset="utf-8"><style>
 :root {
   color-scheme: light;
-  --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vscode-font-family: ${FONT_SANS};
   --vscode-font-size: 13px;
+  --vscode-editor-font-family: ${FONT_MONO};
   --vscode-foreground: ${NEUTRAL.foreground};
   --vscode-editor-background: ${NEUTRAL.card};
-  --vscode-editorWidget-background: ${NEUTRAL.muted};
+  --vscode-editorWidget-background: ${NEUTRAL.panel};
   --vscode-panel-border: ${NEUTRAL.border};
   --vscode-input-background: ${NEUTRAL.card};
   --vscode-input-foreground: ${NEUTRAL.foreground};
   --vscode-input-border: ${NEUTRAL.border};
   --vscode-button-background: ${accent.primary};
   --vscode-button-foreground: ${accent.primaryForeground};
-  --vscode-button-secondaryBackground: ${NEUTRAL.muted};
+  --vscode-button-secondaryBackground: ${NEUTRAL.panel};
   --vscode-button-secondaryForeground: ${NEUTRAL.foreground};
-  --vscode-list-hoverBackground: ${NEUTRAL.muted};
-  --vscode-toolbar-hoverBackground: ${NEUTRAL.surfaceRail};
+  --vscode-list-hoverBackground: ${NEUTRAL.panel};
+  --vscode-toolbar-hoverBackground: ${NEUTRAL.panel};
   --vscode-textLink-foreground: ${accent.primary};
   --vscode-descriptionForeground: ${NEUTRAL.mutedForeground};
 }

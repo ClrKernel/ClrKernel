@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+
+/* Self-hosted, not Google Fonts: the app has to render identically offline and
+   inside the Docker image, and a webfont that 404s falls back to a stack with a
+   different x-height — which changes every measurement in the design. */
+@import "@fontsource/instrument-sans/400.css";
+@import "@fontsource/instrument-sans/500.css";
+@import "@fontsource/instrument-sans/600.css";
+@import "@fontsource/instrument-sans/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
 @import "./theme/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -11,18 +23,18 @@
   }
 
   /* The root stays at the browser default so 1rem is 16px and Tailwind's
-     spacing scale means what the spec says: w-12 is 48px, not 42px. Compact
-     density is a *type* decision, so it goes on the body. */
+     spacing scale means what the design says: w-12 is 48px, not 42px. The
+     design's own type scale is absolute px (see tokens.css), so body size is
+     one token and nothing downstream tracks the browser's default. */
   html {
     font-family: var(--font-sans);
   }
 
   body {
     @apply bg-background text-foreground;
-    /* 16px. 14px was the spec's "compact density", but at this information
-       density it reads as cramped rather than compact — the compactness that
-       matters is vertical rhythm and control height, not type size. */
-    font-size: 1rem;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
   }
 }
 
@@ -123,7 +135,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--card);
-    box-shadow: var(--shadow-card);
   }
 
   .table {
@@ -329,14 +340,9 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--card);
-    box-shadow: var(--shadow-card);
     overflow: hidden;
     margin: 0;
-    transition: box-shadow 0.12s ease, border-color 0.12s ease;
-  }
-
-  .notebook-cell:hover {
-    box-shadow: var(--shadow-card-hover);
+    transition: border-color 0.12s ease;
   }
 
   .notebook-cell:focus-within {
