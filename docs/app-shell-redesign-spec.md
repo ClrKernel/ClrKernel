@@ -265,31 +265,46 @@ Do this in reviewable steps, not one commit:
 
 ## Acceptance criteria
 
-- [ ] Left rail is fixed at 48px with Dashboard, Jobs, Notebooks, Channels;
+- [x] Left rail is fixed at 48px with Dashboard, Jobs, Notebooks, Channels;
       hovering an icon shows its label; the active route is visibly indicated.
-- [ ] Every rail and top-bar icon button has an `aria-label` and a visible
+      → measured 48px; tooltip on hover, 2px accent bar on the active route
+- [x] Every rail and top-bar icon button has an `aria-label` and a visible
       keyboard focus ring.
-- [ ] Top bar contains only the breadcrumb, theme picker, and settings gear.
-- [ ] The API key field is on the Settings page and works there.
-- [ ] The notebook page has one toolbar row: tabs left, actions right, no
+      → all five rail links labelled; focus ring visible on Tab
+- [x] Top bar contains only the breadcrumb, theme picker, and settings gear.
+      → breadcrumb + accent picker + settings; zero inputs in the header
+- [x] The API key field is on the Settings page and works there.
+      → under *Browser*; stored in the browser, sent as X-Api-Key
+- [x] The notebook page has one toolbar row: tabs left, actions right, no
       separate header or controls row.
-- [ ] The toolbar never wraps to a second line down to 1024px, degrading through
+      → one row measured — every child shares a top offset
+- [x] The toolbar never wraps to a second line down to 1024px, degrading through
       the documented steps instead.
-- [ ] Execution controls are hidden on the Source and Diff tabs; Saved and
+      → one row at 1600/1399/1199/1023, degrading through the documented steps
+- [x] Execution controls are hidden on the Source and Diff tabs; Saved and
       Promote remain on all tabs.
-- [ ] `Promote to production` is the only accent-filled button on the page.
-- [ ] Notebook cells span the full content width with consistent padding; there
+      → absent on both; Save and Promote present on all three tabs
+- [x] `Promote to production` is the only accent-filled button on the page.
+      → computed backgrounds scanned: only Promote, plus the rail's product mark
+- [x] Notebook cells span the full content width with consistent padding; there
       is no centered max-width wrapper.
-- [ ] Rail and top bar stay fixed; only the content region scrolls; there is no
+      → cell 1404px of a 1452px content region; no centered wrapper found
+- [x] Rail and top bar stay fixed; only the content region scrolls; there is no
       page-level scrollbar.
-- [ ] Focus Mode still fills the viewport correctly inside the new shell, and
+      → documentElement never scrolls; the content region is the scroll container
+- [x] Focus Mode still fills the viewport correctly inside the new shell, and
       Monaco lays out with no click-target offset after the shell change.
-- [ ] Theme picker offers 5 accents, applies instantly, survives reload, and
+      → work area 764px, ending 13px above the container bottom; cells run, click target unshifted
+- [x] Theme picker offers 5 accents, applies instantly, survives reload, and
       shows no flash of the wrong accent on load.
-- [ ] All five accents pass 4.5:1 contrast on primary buttons.
-- [ ] No hardcoded colors remain outside the token definitions and the Monaco
+      → all five measured; survives reload with the attribute set at first evaluation
+- [x] All five accents pass 4.5:1 contrast on primary buttons.
+      → blue 5.17, violet 5.70, emerald 5.48, amber 7.69, rose 6.29 — asserted in palette.test.ts
+- [x] No hardcoded colors remain outside the token definitions and the Monaco
       theme constants.
-- [ ] Monaco's background is seamless with its container.
+      → swept; guarded by noLiterals.test.ts, verified to fail on an injected literal
+- [x] Monaco's background is seamless with its container.
+      → editor, container and --code-bg all #ffffff
 
 ## Decisions I made for you — say so if you disagree
 

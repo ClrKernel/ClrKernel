@@ -37,6 +37,19 @@
   /* Must equal Monaco's editor.background, or a seam shows at the cell edge. */
   --code-bg: #ffffff;
 
+  /* Terminal output. A fixed palette rather than theme colours — ANSI 31 means
+     red whatever accent is in force — but it lives here so the rule that no
+     colour is written outside the token layer holds without exception. */
+  --ansi-black: #4b5563;
+  --ansi-magenta: #c026d3;
+  --ansi-cyan: #0891b2;
+
+  /* Floating layers. Shadows are reserved for things that genuinely float —
+     dropdowns, popovers, dialogs — never for cards. */
+  --overlay: rgb(0 0 0 / 0.45);
+  --shadow-popover: 0 4px 14px rgb(0 0 0 / 0.16);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 0.28);
+
   /* One radius everywhere. No mixed corner treatments. */
   --radius: 6px;
 

@@ -282,6 +282,21 @@ dev and prod runs of the same job never mix. In Docker, mount `/notebooks` writa
 (owned by uid 1654) when git is enabled; worktree paths are repaired automatically
 when the volume is mounted at a different path.
 
+## Getting around
+
+Navigation is a fixed icon rail on the left — Dashboard, Jobs, Notebooks, Channels —
+with the label on hover. The bar across the top is a context strip and nothing else: a
+breadcrumb saying where you are, a theme picker, and settings. What you can *do* lives
+on the page, not in the chrome.
+
+The theme picker offers five accents on one shared neutral base — blue, violet,
+emerald, amber, rose. Only the accent changes, so the app does not look like five
+different apps, and the choice is remembered in your browser. Light only for now.
+
+The **API key** the browser sends lives on the Settings page under *Browser*. It is
+stored in that browser and never written to the server; you only need it when the
+server was started with `--api-key`.
+
 ## The notebook editor
 
 Dev notebooks get an **edit** link in the tree. The editor is a notebook, not a text
@@ -291,10 +306,23 @@ shell), and controls to add, delete and reorder cells. A **Source** tab shows th
 file when you want to see exactly what is on disk, and **Diff vs production** shows
 what promoting would ship, side by side.
 
+Everything the page can do is on one toolbar row: the tabs on the left, then the kernel
+status, the **Normal | Focus** switch, **Run All**, **Restart kernel**, **Save** and
+**Promote to production**. It stays put while you scroll, and it sheds labels rather
+than wrapping when the window is narrow — below about 1024px the execution controls
+fold into a single menu. The execution controls belong to the Notebook tab and are
+hidden on Source and Diff; saving and promoting are about the document and stay
+everywhere.
+
 Cells run against a **warm kernel** — one per notebook, started on the first run and
 kept alive so variables persist between cells and between runs, exactly as they do in
 VS Code. Per cell: ▶ runs it, **▶ above** runs everything before it, **▶ below** runs
-it and everything after. The toolbar adds **Run All** and **Restart kernel**.
+it and everything after; the toolbar adds **Run All** and **Restart kernel**.
+
+**Focus Mode** gives one cell the window — its editor above, its output below, with the
+notebook's contents as a tree on the left — for when a notebook is long enough that
+scrolling to find a cell is the slow part. **Normal** is the usual scrolling list of
+cells. The switch is per notebook and is remembered.
 
 - A run stops at the first failure and marks the rest skipped — the same papermill
   semantics a scheduled run uses, so what you see here predicts what the job will do.

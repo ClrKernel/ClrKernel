@@ -49,18 +49,9 @@
 
   /* --- layout ------------------------------------------------------------- */
 
-
-
-
-
   .spacer {
     flex: 1;
   }
-
-
-
-
-
 
   h1 {
     font-size: 1.4rem;
@@ -73,23 +64,6 @@
 
   a {
     color: var(--primary);
-  }
-
-  .muted {
-    color: var(--muted-foreground);
-  }
-
-  .row-between {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .row-gap {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
   }
 
   /* --- controls ----------------------------------------------------------- */
@@ -110,34 +84,6 @@
     font-size: 0.85rem;
     width: 100%;
   }
-
-  .button {
-    display: inline-block;
-    padding: 0.4rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--muted);
-    color: var(--foreground);
-    font: inherit;
-    text-decoration: none;
-    cursor: pointer;
-  }
-
-  .button:hover {
-    border-color: var(--primary);
-  }
-
-  .button-primary {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: #fff;
-  }
-
-  .button-danger:hover {
-    border-color: var(--status-error);
-    color: var(--status-error);
-  }
-
 
   .form {
     display: flex;
@@ -166,11 +112,6 @@
   }
 
   /* --- data --------------------------------------------------------------- */
-
-
-
-
-
 
   /* A table is the one thing that can genuinely exceed the content width, so
      it scrolls inside its own box rather than widening the page. */
@@ -213,102 +154,12 @@
     background: color-mix(in srgb, var(--primary) 10%, transparent);
   }
 
-
   .preview {
     white-space: pre-wrap;
     word-break: break-word;
   }
 
-
-  .badge {
-    display: inline-block;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    border: 1px solid currentColor;
-  }
-
-  .badge-succeeded {
-    color: var(--status-success);
-  }
-
-  .badge-failed,
-  .badge-timedout {
-    color: var(--status-error);
-  }
-
-  .badge-running {
-    color: var(--status-running);
-  }
-
-  .badge-pending,
-  .badge-skipped,
-  .badge-cancelled {
-    color: var(--muted-foreground);
-  }
-
-  .chip {
-    display: inline-block;
-    margin-left: 0.35rem;
-    padding: 0.05rem 0.4rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    font-size: 0.75rem;
-    text-decoration: none;
-  }
-
-  .chip-muted {
-    color: var(--muted-foreground);
-  }
-
-  .banner {
-    padding: 0.6rem 0.8rem;
-    border-radius: 6px;
-    margin: 0.75rem 0;
-    border: 1px solid;
-  }
-
-
-  .banner-warn {
-    color: var(--status-warning);
-    border-color: var(--status-warning);
-  }
-
-  .banner ul {
-    margin: 0.4rem 0 0;
-    padding-left: 1.2rem;
-  }
-
-
-
-
-  .tabs {
-    display: flex;
-    gap: 0.25rem;
-    border-bottom: 1px solid var(--border);
-    margin: 1rem 0;
-  }
-
-  .tabs button {
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--muted-foreground);
-    cursor: pointer;
-    font: inherit;
-    padding: 0.4rem 0.7rem;
-  }
-
-  .tabs button.active {
-    color: var(--foreground);
-    border-bottom-color: var(--primary);
-  }
-
   /* --- tree --------------------------------------------------------------- */
-
-
-
-
 
   /* --- notebook ----------------------------------------------------------- */
 
@@ -401,7 +252,7 @@
     font-weight: 600;
   }
   .ansi-black {
-    color: #4b5563;
+    color: var(--ansi-black);
   }
   .ansi-red {
     color: var(--status-error);
@@ -416,10 +267,10 @@
     color: var(--status-running);
   }
   .ansi-magenta {
-    color: #c026d3;
+    color: var(--ansi-magenta);
   }
   .ansi-cyan {
-    color: #0891b2;
+    color: var(--ansi-cyan);
   }
   .ansi-white {
     color: var(--foreground);
@@ -454,35 +305,12 @@
     min-width: 6rem;
   }
 
-  .banner-ok {
-    color: var(--status-success);
-    border-color: var(--status-success);
-  }
-
   .settings-section {
     margin-bottom: 2rem;
   }
 
   .settings-label {
     min-width: 14rem;
-  }
-
-  .small {
-    font-size: 0.8rem;
-  }
-
-  .env-dev {
-    color: var(--status-warning);
-  }
-
-  .env-prod {
-    color: var(--status-success);
-  }
-
-  .button-small {
-    padding: 0.1rem 0.5rem;
-    font-size: 0.8rem;
-    margin-left: 0.4rem;
   }
 
   /* --- notebook editor (Monaco cells) ------------------------------------- */
@@ -592,11 +420,6 @@
     transition: opacity 0.12s ease-in-out;
   }
 
-  .cell-float-actions .button-small {
-    margin-left: 0;
-    background: var(--background);
-  }
-
   .notebook-cell:hover .cell-float-actions,
   .notebook-cell:focus-within .cell-float-actions {
     opacity: 1;
@@ -623,15 +446,6 @@
     display: flex;
     align-items: center;
     gap: 0.35rem;
-  }
-
-  .cell-language {
-    background: transparent;
-    color: var(--muted-foreground);
-    border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 0.1rem 0.2rem;
-    font-size: 0.78rem;
   }
 
   .cell-language:hover,
@@ -677,10 +491,6 @@
     align-items: center;
     gap: 0.5rem;
     margin-bottom: 0.5rem;
-  }
-
-  .chip-running {
-    color: var(--primary);
   }
 
   /* Output is attached to the cell but is not the cell: inset, on the page
@@ -748,7 +558,7 @@
     background: var(--popover);
     border: 1px solid var(--border);
     border-radius: 6px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    box-shadow: var(--shadow-popover);
     padding: 0.2rem;
   }
 
@@ -792,7 +602,7 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--overlay);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -804,7 +614,7 @@
     background: var(--popover);
     border: 1px solid var(--border);
     border-radius: 10px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--shadow-dialog);
     padding: 1.1rem 1.25rem 1.25rem;
     width: min(42rem, 100%);
     max-height: 80vh;
@@ -855,27 +665,6 @@
      scroll, or you get two scrollbars fighting for the same wheel. */
   body.focus-mode-on {
     overflow: hidden;
-  }
-
-  .mode-toggle {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-
-  .mode-toggle button {
-    border: 0;
-    background: transparent;
-    padding: 0.25rem 0.7rem;
-    font-size: 0.85rem;
-    cursor: pointer;
-    color: var(--muted-foreground);
-  }
-
-  .mode-toggle button.active {
-    background: var(--primary);
-    color: #fff;
   }
 
   .focus-shell {
@@ -959,11 +748,13 @@
 
   .focus-toc-active {
     background: var(--primary);
-    color: #fff;
+    /* Not #fff: white on the amber accent is about 2:1. The accent's own
+       foreground token is the one that is checked for contrast. */
+    color: var(--primary-foreground);
   }
 
   .focus-toc-active .focus-toc-count {
-    color: #fff;
+    color: var(--primary-foreground);
   }
 
   .focus-toc-chevron {
@@ -1003,13 +794,13 @@
   .focus-toc-dot-idle { color: var(--muted-foreground); opacity: 0.5; }
   .focus-toc-dot-pending { color: var(--muted-foreground); }
   .focus-toc-dot-running { color: var(--primary); }
-  .focus-toc-dot-succeeded { color: #16a34a; }
+  .focus-toc-dot-succeeded { color: var(--status-success); }
   .focus-toc-dot-skipped { color: var(--muted-foreground); opacity: 0.6; }
   .focus-toc-dot-md { color: var(--muted-foreground); opacity: 0.6; }
 
   /* An errored cell has to be findable from the tree without opening every cell. */
   .focus-toc-dot-failed {
-    color: #dc2626;
+    color: var(--status-error);
     font-weight: 700;
   }
 

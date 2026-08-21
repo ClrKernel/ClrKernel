@@ -93,7 +93,7 @@ function Cell({ cell }: { cell: NotebookCell }) {
 export function NotebookView({ notebook }: { notebook: Notebook }) {
   const cells = notebook.cells ?? [];
   if (cells.length === 0) {
-    return <p className="muted">This artifact has no cells.</p>;
+    return <p className="text-sm text-muted-foreground">This artifact has no cells.</p>;
   }
   return (
     <div className="notebook">

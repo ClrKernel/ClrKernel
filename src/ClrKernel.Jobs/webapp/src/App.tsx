@@ -58,7 +58,7 @@ export function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/edit" element={<Editor />} />
               <Route path="/runs/:id" element={<RunDetail />} />
-              <Route path="*" element={<p className="muted">Not found.</p>} />
+              <Route path="*" element={<p className="text-sm text-muted-foreground">Not found.</p>} />
             </Routes>
           </main>
         </div>

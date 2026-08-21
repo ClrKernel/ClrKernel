@@ -249,11 +249,11 @@ export function JobDetail() {
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} />
         </label>
         <label>
-          Notebook <span className="muted">(relative to the notebooks root)</span>
+          Notebook <span className="text-sm text-muted-foreground">(relative to the notebooks root)</span>
           <Input value={form.notebook} onChange={(e) => update('notebook', e.target.value)} />
         </label>
         <label>
-          Cron <span className="muted">(empty = manual or dependency-triggered)</span>
+          Cron <span className="text-sm text-muted-foreground">(empty = manual or dependency-triggered)</span>
           <Input
             value={form.cron}
             placeholder="0 2 * * *"
@@ -261,7 +261,7 @@ export function JobDetail() {
           />
         </label>
         <label>
-          Depends on <span className="muted">(comma-separated job names)</span>
+          Depends on <span className="text-sm text-muted-foreground">(comma-separated job names)</span>
           <Input value={form.dependsOn} onChange={(e) => update('dependsOn', e.target.value)} />
         </label>
         <div className="form-row">
@@ -286,7 +286,7 @@ export function JobDetail() {
           </label>
         </div>
         <label>
-          Parameters <span className="muted">(JSON, injected into the notebook)</span>
+          Parameters <span className="text-sm text-muted-foreground">(JSON, injected into the notebook)</span>
           <textarea
             rows={6}
             value={form.parameters}

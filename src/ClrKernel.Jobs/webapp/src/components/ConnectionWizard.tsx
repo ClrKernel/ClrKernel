@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { api, type ApiConnectionProvider, type ApiConnectionSetting, type ApiLanguage } from '../api';
 import { composeConnectDirective, isSecret, sameKind } from '../connectionDirective';
@@ -72,7 +73,7 @@ export function ConnectionWizard({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="row-between">
+        <div className="flex items-start justify-between gap-4">
           <h2 style={{ margin: 0 }}>New {language.displayName} connection</h2>
           <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onClose}>
             ✕
@@ -80,9 +81,9 @@ export function ConnectionWizard({
         </div>
         <ErrorBanner error={error} />
 
-        {providers == null && !error && <p className="muted">Asking the kernel what it can connect to…</p>}
+        {providers == null && !error && <p className="text-sm text-muted-foreground">Asking the kernel what it can connect to…</p>}
         {providers?.length === 0 && (
-          <p className="muted">This kernel declares no connection types for {language.displayName}.</p>
+          <p className="text-sm text-muted-foreground">This kernel declares no connection types for {language.displayName}.</p>
         )}
 
         {providers && providers.length > 1 && (
@@ -100,7 +101,7 @@ export function ConnectionWizard({
 
         {provider && (
           <>
-            {provider.description && <p className="muted small">{provider.description}</p>}
+            {provider.description && <p className="text-xs text-muted-foreground">{provider.description}</p>}
             <div className="wizard-fields">
               {provider.settings
                 .filter((setting) => !setting.runtimeOnly)
@@ -114,19 +115,19 @@ export function ConnectionWizard({
                 ))}
             </div>
 
-            <p className="muted small">
+            <p className="text-xs text-muted-foreground">
               This is what will be inserted. Nothing secret appears in it — a credential setting
               takes the <em>name</em> of a secret, resolved where the notebook runs.
             </p>
             <pre className="output-text wizard-preview">{directive}</pre>
 
             {missing.length > 0 && (
-              <p className="muted small">
+              <p className="text-xs text-muted-foreground">
                 Still needed: {missing.map((s) => s.displayName ?? s.name).join(', ')}
               </p>
             )}
 
-            <div className="row-gap">
+            <div className="flex items-center gap-2">
               <Button
                 size="sm"
                 disabled={missing.length > 0}
@@ -183,7 +184,7 @@ function Field({
         />
         <span>
           {label}
-          {setting.description && <em className="muted small"> — {setting.description}</em>}
+          {setting.description && <em className="text-xs text-muted-foreground"> — {setting.description}</em>}
         </span>
       </label>
     );
@@ -194,7 +195,7 @@ function Field({
       <span>
         {label}
         {setting.required && <span className="wizard-required"> *</span>}
-        {isSecret(setting.kind) && <span className="chip chip-muted">secret name</span>}
+        {isSecret(setting.kind) && <Badge variant="outline" className="font-normal">secret name</Badge>}
       </span>
       {setting.enumValues?.length ? (
         <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
@@ -217,7 +218,7 @@ function Field({
           }
         />
       )}
-      {setting.description && <em className="muted small">{setting.description}</em>}
+      {setting.description && <em className="text-xs text-muted-foreground">{setting.description}</em>}
     </label>
   );
 }
