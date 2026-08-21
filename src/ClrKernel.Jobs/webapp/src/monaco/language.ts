@@ -90,43 +90,6 @@ export function registerLanguageProviders(
   }
   registered = true;
 
-  // Go to Definition, as opposed to Peek. Monaco's standalone editor does nothing
-  // for a target in another model unless something claims it — each cell is its
-  // own editor, so "jump to where this is defined" is always another model, even
-  // one cell up. Returning false leaves Peek (which renders inline and needs no
-  // opener) as the answer, which is what a decompiled framework symbol gets:
-  // there is no cell to scroll to.
-  monaco.editor.registerEditorOpener({
-    openCodeEditor: (_source, resource, selectionOrPosition) => {
-      const model = monaco.editor.getModel(resource);
-      const editor = model == null
-        ? undefined
-        : monaco.editor.getEditors().find((e) => e.getModel() === model);
-      if (editor == null) {
-        // Nothing on screen shows this: a decompiled framework symbol, which has no
-        // cell to scroll to. VS Code opens those in a tab and there are no tabs
-        // here, so F12 on one does nothing and Peek Definition is the way to read
-        // it — which does work, because peek renders the model inline rather than
-        // needing somewhere to put it.
-        return false;
-      }
-      const position = selectionOrPosition == null
-        ? undefined
-        : 'lineNumber' in selectionOrPosition
-          ? selectionOrPosition
-          : { lineNumber: selectionOrPosition.startLineNumber, column: selectionOrPosition.startColumn };
-      editor.focus();
-      if (position != null) {
-        editor.setPosition(position);
-        editor.revealPositionInCenterIfOutsideViewport(position);
-      }
-      // The cell is inside the page, not inside a scrolling editor, so the page
-      // has to move too — Monaco only ever scrolls its own viewport.
-      editor.getContainerDomNode().scrollIntoView({ block: 'center', behavior: 'smooth' });
-      return true;
-    },
-  });
-
   for (const language of LANGUAGES) {
     monaco.languages.registerCompletionItemProvider(language, {
       triggerCharacters: completionTriggers,
