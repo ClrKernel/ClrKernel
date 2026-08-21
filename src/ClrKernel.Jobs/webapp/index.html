@@ -10,6 +10,20 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232563eb'/%3E%3Cpath d='M4 5.2 6.4 8 4 10.8M7.6 11h4.6' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
     />
     <title>ClrKernel Jobs</title>
+    <!-- Before first paint, not in React: applying the accent after mount shows
+         a frame of the default blue on every load for anyone who picked another.
+         Kept in sync with theme/accent.ts by accent.test.ts. -->
+    <script>
+      (function () {
+        try {
+          var a = localStorage.getItem('clrkernel-jobs-accent');
+          document.documentElement.dataset.accent =
+            ['blue', 'violet', 'emerald', 'amber', 'rose'].indexOf(a) >= 0 ? a : 'blue';
+        } catch (e) {
+          document.documentElement.dataset.accent = 'blue';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

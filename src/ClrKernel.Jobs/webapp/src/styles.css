@@ -10,1195 +10,1206 @@
     @apply border-border outline-ring/50;
   }
 
+  /* The root stays at the browser default so 1rem is 16px and Tailwind's
+     spacing scale means what the spec says: w-12 is 48px, not 42px. Compact
+     density is a *type* decision, so it goes on the body. */
   html {
     font-family: var(--font-sans);
-    /* Compact density: this is a developer tool, not a marketing site. */
-    font-size: 14px;
   }
 
   body {
     @apply bg-background text-foreground;
+    font-size: 14px;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-}
-
-code,
-pre,
-.preview {
-  font-family: var(--font-mono);
-  font-size: 0.9285rem; /* 13px against the 14px base */
-}
-
-/* --- layout ------------------------------------------------------------- */
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--muted);
-}
-
-.brand {
-  font-weight: 600;
-}
-
-.nav a {
-  color: var(--muted-foreground);
-  text-decoration: none;
-}
-
-.nav a.active {
-  color: var(--foreground);
-  font-weight: 600;
-}
-
-.spacer {
-  flex: 1;
-}
-
-.api-key {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.api-key input {
-  width: 12rem;
-}
-
-/* Element-qualified on purpose. Monaco's suggest widget builds rows out of
-   `div.main` and `div.tree`, and a bare `.main { padding: 1.5rem }` applied to
-   them — pushing the completion label out of its own 20px row and behind the
-   cell footer, which looked like an empty blue box. Ours are <main> and <ul>;
-   Monaco's are <div>. Keep new layout classes specific enough not to collide. */
-main.main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-
-/* The editor is not prose: cells want room, and a side-by-side diff at 60rem is
-   two 27rem panes of wrapped code. */
-main.main-wide {
-  max-width: 100rem;
-}
-
-/* Code takes the width; sentences do not — a 100rem line is unreadable. */
-main.main-wide p {
-  max-width: 60rem;
-}
-
-h1 {
-  font-size: 1.4rem;
-}
-
-h2 {
-  font-size: 1.1rem;
-  margin-top: 2rem;
-}
-
-a {
-  color: var(--primary);
-}
-
-.muted {
-  color: var(--muted-foreground);
-}
-
-.row-between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.row-gap {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-/* --- controls ----------------------------------------------------------- */
-
-input,
-textarea,
-select {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
-  color: var(--foreground);
-  font: inherit;
-}
-
-textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
-  width: 100%;
-}
-
-.button {
-  display: inline-block;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--muted);
-  color: var(--foreground);
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.button:hover {
-  border-color: var(--primary);
-}
-
-.button-primary {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-}
-
-.button-danger:hover {
-  border-color: var(--status-error);
-  color: var(--status-error);
-}
-
-.link-button {
-  background: none;
-  border: none;
-  color: var(--primary);
-  cursor: pointer;
-  font: inherit;
-  padding: 0 0.35rem;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  margin: 1rem 0 2rem;
-}
-
-.form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-}
-
-.form-row {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-.checkbox {
-  flex-direction: row !important;
-  align-items: center;
-  gap: 0.4rem !important;
-}
-
-/* --- data --------------------------------------------------------------- */
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-  gap: 0.75rem;
-  margin: 1rem 0;
-}
-
-.card {
-  padding: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--muted);
-}
-
-.card-value {
-  font-size: 1.6rem;
-  font-weight: 600;
-}
-
-.card-failed {
-  color: var(--status-error);
-}
-
-.card-label {
-  color: var(--muted-foreground);
-  font-size: 0.85rem;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.5rem 0;
-}
-
-.table th,
-.table td {
-  text-align: left;
-  padding: 0.45rem 0.5rem;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
-  vertical-align: top;
-}
-
-.table th {
-  color: var(--muted-foreground);
-  font-weight: 500;
-}
-
-.row-active {
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-}
-
-.cell-index {
-  color: var(--muted-foreground);
-  white-space: nowrap;
-}
-
-.preview {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.error-text {
-  color: var(--status-error);
-  font-size: 0.85rem;
-}
-
-.badge {
-  display: inline-block;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  border: 1px solid currentColor;
-}
-
-.badge-succeeded {
-  color: var(--status-success);
-}
-
-.badge-failed,
-.badge-timedout {
-  color: var(--status-error);
-}
-
-.badge-running {
-  color: var(--status-running);
-}
-
-.badge-pending,
-.badge-skipped,
-.badge-cancelled {
-  color: var(--muted-foreground);
-}
-
-.chip {
-  display: inline-block;
-  margin-left: 0.35rem;
-  padding: 0.05rem 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  text-decoration: none;
-}
-
-.chip-muted {
-  color: var(--muted-foreground);
-}
-
-.banner {
-  padding: 0.6rem 0.8rem;
-  border-radius: 6px;
-  margin: 0.75rem 0;
-  border: 1px solid;
-}
-
-.banner-error {
-  color: var(--status-error);
-  border-color: var(--status-error);
-}
-
-.banner-warn {
-  color: var(--status-warning);
-  border-color: var(--status-warning);
-}
-
-.banner ul {
-  margin: 0.4rem 0 0;
-  padding-left: 1.2rem;
-}
-
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.9rem;
-  color: var(--muted-foreground);
-  font-size: 0.85rem;
-  margin-bottom: 0.75rem;
-}
-
-.progress {
-  height: 4px;
-  background: var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-  margin: 0.5rem 0;
-}
-
-.progress-bar {
-  height: 100%;
-  background: var(--status-success);
-  transition: width 0.3s;
-}
-
-.tabs {
-  display: flex;
-  gap: 0.25rem;
-  border-bottom: 1px solid var(--border);
-  margin: 1rem 0;
-}
-
-.tabs button {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font: inherit;
-  padding: 0.4rem 0.7rem;
-}
-
-.tabs button.active {
-  color: var(--foreground);
-  border-bottom-color: var(--primary);
-}
-
-/* --- tree --------------------------------------------------------------- */
-
-ul.tree,
-ul.tree ul {
-  list-style: none;
-  padding-left: 1rem;
-  margin: 0.25rem 0;
-}
-
-.tree-toggle {
-  background: none;
-  border: none;
-  color: var(--foreground);
-  cursor: pointer;
-  font: inherit;
-  padding: 0.15rem 0;
-}
-
-.tree-file {
-  padding: 0.15rem 0;
-}
-
-.tree-jobsfile .tree-name {
-  color: var(--muted-foreground);
-}
-
-/* --- notebook ----------------------------------------------------------- */
-
-.notebook {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.cell-code {
-  display: flex;
-  gap: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem;
-  background: var(--muted);
-}
-
-.cell-injected {
-  border-style: dashed;
-}
-
-.cell-gutter {
-  color: var(--muted-foreground);
-  min-width: 1.5rem;
-  text-align: right;
-  font-size: 0.8rem;
-}
-
-.cell-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.cell-tag {
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  margin-bottom: 0.25rem;
-}
-
-.cell-source,
-.output-text {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-}
-
-.output-text {
-  margin-top: 0.4rem;
-  color: var(--muted-foreground);
-}
-
-.log {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.6rem;
-  background: var(--muted);
-  max-height: 32rem;
-  overflow: auto;
-}
-
-.output-html {
-  margin-top: 0.4rem;
-  overflow-x: auto;
-}
-
-.output-html table {
-  border-collapse: collapse;
-}
-
-.output-html th,
-.output-html td {
-  border: 1px solid var(--border);
-  padding: 0.2rem 0.4rem;
-  font-size: 0.85rem;
-}
-
-.output-error {
-  margin-top: 0.4rem;
-  color: var(--status-error);
-}
-
-.cell-markdown :first-child {
-  margin-top: 0;
-}
-
-/* ANSI colours for stream output. */
-.ansi-bold {
-  font-weight: 600;
-}
-.ansi-black {
-  color: #4b5563;
-}
-.ansi-red {
-  color: var(--status-error);
-}
-.ansi-green {
-  color: var(--status-success);
-}
-.ansi-yellow {
-  color: var(--status-warning);
-}
-.ansi-blue {
-  color: var(--status-running);
-}
-.ansi-magenta {
-  color: #c026d3;
-}
-.ansi-cyan {
-  color: #0891b2;
-}
-.ansi-white {
-  color: var(--foreground);
-}
-.ansi-bright-black {
-  color: var(--muted-foreground);
-}
-
-.fieldset {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem;
-}
-
-.fieldset legend {
-  color: var(--muted-foreground);
-  font-size: 0.85rem;
-  padding: 0 0.3rem;
-}
-
-.notify-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.2rem 0;
-}
-
-.notify-label {
-  color: var(--muted-foreground);
-  font-size: 0.9rem;
-  min-width: 6rem;
-}
-
-.banner-ok {
-  color: var(--status-success);
-  border-color: var(--status-success);
-}
-
-.settings-section {
-  margin-bottom: 2rem;
-}
-
-.settings-label {
-  min-width: 14rem;
-}
-
-.small {
-  font-size: 0.8rem;
-}
-
-.env-dev {
-  color: var(--status-warning);
-}
-
-.env-prod {
-  color: var(--status-success);
-}
-
-.button-small {
-  padding: 0.1rem 0.5rem;
-  font-size: 0.8rem;
-  margin-left: 0.4rem;
-}
-
-/* --- notebook editor (Monaco cells) ------------------------------------- */
-
-.notebook-editor {
-  margin-bottom: 0.75rem;
-}
-
-/* The cell reads as one object: a code body with a footer, and output attached
-   underneath but visibly a different kind of thing. */
-.notebook-cell {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--background);
-  overflow: hidden;
-  margin: 0;
-}
-
-.notebook-cell:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
-}
-
-/* A run that failed is worth seeing without reading the badge. */
-.notebook-cell.cell-failed {
-  border-left: 3px solid var(--status-error);
-}
-
-.notebook-cell.cell-succeeded {
-  border-left: 3px solid var(--status-success);
-}
-
-.notebook-cell.cell-running {
-  border-left: 3px solid var(--status-running);
-}
-
-.notebook-cell-markdown {
-  background: var(--muted);
-}
-
-.cell-main {
-  display: flex;
-  align-items: stretch;
-}
-
-/* The gutter: run at the top, execution count at the bottom. */
-.cell-gutter-bar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: center;
-  flex: 0 0 2.6rem;
-  padding: 0.35rem 0 0.3rem;
-  background: var(--muted);
-  border-right: 1px solid var(--border);
-}
-
-.cell-run-button {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font-size: 0.85rem;
-  line-height: 1;
-  padding: 0.2rem 0.35rem;
-}
-
-.cell-run-button:hover:not(:disabled) {
-  color: var(--primary);
-  border-color: var(--border);
-  background: var(--background);
-}
-
-.cell-run-button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.cell-run-spacer {
-  height: 1.3rem;
-}
-
-.cell-gutter-index {
-  color: var(--muted-foreground);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  white-space: pre;
-}
-
-.cell-content {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Structural actions float over the top-right of the editor rather than taking
-   a row of their own — a resting cell should be code and nothing else. */
-.cell-float-actions {
-  position: absolute;
-  top: 0.25rem;
-  right: 0.5rem;
-  z-index: 2;
-  display: flex;
-  gap: 0.25rem;
-  opacity: 0;
-  transition: opacity 0.12s ease-in-out;
-}
-
-.cell-float-actions .button-small {
-  margin-left: 0;
-  background: var(--background);
-}
-
-.notebook-cell:hover .cell-float-actions,
-.notebook-cell:focus-within .cell-float-actions {
-  opacity: 1;
-}
-
-/* Monaco sizes itself to the content; the container just holds the space. */
-.cell-editor {
-  width: 100%;
-}
-
-/* What the cell did on the left, how it is configured on the right. */
-.cell-footer {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.5rem;
-  border-top: 1px solid var(--border);
-  background: var(--muted);
-  font-size: 0.78rem;
-  min-height: 1.9rem;
-}
-
-.cell-footer-status {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.cell-language {
-  background: transparent;
-  color: var(--muted-foreground);
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 0.1rem 0.2rem;
-  font-size: 0.78rem;
-}
-
-.cell-language:hover,
-.cell-language:focus {
-  border-color: var(--border);
-  color: var(--foreground);
-}
-
-/* Rendered prose, the way a notebook reads. Double-click returns to the editor. */
-.cell-preview {
-  padding: 0.1rem 0.9rem;
-  cursor: text;
-}
-
-.cell-preview > :first-child {
-  margin-top: 0.4rem;
-}
-
-.cell-preview > :last-child {
-  margin-bottom: 0.4rem;
-}
-
-/* The gap between two cells: a thin strip that offers to fill itself. */
-.cell-inserter {
-  display: flex;
-  justify-content: center;
-  gap: 0.4rem;
-  height: 1.5rem;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.12s ease-in-out;
-}
-
-.cell-inserter:hover,
-.cell-inserter-always {
-  opacity: 1;
-}
-
-/* --- running cells ------------------------------------------------------- */
-
-.notebook-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.chip-running {
-  color: var(--primary);
-}
-
-/* Output is attached to the cell but is not the cell: inset, on the page
-   background, and separated by a rule. */
-.cell-outputs {
-  position: relative;
-  border-top: 1px solid var(--border);
-  background: var(--muted);
-  padding: 0.35rem 0.6rem 0.35rem 3.1rem;
-  max-height: 32rem;
-  overflow: auto;
-}
-
-/* The cell changed after this ran, so the result no longer matches the code
-   above it. Dimmed rather than dropped — losing output on a keystroke is worse. */
-.cell-outputs-stale {
-  opacity: 0.45;
-}
-
-.cell-outputs .output-text {
-  margin: 0.2rem 0;
-}
-
-/* Script-driven output runs in its own document; the frame is sized from the
-   height it reports, so it must not add chrome of its own. */
-.output-frame {
-  display: block;
-  width: 100%;
-  border: 0;
-  background: transparent;
-}
-
-/* Left, in the strip that lines up with the cell's run gutter — the same edge
-   every other control on the cell hangs off. */
-.output-menu {
-  position: absolute;
-  top: 0.2rem;
-  left: 0.5rem;
-  z-index: 3;
-}
-
-.output-menu-button {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font-size: 0.9rem;
-  line-height: 1;
-  padding: 0.05rem 0.35rem;
-}
-
-.output-menu-button:hover {
-  border-color: var(--border);
-  background: var(--background);
-  color: var(--foreground);
-}
-
-/* Placed from the button's rect by OutputMenu: fixed, so neither the output
-   area's scrolling nor the cell's hidden overflow can clip it. */
-.output-menu-items {
-  position: fixed;
-  min-width: 9rem;
-  z-index: 40;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
-  padding: 0.2rem;
-}
-
-.output-menu-items button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  color: var(--foreground);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
-  padding: 0.3rem 0.5rem;
-  border-radius: 4px;
-}
-
-.output-menu-items button:hover {
-  background: var(--muted);
-}
-
-.source-editor {
-  width: 100%;
-  min-height: 28rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-/* Height is set from the line count in useDiffEditor — a diff editor never
-   sizes itself, and a fixed height leaves a short file in a half-empty box. */
-.diff-editor {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-/* --- modal (the connection wizard) --------------------------------------- */
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 4rem 1rem 2rem;
-  z-index: 50;
-}
-
-.modal {
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
-  padding: 1.1rem 1.25rem 1.25rem;
-  width: min(42rem, 100%);
-  max-height: 80vh;
-  overflow: auto;
-}
-
-.wizard-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0.75rem;
-  margin: 0.85rem 0;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-}
-
-.form-field.checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.wizard-required {
-  color: var(--status-warning);
-}
-
-.wizard-preview {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
-  background: var(--muted);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-/* ---------------------------------------------------------------------------
-   Focus Mode: one cell at a time, editor above output, contents on the left.
-   Every class here is prefixed `focus-` on purpose. Monaco's own DOM uses names
-   like .main, .tree and .contents, and unprefixed rules of ours have landed on
-   its widgets before — a blank suggest popup that took a while to explain.
-   --------------------------------------------------------------------------- */
-
-/* Focus Mode fixes its work area to the viewport; the page behind must not also
-   scroll, or you get two scrollbars fighting for the same wheel. */
-body.focus-mode-on {
-  overflow: hidden;
-}
-
-.mode-toggle {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.mode-toggle button {
-  border: 0;
-  background: transparent;
-  padding: 0.25rem 0.7rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  color: var(--muted-foreground);
-}
-
-.mode-toggle button.active {
-  background: var(--primary);
-  color: #fff;
-}
-
-.focus-shell {
-  display: flex;
-  /* Height is measured in JS from this element's own top, because what sits
-     above it changes. This is only the floor. */
-  min-height: 16rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.focus-sidebar {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
-  background: var(--muted);
-  overflow: auto;
-}
-
-.focus-sidebar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted-foreground);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  background: var(--muted);
-}
-
-/* The reveal affordance when the sidebar is collapsed to nothing: a thin rail,
-   so the contents are always one click away rather than lost. */
-.focus-rail {
-  flex: 0 0 14px;
-  border: 0;
-  border-right: 1px solid var(--border);
-  background: var(--muted);
-  cursor: pointer;
-  color: var(--muted-foreground);
-  font-size: 0.7rem;
-  padding: 0;
-}
-
-.focus-rail:hover {
-  background: var(--border);
-}
-
-ul.focus-toc,
-ul.focus-toc ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-ul.focus-toc ul.focus-toc-children {
-  padding-left: 0.75rem;
-}
-
-.focus-toc-leaf,
-.focus-toc-section {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.82rem;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.focus-toc-leaf:hover,
-.focus-toc-section:hover {
-  background: var(--border);
-}
-
-.focus-toc-active {
-  background: var(--primary);
-  color: #fff;
-}
-
-.focus-toc-active .focus-toc-count {
-  color: #fff;
-}
-
-.focus-toc-chevron {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  color: var(--muted-foreground);
-  padding: 0 0.15rem;
-  font-size: 0.7rem;
-}
-
-.focus-toc-section-label {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.focus-toc-count {
-  color: var(--muted-foreground);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-}
-
-.focus-toc-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.focus-toc-dot {
-  font-size: 0.7rem;
-  width: 0.9em;
-  text-align: center;
-  flex: 0 0 auto;
-}
-
-.focus-toc-dot-idle { color: var(--muted-foreground); opacity: 0.5; }
-.focus-toc-dot-pending { color: var(--muted-foreground); }
-.focus-toc-dot-running { color: var(--primary); }
-.focus-toc-dot-succeeded { color: #16a34a; }
-.focus-toc-dot-skipped { color: var(--muted-foreground); opacity: 0.6; }
-.focus-toc-dot-md { color: var(--muted-foreground); opacity: 0.6; }
-
-/* An errored cell has to be findable from the tree without opening every cell. */
-.focus-toc-dot-failed {
-  color: #dc2626;
-  font-weight: 700;
-}
-
-.focus-work {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.focus-cell-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.5rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--muted);
-  flex: 0 0 auto;
-}
-
-.focus-cell-title {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8rem;
-  color: var(--muted-foreground);
-}
-
-/* flex-basis carries the split ratio; min-height keeps a pane from vanishing.
-   No overflow here — Monaco owns the scrollbar inside, and wrapping it would
-   nest two. */
-.focus-editor-pane {
-  flex: 0 1 auto;
-  min-height: 80px;
-  overflow: hidden;
-}
-
-.focus-editor {
-  height: 100%;
-}
-
-.focus-output-pane {
-  flex: 1 1 auto;
-  min-height: 80px;
-  overflow: auto;
-  padding: 0.5rem 0.6rem;
-}
-
-.focus-markdown-preview {
-  border: 0;
-  padding: 0;
-}
-
-.focus-empty,
-.focus-empty-state {
-  color: var(--muted-foreground);
-  font-size: 0.85rem;
-  padding: 0.6rem;
-}
-
-.focus-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
-.focus-splitter {
-  flex: 0 0 6px;
-  background: var(--border);
-  opacity: 0.6;
-}
-
-.focus-splitter:hover {
-  opacity: 1;
-  background: var(--primary);
-}
-
-.focus-splitter-vertical {
-  cursor: col-resize;
-}
-
-.focus-splitter-horizontal {
-  cursor: row-resize;
-}
-
-/* The work area is measured to the bottom of the window, so anything after it
-   would be clipped rather than reachable. Hide it instead of leaving text that
-   exists but cannot be read. */
-body.focus-mode-on .editor-footnote {
-  display: none;
+/* --- the pre-redesign stylesheet -----------------------------------------
+ * Layered deliberately. Unlayered CSS beats layered CSS, so while these rules
+ * sat outside a layer a bare `a { color: … }` silently overrode every Tailwind
+ * text utility on a link. In `components` they lose to utilities, which is what
+ * lets pages be migrated one at a time. Shrinking as pages move over.
+ */
+@layer components {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  code,
+  pre,
+  .preview {
+    font-family: var(--font-mono);
+    font-size: 0.9285rem; /* 13px against the 14px base */
+  }
+
+  /* --- layout ------------------------------------------------------------- */
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--muted);
+  }
+
+  .brand {
+    font-weight: 600;
+  }
+
+  .nav a {
+    color: var(--muted-foreground);
+    text-decoration: none;
+  }
+
+  .nav a.active {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .api-key {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .api-key input {
+    width: 12rem;
+  }
+
+  /* Element-qualified on purpose. Monaco's suggest widget builds rows out of
+     `div.main` and `div.tree`, and a bare `.main { padding: 1.5rem }` applied to
+     them — pushing the completion label out of its own 20px row and behind the
+     cell footer, which looked like an empty blue box. Ours are <main> and <ul>;
+     Monaco's are <div>. Keep new layout classes specific enough not to collide. */
+  main.main {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  /* The editor is not prose: cells want room, and a side-by-side diff at 60rem is
+     two 27rem panes of wrapped code. */
+  main.main-wide {
+    max-width: 100rem;
+  }
+
+  /* Code takes the width; sentences do not — a 100rem line is unreadable. */
+  main.main-wide p {
+    max-width: 60rem;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  h2 {
+    font-size: 1.1rem;
+    margin-top: 2rem;
+  }
+
+  a {
+    color: var(--primary);
+  }
+
+  .muted {
+    color: var(--muted-foreground);
+  }
+
+  .row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .row-gap {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  /* --- controls ----------------------------------------------------------- */
+
+  input,
+  textarea,
+  select {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+  }
+
+  textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    width: 100%;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--muted);
+    color: var(--foreground);
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .button:hover {
+    border-color: var(--primary);
+  }
+
+  .button-primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  .button-danger:hover {
+    border-color: var(--status-error);
+    color: var(--status-error);
+  }
+
+  .link-button {
+    background: none;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font: inherit;
+    padding: 0 0.35rem;
+  }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin: 1rem 0 2rem;
+  }
+
+  .form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+
+  .checkbox {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0.4rem !important;
+  }
+
+  /* --- data --------------------------------------------------------------- */
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0;
+  }
+
+  .card {
+    padding: 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--muted);
+  }
+
+  .card-value {
+    font-size: 1.6rem;
+    font-weight: 600;
+  }
+
+  .card-failed {
+    color: var(--status-error);
+  }
+
+  .card-label {
+    color: var(--muted-foreground);
+    font-size: 0.85rem;
+  }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.5rem 0;
+  }
+
+  .table th,
+  .table td {
+    text-align: left;
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    vertical-align: top;
+  }
+
+  .table th {
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+
+  .row-active {
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+
+  .cell-index {
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+
+  .preview {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .error-text {
+    color: var(--status-error);
+    font-size: 0.85rem;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    border: 1px solid currentColor;
+  }
+
+  .badge-succeeded {
+    color: var(--status-success);
+  }
+
+  .badge-failed,
+  .badge-timedout {
+    color: var(--status-error);
+  }
+
+  .badge-running {
+    color: var(--status-running);
+  }
+
+  .badge-pending,
+  .badge-skipped,
+  .badge-cancelled {
+    color: var(--muted-foreground);
+  }
+
+  .chip {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    text-decoration: none;
+  }
+
+  .chip-muted {
+    color: var(--muted-foreground);
+  }
+
+  .banner {
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    margin: 0.75rem 0;
+    border: 1px solid;
+  }
+
+  .banner-error {
+    color: var(--status-error);
+    border-color: var(--status-error);
+  }
+
+  .banner-warn {
+    color: var(--status-warning);
+    border-color: var(--status-warning);
+  }
+
+  .banner ul {
+    margin: 0.4rem 0 0;
+    padding-left: 1.2rem;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    color: var(--muted-foreground);
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .progress {
+    height: 4px;
+    background: var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--status-success);
+    transition: width 0.3s;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    margin: 1rem 0;
+  }
+
+  .tabs button {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font: inherit;
+    padding: 0.4rem 0.7rem;
+  }
+
+  .tabs button.active {
+    color: var(--foreground);
+    border-bottom-color: var(--primary);
+  }
+
+  /* --- tree --------------------------------------------------------------- */
+
+  ul.tree,
+  ul.tree ul {
+    list-style: none;
+    padding-left: 1rem;
+    margin: 0.25rem 0;
+  }
+
+  .tree-toggle {
+    background: none;
+    border: none;
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    padding: 0.15rem 0;
+  }
+
+  .tree-file {
+    padding: 0.15rem 0;
+  }
+
+  .tree-jobsfile .tree-name {
+    color: var(--muted-foreground);
+  }
+
+  /* --- notebook ----------------------------------------------------------- */
+
+  .notebook {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .cell-code {
+    display: flex;
+    gap: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem;
+    background: var(--muted);
+  }
+
+  .cell-injected {
+    border-style: dashed;
+  }
+
+  .cell-gutter {
+    color: var(--muted-foreground);
+    min-width: 1.5rem;
+    text-align: right;
+    font-size: 0.8rem;
+  }
+
+  .cell-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cell-tag {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .cell-source,
+  .output-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+  }
+
+  .output-text {
+    margin-top: 0.4rem;
+    color: var(--muted-foreground);
+  }
+
+  .log {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem;
+    background: var(--muted);
+    max-height: 32rem;
+    overflow: auto;
+  }
+
+  .output-html {
+    margin-top: 0.4rem;
+    overflow-x: auto;
+  }
+
+  .output-html table {
+    border-collapse: collapse;
+  }
+
+  .output-html th,
+  .output-html td {
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .output-error {
+    margin-top: 0.4rem;
+    color: var(--status-error);
+  }
+
+  .cell-markdown :first-child {
+    margin-top: 0;
+  }
+
+  /* ANSI colours for stream output. */
+  .ansi-bold {
+    font-weight: 600;
+  }
+  .ansi-black {
+    color: #4b5563;
+  }
+  .ansi-red {
+    color: var(--status-error);
+  }
+  .ansi-green {
+    color: var(--status-success);
+  }
+  .ansi-yellow {
+    color: var(--status-warning);
+  }
+  .ansi-blue {
+    color: var(--status-running);
+  }
+  .ansi-magenta {
+    color: #c026d3;
+  }
+  .ansi-cyan {
+    color: #0891b2;
+  }
+  .ansi-white {
+    color: var(--foreground);
+  }
+  .ansi-bright-black {
+    color: var(--muted-foreground);
+  }
+
+  .fieldset {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+  }
+
+  .fieldset legend {
+    color: var(--muted-foreground);
+    font-size: 0.85rem;
+    padding: 0 0.3rem;
+  }
+
+  .notify-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.2rem 0;
+  }
+
+  .notify-label {
+    color: var(--muted-foreground);
+    font-size: 0.9rem;
+    min-width: 6rem;
+  }
+
+  .banner-ok {
+    color: var(--status-success);
+    border-color: var(--status-success);
+  }
+
+  .settings-section {
+    margin-bottom: 2rem;
+  }
+
+  .settings-label {
+    min-width: 14rem;
+  }
+
+  .small {
+    font-size: 0.8rem;
+  }
+
+  .env-dev {
+    color: var(--status-warning);
+  }
+
+  .env-prod {
+    color: var(--status-success);
+  }
+
+  .button-small {
+    padding: 0.1rem 0.5rem;
+    font-size: 0.8rem;
+    margin-left: 0.4rem;
+  }
+
+  /* --- notebook editor (Monaco cells) ------------------------------------- */
+
+  .notebook-editor {
+    margin-bottom: 0.75rem;
+  }
+
+  /* The cell reads as one object: a code body with a footer, and output attached
+     underneath but visibly a different kind of thing. */
+  .notebook-cell {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--background);
+    overflow: hidden;
+    margin: 0;
+  }
+
+  .notebook-cell:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+
+  /* A run that failed is worth seeing without reading the badge. */
+  .notebook-cell.cell-failed {
+    border-left: 3px solid var(--status-error);
+  }
+
+  .notebook-cell.cell-succeeded {
+    border-left: 3px solid var(--status-success);
+  }
+
+  .notebook-cell.cell-running {
+    border-left: 3px solid var(--status-running);
+  }
+
+  .notebook-cell-markdown {
+    background: var(--muted);
+  }
+
+  .cell-main {
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* The gutter: run at the top, execution count at the bottom. */
+  .cell-gutter-bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    flex: 0 0 2.6rem;
+    padding: 0.35rem 0 0.3rem;
+    background: var(--muted);
+    border-right: 1px solid var(--border);
+  }
+
+  .cell-run-button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0.2rem 0.35rem;
+  }
+
+  .cell-run-button:hover:not(:disabled) {
+    color: var(--primary);
+    border-color: var(--border);
+    background: var(--background);
+  }
+
+  .cell-run-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .cell-run-spacer {
+    height: 1.3rem;
+  }
+
+  .cell-gutter-index {
+    color: var(--muted-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    white-space: pre;
+  }
+
+  .cell-content {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Structural actions float over the top-right of the editor rather than taking
+     a row of their own — a resting cell should be code and nothing else. */
+  .cell-float-actions {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.5rem;
+    z-index: 2;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+  }
+
+  .cell-float-actions .button-small {
+    margin-left: 0;
+    background: var(--background);
+  }
+
+  .notebook-cell:hover .cell-float-actions,
+  .notebook-cell:focus-within .cell-float-actions {
+    opacity: 1;
+  }
+
+  /* Monaco sizes itself to the content; the container just holds the space. */
+  .cell-editor {
+    width: 100%;
+  }
+
+  /* What the cell did on the left, how it is configured on the right. */
+  .cell-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.5rem;
+    border-top: 1px solid var(--border);
+    background: var(--muted);
+    font-size: 0.78rem;
+    min-height: 1.9rem;
+  }
+
+  .cell-footer-status {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .cell-language {
+    background: transparent;
+    color: var(--muted-foreground);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 0.1rem 0.2rem;
+    font-size: 0.78rem;
+  }
+
+  .cell-language:hover,
+  .cell-language:focus {
+    border-color: var(--border);
+    color: var(--foreground);
+  }
+
+  /* Rendered prose, the way a notebook reads. Double-click returns to the editor. */
+  .cell-preview {
+    padding: 0.1rem 0.9rem;
+    cursor: text;
+  }
+
+  .cell-preview > :first-child {
+    margin-top: 0.4rem;
+  }
+
+  .cell-preview > :last-child {
+    margin-bottom: 0.4rem;
+  }
+
+  /* The gap between two cells: a thin strip that offers to fill itself. */
+  .cell-inserter {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 1.5rem;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+  }
+
+  .cell-inserter:hover,
+  .cell-inserter-always {
+    opacity: 1;
+  }
+
+  /* --- running cells ------------------------------------------------------- */
+
+  .notebook-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .chip-running {
+    color: var(--primary);
+  }
+
+  /* Output is attached to the cell but is not the cell: inset, on the page
+     background, and separated by a rule. */
+  .cell-outputs {
+    position: relative;
+    border-top: 1px solid var(--border);
+    background: var(--muted);
+    padding: 0.35rem 0.6rem 0.35rem 3.1rem;
+    max-height: 32rem;
+    overflow: auto;
+  }
+
+  /* The cell changed after this ran, so the result no longer matches the code
+     above it. Dimmed rather than dropped — losing output on a keystroke is worse. */
+  .cell-outputs-stale {
+    opacity: 0.45;
+  }
+
+  .cell-outputs .output-text {
+    margin: 0.2rem 0;
+  }
+
+  /* Script-driven output runs in its own document; the frame is sized from the
+     height it reports, so it must not add chrome of its own. */
+  .output-frame {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+  }
+
+  /* Left, in the strip that lines up with the cell's run gutter — the same edge
+     every other control on the cell hangs off. */
+  .output-menu {
+    position: absolute;
+    top: 0.2rem;
+    left: 0.5rem;
+    z-index: 3;
+  }
+
+  .output-menu-button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 0.05rem 0.35rem;
+  }
+
+  .output-menu-button:hover {
+    border-color: var(--border);
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  /* Placed from the button's rect by OutputMenu: fixed, so neither the output
+     area's scrolling nor the cell's hidden overflow can clip it. */
+  .output-menu-items {
+    position: fixed;
+    min-width: 9rem;
+    z-index: 40;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    padding: 0.2rem;
+  }
+
+  .output-menu-items button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .output-menu-items button:hover {
+    background: var(--muted);
+  }
+
+  .source-editor {
+    width: 100%;
+    min-height: 28rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* Height is set from the line count in useDiffEditor — a diff editor never
+     sizes itself, and a fixed height leaves a short file in a half-empty box. */
+  .diff-editor {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* --- modal (the connection wizard) --------------------------------------- */
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4rem 1rem 2rem;
+    z-index: 50;
+  }
+
+  .modal {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    padding: 1.1rem 1.25rem 1.25rem;
+    width: min(42rem, 100%);
+    max-height: 80vh;
+    overflow: auto;
+  }
+
+  .wizard-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 0.75rem;
+    margin: 0.85rem 0;
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+  }
+
+  .form-field.checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .wizard-required {
+    color: var(--status-warning);
+  }
+
+  .wizard-preview {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+    background: var(--muted);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* ---------------------------------------------------------------------------
+     Focus Mode: one cell at a time, editor above output, contents on the left.
+     Every class here is prefixed `focus-` on purpose. Monaco's own DOM uses names
+     like .main, .tree and .contents, and unprefixed rules of ours have landed on
+     its widgets before — a blank suggest popup that took a while to explain.
+     --------------------------------------------------------------------------- */
+
+  /* Focus Mode fixes its work area to the viewport; the page behind must not also
+     scroll, or you get two scrollbars fighting for the same wheel. */
+  body.focus-mode-on {
+    overflow: hidden;
+  }
+
+  .mode-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .mode-toggle button {
+    border: 0;
+    background: transparent;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--muted-foreground);
+  }
+
+  .mode-toggle button.active {
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .focus-shell {
+    display: flex;
+    /* Height is measured in JS from this element's own top, because what sits
+       above it changes. This is only the floor. */
+    min-height: 16rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .focus-sidebar {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    background: var(--muted);
+    overflow: auto;
+  }
+
+  .focus-sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted-foreground);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--muted);
+  }
+
+  /* The reveal affordance when the sidebar is collapsed to nothing: a thin rail,
+     so the contents are always one click away rather than lost. */
+  .focus-rail {
+    flex: 0 0 14px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--muted);
+    cursor: pointer;
+    color: var(--muted-foreground);
+    font-size: 0.7rem;
+    padding: 0;
+  }
+
+  .focus-rail:hover {
+    background: var(--border);
+  }
+
+  ul.focus-toc,
+  ul.focus-toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  ul.focus-toc ul.focus-toc-children {
+    padding-left: 0.75rem;
+  }
+
+  .focus-toc-leaf,
+  .focus-toc-section {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .focus-toc-leaf:hover,
+  .focus-toc-section:hover {
+    background: var(--border);
+  }
+
+  .focus-toc-active {
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .focus-toc-active .focus-toc-count {
+    color: #fff;
+  }
+
+  .focus-toc-chevron {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--muted-foreground);
+    padding: 0 0.15rem;
+    font-size: 0.7rem;
+  }
+
+  .focus-toc-section-label {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-toc-count {
+    color: var(--muted-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+  }
+
+  .focus-toc-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .focus-toc-dot {
+    font-size: 0.7rem;
+    width: 0.9em;
+    text-align: center;
+    flex: 0 0 auto;
+  }
+
+  .focus-toc-dot-idle { color: var(--muted-foreground); opacity: 0.5; }
+  .focus-toc-dot-pending { color: var(--muted-foreground); }
+  .focus-toc-dot-running { color: var(--primary); }
+  .focus-toc-dot-succeeded { color: #16a34a; }
+  .focus-toc-dot-skipped { color: var(--muted-foreground); opacity: 0.6; }
+  .focus-toc-dot-md { color: var(--muted-foreground); opacity: 0.6; }
+
+  /* An errored cell has to be findable from the tree without opening every cell. */
+  .focus-toc-dot-failed {
+    color: #dc2626;
+    font-weight: 700;
+  }
+
+  .focus-work {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .focus-cell-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--muted);
+    flex: 0 0 auto;
+  }
+
+  .focus-cell-title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+    color: var(--muted-foreground);
+  }
+
+  /* flex-basis carries the split ratio; min-height keeps a pane from vanishing.
+     No overflow here — Monaco owns the scrollbar inside, and wrapping it would
+     nest two. */
+  .focus-editor-pane {
+    flex: 0 1 auto;
+    min-height: 80px;
+    overflow: hidden;
+  }
+
+  .focus-editor {
+    height: 100%;
+  }
+
+  .focus-output-pane {
+    flex: 1 1 auto;
+    min-height: 80px;
+    overflow: auto;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .focus-markdown-preview {
+    border: 0;
+    padding: 0;
+  }
+
+  .focus-empty,
+  .focus-empty-state {
+    color: var(--muted-foreground);
+    font-size: 0.85rem;
+    padding: 0.6rem;
+  }
+
+  .focus-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .focus-splitter {
+    flex: 0 0 6px;
+    background: var(--border);
+    opacity: 0.6;
+  }
+
+  .focus-splitter:hover {
+    opacity: 1;
+    background: var(--primary);
+  }
+
+  .focus-splitter-vertical {
+    cursor: col-resize;
+  }
+
+  .focus-splitter-horizontal {
+    cursor: row-resize;
+  }
+
+  /* The work area is measured to the bottom of the window, so anything after it
+     would be clipped rather than reachable. Hide it instead of leaving text that
+     exists but cannot be read. */
+  body.focus-mode-on .editor-footnote {
+    display: none;
+  }
+
 }

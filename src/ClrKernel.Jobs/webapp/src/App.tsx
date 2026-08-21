@@ -1,73 +1,69 @@
 import { useState } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { apiKey, setApiKey } from './api';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Rail } from './components/Rail';
+import { TopBar } from './components/TopBar';
 import { Channels } from './pages/Channels';
 import { Dashboard } from './pages/Dashboard';
+import { Editor } from './pages/Editor';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
 import { Notebooks } from './pages/Notebooks';
-import { Editor } from './pages/Editor';
-import { Settings } from './pages/Settings';
 import { RunDetail } from './pages/RunDetail';
-
-/** Lets the user store the API key when the server requires one. */
-function ApiKeyBox() {
-  const [key, setKey] = useState(apiKey());
-  const [saved, setSaved] = useState(false);
-  return (
-    <div className="api-key">
-      <input
-        type="password"
-        placeholder="API key (if required)"
-        value={key}
-        onChange={(e) => {
-          setKey(e.target.value);
-          setSaved(false);
-        }}
-      />
-      <button
-        className="button"
-        onClick={() => {
-          setApiKey(key);
-          setSaved(true);
-        }}
-      >
-        {saved ? 'Saved' : 'Set'}
-      </button>
-    </div>
-  );
-}
+import { Settings } from './pages/Settings';
+import { applyAccent, loadAccent } from './theme/accent';
 
 export function App() {
+  // The inline script in index.html already put the accent on <html> before
+  // first paint; this only mirrors it so the picker can show a tick.
+  const [accent, setAccent] = useState(loadAccent);
+  const isEditor = useLocation().pathname === '/edit';
+
   return (
-    <div className="app">
-      <nav className="nav">
-        <span className="brand">ClrKernel Jobs</span>
-        <NavLink to="/">Dashboard</NavLink>
-        <NavLink to="/jobs">Jobs</NavLink>
-        <NavLink to="/notebooks">Notebooks</NavLink>
-        <NavLink to="/channels">Channels</NavLink>
-        <NavLink to="/settings">Settings</NavLink>
-        <div className="spacer" />
-        <ApiKeyBox />
-      </nav>
-      {/* 60rem is a good measure for reading tables and forms, and far too narrow
-          for an editor — a side-by-side diff would get two 27rem panes. The editor
-          takes the window instead. */}
-      <main className={useLocation().pathname === '/edit' ? 'main main-wide' : 'main'}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/jobs" element={<Jobs />} />
-          <Route path="/jobs/:env/new" element={<JobDetail />} />
-          <Route path="/jobs/:env/:name" element={<JobDetail />} />
-          <Route path="/notebooks" element={<Notebooks />} />
-          <Route path="/channels" element={<Channels />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/edit" element={<Editor />} />
-          <Route path="/runs/:id" element={<RunDetail />} />
-          <Route path="*" element={<p className="muted">Not found.</p>} />
-        </Routes>
-      </main>
-    </div>
+    <TooltipProvider delayDuration={300}>
+      {/* Fixed rail, fixed top bar, scrolling content — the page itself never
+          scrolls, so the chrome cannot slide away under a long notebook.
+
+          The row track is minmax(0,1fr), not the implicit `auto`: an auto row
+          grows to its content, so h-screen would only clip the overflow rather
+          than constrain it, and a long notebook would push the content region
+          to several times the viewport height. */}
+      <div className="grid h-screen grid-cols-[48px_1fr] grid-rows-[minmax(0,1fr)] overflow-hidden">
+        <Rail />
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <TopBar
+            accent={accent}
+            onAccent={(next) => {
+              applyAccent(next);
+              setAccent(next);
+            }}
+          />
+          <main
+            // The editor manages its own panes and gutters; every other page
+            // takes the standard content padding.
+            className={
+              isEditor
+                ? 'min-h-0 flex-1 overflow-auto'
+                : 'min-h-0 flex-1 overflow-auto px-6 pb-8 pt-4'
+            }
+          >
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/jobs" element={<Jobs />} />
+              <Route path="/jobs/:env/new" element={<JobDetail />} />
+              <Route path="/jobs/:env/:name" element={<JobDetail />} />
+              <Route path="/notebooks" element={<Notebooks />} />
+              <Route path="/channels" element={<Channels />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/edit" element={<Editor />} />
+              <Route path="/runs/:id" element={<RunDetail />} />
+              <Route path="*" element={<p className="muted">Not found.</p>} />
+            </Routes>
+          </main>
+        </div>
+      </div>
+      <Toaster position="bottom-right" richColors closeButton />
+    </TooltipProvider>
   );
 }

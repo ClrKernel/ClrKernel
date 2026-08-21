@@ -1,7 +1,56 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type SettingField, type SettingsSection } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { api, apiKey, setApiKey, type SettingField, type SettingsSection } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
+
+/**
+ * The API key the browser sends on every request. It lives here rather than in
+ * the top bar because it is configuration, not navigation — and it was the
+ * busiest thing in the old header.
+ *
+ * Browser-local on purpose: it is stored in this browser only and never sent to
+ * the server as a setting, so it does not appear in the schema-driven sections
+ * below.
+ */
+function ApiKeySection() {
+  const [key, setKey] = useState(apiKey);
+  const [saved, setSaved] = useState(false);
+  const stored = apiKey();
+
+  return (
+    <section className="settings-section">
+      <h2>Browser</h2>
+      <p className="muted">
+        Sent as <code>X-Api-Key</code> on every request. Required only when the server was started
+        with a key; stored in this browser, never written to the server.
+      </p>
+      <form
+        className="flex max-w-md items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setApiKey(key);
+          setSaved(true);
+        }}
+      >
+        <Input
+          type="password"
+          value={key}
+          aria-label="API key"
+          placeholder={stored ? 'Stored — type to replace' : 'API key (if required)'}
+          onChange={(event) => {
+            setKey(event.target.value);
+            setSaved(false);
+          }}
+        />
+        <Button type="submit" variant="secondary" disabled={key === stored}>
+          {saved && key === stored ? 'Saved' : 'Save'}
+        </Button>
+      </form>
+    </section>
+  );
+}
 
 function FieldValue({ field }: { field: SettingField }) {
   if (field.type === 'secret') {
@@ -116,6 +165,7 @@ export function Settings() {
         Values pinned by a flag or environment variable are shown locked — change those on the
         host. Security and execution settings are host-only by design.
       </p>
+      <ApiKeySection />
       {(data?.sections ?? []).map((section) => (
         <Section key={section.key} section={section} />
       ))}

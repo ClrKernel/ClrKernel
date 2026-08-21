@@ -15,6 +15,24 @@ import { Output } from './NotebookView';
 import { Splitter } from './Splitter';
 import { TocTree } from './TocTree';
 
+/**
+ * The nearest ancestor that actually scrolls, or null for the window.
+ *
+ * Found by walking rather than by id: it stays correct if the shell's structure
+ * changes, and it keeps this component from importing the shell just to learn
+ * one string.
+ */
+function scrollParent(node: HTMLElement): HTMLElement | null {
+  for (let el = node.parentElement; el != null; el = el.parentElement) {
+    const overflow = getComputedStyle(el).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll') {
+      return el;
+    }
+  }
+  return null;
+}
+
+
 /** Neither pane may be squeezed to nothing by the splitter. */
 const MIN_PANE = 80;
 
@@ -115,14 +133,22 @@ export function FocusMode({
       if (node == null) {
         return;
       }
+      // Measure against the scroll container, not the window. The shell makes
+      // the content region the only thing that scrolls, so the document never
+      // overflows and a documentElement-based correction would always be a
+      // no-op — silently, which is the worst way for it to be wrong.
+      const scroller = scrollParent(node);
       const top = node.getBoundingClientRect().top;
-      const wanted = Math.max(window.innerHeight - top, 260);
+      const floor = scroller?.getBoundingClientRect().bottom ?? window.innerHeight;
+      const wanted = Math.max(floor - top, 260);
       node.style.height = `${wanted}px`;
       // Whatever sits below — page padding, a footer, an ancestor's margin — is
       // somebody else's layout decision. Rather than enumerate it, take the
       // measurement the browser just made and give the excess back. One pass
       // converges because nothing below depends on this height.
-      const excess = document.documentElement.scrollHeight - window.innerHeight;
+      const excess = scroller
+        ? scroller.scrollHeight - scroller.clientHeight
+        : document.documentElement.scrollHeight - window.innerHeight;
       if (excess > 0) {
         node.style.height = `${Math.max(wanted - excess, 260)}px`;
       }
