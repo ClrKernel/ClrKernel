@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, type Job, type Run } from '../api';
-import { ErrorBanner, usePolling } from '../components/common';
+import { EnvBadge, ErrorBanner, usePolling } from '../components/common';
 import { RunTable } from './Dashboard';
 
 interface FormState {
@@ -112,6 +113,13 @@ export function JobDetail() {
   );
   const { data: channels } = usePolling(() => api.channels(), null);
   const channelNames = (channels?.channels ?? []).map((c) => c.name);
+  // The jobs file itself, not a client-side re-serialisation of the form: what
+  // is on disk is the thing worth showing, and it needs no new endpoint.
+  const { data: yaml } = usePolling<string>(
+    () => (job ? api.notebookContent(env, job.jobsFile) : Promise.resolve('')),
+    null,
+    [job?.jobsFile],
+  );
 
   useEffect(() => {
     if (job) {
@@ -207,13 +215,9 @@ export function JobDetail() {
   return (
     <div>
       <div className="mb-4 flex items-start justify-between gap-4">
-        <h1 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight">
+        <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold tracking-tight">
           <span className="truncate">{isNew ? 'New job' : name}</span>
-          {env !== 'default' && (
-            <Badge variant="secondary" className="font-mono text-xs">
-              {env}
-            </Badge>
-          )}
+          {env !== 'default' && <EnvBadge env={env} />}
         </h1>
         {!isNew && (
           <div className="flex shrink-0 items-center gap-2">
@@ -237,12 +241,15 @@ export function JobDetail() {
       </div>
       <ErrorBanner error={error} />
       <ErrorBanner error={saveError} />
-      {job && (
-        <p className="mb-3 text-base text-muted-foreground">
-          Defined in <code className="font-mono">{job.jobsFile}</code>
-        </p>
-      )}
 
+      <Tabs defaultValue="overview">
+        <TabsList variant="line" className="mb-4">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {!isNew && <TabsTrigger value="runs">Runs</TabsTrigger>}
+          {!isNew && <TabsTrigger value="yaml">YAML</TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="overview">
       <div className="form">
         <label>
           Name
@@ -319,12 +326,23 @@ export function JobDetail() {
         </div>
       </div>
 
-      {!isNew && (
-        <>
-          <h2 className="mb-2 mt-6 text-base font-semibold">Run history</h2>
+        </TabsContent>
+
+        <TabsContent value="runs">
           <RunTable runs={runs ?? []} showJob={false} />
-        </>
-      )}
+        </TabsContent>
+
+        <TabsContent value="yaml">
+          {job && (
+            <p className="mb-2 text-base text-muted-foreground">
+              Defined in <code className="font-mono text-code">{job.jobsFile}</code>
+            </p>
+          )}
+          <pre className="max-w-[820px] overflow-x-auto rounded-2xl border border-border bg-muted px-4 py-3.5 font-mono text-sm leading-relaxed text-code-fg">
+            {yaml ?? ''}
+          </pre>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

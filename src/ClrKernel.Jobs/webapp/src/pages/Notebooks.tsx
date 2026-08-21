@@ -1,98 +1,104 @@
-import { ChevronDown, ChevronRight, FileText, NotebookText, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { GitBranch } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { api, type TreeNode } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 
 function Node({
   node,
   env,
+  depth,
+  editable,
   onCreate,
 }: {
   node: TreeNode;
   env: string;
+  depth: number;
+  editable: boolean;
   onCreate: (path: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  // Indent in the row's own padding rather than by nesting <ul>s, so a deep
+  // path still gets the full-width hover band.
+  const indent = { paddingLeft: `${16 + depth * 14}px` };
+  const row =
+    'flex items-center gap-1.5 py-[5px] pr-4 hover:bg-muted';
 
   if (node.isDirectory) {
-    const children = node.children ?? [];
     return (
-      <li>
+      <>
         <button
           type="button"
-          className="flex items-center gap-1 rounded-sm py-0.5 text-base font-medium outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+          className={`${row} w-full text-left text-base font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+          style={indent}
           onClick={() => setOpen(!open)}
           aria-expanded={open}
         >
-          {open ? (
-            <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
-          ) : (
-            <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
-          )}
+          <span aria-hidden="true" className="w-3 shrink-0 text-[10px] text-muted-subtle">
+            {open ? '▾' : '▸'}
+          </span>
           {node.name}
         </button>
-        {open && children.length > 0 && (
-          <ul className="ml-4 border-l border-border pl-3">
-            {children.map((child) => (
-              <Node key={child.path} node={child} env={env} onCreate={onCreate} />
-            ))}
-          </ul>
-        )}
-      </li>
+        {open &&
+          (node.children ?? []).map((child) => (
+            <Node
+              key={child.path}
+              node={child}
+              env={env}
+              depth={depth + 1}
+              editable={editable}
+              onCreate={onCreate}
+            />
+          ))}
+      </>
     );
   }
 
   if (node.kind === 'jobs') {
     return (
-      <li className="flex items-center gap-2 py-0.5 text-base">
-        <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="font-mono">{node.name}</span>
-        <span className="text-base text-muted-foreground">jobs file</span>
-      </li>
+      <div className={`${row} font-mono text-code text-muted-subtle`} style={indent}>
+        <span aria-hidden="true" className="w-3 shrink-0" />
+        {node.name}
+      </div>
     );
   }
 
-  const editable = env === 'dev' && node.kind === 'notebook';
   const href = `/edit?path=${encodeURIComponent(node.path)}`;
   return (
-    <li className="group flex items-center gap-2 py-0.5 text-base">
-      <NotebookText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <div className={row} style={indent}>
+      <span aria-hidden="true" className="w-3 shrink-0" />
       {editable ? (
-        <Link className="font-mono text-primary hover:underline" to={href}>
+        <Link className="font-mono text-code hover:text-primary hover:underline" to={href}>
           {node.name}
         </Link>
       ) : (
-        <span className="font-mono">{node.name}</span>
+        <span className="font-mono text-code">{node.name}</span>
       )}
       {node.jobs?.map((job) => (
-        <Link key={job} to={`/jobs/${env}/${encodeURIComponent(job)}`}>
-          <Badge variant="outline" className="font-normal hover:bg-accent">
-            {job}
-          </Badge>
+        <Link
+          key={job}
+          to={`/jobs/${env}/${encodeURIComponent(job)}`}
+          className="rounded-full border border-env-prod-border bg-env-prod-bg px-2 py-px text-xs font-semibold text-env-prod hover:no-underline"
+        >
+          {job}
         </Link>
       ))}
-      {/* The row's actions stay out of the way until you are on the row. */}
-      <span className="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        {editable && (
-          <Button asChild variant="outline" size="sm" className="h-6 px-2 text-sm">
-            <Link to={href}>Edit</Link>
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-sm"
-          onClick={() => onCreate(node.path)}
-        >
-          <Plus className="size-3" aria-hidden="true" />
-          job
-        </Button>
-      </span>
-    </li>
+      <button
+        type="button"
+        className="text-xs text-muted-subtle outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => onCreate(node.path)}
+      >
+        + job
+      </button>
+    </div>
   );
 }
 
@@ -102,28 +108,40 @@ export function Notebooks() {
   const { data: health } = usePolling(() => api.health(), null);
 
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
+  const [env, setEnv] = useState<string>('');
+  // The list arrives after first paint, so the initial selection is set once it
+  // does — dev if it exists, because dev is the one you can edit.
+  useEffect(() => {
+    if (!env && environments.length > 0) {
+      setEnv(environments.find((e) => e.name === 'dev')?.name ?? environments[0].name);
+    }
+  }, [environments.length]);
+
+  const selected = environments.find((e) => e.name === env);
+  const editable = env === 'dev' && (health?.gitEnabled ?? false);
+
   return (
     <div>
       <PageHeader
         title="Notebooks"
         description={
           <>
-            Every <code className="font-mono">*.jobs.yaml</code> found here defines jobs. Pick a
-            notebook to add one.
+            Every <code className="font-mono text-code">*.jobs.yaml</code> found here defines jobs.
+            Pick a notebook to add one, or click its name to open the editor.
           </>
         }
       />
       <ErrorBanner error={error} />
 
       {health && !health.gitEnabled && (
-        <Alert variant="warning" className="mb-4">
+        <Alert variant="warning" className="mb-4 max-w-[640px]">
           <AlertTitle>Editing needs the git workflow</AlertTitle>
           <AlertDescription>
             <p>
               Editing notebooks in the browser needs the dev→prod git workflow, so every save is a
               commit. Enable it once (stop the server first):
             </p>
-            <pre className="my-2 overflow-x-auto rounded-sm bg-muted px-2 py-1.5 font-mono text-base text-foreground">
+            <pre className="my-2 overflow-x-auto rounded-lg bg-muted px-2 py-1.5 font-mono text-code text-foreground">
               clrkernel-jobs git init --notebooks &lt;your notebooks folder&gt;
             </pre>
             <p>
@@ -137,32 +155,46 @@ export function Notebooks() {
       {environments.length === 0 ? (
         <p className="text-base text-muted-foreground">No notebooks under the notebooks root.</p>
       ) : (
-        environments.map((environment) => (
-          <section key={environment.name} className="mb-5">
-            {environment.name !== 'default' && (
-              <h2 className="mb-1 flex items-center gap-2 text-base font-semibold">
-                {environment.name}
-                {environment.name === 'prod' && (
-                  <Badge variant="secondary" className="font-normal">
-                    read-only
-                  </Badge>
-                )}
-              </h2>
+        <>
+          {/* The handoff shows a branch picker. There is no branch API — the
+              real axis is the environment, which *is* a worktree when the git
+              workflow is on, so this is the same control over honest data. */}
+          <div className="mb-3 flex items-center gap-2">
+            <GitBranch className="size-[15px] shrink-0 text-muted-subtle" aria-hidden="true" />
+            <Select value={env} onValueChange={setEnv}>
+              <SelectTrigger className="font-mono" aria-label="Environment">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {environments.map((environment) => (
+                  <SelectItem key={environment.name} value={environment.name} className="font-mono">
+                    {environment.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!editable && (
+              <span className="rounded-full border border-border px-2 py-px text-xs font-semibold text-muted-subtle">
+                read-only
+              </span>
             )}
-            <ul className="rounded-md border border-border bg-card px-3 py-2">
-              {(environment.tree!.children ?? []).map((child) => (
-                <Node
-                  key={`${environment.name}/${child.path}`}
-                  node={child}
-                  env={environment.name}
-                  onCreate={(path) =>
-                    navigate(`/jobs/${environment.name}/new?notebook=${encodeURIComponent(path)}`)
-                  }
-                />
-              ))}
-            </ul>
-          </section>
-        ))
+          </div>
+
+          <div className="max-w-[640px] overflow-hidden rounded-2xl border border-border bg-card py-2.5">
+            {(selected?.tree?.children ?? []).map((child) => (
+              <Node
+                key={`${env}/${child.path}`}
+                node={child}
+                env={env}
+                depth={0}
+                editable={editable}
+                onCreate={(path) =>
+                  navigate(`/jobs/${env}/new?notebook=${encodeURIComponent(path)}`)
+                }
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

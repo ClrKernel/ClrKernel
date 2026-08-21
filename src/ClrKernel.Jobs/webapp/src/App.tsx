@@ -48,8 +48,8 @@ export function App() {
             // takes the standard content padding.
             className={
               isEditor
-                ? 'min-h-0 flex-1 overflow-auto'
-                : 'min-h-0 flex-1 overflow-auto px-6 pb-8 pt-4'
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                : 'min-h-0 flex-1 overflow-auto px-7 py-5'
             }
           >
             <Routes>
@@ -62,7 +62,10 @@ export function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/edit" element={<Editor />} />
               <Route path="/runs/:id" element={<RunDetail />} />
-              <Route path="*" element={<p className="text-base text-muted-foreground">Not found.</p>} />
+              <Route
+              path="*"
+              element={<p className="text-base text-muted-foreground">Not found.</p>}
+            />
             </Routes>
           </main>
         </div>

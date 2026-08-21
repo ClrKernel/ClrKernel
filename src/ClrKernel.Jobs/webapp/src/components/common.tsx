@@ -41,6 +41,30 @@ export function StatusBadge({ status }: { status: RunStatus | CellStatus | strin
   );
 }
 
+/**
+ * The environment chip: a tinted pill, `dev` amber and `prod` green.
+ *
+ * Semantic rather than accent-derived on purpose — production is production
+ * whichever accent the user picked, the same rule the ANSI palette follows.
+ * Anything that is not one of the two known environments falls back to the
+ * neutral outline, so a custom env name still renders as a chip.
+ */
+const ENV_CHIP: Record<string, string> = {
+  dev: 'bg-env-dev-bg text-env-dev border-env-dev-border',
+  prod: 'bg-env-prod-bg text-env-prod border-env-prod-border',
+};
+
+export function EnvBadge({ env, className = '' }: { env: string; className?: string }) {
+  const tint = ENV_CHIP[env.toLowerCase()] ?? 'bg-transparent text-muted-subtle border-border';
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-px text-xs font-semibold ${tint} ${className}`}
+    >
+      {env}
+    </span>
+  );
+}
+
 export function ErrorBanner({ error }: { error: string | null }) {
   return error ? (
     <Alert variant="destructive" className="my-3">
@@ -67,7 +91,7 @@ export function PageHeader({
   return (
     <div className="mb-4 flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-xl font-bold tracking-tight">{title}</h1>
         {/* Cells and tables take the full width; sentences do not. A 1600px
             line of prose is unreadable. */}
         {description && (

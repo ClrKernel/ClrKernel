@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, isActive, type Run, type RunCell } from '../api';
-import { ErrorBanner, StatusBadge, usePolling } from '../components/common';
+import { EnvBadge, ErrorBanner, StatusBadge, usePolling } from '../components/common';
 import { NotebookView } from '../components/NotebookView';
 import { duration, timeAgo, type Notebook } from '../ipynb';
 
@@ -14,35 +13,39 @@ function CellProgress({ cells }: { cells: RunCell[] }) {
   if (cells.length === 0) {
     return <p className="text-base text-muted-foreground">No cells recorded for this run.</p>;
   }
-  const done = cells.filter((c) => c.status === 'Succeeded').length;
   return (
     <>
-      <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full bg-primary transition-[width]"
-          style={{ width: `${(done / cells.length) * 100}%` }}
-        />
-      </div>
       <div className="table-box">
         <table className="table">
           <tbody>
             {cells.map((cell) => (
-              <tr key={cell.cellIndex} className={cell.status === 'Running' ? 'row-active' : undefined}>
-                <td className="whitespace-nowrap font-mono text-base text-muted-foreground">
+              <tr
+                key={cell.cellIndex}
+                className={
+                  cell.status === 'Running'
+                    ? 'row-active'
+                    : cell.status === 'Failed'
+                      ? 'row-failed'
+                      : undefined
+                }
+              >
+                <td className="w-[52px] whitespace-nowrap font-mono text-code text-muted-subtle">
                   {cell.cellIndex + 1}/{cells.length}
                 </td>
                 <td>
                   <StatusBadge status={cell.status} />
                 </td>
                 <td>
-                  <code className="preview">{cell.sourcePreview}</code>
+                  <pre className="m-0 whitespace-pre-wrap break-words font-mono text-code text-code-fg">
+                    {cell.sourcePreview}
+                  </pre>
                   {cell.errorSummary && (
-                    <div className="mt-1 font-mono text-base text-status-error">
+                    <div className="mt-1 font-mono text-code text-status-error">
                       {cell.errorSummary}
                     </div>
                   )}
                 </td>
-                <td className="whitespace-nowrap text-muted-foreground">
+                <td className="w-[70px] whitespace-nowrap text-right font-mono text-code text-muted-subtle">
                   {duration(cell.startedAt, cell.finishedAt)}
                 </td>
               </tr>
@@ -108,7 +111,7 @@ export function RunDetail() {
   return (
     <div>
       <div className="mb-3 flex items-start justify-between gap-4">
-        <h1 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight">
+        <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold tracking-tight">
           <Link
             className="truncate text-primary hover:underline"
             to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}
@@ -116,15 +119,11 @@ export function RunDetail() {
             {run.jobName}
           </Link>
           <StatusBadge status={run.status} />
-          {run.environment !== 'default' && (
-            <Badge variant="secondary" className="font-mono text-xs">
-              {run.environment}
-            </Badge>
-          )}
+          {run.environment !== 'default' && <EnvBadge env={run.environment} />}
         </h1>
         {live && (
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-base text-muted-foreground">live · refreshing</span>
+            <span className="text-sm text-muted-subtle">live · refreshing</span>
             <Button variant="outline" size="sm" onClick={cancel} disabled={cancelling}>
               {cancelling ? 'Cancelling…' : 'Cancel run'}
             </Button>
@@ -133,7 +132,7 @@ export function RunDetail() {
       </div>
       <ErrorBanner error={cancelError} />
 
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-muted-foreground">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm text-muted-subtle">
         <span className="font-mono">{run.notebookPath}</span>
         <span>{run.trigger}</span>
         {run.attempt > 1 && <span>attempt {run.attempt}</span>}
@@ -152,8 +151,27 @@ export function RunDetail() {
         </Alert>
       )}
 
+      {/* One bar for the whole run, above the tabs — progress is a property of
+          the run, not of whichever tab happens to be open. */}
+      <div className="my-3 h-1 w-full overflow-hidden rounded-full bg-border">
+        <div
+          className={`h-full transition-[width] ${
+            run.status === 'Failed' ? 'bg-status-error' : 'bg-primary'
+          }`}
+          style={{
+            width: `${
+              (data?.cells ?? []).length === 0
+                ? 0
+                : ((data?.cells ?? []).filter((c) => c.status === 'Succeeded').length /
+                    (data?.cells ?? []).length) *
+                  100
+            }%`,
+          }}
+        />
+      </div>
+
       <Tabs defaultValue="progress">
-        <TabsList className="mb-3">
+        <TabsList variant="line" className="mb-3">
           <TabsTrigger value="progress">Cells</TabsTrigger>
           <TabsTrigger value="notebook">Notebook</TabsTrigger>
           <TabsTrigger value="log">Log</TabsTrigger>
@@ -173,7 +191,9 @@ export function RunDetail() {
         </TabsContent>
         <TabsContent value="log">
           {log ? (
-            <pre className="output-text log">{log}</pre>
+            <pre className="output-text log max-h-[480px] overflow-auto rounded-2xl border border-border bg-muted px-4 py-3.5 font-mono text-code leading-relaxed text-code-fg">
+              {log}
+            </pre>
           ) : (
             <p className="text-base text-muted-foreground">No log.</p>
           )}
