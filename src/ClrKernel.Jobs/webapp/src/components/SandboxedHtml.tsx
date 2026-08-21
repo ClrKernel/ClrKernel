@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ACCENTS, NEUTRAL } from '../theme/palette';
 
 /**
  * Kernel output that needs its own scripts to run — the interactive grid builds
@@ -48,49 +49,38 @@ export function SandboxedHtml({ html }: { html: string }) {
 /**
  * The kernel writes its HTML for VS Code, so it reads `--vscode-*` variables with
  * fallbacks. Mapping them onto this app's palette is what makes the output look
- * like part of the page rather than a window into another program — including in
- * dark mode, which the frame follows on its own because it is a real document.
+ * like part of the page rather than a window into another program.
+ *
+ * The frame is a separate document and cannot see the app's tokens, so the
+ * values are interpolated from the same palette module instead of being a second
+ * hand-written copy. Light only, matching the app — a frame that followed the OS
+ * would render dark output inside a light page.
  */
 function document_(html: string, token: string): string {
+  // Output frames are re-rendered on an accent change, so reading the live
+  // accent here is enough — no listener inside the frame.
+  const accent = ACCENTS.find((a) => a.name === document.documentElement.dataset.accent) ?? ACCENTS[0];
   return `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --vscode-font-size: 13px;
-  --vscode-foreground: #1c1f24;
-  --vscode-editor-background: #ffffff;
-  --vscode-editorWidget-background: #f6f7f9;
-  --vscode-panel-border: #d8dce3;
-  --vscode-input-background: #ffffff;
-  --vscode-input-foreground: #1c1f24;
-  --vscode-input-border: #d8dce3;
-  --vscode-button-background: #2563eb;
-  --vscode-button-foreground: #ffffff;
-  --vscode-button-secondaryBackground: #eceff3;
-  --vscode-button-secondaryForeground: #1c1f24;
-  --vscode-list-hoverBackground: #eceff3;
-  --vscode-toolbar-hoverBackground: #e2e6ec;
-  --vscode-textLink-foreground: #2563eb;
-  --vscode-descriptionForeground: #6b7280;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --vscode-foreground: #e6e8eb;
-    --vscode-editor-background: #14171c;
-    --vscode-editorWidget-background: #1c2027;
-    --vscode-panel-border: #2c323c;
-    --vscode-input-background: #14171c;
-    --vscode-input-foreground: #e6e8eb;
-    --vscode-input-border: #2c323c;
-    --vscode-button-background: #2563eb;
-    --vscode-button-secondaryBackground: #242a33;
-    --vscode-button-secondaryForeground: #e6e8eb;
-    --vscode-list-hoverBackground: #242a33;
-    --vscode-toolbar-hoverBackground: #2c323c;
-    --vscode-textLink-foreground: #60a5fa;
-    --vscode-descriptionForeground: #9aa3b0;
-  }
+  --vscode-foreground: ${NEUTRAL.foreground};
+  --vscode-editor-background: ${NEUTRAL.card};
+  --vscode-editorWidget-background: ${NEUTRAL.muted};
+  --vscode-panel-border: ${NEUTRAL.border};
+  --vscode-input-background: ${NEUTRAL.card};
+  --vscode-input-foreground: ${NEUTRAL.foreground};
+  --vscode-input-border: ${NEUTRAL.border};
+  --vscode-button-background: ${accent.primary};
+  --vscode-button-foreground: ${accent.primaryForeground};
+  --vscode-button-secondaryBackground: ${NEUTRAL.muted};
+  --vscode-button-secondaryForeground: ${NEUTRAL.foreground};
+  --vscode-list-hoverBackground: ${NEUTRAL.muted};
+  --vscode-toolbar-hoverBackground: ${NEUTRAL.surfaceRail};
+  --vscode-textLink-foreground: ${accent.primary};
+  --vscode-descriptionForeground: ${NEUTRAL.mutedForeground};
 }
 html, body { margin: 0; background: transparent; }
 body {

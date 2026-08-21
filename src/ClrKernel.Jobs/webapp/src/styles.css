@@ -1,30 +1,23 @@
-:root {
-  --bg: #ffffff;
-  --panel: #f6f7f9;
-  --border: #d8dce3;
-  --text: #1c1f24;
-  --muted: #6b7280;
-  --accent: #2563eb;
-  --ok: #15803d;
-  --fail: #b91c1c;
-  --warn: #b45309;
-  --run: #1d4ed8;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color-scheme: light dark;
-}
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./theme/tokens.css";
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14171c;
-    --panel: #1c2027;
-    --border: #2c323c;
-    --text: #e6e8eb;
-    --muted: #9aa3b0;
-    --accent: #60a5fa;
-    --ok: #4ade80;
-    --fail: #f87171;
-    --warn: #fbbf24;
-    --run: #93c5fd;
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    /* Compact density: this is a developer tool, not a marketing site. */
+    font-size: 14px;
+  }
+
+  body {
+    @apply bg-background text-foreground;
   }
 }
 
@@ -34,15 +27,15 @@
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 code,
 pre,
 .preview {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.9285rem; /* 13px against the 14px base */
 }
 
 /* --- layout ------------------------------------------------------------- */
@@ -53,7 +46,7 @@ pre,
   gap: 1rem;
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--muted);
 }
 
 .brand {
@@ -61,12 +54,12 @@ pre,
 }
 
 .nav a {
-  color: var(--muted);
+  color: var(--muted-foreground);
   text-decoration: none;
 }
 
 .nav a.active {
-  color: var(--text);
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -115,11 +108,11 @@ h2 {
 }
 
 a {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .row-between {
@@ -143,8 +136,8 @@ select {
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--background);
+  color: var(--foreground);
   font: inherit;
 }
 
@@ -159,32 +152,32 @@ textarea {
   padding: 0.4rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--muted);
+  color: var(--foreground);
   font: inherit;
   text-decoration: none;
   cursor: pointer;
 }
 
 .button:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 
 .button-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--primary);
+  border-color: var(--primary);
   color: #fff;
 }
 
 .button-danger:hover {
-  border-color: var(--fail);
-  color: var(--fail);
+  border-color: var(--status-error);
+  color: var(--status-error);
 }
 
 .link-button {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--primary);
   cursor: pointer;
   font: inherit;
   padding: 0 0.35rem;
@@ -229,7 +222,7 @@ textarea {
   padding: 0.85rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--muted);
 }
 
 .card-value {
@@ -238,11 +231,11 @@ textarea {
 }
 
 .card-failed {
-  color: var(--fail);
+  color: var(--status-error);
 }
 
 .card-label {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.85rem;
 }
 
@@ -262,16 +255,16 @@ textarea {
 }
 
 .table th {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
 .row-active {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .cell-index {
-  color: var(--muted);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
@@ -281,7 +274,7 @@ textarea {
 }
 
 .error-text {
-  color: var(--fail);
+  color: var(--status-error);
   font-size: 0.85rem;
 }
 
@@ -294,22 +287,22 @@ textarea {
 }
 
 .badge-succeeded {
-  color: var(--ok);
+  color: var(--status-success);
 }
 
 .badge-failed,
 .badge-timedout {
-  color: var(--fail);
+  color: var(--status-error);
 }
 
 .badge-running {
-  color: var(--run);
+  color: var(--status-running);
 }
 
 .badge-pending,
 .badge-skipped,
 .badge-cancelled {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .chip {
@@ -323,7 +316,7 @@ textarea {
 }
 
 .chip-muted {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .banner {
@@ -334,13 +327,13 @@ textarea {
 }
 
 .banner-error {
-  color: var(--fail);
-  border-color: var(--fail);
+  color: var(--status-error);
+  border-color: var(--status-error);
 }
 
 .banner-warn {
-  color: var(--warn);
-  border-color: var(--warn);
+  color: var(--status-warning);
+  border-color: var(--status-warning);
 }
 
 .banner ul {
@@ -352,7 +345,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 0.9rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.85rem;
   margin-bottom: 0.75rem;
 }
@@ -367,7 +360,7 @@ textarea {
 
 .progress-bar {
   height: 100%;
-  background: var(--ok);
+  background: var(--status-success);
   transition: width 0.3s;
 }
 
@@ -382,15 +375,15 @@ textarea {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font: inherit;
   padding: 0.4rem 0.7rem;
 }
 
 .tabs button.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
+  color: var(--foreground);
+  border-bottom-color: var(--primary);
 }
 
 /* --- tree --------------------------------------------------------------- */
@@ -405,7 +398,7 @@ ul.tree ul {
 .tree-toggle {
   background: none;
   border: none;
-  color: var(--text);
+  color: var(--foreground);
   cursor: pointer;
   font: inherit;
   padding: 0.15rem 0;
@@ -416,7 +409,7 @@ ul.tree ul {
 }
 
 .tree-jobsfile .tree-name {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 /* --- notebook ----------------------------------------------------------- */
@@ -433,7 +426,7 @@ ul.tree ul {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem;
-  background: var(--panel);
+  background: var(--muted);
 }
 
 .cell-injected {
@@ -441,7 +434,7 @@ ul.tree ul {
 }
 
 .cell-gutter {
-  color: var(--muted);
+  color: var(--muted-foreground);
   min-width: 1.5rem;
   text-align: right;
   font-size: 0.8rem;
@@ -453,7 +446,7 @@ ul.tree ul {
 }
 
 .cell-tag {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.75rem;
   margin-bottom: 0.25rem;
 }
@@ -468,14 +461,14 @@ ul.tree ul {
 
 .output-text {
   margin-top: 0.4rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .log {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.6rem;
-  background: var(--panel);
+  background: var(--muted);
   max-height: 32rem;
   overflow: auto;
 }
@@ -498,7 +491,7 @@ ul.tree ul {
 
 .output-error {
   margin-top: 0.4rem;
-  color: var(--fail);
+  color: var(--status-error);
 }
 
 .cell-markdown :first-child {
@@ -513,16 +506,16 @@ ul.tree ul {
   color: #4b5563;
 }
 .ansi-red {
-  color: var(--fail);
+  color: var(--status-error);
 }
 .ansi-green {
-  color: var(--ok);
+  color: var(--status-success);
 }
 .ansi-yellow {
-  color: var(--warn);
+  color: var(--status-warning);
 }
 .ansi-blue {
-  color: var(--run);
+  color: var(--status-running);
 }
 .ansi-magenta {
   color: #c026d3;
@@ -531,10 +524,10 @@ ul.tree ul {
   color: #0891b2;
 }
 .ansi-white {
-  color: var(--text);
+  color: var(--foreground);
 }
 .ansi-bright-black {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .fieldset {
@@ -544,7 +537,7 @@ ul.tree ul {
 }
 
 .fieldset legend {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.85rem;
   padding: 0 0.3rem;
 }
@@ -558,14 +551,14 @@ ul.tree ul {
 }
 
 .notify-label {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.9rem;
   min-width: 6rem;
 }
 
 .banner-ok {
-  color: var(--ok);
-  border-color: var(--ok);
+  color: var(--status-success);
+  border-color: var(--status-success);
 }
 
 .settings-section {
@@ -581,11 +574,11 @@ ul.tree ul {
 }
 
 .env-dev {
-  color: var(--warn);
+  color: var(--status-warning);
 }
 
 .env-prod {
-  color: var(--ok);
+  color: var(--status-success);
 }
 
 .button-small {
@@ -605,31 +598,31 @@ ul.tree ul {
 .notebook-cell {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg);
+  background: var(--background);
   overflow: hidden;
   margin: 0;
 }
 
 .notebook-cell:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 /* A run that failed is worth seeing without reading the badge. */
 .notebook-cell.cell-failed {
-  border-left: 3px solid var(--fail);
+  border-left: 3px solid var(--status-error);
 }
 
 .notebook-cell.cell-succeeded {
-  border-left: 3px solid var(--ok);
+  border-left: 3px solid var(--status-success);
 }
 
 .notebook-cell.cell-running {
-  border-left: 3px solid var(--run);
+  border-left: 3px solid var(--status-running);
 }
 
 .notebook-cell-markdown {
-  background: var(--panel);
+  background: var(--muted);
 }
 
 .cell-main {
@@ -645,7 +638,7 @@ ul.tree ul {
   align-items: center;
   flex: 0 0 2.6rem;
   padding: 0.35rem 0 0.3rem;
-  background: var(--panel);
+  background: var(--muted);
   border-right: 1px solid var(--border);
 }
 
@@ -653,7 +646,7 @@ ul.tree ul {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-size: 0.85rem;
   line-height: 1;
@@ -661,9 +654,9 @@ ul.tree ul {
 }
 
 .cell-run-button:hover:not(:disabled) {
-  color: var(--accent);
+  color: var(--primary);
   border-color: var(--border);
-  background: var(--bg);
+  background: var(--background);
 }
 
 .cell-run-button:disabled {
@@ -676,7 +669,7 @@ ul.tree ul {
 }
 
 .cell-gutter-index {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.7rem;
   white-space: pre;
@@ -703,7 +696,7 @@ ul.tree ul {
 
 .cell-float-actions .button-small {
   margin-left: 0;
-  background: var(--bg);
+  background: var(--background);
 }
 
 .notebook-cell:hover .cell-float-actions,
@@ -723,7 +716,7 @@ ul.tree ul {
   gap: 0.4rem;
   padding: 0.2rem 0.5rem;
   border-top: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--muted);
   font-size: 0.78rem;
   min-height: 1.9rem;
 }
@@ -736,7 +729,7 @@ ul.tree ul {
 
 .cell-language {
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-foreground);
   border: 1px solid transparent;
   border-radius: 4px;
   padding: 0.1rem 0.2rem;
@@ -746,7 +739,7 @@ ul.tree ul {
 .cell-language:hover,
 .cell-language:focus {
   border-color: var(--border);
-  color: var(--text);
+  color: var(--foreground);
 }
 
 /* Rendered prose, the way a notebook reads. Double-click returns to the editor. */
@@ -789,7 +782,7 @@ ul.tree ul {
 }
 
 .chip-running {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 /* Output is attached to the cell but is not the cell: inset, on the page
@@ -797,7 +790,7 @@ ul.tree ul {
 .cell-outputs {
   position: relative;
   border-top: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--muted);
   padding: 0.35rem 0.6rem 0.35rem 3.1rem;
   max-height: 32rem;
   overflow: auto;
@@ -835,7 +828,7 @@ ul.tree ul {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-size: 0.9rem;
   line-height: 1;
@@ -844,8 +837,8 @@ ul.tree ul {
 
 .output-menu-button:hover {
   border-color: var(--border);
-  background: var(--bg);
-  color: var(--text);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 /* Placed from the button's rect by OutputMenu: fixed, so neither the output
@@ -854,7 +847,7 @@ ul.tree ul {
   position: fixed;
   min-width: 9rem;
   z-index: 40;
-  background: var(--bg);
+  background: var(--background);
   border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
@@ -867,7 +860,7 @@ ul.tree ul {
   text-align: left;
   background: none;
   border: none;
-  color: var(--text);
+  color: var(--foreground);
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
@@ -876,7 +869,7 @@ ul.tree ul {
 }
 
 .output-menu-items button:hover {
-  background: var(--panel);
+  background: var(--muted);
 }
 
 .source-editor {
@@ -910,7 +903,7 @@ ul.tree ul {
 }
 
 .modal {
-  background: var(--bg);
+  background: var(--background);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
@@ -941,14 +934,14 @@ ul.tree ul {
 }
 
 .wizard-required {
-  color: var(--warn);
+  color: var(--status-warning);
 }
 
 .wizard-preview {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem 0.6rem;
-  background: var(--panel);
+  background: var(--muted);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -979,11 +972,11 @@ body.focus-mode-on {
   padding: 0.25rem 0.7rem;
   font-size: 0.85rem;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .mode-toggle button.active {
-  background: var(--accent);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -1001,7 +994,7 @@ body.focus-mode-on {
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
-  background: var(--panel);
+  background: var(--muted);
   overflow: auto;
 }
 
@@ -1014,11 +1007,11 @@ body.focus-mode-on {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--muted);
+  color: var(--muted-foreground);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--panel);
+  background: var(--muted);
 }
 
 /* The reveal affordance when the sidebar is collapsed to nothing: a thin rail,
@@ -1027,9 +1020,9 @@ body.focus-mode-on {
   flex: 0 0 14px;
   border: 0;
   border-right: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--muted);
   cursor: pointer;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.7rem;
   padding: 0;
 }
@@ -1067,7 +1060,7 @@ ul.focus-toc ul.focus-toc-children {
 }
 
 .focus-toc-active {
-  background: var(--accent);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -1079,7 +1072,7 @@ ul.focus-toc ul.focus-toc-children {
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--muted-foreground);
   padding: 0 0.15rem;
   font-size: 0.7rem;
 }
@@ -1091,7 +1084,7 @@ ul.focus-toc ul.focus-toc-children {
 }
 
 .focus-toc-count {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.72rem;
 }
@@ -1109,12 +1102,12 @@ ul.focus-toc ul.focus-toc-children {
   flex: 0 0 auto;
 }
 
-.focus-toc-dot-idle { color: var(--muted); opacity: 0.5; }
-.focus-toc-dot-pending { color: var(--muted); }
-.focus-toc-dot-running { color: var(--accent); }
+.focus-toc-dot-idle { color: var(--muted-foreground); opacity: 0.5; }
+.focus-toc-dot-pending { color: var(--muted-foreground); }
+.focus-toc-dot-running { color: var(--primary); }
 .focus-toc-dot-succeeded { color: #16a34a; }
-.focus-toc-dot-skipped { color: var(--muted); opacity: 0.6; }
-.focus-toc-dot-md { color: var(--muted); opacity: 0.6; }
+.focus-toc-dot-skipped { color: var(--muted-foreground); opacity: 0.6; }
+.focus-toc-dot-md { color: var(--muted-foreground); opacity: 0.6; }
 
 /* An errored cell has to be findable from the tree without opening every cell. */
 .focus-toc-dot-failed {
@@ -1135,14 +1128,14 @@ ul.focus-toc ul.focus-toc-children {
   gap: 0.4rem;
   padding: 0.3rem 0.5rem;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--muted);
   flex: 0 0 auto;
 }
 
 .focus-cell-title {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 /* flex-basis carries the split ratio; min-height keeps a pane from vanishing.
@@ -1172,7 +1165,7 @@ ul.focus-toc ul.focus-toc-children {
 
 .focus-empty,
 .focus-empty-state {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.85rem;
   padding: 0.6rem;
 }
@@ -1192,7 +1185,7 @@ ul.focus-toc ul.focus-toc-children {
 
 .focus-splitter:hover {
   opacity: 1;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 .focus-splitter-vertical {

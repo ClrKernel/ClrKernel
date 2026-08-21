@@ -1,0 +1,146 @@
+/* The token layer. Every colour in the app comes from here.
+ *
+ * Mirrors `theme/palette.ts`, which Monaco reads — `palette.test.ts` fails if
+ * the two drift. Values are hex rather than shadcn's default oklch because
+ * Monaco's theme API parses hex and nothing else.
+ *
+ * A naming trap worth knowing: shadcn's `--accent` is a *subtle hover surface*,
+ * not the brand colour. What this app calls the accent is `--primary`, and it
+ * is the only thing the five themes change.
+ */
+
+:root {
+  /* --- neutral base, fixed under every accent --------------------------- */
+  --background: #f7f8fa;
+  --foreground: #1c1f24;
+  --card: #ffffff;
+  --card-foreground: #1c1f24;
+  --popover: #ffffff;
+  --popover-foreground: #1c1f24;
+  --secondary: #f1f3f5;
+  --secondary-foreground: #1c1f24;
+  --muted: #f1f3f5;
+  --muted-foreground: #6b7280;
+  --accent: #f1f3f5;
+  --accent-foreground: #1c1f24;
+  --destructive: #b91c1c;
+  --border: #e3e6ea;
+  --input: #e3e6ea;
+
+  /* --- app-specific ----------------------------------------------------- */
+  --surface-rail: #eef0f3;
+  --status-idle: #6b7280;
+  --status-running: #1d4ed8;
+  --status-error: #b91c1c;
+  --status-warning: #b45309;
+  --status-success: #15803d;
+  /* Must equal Monaco's editor.background, or a seam shows at the cell edge. */
+  --code-bg: #ffffff;
+
+  /* One radius everywhere. No mixed corner treatments. */
+  --radius: 6px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+
+  color-scheme: light;
+}
+
+/* --- accents -------------------------------------------------------------
+ * Each theme overrides exactly three tokens. Anything more and the five stop
+ * looking like one app. Contrast of every pair is asserted in palette.test.ts.
+ */
+:root,
+[data-accent='blue'] {
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --ring: #2563eb;
+}
+
+[data-accent='violet'] {
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --ring: #7c3aed;
+}
+
+[data-accent='emerald'] {
+  --primary: #047857;
+  --primary-foreground: #ffffff;
+  --ring: #047857;
+}
+
+[data-accent='amber'] {
+  --primary: #f59e0b;
+  /* Dark, not white: white on mid-amber is about 2:1. */
+  --primary-foreground: #1c1f24;
+  --ring: #f59e0b;
+}
+
+[data-accent='rose'] {
+  --primary: #be123c;
+  --primary-foreground: #ffffff;
+  --ring: #be123c;
+}
+
+/* Defined so a later dark pass is not a rewrite. Nothing sets `.dark` today —
+ * light is the design target and dark is deliberately unshipped and un-QA'd. */
+.dark {
+  --background: #14171c;
+  --foreground: #e6e8eb;
+  --card: #1a1e24;
+  --card-foreground: #e6e8eb;
+  --popover: #1a1e24;
+  --popover-foreground: #e6e8eb;
+  --secondary: #232830;
+  --secondary-foreground: #e6e8eb;
+  --muted: #232830;
+  --muted-foreground: #9aa3b0;
+  --accent: #232830;
+  --accent-foreground: #e6e8eb;
+  --destructive: #f87171;
+  --border: #2c323c;
+  --input: #2c323c;
+  --surface-rail: #101318;
+  --code-bg: #1a1e24;
+  color-scheme: dark;
+}
+
+/* Expose the tokens to Tailwind as `bg-background`, `text-muted-foreground`, … */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface-rail: var(--surface-rail);
+  --color-status-idle: var(--status-idle);
+  --color-status-running: var(--status-running);
+  --color-status-error: var(--status-error);
+  --color-status-warning: var(--status-warning);
+  --color-status-success: var(--status-success);
+  --color-code-bg: var(--code-bg);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}

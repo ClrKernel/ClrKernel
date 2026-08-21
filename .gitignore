@@ -365,3 +365,5 @@ src/ClrKernel.Jobs/wwwroot/
 dev/data/
 
 dev/notebooks/.repo.git/
+# TypeScript incremental build state — a build artifact, not source.
+src/ClrKernel.Jobs/webapp/tsconfig.tsbuildinfo

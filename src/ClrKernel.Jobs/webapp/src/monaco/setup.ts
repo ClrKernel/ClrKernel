@@ -1,5 +1,6 @@
 import * as monaco from 'monaco-editor';
 import EditorWorker from './editor.worker?worker';
+import { EDITOR, FONT_MONO } from '../theme/palette';
 
 /**
  * Monaco, bundled locally. The worker is resolved through `new URL(…,
@@ -13,48 +14,32 @@ import EditorWorker from './editor.worker?worker';
  */
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
-const darkMode = window.matchMedia?.('(prefers-color-scheme: dark)');
-
-// Monaco's stock themes paint their own background, which reads as a white box
-// dropped into the page. These inherit the app's palette so a cell looks like
-// part of the notebook rather than an embedded IDE.
-monaco.editor.defineTheme('clrkernel', {
+/**
+ * One theme, defined from the shared palette so the editor's background is the
+ * same value as the `--code-bg` token — anything else leaves a visible seam at
+ * the cell's edge.
+ *
+ * Light only, on purpose. `defineTheme`/`setTheme` are global rather than
+ * per-editor anyway, so there is nothing here to vary per cell. The accent
+ * never appears inside the editor (cursor and selection stay neutral), so
+ * changing themes needs no re-theme.
+ */
+monaco.editor.defineTheme('clrkernel-light', {
   base: 'vs',
   inherit: true,
   rules: [],
   colors: {
-    'editor.background': '#ffffff',
-    'editor.lineHighlightBackground': '#f6f7f9',
-    'editorLineNumber.foreground': '#9aa3b0',
-    'editorIndentGuide.background1': '#eef0f3',
-    'editor.selectionBackground': '#cfe0ff',
-    'editorWidget.background': '#ffffff',
-    'editorWidget.border': '#d8dce3',
+    'editor.background': EDITOR.background,
+    'editor.lineHighlightBackground': EDITOR.lineHighlight,
+    'editorLineNumber.foreground': EDITOR.lineNumber,
+    'editorIndentGuide.background1': EDITOR.indentGuide,
+    'editor.selectionBackground': EDITOR.selection,
+    'editorWidget.background': EDITOR.widgetBackground,
+    'editorWidget.border': EDITOR.widgetBorder,
   },
 });
 
-monaco.editor.defineTheme('clrkernel-dark', {
-  base: 'vs-dark',
-  inherit: true,
-  rules: [],
-  colors: {
-    'editor.background': '#14171c',
-    'editor.lineHighlightBackground': '#1c2027',
-    'editorLineNumber.foreground': '#6b7280',
-    'editorIndentGuide.background1': '#242a33',
-    'editor.selectionBackground': '#2f4468',
-    'editorWidget.background': '#1c2027',
-    'editorWidget.border': '#2c323c',
-  },
-});
-
-function applyTheme(): void {
-  monaco.editor.setTheme(darkMode?.matches ? 'clrkernel-dark' : 'clrkernel');
-}
-
-// The app has no theme toggle: it follows the OS, so the editor does too.
-darkMode?.addEventListener?.('change', applyTheme);
-applyTheme();
+monaco.editor.setTheme('clrkernel-light');
 
 /** Editor options shared by every cell — a notebook cell is not a file window. */
 export const cellEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -70,6 +55,7 @@ export const cellEditorOptions: monaco.editor.IStandaloneEditorConstructionOptio
   scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },
   wordWrap: 'on',
   fontSize: 13,
+  fontFamily: FONT_MONO,
   padding: { top: 8, bottom: 8 },
   renderLineHighlight: 'none',
   fixedOverflowWidgets: true,

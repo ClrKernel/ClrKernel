@@ -1,10 +1,15 @@
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 
 // Build output goes straight into the project's wwwroot, which the tool serves
 // (and packs). `npm run dev` proxies /api to a locally running `clrkernel-jobs serve`.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   build: {
     outDir: '../wwwroot',
     emptyOutDir: true,
