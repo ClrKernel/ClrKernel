@@ -233,6 +233,33 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task Language_requests_are_allowlisted_and_never_a_method_proxy() {
+        // Completion runs against a live REPL, so "forward whatever the client names"
+        // is not something to offer over HTTP. Only four kinds exist.
+        foreach (var kind in new[] { "clrkernel/execute", "textDocument/completion", "", "shutdown" }) {
+            var response = await _client.PostAsJsonAsync(
+                $"/api/envs/dev/notebooks/language?path={_notebook}",
+                new { kind, cellId = "c0", languageId = "csharp-script", source = "x", line = 0, character = 1 },
+                _json);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, $"kind '{kind}' must be refused");
+        }
+
+        // A known kind with no session is silent, not an error: nothing here may
+        // start a kernel, for the same reason sync may not.
+        var ok = await _client.PostAsJsonAsync(
+            $"/api/envs/dev/notebooks/language?path={_notebook}",
+            new { kind = "completion", cellId = "c0", languageId = "csharp-script", source = "x", line = 0, character = 1 },
+            _json);
+        Assert.AreEqual(HttpStatusCode.OK, ok.StatusCode);
+        var body = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.IsFalse(body.GetProperty("started").GetBoolean());
+
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/envs/dev/notebooks/language?path=../../../etc/passwd",
+                new { kind = "completion", cellId = "c0" }, _json)).StatusCode);
+    }
+
+    [TestMethod]
     public async Task A_malformed_body_is_a_clear_error_not_a_500() {
         var response = await _client.PutAsync($"/api/envs/dev/notebooks/cells?path={_notebook}",
             new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));

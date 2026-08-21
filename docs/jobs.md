@@ -310,6 +310,14 @@ it and everything after. The toolbar adds **Run All** and **Restart kernel**.
 - A scheduled run of the same notebook is fine — it executes the committed file in its
   own kernel, and the editor says so while it is in flight.
 
+Cells have **IntelliSense**: completion, hover, and signature help, answered by the
+notebook's own kernel. It sees the live session, so a variable a cell defined and ran is
+a variable the next cell completes against — and a `#!sql` cell gets SQL completion
+rather than C#'s, because the kernel dispatches on the cell's language. Opening a
+notebook starts its kernel for this reason; before, a session appeared only on the first
+run, which is the wrong way round when the point of completion is that you have not run
+anything yet.
+
 The editor's kernel is `clrkernel lsp`, the same server the VS Code extension drives, so
 a cell behaves here the way it does there and language features arrive in both at once.
 Scheduled runs stay on `clrkernel serve`, which has no language features and does not

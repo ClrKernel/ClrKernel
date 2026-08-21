@@ -4,6 +4,7 @@ import type { ApiLanguage } from '../api';
 import { useCellEditor } from '../monaco/useMonaco';
 import {
   connectableLanguage,
+  hasEditorServices,
   languageOptions,
   monacoLanguage,
   type CellRunState,
@@ -18,6 +19,9 @@ interface Props {
   index: number;
   count: number;
   languages: ApiLanguage[];
+  /** The notebook this cell belongs to — the kernel's sessions are keyed by it,
+   *  so a language request has to name it. */
+  path: string;
   /** What this cell did in the session, if it has run. */
   run: CellRunState | null;
   /** False when this deployment cannot execute — no git workflow, or a server
@@ -43,7 +47,7 @@ interface Props {
  * other. A markdown cell shows its rendered prose until you click into it.
  */
 export function CellEditor({
-  cell, index, count, languages, run, canRun, busy, cleared,
+  cell, index, count, languages, path, run, canRun, busy, cleared,
   onChange, onLanguage, onMove, onDelete, onRun, onClearOutput, onConnect,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
@@ -123,7 +127,14 @@ export function CellEditor({
               <Markdown>{cell.source}</Markdown>
             </div>
           ) : (
-            <CellBody cell={cell} isMarkdown={isMarkdown} onChange={onChange} onBlur={() => setEditing(false)} />
+            <CellBody
+              cell={cell}
+              isMarkdown={isMarkdown}
+              path={path}
+              languages={languages}
+              onChange={onChange}
+              onBlur={() => setEditing(false)}
+            />
           )}
 
           <div className="cell-footer">
@@ -252,15 +263,26 @@ function OutputMenu({ onClear }: { onClear: () => void }) {
 }
 
 function CellBody({
-  cell, isMarkdown, onChange, onBlur,
+  cell, isMarkdown, path, languages, onChange, onBlur,
 }: {
   cell: EditorCell;
   isMarkdown: boolean;
+  path: string;
+  languages: ApiLanguage[];
   onChange: (source: string) => void;
   onBlur: () => void;
 }) {
   const language = isMarkdown ? 'markdown' : monacoLanguage(cell.languageId, cell.tag);
-  const container = useCellEditor(language, cell.source, onChange);
+  // Markdown cells get no binding at all, so completion never fires on prose.
+  // For the rest, the id the kernel knows the language by — never Monaco's, which
+  // calls a C# cell "csharp" and would reach no language service at all.
+  const container = useCellEditor(language, cell.source, onChange, false,
+    isMarkdown ? undefined : {
+      path,
+      cellId: cell.id,
+      languageId: cell.languageId ?? 'csharp-script',
+      enabled: hasEditorServices(cell.languageId, languages),
+    });
   return <div className="cell-editor" ref={container} onBlur={onBlur} />;
 }
 

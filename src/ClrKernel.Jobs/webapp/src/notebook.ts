@@ -82,6 +82,25 @@ export function toSyncCells(cells: EditorCell[]): ApiSyncCell[] {
 }
 
 /**
+ * Whether asking the kernel about this cell is worth a round trip.
+ *
+ * C# has no descriptor — it is the engine's own language rather than a registered
+ * cell language — and it is the case that matters most, so an absent id means yes.
+ * A registered language answers for itself: Mermaid and HTTP say no, and asking
+ * them would cost a request to be told nothing.
+ */
+export function hasEditorServices(
+  languageId: string | null | undefined,
+  languages: ApiLanguage[],
+): boolean {
+  if (!languageId) {
+    return true;
+  }
+  const descriptor = languages.find((l) => l.id === languageId);
+  return descriptor == null || descriptor.hasEditorServices !== false;
+}
+
+/**
  * The Monaco language for a whole file — the Source tab and the production diff,
  * where there are no cells to ask. A notebook that is not `.nb.md` (`.ipynb`,
  * `.dib`, `.csx`) opens as source, so those need an answer too.

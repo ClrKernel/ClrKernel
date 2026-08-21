@@ -121,6 +121,11 @@ public sealed class NotebookSession : IDisposable {
     public string KernelName { get; private set; }
     public string KernelVersion { get; private set; }
 
+    /// <summary>What the kernel says should open a completion list / signature help.
+    /// Passed to the editor rather than restated there, so the two cannot drift.</summary>
+    public IReadOnlyList<string> CompletionTriggers { get; private set; } = Array.Empty<string>();
+    public IReadOnlyList<string> SignatureTriggers { get; private set; } = Array.Empty<string>();
+
     /// <summary>True while a run is in flight — the editor disables its run buttons.</summary>
     public bool Busy => _oneRunAtATime.CurrentCount == 0;
 
@@ -161,6 +166,8 @@ public sealed class NotebookSession : IDisposable {
         var info = await kernel.InitializeAsync(cancellationToken).ConfigureAwait(false);
         KernelName = info.Name;
         KernelVersion = info.Version;
+        CompletionTriggers = info.CompletionTriggers;
+        SignatureTriggers = info.SignatureTriggers;
         // The handshake answers from a fresh registry (no session exists yet); this
         // asks the notebook's own session. Falls back when the kernel has no such call.
         SetLanguages(await kernel.Client.LanguagesAsync(NotebookUri, cancellationToken).ConfigureAwait(false)
@@ -275,32 +282,104 @@ public sealed class NotebookSession : IDisposable {
         }
 
         foreach (var (uri, cell) in wanted) {
-            var languageId = string.IsNullOrEmpty(cell.LanguageId) ? "csharp-script" : cell.LanguageId;
-            var source = cell.Source ?? string.Empty;
-            if (!_synced.TryGetValue(uri, out var open)) {
-                await kernel.Client.DidOpenAsync(uri, languageId, 1, source).ConfigureAwait(false);
-                _synced[uri] = new OpenDocument { LanguageId = languageId, Text = source, Version = 1 };
-                sent++;
-            } else if (!string.Equals(open.LanguageId, languageId, StringComparison.Ordinal)) {
-                // A language change is a close and a reopen, not an edit — the same
-                // thing VS Code does, and what makes the old language's diagnostics
-                // get retracted instead of outliving the cell.
-                await kernel.Client.DidCloseAsync(uri).ConfigureAwait(false);
-                await kernel.Client.DidOpenAsync(uri, languageId, open.Version + 1, source).ConfigureAwait(false);
-                _synced[uri] = new OpenDocument {
-                    LanguageId = languageId,
-                    Text = source,
-                    Version = open.Version + 1,
-                };
-                sent++;
-            } else if (!string.Equals(open.Text, source, StringComparison.Ordinal)) {
-                open.Version++;
-                await kernel.Client.DidChangeAsync(uri, open.Version, source).ConfigureAwait(false);
-                open.Text = source;
-                sent++;
-            }
+            sent += await SendAsync(kernel, uri, cell).ConfigureAwait(false);
         }
         return sent;
+    }
+
+    /// <summary>
+    /// Brings one cell up to date, opening it if the kernel has not seen it. Used
+    /// before a language request, which carries the cell's text with it: the full
+    /// sync is debounced, so a completion triggered by a keystroke would otherwise
+    /// ask about a document a few hundred milliseconds behind the cursor — and a
+    /// position past the end of stale text answers with nothing, or with the wrong
+    /// symbol, rather than failing.
+    /// </summary>
+    public async Task SyncCellAsync(NotebookSyncCell cell, CancellationToken cancellationToken) {
+        if (string.IsNullOrEmpty(cell?.Id)) {
+            return;
+        }
+        var kernel = await EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
+        await SendAsync(kernel, CellUri(cell.Id), cell).ConfigureAwait(false);
+    }
+
+    // Returns how many notifications went out: 0 when the kernel is already holding
+    // exactly this, which is the common case on a keystroke.
+    private async Task<int> SendAsync(KernelProcess kernel, string uri, NotebookSyncCell cell) {
+        var languageId = string.IsNullOrEmpty(cell.LanguageId) ? "csharp-script" : cell.LanguageId;
+        var source = cell.Source ?? string.Empty;
+        if (!_synced.TryGetValue(uri, out var open)) {
+            await kernel.Client.DidOpenAsync(uri, languageId, 1, source).ConfigureAwait(false);
+            _synced[uri] = new OpenDocument { LanguageId = languageId, Text = source, Version = 1 };
+            return 1;
+        }
+        if (!string.Equals(open.LanguageId, languageId, StringComparison.Ordinal)) {
+            // A language change is a close and a reopen, not an edit — the same thing
+            // VS Code does, and what makes the old language's diagnostics get
+            // retracted instead of outliving the cell.
+            await kernel.Client.DidCloseAsync(uri).ConfigureAwait(false);
+            await kernel.Client.DidOpenAsync(uri, languageId, open.Version + 1, source).ConfigureAwait(false);
+            _synced[uri] = new OpenDocument {
+                LanguageId = languageId,
+                Text = source,
+                Version = open.Version + 1,
+            };
+            return 1;
+        }
+        if (!string.Equals(open.Text, source, StringComparison.Ordinal)) {
+            open.Version++;
+            await kernel.Client.DidChangeAsync(uri, open.Version, source).ConfigureAwait(false);
+            open.Text = source;
+            return 1;
+        }
+        return 0;
+    }
+
+    /// <summary>
+    /// The language-feature methods the editor may call, and nothing else. An
+    /// allowlist rather than a method proxy: this is a trust boundary, and
+    /// completion evaluates against a live REPL.
+    /// </summary>
+    private static readonly Dictionary<string, string> _languageMethods = new(StringComparer.Ordinal) {
+        ["completion"] = "textDocument/completion",
+        ["resolve"] = "completionItem/resolve",
+        ["hover"] = "textDocument/hover",
+        ["signatureHelp"] = "textDocument/signatureHelp",
+    };
+
+    public static bool IsLanguageRequest(string kind) => kind != null && _languageMethods.ContainsKey(kind);
+
+    /// <summary>
+    /// Answers one language question about a cell. The reply is the server's own LSP
+    /// payload, passed to the browser unchanged — Monaco has to be converted to
+    /// either way, and a second set of models here would only be somewhere for the
+    /// two to disagree.
+    /// </summary>
+    public async Task<JsonElement> LanguageAsync(
+        string kind, NotebookSyncCell cell, int line, int character, JsonElement? item,
+        CancellationToken cancellationToken) {
+        if (!_languageMethods.TryGetValue(kind ?? string.Empty, out var method)) {
+            throw new ArgumentException($"Unknown language request '{kind}'.", nameof(kind));
+        }
+        Touch();
+
+        var kernel = await EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
+
+        // resolve asks about an item the server already produced, not about a
+        // position, so it needs no document and carries its own routing.
+        if (method == "completionItem/resolve") {
+            return await kernel.Client.LanguageRequestAsync(
+                method, item ?? default, cancellationToken).ConfigureAwait(false);
+        }
+        if (string.IsNullOrEmpty(cell?.Id)) {
+            throw new ArgumentException("A language request needs the cell it is about.", nameof(cell));
+        }
+
+        await SendAsync(kernel, CellUri(cell.Id), cell).ConfigureAwait(false);
+        return await kernel.Client.LanguageRequestAsync(method, new {
+            textDocument = new { uri = CellUri(cell.Id) },
+            position = new { line, character },
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The connection providers a language offers in <em>this</em> session —

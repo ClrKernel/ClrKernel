@@ -238,6 +238,56 @@ public static class JobsApi {
                 }
             });
 
+        // One language question about one cell — completion, its lazy documentation,
+        // hover, signature help. A whitelisted kind rather than four near-identical
+        // routes, and an allowlist rather than a method proxy: completion evaluates
+        // against a live REPL, so this is gated exactly like running a cell.
+        //
+        // The request carries the cell's current text and the session syncs it before
+        // asking. The debounced sync is for siblings; a keystroke-triggered completion
+        // cannot wait for it, and a position measured against text 300ms behind the
+        // cursor answers with the wrong symbol rather than failing.
+        api.MapPost("/envs/{env}/notebooks/language", async (
+            HttpContext context, JobCatalog catalog, JobsOptions options,
+            NotebookSessionManager sessions, string env, string path) => {
+                if (DenyExecution(context, catalog, options, env, path) is { } denial) {
+                    return denial;
+                }
+                LanguageRequest request;
+                try {
+                    request = await JsonSerializer.DeserializeAsync<LanguageRequest>(context.Request.Body, _bodyJson);
+                } catch (JsonException e) {
+                    return Results.BadRequest(new { error = "Could not read the request: " + e.Message });
+                }
+                if (!NotebookSession.IsLanguageRequest(request?.Kind)) {
+                    return Results.BadRequest(new { error = $"Unknown language request '{request?.Kind}'." });
+                }
+                if (string.IsNullOrEmpty(request.CellId)) {
+                    return Results.BadRequest(new { error = "cellId is required." });
+                }
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var session = sessions.Find(resolved);
+                if (session == null) {
+                    // Same reasoning as sync: typing must not spawn kernels. The
+                    // editor starts the session when it opens the notebook.
+                    return Results.Ok(new { started = false, result = (object)null });
+                }
+                try {
+                    var result = await session.LanguageAsync(
+                        request.Kind,
+                        new NotebookSyncCell {
+                            Id = request.CellId,
+                            LanguageId = request.LanguageId,
+                            Source = request.Source,
+                        },
+                        request.Line, request.Character, request.Item, context.RequestAborted);
+                    return Results.Ok(new { started = true, result });
+                } catch (Exception e) {
+                    // A language feature is never worth failing the editor over.
+                    return Results.Ok(new { started = true, result = (object)null, error = e.Message });
+                }
+            });
+
         api.MapGet("/envs/{env}/notebooks/session/status", async (
             HttpContext context, JobCatalog catalog, JobsOptions options, IRunStore store,
             NotebookSessionManager sessions, string env, string path) => {
@@ -810,6 +860,24 @@ public sealed class SyncWrite {
     public List<NotebookSyncCell> Cells { get; set; }
 }
 
+/// <summary>One language question about one cell, at one position.</summary>
+public sealed class LanguageRequest {
+    /// <summary>completion | resolve | hover | signatureHelp.</summary>
+    public string Kind { get; set; }
+    public string CellId { get; set; }
+    public string LanguageId { get; set; }
+
+    /// <summary>The cell as the editor has it right now, so the position means what
+    /// the cursor means.</summary>
+    public string Source { get; set; }
+    public int Line { get; set; }
+    public int Character { get; set; }
+
+    /// <summary>For <c>resolve</c> only: the completion item to fill in, round-tripped
+    /// from the list that produced it.</summary>
+    public JsonElement? Item { get; set; }
+}
+
 /// <summary>The editor's save: the whole notebook, as cells.</summary>
 public sealed class CellWrite {
     public List<CellEdit> Cells { get; set; }
@@ -860,6 +928,13 @@ public sealed class SessionView {
     /// the editor says so rather than letting the file change unexplained.</summary>
     public bool ScheduledRunActive { get; set; }
     public IReadOnlyList<LanguageDescriptor> Languages { get; set; }
+
+    /// <summary>What opens a completion list / signature help, as this kernel declares
+    /// it. Passed through rather than restated in the editor: a second copy is one
+    /// that goes stale without anyone noticing.</summary>
+    public IReadOnlyList<string> CompletionTriggers { get; set; }
+    public IReadOnlyList<string> SignatureTriggers { get; set; }
+
     public Dictionary<string, CellRunView> Cells { get; set; }
 
     public static SessionView From(NotebookSession session, bool scheduledRunActive) => new() {
@@ -871,6 +946,8 @@ public sealed class SessionView {
         KernelRestarted = session.KernelRestarted,
         ScheduledRunActive = scheduledRunActive,
         Languages = session.Languages,
+        CompletionTriggers = session.CompletionTriggers,
+        SignatureTriggers = session.SignatureTriggers,
         Cells = session.Snapshot().ToDictionary(kv => kv.Key, kv => new CellRunView {
             Status = kv.Value.Status,
             ExecutionCount = kv.Value.ExecutionCount,

@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Runner;
 using ClrKernel.Core.Scripting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nerdbank.Streams;
+using Newtonsoft.Json.Linq;
 using StreamJsonRpc;
 
 namespace ClrKernel.Jobs.UnitTest;
@@ -164,6 +166,43 @@ public class NotebookSessionTest {
 
         [JsonRpcMethod("textDocument/didClose", UseSingleObjectParameterDeserialization = true)]
         public void DidClose(DidOpenParams p) => DocumentEvents.Add($"didClose {Cell(p?.TextDocument?.Uri)}");
+
+        /// <summary>Language requests, as "method uri line:char".</summary>
+        public List<string> LanguageCalls { get; } = new();
+
+        [JsonRpcMethod("textDocument/completion", UseSingleObjectParameterDeserialization = true)]
+        public object Completion(TextDocumentPositionParams p) {
+            LanguageCalls.Add($"completion {Cell(p?.TextDocument?.Uri)} {p?.Position?.Line}:{p?.Position?.Character}");
+            return new { isIncomplete = false, items = new[] { new { label = "WriteLine", kind = 2 } } };
+        }
+
+        [JsonRpcMethod("textDocument/hover", UseSingleObjectParameterDeserialization = true)]
+        public object Hover(TextDocumentPositionParams p) {
+            LanguageCalls.Add($"hover {Cell(p?.TextDocument?.Uri)} {p?.Position?.Line}:{p?.Position?.Character}");
+            return new { contents = new { kind = "markdown", value = "a symbol" } };
+        }
+
+        [JsonRpcMethod("textDocument/signatureHelp", UseSingleObjectParameterDeserialization = true)]
+        public object SignatureHelp(TextDocumentPositionParams p) {
+            LanguageCalls.Add($"signatureHelp {Cell(p?.TextDocument?.Uri)} {p?.Position?.Line}:{p?.Position?.Character}");
+            return new { signatures = new[] { new { label = "void Console.WriteLine(bool value)" } } };
+        }
+
+        [JsonRpcMethod("completionItem/resolve", UseSingleObjectParameterDeserialization = true)]
+        public object Resolve(JToken item) {
+            LanguageCalls.Add($"resolve {item?["data"]}");
+            return new { label = item?["label"]?.ToString(), documentation = new { value = "the docs" } };
+        }
+
+        public sealed class TextDocumentPositionParams {
+            public DocumentPayload TextDocument { get; set; }
+            public PositionPayload Position { get; set; }
+        }
+
+        public sealed class PositionPayload {
+            public int Line { get; set; }
+            public int Character { get; set; }
+        }
 
         [JsonRpcMethod("shutdown")]
         public object Shutdown() => null;
@@ -389,6 +428,74 @@ public class NotebookSessionTest {
         await SettleEvents(kernels[1], 1);
         Assert.AreEqual("didOpen c0 sql v1 select 1", kernels[1].DocumentEvents[^1],
             "reopened with its language, not changed");
+    }
+
+    [TestMethod]
+    public async Task A_language_request_syncs_the_cell_it_asks_about_first() {
+        var (session, kernel) = NewSession();
+        // The document is a keystroke behind: the background sync is debounced, and
+        // a completion cannot wait for it. A position measured against stale text
+        // lands on the wrong symbol — or past the end — rather than failing, which
+        // is why this is not left to timing.
+        await session.SyncAsync(new[] { Sync("c0", "csharp-script", "Console") }, CancellationToken.None);
+        await SettleEvents(kernel, 1);
+
+        var result = await session.LanguageAsync(
+            "completion", Sync("c0", "csharp-script", "Console.Wr"), 0, 10, null, CancellationToken.None);
+
+        Assert.AreEqual("didChange c0 v2 Console.Wr", kernel.DocumentEvents[^1],
+            "the text the question is about went first");
+        Assert.AreEqual("completion c0 0:10", kernel.LanguageCalls[^1]);
+        Assert.AreEqual("WriteLine", result.GetProperty("items")[0].GetProperty("label").GetString());
+    }
+
+    [TestMethod]
+    public async Task Hover_and_signature_help_reach_their_own_methods() {
+        var (session, kernel) = NewSession();
+        var cell = Sync("c0", "csharp-script", "Console.WriteLine(");
+
+        var hover = await session.LanguageAsync("hover", cell, 0, 8, null, CancellationToken.None);
+        StringAssert.Contains(hover.GetProperty("contents").GetProperty("value").GetString(), "a symbol");
+
+        var help = await session.LanguageAsync("signatureHelp", cell, 0, 18, null, CancellationToken.None);
+        Assert.AreEqual("void Console.WriteLine(bool value)",
+            help.GetProperty("signatures")[0].GetProperty("label").GetString());
+
+        CollectionAssert.AreEqual(new[] { "hover c0 0:8", "signatureHelp c0 0:18" },
+            kernel.LanguageCalls.ToArray());
+    }
+
+    [TestMethod]
+    public async Task Resolve_hands_the_item_back_and_needs_no_document() {
+        var (session, kernel) = NewSession();
+        // Where the documentation in "void Console.WriteLine(bool value)" comes from:
+        // the list carries labels and the docs are fetched for the focused item. The
+        // item's data is what routes it, so it has to go back exactly as it came.
+        var item = JsonDocument.Parse("""{"label":"WriteLine","data":"7:3:/tmp/notebook.nb.md"}""").RootElement;
+
+        var resolved = await session.LanguageAsync(
+            "resolve", Sync("c0", "csharp-script", "irrelevant"), 0, 0, item, CancellationToken.None);
+
+        Assert.AreEqual("the docs", resolved.GetProperty("documentation").GetProperty("value").GetString());
+        Assert.AreEqual("resolve 7:3:/tmp/notebook.nb.md", kernel.LanguageCalls[^1]);
+        Assert.AreEqual(0, kernel.DocumentEvents.Count, "resolve asks about an item, not a position");
+    }
+
+    [TestMethod]
+    public async Task Only_the_four_known_language_requests_are_allowed() {
+        var (session, _) = NewSession();
+        // An allowlist rather than a method proxy: this runs against a live REPL,
+        // and "forward whatever the client names" is not a thing to offer over HTTP.
+        Assert.IsTrue(NotebookSession.IsLanguageRequest("completion"));
+        Assert.IsTrue(NotebookSession.IsLanguageRequest("resolve"));
+        Assert.IsTrue(NotebookSession.IsLanguageRequest("hover"));
+        Assert.IsTrue(NotebookSession.IsLanguageRequest("signatureHelp"));
+        Assert.IsFalse(NotebookSession.IsLanguageRequest("clrkernel/execute"));
+        Assert.IsFalse(NotebookSession.IsLanguageRequest("textDocument/completion"));
+        Assert.IsFalse(NotebookSession.IsLanguageRequest(null));
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => session.LanguageAsync(
+            "clrkernel/execute", Sync("c0", "csharp-script", "x"), 0, 0, null, CancellationToken.None));
     }
 
     [TestMethod]

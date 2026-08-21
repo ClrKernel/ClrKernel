@@ -84,8 +84,24 @@ public sealed class KernelClient : IDisposable {
             Name = Text(result, "serverInfo", "name"),
             Version = Text(result, "serverInfo", "version"),
             LanguagesElement = At(result, "capabilities", "experimental", "clrkernel", "languages"),
+            // Read from the handshake rather than restated here. A second copy of
+            // "the characters that open a completion" is a copy that goes stale
+            // silently — the server would start offering something the web editor
+            // never asks for, and only VS Code would benefit.
+            CompletionTriggers = Strings(At(result, "capabilities", "completionProvider", "triggerCharacters")),
+            SignatureTriggers = Strings(At(result, "capabilities", "signatureHelpProvider", "triggerCharacters")),
         };
     }
+
+    /// <summary>
+    /// One language-feature request, forwarded verbatim. The reply is LSP's own
+    /// shape and travels to the browser unchanged: Monaco needs converting either
+    /// way, and re-modelling these types in C# would only add somewhere for them to
+    /// disagree with the server.
+    /// </summary>
+    public Task<JsonElement> LanguageRequestAsync(
+        string method, object parameters, CancellationToken cancellationToken = default) =>
+        _rpc.InvokeWithParameterObjectAsync<JsonElement>(method, parameters, cancellationToken);
 
     /// <summary>
     /// The cell languages for one notebook's <em>live</em> session, which is not what
@@ -187,6 +203,19 @@ public sealed class KernelClient : IDisposable {
     private static string Text(JsonElement root, params string[] names) =>
         At(root, names) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
 
+    private static IReadOnlyList<string> Strings(JsonElement? element) {
+        if (element is not { ValueKind: JsonValueKind.Array } array) {
+            return Array.Empty<string>();
+        }
+        var values = new List<string>();
+        foreach (var item in array.EnumerateArray()) {
+            if (item.ValueKind == JsonValueKind.String) {
+                values.Add(item.GetString());
+            }
+        }
+        return values;
+    }
+
     public void Dispose() => _rpc.Dispose();
 
     private sealed class NotificationSink {
@@ -246,6 +275,15 @@ public sealed class InitializeReply {
     public IReadOnlyList<LanguageDescriptor> Languages => _languages ??= KernelJson.ReadLanguages(LanguagesElement);
 
     private IReadOnlyList<LanguageDescriptor> _languages;
+
+    /// <summary>Characters that should open a completion list, as the server declares
+    /// them. Empty from <c>serve</c>, which has no language features.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> CompletionTriggers { get; set; } = Array.Empty<string>();
+
+    /// <summary>Characters that should open signature help — <c>(</c> and <c>,</c>.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> SignatureTriggers { get; set; } = Array.Empty<string>();
 }
 
 /// <summary>

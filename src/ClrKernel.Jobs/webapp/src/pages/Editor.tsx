@@ -4,6 +4,7 @@ import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { ErrorBanner, usePolling } from '../components/common';
+import { registerLanguageProviders } from '../monaco/language';
 import { useCellEditor, useDiffEditor } from '../monaco/useMonaco';
 import {
   cellsToRun,
@@ -81,6 +82,17 @@ export function Editor() {
       setPollFast(session.running);
     }
   }, [session]);
+
+  // IntelliSense, wired on the first session that answers. The trigger characters
+  // are the kernel's own — Monaco fixes a provider's triggers at registration, so
+  // this waits for the handshake rather than guessing and being wrong later. (The
+  // VS Code client has the same constraint: its document selector is fixed when
+  // the LanguageClient is constructed.)
+  useEffect(() => {
+    if (session?.started) {
+      registerLanguageProviders(session.completionTriggers ?? [], session.signatureTriggers ?? []);
+    }
+  }, [session?.started, session?.completionTriggers, session?.signatureTriggers]);
 
   // Execution is gated server-side (git workflow, dev only, and a key required
   // off localhost). A rejected status call is how the editor finds out — but a
@@ -397,6 +409,7 @@ export function Editor() {
                   index={index}
                   count={cells.length}
                   languages={languages}
+                  path={path}
                   run={runState[cell.id] ?? null}
                   canRun={canRun}
                   busy={running}

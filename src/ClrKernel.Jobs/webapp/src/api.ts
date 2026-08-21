@@ -73,6 +73,18 @@ export interface ApiSyncCell {
   source: string;
 }
 
+/** One language question about one cell, at one position. `source` is what the
+ *  editor has right now, so the position means what the cursor means. */
+export interface ApiLanguageRequest {
+  kind: 'completion' | 'resolve' | 'hover' | 'signatureHelp';
+  cellId: string;
+  languageId: string;
+  source: string;
+  line: number;
+  character: number;
+  item?: unknown;
+}
+
 /** One parameter a directive accepts — 'flag' is a bare switch, anything else
  *  takes a value. The connection wizard needs this to know how to write a flag. */
 export interface ApiDirectiveParameter {
@@ -124,6 +136,11 @@ export interface ApiSession {
   /** A scheduled run of this notebook is in flight, in its own kernel. */
   scheduledRunActive?: boolean;
   languages?: ApiLanguage[];
+  /** What opens a completion list / signature help, as the kernel declares it.
+   *  Taken from the handshake rather than restated here, so the editor asks on
+   *  exactly the characters the server answers on. */
+  completionTriggers?: string[];
+  signatureTriggers?: string[];
   cells?: Record<string, ApiCellRun>;
 }
 
@@ -354,6 +371,14 @@ export const api = {
       `/envs/dev/notebooks/sync?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify({ cells }) },
     ),
+  /** One language question about one cell. Returns null when the notebook has no
+   *  session yet, or when the kernel had nothing to say — a language feature that
+   *  cannot answer is silent, never an error. */
+  languageRequest: <T>(path: string, body: ApiLanguageRequest) =>
+    request<{ started: boolean; result: T | null }>(
+      `/envs/dev/notebooks/language?path=${encodeURIComponent(path)}`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ).then((r) => r.result),
   sessionStatus: (path: string) =>
     request<ApiSession>(`/envs/dev/notebooks/session/status?path=${encodeURIComponent(path)}`),
   /** Kills the kernel. Also the only interrupt there is — no RPC surface can

@@ -1,5 +1,18 @@
 import { useEffect, useRef } from 'react';
+import { bindCell } from './language';
 import { cellEditorOptions, monaco } from './setup';
+
+/** Identifies a cell to the language providers. Absent for editors that are not
+ *  cells — the Source tab, the production diff — which is what keeps completion
+ *  from firing on them. */
+export interface CellBinding {
+  path: string;
+  cellId: string;
+  /** The kernel's language id, not Monaco's. */
+  languageId: string;
+  /** False when the kernel has no editor services for this language. */
+  enabled: boolean;
+}
 
 /** Tallest a single cell grows before it scrolls internally. */
 const MAX_CELL_HEIGHT = 600;
@@ -20,11 +33,16 @@ export function useCellEditor(
   value: string,
   onChange: (value: string) => void,
   readOnly = false,
+  binding?: CellBinding,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const latestOnChange = useRef(onChange);
   latestOnChange.current = onChange;
+  // Read through a ref, so a language change or a cell moving is picked up by the
+  // next request rather than needing the model re-registered.
+  const latestBinding = useRef(binding);
+  latestBinding.current = binding;
 
   useEffect(() => {
     if (!container.current) {
@@ -37,6 +55,18 @@ export function useCellEditor(
       readOnly,
     });
     editor.current = created;
+
+    // Claim this model as a cell. Monaco's providers are global per language, so
+    // this is what separates a cell from the Source tab and the diff panes.
+    const model = created.getModel();
+    if (model != null && latestBinding.current != null) {
+      bindCell(model, {
+        path: latestBinding.current.path,
+        cellId: latestBinding.current.cellId,
+        languageId: () => latestBinding.current?.languageId ?? 'csharp-script',
+        enabled: () => latestBinding.current?.enabled ?? true,
+      });
+    }
 
     const resize = () => {
       const height = Math.min(created.getContentHeight(), MAX_CELL_HEIGHT);
