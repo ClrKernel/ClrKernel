@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ACCENTS, EDITOR, ENV, NEUTRAL, STATUS, isAccentName } from './palette';
+import { ACCENTS, EDITOR, ENV, GRID, NEUTRAL, ROW, STATUS, isAccentName } from './palette';
 
 // Read, not import: vitest stubs CSS imports to an empty string, so `?raw`
 // would silently hand this test nothing to check.
@@ -85,6 +85,9 @@ describe('tokens.css mirrors palette.ts', () => {
     ['syntax-string', EDITOR.string],
     ['syntax-number', EDITOR.number],
     ['syntax-directive', EDITOR.directive],
+    ['grid-header', GRID.header],
+    ['row-failed', ROW.failed],
+    ['row-failed-border', ROW.failedBorder],
     ['status-idle', STATUS.idle],
     ['status-running', STATUS.running],
     ['status-error', STATUS.error],

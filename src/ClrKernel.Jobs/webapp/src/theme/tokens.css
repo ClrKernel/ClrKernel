@@ -37,6 +37,9 @@
   --muted-subtle: #8a8577;
   --grid-header: #f0ede4;
 
+  --row-failed: #fdf1ef;
+  --row-failed-border: #ecc9c5;
+
   --status-idle: #b6b0a2;
   --status-running: #1d4ed8;
   --status-error: #b91c1c;
@@ -159,6 +162,8 @@
   --color-surface-panel: var(--surface-panel);
   --color-surface-panel-strong: var(--surface-panel-strong);
   --color-grid-header: var(--grid-header);
+  --color-row-failed: var(--row-failed);
+  --color-row-failed-border: var(--row-failed-border);
   --color-status-idle: var(--status-idle);
   --color-status-running: var(--status-running);
   --color-status-error: var(--status-error);

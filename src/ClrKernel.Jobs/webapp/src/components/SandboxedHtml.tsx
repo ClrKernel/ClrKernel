@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Accent } from '../theme/palette';
 import { useAccent } from '../theme/accent';
-import { FONT_MONO, FONT_SANS, NEUTRAL } from '../theme/palette';
+import { FONT_MONO, FONT_SANS, GRID, NEUTRAL } from '../theme/palette';
 
 /**
  * Kernel output that needs its own scripts to run — the interactive grid builds
@@ -69,7 +69,10 @@ function document_(html: string, token: string, accent: Accent): string {
   --vscode-editor-font-family: ${FONT_MONO};
   --vscode-foreground: ${NEUTRAL.foreground};
   --vscode-editor-background: ${NEUTRAL.card};
-  --vscode-editorWidget-background: ${NEUTRAL.panel};
+  /* The grid's sticky header and filter row read this one. A step darker than
+     the panel colour so a scrolled header stays distinct from the cell chrome
+     around it. */
+  --vscode-editorWidget-background: ${GRID.header};
   --vscode-panel-border: ${NEUTRAL.border};
   --vscode-input-background: ${NEUTRAL.card};
   --vscode-input-foreground: ${NEUTRAL.foreground};
@@ -78,7 +81,7 @@ function document_(html: string, token: string, accent: Accent): string {
   --vscode-button-foreground: ${accent.primaryForeground};
   --vscode-button-secondaryBackground: ${NEUTRAL.panel};
   --vscode-button-secondaryForeground: ${NEUTRAL.foreground};
-  --vscode-list-hoverBackground: ${NEUTRAL.panel};
+  --vscode-list-hoverBackground: ${NEUTRAL.hover};
   --vscode-toolbar-hoverBackground: ${NEUTRAL.panel};
   --vscode-textLink-foreground: ${accent.primary};
   --vscode-descriptionForeground: ${NEUTRAL.mutedForeground};

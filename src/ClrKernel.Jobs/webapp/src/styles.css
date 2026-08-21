@@ -171,7 +171,7 @@
   }
 
   .row-failed {
-    background: color-mix(in srgb, var(--status-error) 6%, transparent);
+    background: var(--row-failed);
   }
 
   .preview {
@@ -984,4 +984,17 @@
 
 .nb-toolbar [data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']::after {
   bottom: 0;
+}
+
+/* --- outline buttons hover to the accent ---------------------------------
+ * Unlayered, for the same reason as the tabs above: the generated Button sets
+ * `hover:bg-accent hover:text-accent-foreground` on the outline variant, and a
+ * className override is dropped by tailwind-merge. The handoff's rule is that
+ * an outline control takes a green border and green text on hover, and a
+ * destructive one takes red — which is a property of the variant, not of any
+ * one page.
+ */
+[data-slot='button'][data-variant='outline']:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
 }

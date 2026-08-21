@@ -43,6 +43,21 @@ export const NEUTRAL = {
   destructive: '#b91c1c',
 } as const;
 
+/** Tinted row backgrounds for a run's cells — the failure tint in particular is
+ *  a design value, not a computed one, so it lives here rather than as a
+ *  color-mix nobody can check. */
+/** The interactive grid's own chrome. Rendered by ClrKernel.Formatting.Html, so
+ *  it reaches the page only through the --vscode-* variables SandboxedHtml
+ *  passes into the frame; these are the values behind those variables. */
+export const GRID = {
+  header: '#f0ede4',
+} as const;
+
+export const ROW = {
+  failed: '#fdf1ef',
+  failedBorder: '#ecc9c5',
+} as const;
+
 export const STATUS = {
   idle: '#b6b0a2',
   running: '#1d4ed8',

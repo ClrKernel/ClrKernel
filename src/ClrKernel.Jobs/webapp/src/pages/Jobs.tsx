@@ -12,7 +12,9 @@ export function Jobs() {
   const { data: health } = usePolling(() => api.health(), null);
   // The catalog does not carry a last-run status, so it comes from the run
   // list: newest first, so the first sighting of a job is its latest run.
-  const { data: runs } = usePolling<Run[]>(() => api.runs(200), 5000);
+  // Slower than the catalog poll on purpose — this is 200 runs on the wire for
+  // one pill per row, and a pill that is fifteen seconds stale costs nothing.
+  const { data: runs } = usePolling<Run[]>(() => api.runs(200), 15000);
   const lastRun = new Map<string, string>();
   for (const run of runs ?? []) {
     const key = `${run.environment}/${run.jobName}`;

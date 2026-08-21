@@ -1,6 +1,6 @@
 import * as monaco from 'monaco-editor';
 import EditorWorker from './editor.worker?worker';
-import { EDITOR, FONT_MONO } from '../theme/palette';
+import { EDITOR, FONT_MONO, NEUTRAL } from '../theme/palette';
 
 /**
  * Monaco, bundled locally. The worker is resolved through `new URL(…,
@@ -31,6 +31,14 @@ monaco.editor.defineTheme('clrkernel-light', {
      these are re-stated against the standard token scopes rather than left to
      inherit — otherwise a C# cell renders in VS blue-and-red on cream. */
   rules: [
+    /* The catch-all first: `vs` paints anything it has no rule for — operators,
+       delimiters, punctuation — in pure black, which is neither the code colour
+       nor anything in this palette. Later rules win, so the specific hues below
+       still apply. */
+    { token: '', foreground: EDITOR.foreground.slice(1) },
+    { token: 'delimiter', foreground: EDITOR.foreground.slice(1) },
+    { token: 'operator', foreground: EDITOR.foreground.slice(1) },
+    { token: 'identifier', foreground: EDITOR.foreground.slice(1) },
     { token: 'keyword', foreground: EDITOR.keyword.slice(1) },
     { token: 'string', foreground: EDITOR.string.slice(1) },
     { token: 'number', foreground: EDITOR.number.slice(1) },
@@ -49,6 +57,18 @@ monaco.editor.defineTheme('clrkernel-light', {
     'editor.selectionBackground': EDITOR.selection,
     'editorWidget.background': EDITOR.widgetBackground,
     'editorWidget.border': EDITOR.widgetBorder,
+    /* Bracket-pair colourization ships on, and its defaults are Monaco's own
+       hard-coded blue/orange/purple — three more hues than this palette has,
+       and they clash on cream. Neutralised here rather than through the
+       `bracketPairColorization` editor option, which is per-editor and did not
+       take; the theme is global and does. */
+    'editorBracketHighlight.foreground1': EDITOR.foreground,
+    'editorBracketHighlight.foreground2': EDITOR.foreground,
+    'editorBracketHighlight.foreground3': EDITOR.foreground,
+    'editorBracketHighlight.foreground4': EDITOR.foreground,
+    'editorBracketHighlight.foreground5': EDITOR.foreground,
+    'editorBracketHighlight.foreground6': EDITOR.foreground,
+    'editorBracketHighlight.unexpectedBracket.foreground': NEUTRAL.destructive,
   },
 });
 
