@@ -162,8 +162,10 @@ public static class Program {
         var invite = await store.CreateInviteAsync(
             AuthService.NewInviteCode(), UserRole.ServerAdmin, "created from the command line",
             null, DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
-        var origin = JobsOptions.SplitList(options.Urls ?? "http://localhost:5000").FirstOrDefault()
-            ?? "http://localhost:5000";
+        // The configured origin, not the bind url: on a real server --urls is
+        // something like http://0.0.0.0:5000, and this printed link is the entire
+        // delivery mechanism for the way back in.
+        var origin = options.Origins.FirstOrDefault() ?? "http://localhost:5000";
         Console.WriteLine(invite.Code);
         Console.WriteLine($"{origin}/invite/{invite.Code}");
         Console.Error.WriteLine(

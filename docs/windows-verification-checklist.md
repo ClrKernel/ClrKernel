@@ -285,3 +285,17 @@ from. They need real resources and cannot be faked locally:
 4. **SSAS processing** (`ProcessPartitions`/`Recalculate`) on-prem.
 5. **ODBC DSN/driver** resolution through the Windows ODBC stack.
 6. **PowerShell** cells using the in-process Windows runspace.
+
+## 13. The auth migrations on a non-SQLite store
+
+`AddAuth` creates `users`, `credentials`, `invites` and `sessions`. Only the SQLite
+migration has ever run — it is what the test suite exercises. The SqlServer and
+Postgres copies were generated from the same model and compile, but neither has been
+applied to a live database.
+
+- [ ] `serve --store postgres --connection-string …` against an empty database, then
+      complete `/setup` and sign back in.
+- [ ] The same for `--store sqlserver`.
+
+Both fail loudly if they fail at all: `Migrate()` runs before the port is bound, so a
+bad migration is a startup error with guidance, not a 500 at sign-in.

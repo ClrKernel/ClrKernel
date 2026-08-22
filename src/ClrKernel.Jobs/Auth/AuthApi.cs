@@ -403,10 +403,13 @@ public static class AuthApi {
         context.Response.Cookies.Append(AuthService.CookieName, token, new CookieOptions {
             HttpOnly = true,
             SameSite = SameSiteMode.Lax,
-            // Secure only when the request actually arrived over TLS: setting it on
-            // a plain-http dev server means the browser drops the cookie and
-            // sign-in appears to succeed and then not have happened.
-            Secure = IsSecure(context),
+            // Not `Request.IsHttps`: behind a TLS-terminating proxy the hop into
+            // this process is plain http, and the cookie would go out without
+            // Secure on a perfectly good HTTPS origin. The configured origins are
+            // already trusted input and say what the browser actually sees —
+            // which is a smaller trust surface than turning on forwarded headers.
+            Secure = SecureCookie(context.Request.IsHttps,
+                (context.RequestServices.GetService(typeof(JobsOptions)) as JobsOptions)?.Origins),
             Path = "/",
             MaxAge = TimeSpan.FromDays(context.RequestServices
                 .GetService(typeof(JobsOptions)) is JobsOptions o ? o.SessionLifetimeDays : 14),
@@ -414,6 +417,26 @@ public static class AuthApi {
     }
 
     private static bool IsSecure(HttpContext context) => context.Request.IsHttps;
+
+    /// <summary>
+    /// Whether the session cookie carries <c>Secure</c>.
+    /// <para>
+    /// Not simply <c>Request.IsHttps</c>: behind a TLS-terminating proxy the hop
+    /// into this process is plain http, and the cookie would go out without Secure
+    /// on a perfectly good HTTPS origin. The configured origins say what the
+    /// browser actually sees, and they are already trusted configuration — a
+    /// smaller trust surface than switching on forwarded headers, which are
+    /// spoofable until you also enumerate KnownProxies.
+    /// </para>
+    /// <para>
+    /// It has to stay false on a plain-http dev server, or the browser drops the
+    /// cookie and sign-in appears to succeed and then not to have happened.
+    /// </para>
+    /// </summary>
+    internal static bool SecureCookie(bool requestIsHttps, string[] origins) =>
+        requestIsHttps
+        || (origins is { Length: > 0 }
+            && origins.All(o => o.StartsWith("https://", StringComparison.OrdinalIgnoreCase)));
 
     // Bodies. Records rather than anonymous binding so the shapes are named.
     public sealed record DisplayNameBody(string DisplayName);

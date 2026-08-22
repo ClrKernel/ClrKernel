@@ -267,6 +267,25 @@ public class AuthApiTest {
         Assert.AreEqual(HttpStatusCode.Unauthorized, (await viewer.GetAsync("/api/jobs")).StatusCode);
     }
 
+    /// <summary>
+    /// The cookie's Secure flag, which `Request.IsHttps` alone gets wrong in the
+    /// deployment the docs recommend: TLS terminated by a proxy, plain http on the
+    /// hop into this process.
+    /// </summary>
+    [TestMethod]
+    public void The_session_cookie_is_secure_whenever_the_origin_is() {
+        Assert.IsTrue(AuthApi.SecureCookie(true, null), "TLS straight into the process");
+        Assert.IsTrue(AuthApi.SecureCookie(false, new[] { "https://jobs.example.internal" }),
+            "TLS terminated by a proxy is still an https origin");
+        Assert.IsTrue(AuthApi.SecureCookie(false, new[] { "https://a.example", "https://b.example" }));
+
+        Assert.IsFalse(AuthApi.SecureCookie(false, new[] { "http://localhost:5000" }),
+            "a plain-http dev server must not set Secure, or the browser drops the cookie");
+        Assert.IsFalse(AuthApi.SecureCookie(false, new[] { "https://a.example", "http://b.example" }),
+            "one plain origin is enough to make the flag wrong for somebody");
+        Assert.IsFalse(AuthApi.SecureCookie(false, Array.Empty<string>()));
+    }
+
     [TestMethod]
     public async Task Signing_out_ends_the_session() {
         using var admin = await ClientFor(UserRole.ServerAdmin);

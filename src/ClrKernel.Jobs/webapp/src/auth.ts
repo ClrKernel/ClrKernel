@@ -17,7 +17,12 @@ export interface SessionState {
   authenticated: boolean;
   /** No accounts yet: the first person here claims the server. */
   needsSetup: boolean;
-  /** WebAuthn needs a secure context; false means the browser will refuse. */
+  /**
+   * Whether the *server* saw TLS on this request. Diagnostics only — behind a
+   * proxy that terminates TLS it is false on a perfectly good HTTPS origin, so
+   * it must never gate the UI. `window.isSecureContext` is the browser's own
+   * answer and is the one that matters.
+   */
   secureContext: boolean;
   relyingPartyId: string;
   user: SessionUser | null;
@@ -50,13 +55,16 @@ export async function loadSession(): Promise<SessionState> {
  * you. The two real causes are an old browser and an origin that is neither
  * HTTPS nor localhost — and the second is much the more likely.
  */
-export function passkeyBlocker(session: SessionState | null): string | null {
+export function passkeyBlocker(_session: SessionState | null): string | null {
   if (!browserSupportsWebAuthn()) {
     return 'This browser does not support passkeys. Chrome, Edge, Safari and Firefox all do.';
   }
-  if (session && !session.secureContext && location.hostname !== 'localhost') {
+  // The browser already knows, and it is the only opinion that counts: it also
+  // gets 127.0.0.1 and [::1] right, and it is not fooled by a TLS-terminating
+  // proxy the way asking the server would be.
+  if (!window.isSecureContext) {
     return (
-      `Passkeys need HTTPS. This server is reachable at ${location.origin}, which the browser ` +
+      `Passkeys need a secure context. This page is ${location.origin}, which the browser ` +
       'treats as insecure, so it will refuse to create or use one. Put the server behind TLS ' +
       '(or reach it at localhost) and try again.'
     );
