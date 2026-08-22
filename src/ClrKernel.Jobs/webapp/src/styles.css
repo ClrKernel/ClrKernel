@@ -606,11 +606,14 @@
     background: var(--muted);
   }
 
+  /* The Source tab is the whole file: it takes the height of its pane and
+     scrolls inside itself, rather than growing the page. */
   .source-editor {
     width: 100%;
-    min-height: 28rem;
+    flex: 1 1 auto;
+    min-height: 0;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 
@@ -618,8 +621,10 @@
      sizes itself, and a fixed height leaves a short file in a half-empty box. */
   .diff-editor {
     width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 
@@ -921,10 +926,6 @@
   /* The work area is measured to the bottom of the window, so anything after it
      would be clipped rather than reachable. Hide it instead of leaving text that
      exists but cannot be read. */
-  body.focus-mode-on .editor-footnote {
-    display: none;
-  }
-
 }
 
 /* --- underline tabs ------------------------------------------------------

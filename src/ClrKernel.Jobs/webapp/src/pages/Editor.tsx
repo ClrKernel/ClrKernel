@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
@@ -23,7 +23,7 @@ import {
   saveNotebookState,
   type LayoutPrefs,
 } from '../prefs';
-import { useCellEditor, useDiffEditor } from '../monaco/useMonaco';
+import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
 import { neighbourCell } from '../toc';
 import {
   cellsToRun,
@@ -401,6 +401,9 @@ export function Editor() {
   }
 
   const focusing = mode === 'focus' && tab === 'notebook';
+  // Source and Diff are whole files, not a column of cells: they take the height
+  // of the pane and scroll inside themselves, so the page must not scroll too.
+  const fills = focusing || tab === 'source' || tab === 'diff';
 
   return (
     // The editor is the one page with its own sidebar: file tree on the left,
@@ -451,8 +454,8 @@ export function Editor() {
       {/* Focus Mode measures itself to the bottom of this scroller and gives
           back whatever overflows, so padding below it is viewport it cannot
           use. Every other view wants the gutter. */}
-      <div className={focusing ? 'flex min-h-0 flex-1 flex-col' : 'min-h-0 flex-1 overflow-auto pb-8'}>
-      <div className="px-4 pt-3">
+      <div className={fills ? 'flex min-h-0 flex-1 flex-col' : 'min-h-0 flex-1 overflow-auto pb-8'}>
+      <div className="empty:hidden px-4 pt-3">
         <ErrorBanner error={error} />
         {notice && (
           <Alert variant="success" className="mb-3">
@@ -580,7 +583,7 @@ export function Editor() {
         ))}
 
       {tab === 'source' && (
-        <div className="px-4">
+        <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {source == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
           ) : (
@@ -590,7 +593,7 @@ export function Editor() {
       )}
 
       {tab === 'diff' && (
-        <div className="px-4">
+        <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {prod == null || savedSource == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
           ) : prod === savedSource ? (
@@ -599,7 +602,7 @@ export function Editor() {
             </p>
           ) : (
             <>
-              <p className="mb-2 max-w-[78ch] text-base text-muted-foreground">
+              <p className="mb-2 max-w-[78ch] shrink-0 text-base text-muted-foreground">
                 Production (left) vs dev (right)
                 {prod === '' && ' — this file does not exist in production yet'}
                 {dirty &&
@@ -621,13 +624,10 @@ export function Editor() {
           />
         )}
 
-      <p className="editor-footnote mt-6 max-w-[78ch] px-4 text-base text-muted-foreground">
-        Every save commits to the dev branch. Cells you run here execute in a warm kernel that is
-        dropped after 30 idle minutes; those runs never appear in run history and never count
-        towards promotion. Run the notebook's jobs from the <Link to="/jobs">Jobs</Link> page —
-        promotion unlocks when every job on this notebook has a clean green run of exactly this
-        content.
-      </p>
+      {/* The footnote that used to sit here — what a save commits, and why an
+          interactive run is not promotion evidence — is the info button beside
+          Save in the toolbar. It answered a question nobody was asking most of
+          the time, and it cost the bottom of every notebook to do it. */}
       </div>
       </div>
     </div>
@@ -643,7 +643,7 @@ function SourceEditor({
   language: string;
   onChange: (value: string) => void;
 }) {
-  const container = useCellEditor(language, value, onChange);
+  const container = useFillEditor(language, value, onChange);
   return <div className="source-editor" ref={container} />;
 }
 
@@ -656,6 +656,6 @@ function DiffView({
   modified: string;
   language: string;
 }) {
-  const container = useDiffEditor(original, modified, language);
+  const container = useDiffEditor(original, modified, language, true);
   return <div className="diff-editor" ref={container} />;
 }

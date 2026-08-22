@@ -84,26 +84,66 @@ export interface NotebookToolbarProps {
  * label and the kernel version, then folds the execution controls into a menu.
  */
 /**
- * Why promotion is blocked, as a toast rather than a banner.
+ * Background a toolbar button can explain, on request.
  *
- * It auto-dismisses, but carries an explicit Dismiss too: the reasons can run to
- * several lines, and a notice that vanishes mid-sentence while you are reading
- * it is worse than one you have to close. `id` is fixed so hammering the button
- * updates the one toast instead of stacking identical copies.
+ * Each of these used to be a permanent banner — one above the notebook, one
+ * under it. Neither changes while you work, so both cost a strip of the screen
+ * to repeat themselves every time you scrolled past. As a toast they answer the
+ * question when it is actually asked.
+ *
+ * They auto-dismiss but carry an explicit Dismiss too: the text runs to several
+ * lines, and a notice that vanishes mid-sentence is worse than one you close. A
+ * fixed `id` per topic means hammering the button updates the one toast rather
+ * than stacking identical copies.
  */
-function explainBlocked(reasons: string[]): void {
-  toast.warning('Not promotable yet', {
-    id: 'promotion-blocked',
+function notice(
+  id: string,
+  kind: 'warning' | 'info',
+  title: string,
+  body: React.ReactNode,
+): void {
+  toast[kind](title, {
+    id,
     duration: 8000,
-    description: (
-      <ul className="mt-1 list-disc space-y-0.5 pl-4">
-        {reasons.map((reason) => (
-          <li key={reason}>{reason}</li>
-        ))}
-      </ul>
-    ),
-    action: { label: 'Dismiss', onClick: () => toast.dismiss('promotion-blocked') },
+    description: body,
+    action: { label: 'Dismiss', onClick: () => toast.dismiss(id) },
   });
+}
+
+/** The ⓘ that opens one. Ghost, so it reads as an aside to the button it follows. */
+function InfoTip({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return (
+    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} onClick={onOpen}>
+      <Info className="size-3.5" aria-hidden="true" />
+    </Button>
+  );
+}
+
+function explainBlocked(reasons: string[]): void {
+  notice(
+    'promotion-blocked',
+    'warning',
+    'Not promotable yet',
+    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+      {reasons.map((reason) => (
+        <li key={reason}>{reason}</li>
+      ))}
+    </ul>,
+  );
+}
+
+function explainSaving(): void {
+  notice(
+    'saving',
+    'info',
+    'Every save is a commit',
+    <p className="mt-1">
+      Saving commits to the dev branch. Cells you run here execute in a warm kernel that is
+      dropped after 30 idle minutes; those runs never appear in run history and never count
+      towards promotion. Run the notebook’s jobs from the Jobs page — promotion unlocks when
+      every job on this notebook has a clean green run of exactly this content.
+    </p>,
+  );
 }
 
 export function NotebookToolbar(props: NotebookToolbarProps) {
@@ -245,6 +285,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       >
         {props.dirty ? 'Save' : 'Saved'}
       </Button>
+      <InfoTip label="What does saving do?" onOpen={explainSaving} />
       <Button
         size="xs"
         onClick={props.onPromote}
@@ -258,19 +299,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             : 'Promote to production'}
       </Button>
       {/* Beside the button, not inside it: a disabled button swallows clicks,
-          and this control has to stay clickable precisely when Promote is not.
-          Why you cannot promote is a question you ask occasionally, so it is a
-          thing you reach for — not a banner sitting above the notebook forever. */}
+          and this control has to stay clickable precisely when Promote is not. */}
       {blockedReasons.length > 0 && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Why can’t I promote?"
-          title="Why can’t I promote?"
-          onClick={() => explainBlocked(blockedReasons)}
-        >
-          <Info className="size-3.5" aria-hidden="true" />
-        </Button>
+        <InfoTip label="Why can’t I promote?" onOpen={() => explainBlocked(blockedReasons)} />
       )}
       </div>
     </div>

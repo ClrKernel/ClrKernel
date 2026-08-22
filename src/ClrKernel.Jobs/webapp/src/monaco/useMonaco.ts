@@ -150,6 +150,63 @@ export function useCellEditor(
   return container;
 }
 
+/**
+ * One editor filling its container, scrolling inside itself — the Source tab and
+ * anything else that is a whole file rather than a cell.
+ *
+ * Separate from `useCellEditor` because the two size in opposite directions: a
+ * cell grows to its content and never scrolls, this takes whatever height the
+ * pane gives it. It owns its model outright; nothing else refers to it.
+ */
+export function useFillEditor(
+  language: string,
+  value: string,
+  onChange: (value: string) => void,
+) {
+  const container = useRef<HTMLDivElement | null>(null);
+  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const latestOnChange = useRef(onChange);
+  latestOnChange.current = onChange;
+
+  useEffect(() => {
+    if (!container.current) {
+      return;
+    }
+    const created = monaco.editor.create(container.current, {
+      ...focusEditorOptions,
+      value,
+      language,
+    });
+    editor.current = created;
+    const changeListener = created.onDidChangeModelContent(() =>
+      latestOnChange.current(created.getValue()),
+    );
+    return () => {
+      changeListener.dispose();
+      created.getModel()?.dispose();
+      created.dispose();
+      editor.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const model = editor.current?.getModel();
+    if (model) {
+      monaco.editor.setModelLanguage(model, language);
+    }
+  }, [language]);
+
+  useEffect(() => {
+    const current = editor.current;
+    if (current && current.getValue() !== value) {
+      current.setValue(value);
+    }
+  }, [value]);
+
+  return container;
+}
+
 /** Focus Mode's editor fills its pane and scrolls itself, unlike a cell editor
  *  which grows to its content and never scrolls. */
 export const focusEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -290,7 +347,7 @@ export function useFocusEditor({
  * A read-only side-by-side diff. Used for "Diff vs production", where the two
  * sides are the same notebook on the two branches.
  */
-export function useDiffEditor(original: string, modified: string, language: string) {
+export function useDiffEditor(original: string, modified: string, language: string, fill = false) {
   const container = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -303,7 +360,15 @@ export function useDiffEditor(original: string, modified: string, language: stri
     // scrolls rather than pushing the page away.
     const lines = Math.max(original.split('\n').length, modified.split('\n').length);
     const wanted = Math.max(lines, 8) * 19 + 24;
-    container.current.style.height = `${Math.min(wanted, MAX_DIFF_HEIGHT)}px`;
+    if (fill) {
+      // The pane decides: the tab is full height, so the diff is too.
+      container.current.style.height = '100%';
+    } else {
+      container.current.style.height = `${Math.min(wanted, MAX_DIFF_HEIGHT)}px`;
+    }
+    // Whether the ruler earns its column: it is for finding changes you cannot
+    // see, so it depends on the diff overflowing the box it ended up in.
+    const overflows = wanted > (fill ? container.current.clientHeight : MAX_DIFF_HEIGHT);
 
     const editor = monaco.editor.createDiffEditor(container.current, {
       automaticLayout: true,
@@ -313,12 +378,10 @@ export function useDiffEditor(original: string, modified: string, language: stri
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       scrollbar: { vertical: 'auto', horizontal: 'auto' },
-      // The ruler is for finding changes you cannot see. When the whole diff
-      // fits on screen it is a grey column down the side and nothing else.
       // Both are needed: renderOverviewRuler drops the diff's own ruler, and
       // overviewRulerLanes drops the one each inner editor draws for itself.
-      renderOverviewRuler: wanted > MAX_DIFF_HEIGHT,
-      overviewRulerLanes: wanted > MAX_DIFF_HEIGHT ? 3 : 0,
+      renderOverviewRuler: overflows,
+      overviewRulerLanes: overflows ? 3 : 0,
       fontSize: 13,
     });
     const originalModel = monaco.editor.createModel(original, language);
