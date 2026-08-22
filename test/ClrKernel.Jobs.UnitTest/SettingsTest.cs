@@ -61,7 +61,7 @@ public class SettingsTest {
     public void Host_only_fields_are_refused_even_when_named_correctly() {
         var registry = SettingsRegistry.CreateDefault(Options());
 
-        var error = registry.Write("security", Values("{\"apiKey\": \"sneaky\"}"));
+        var error = registry.Write("security", Values("{\"relyingPartyId\": \"evil.example\"}"));
         StringAssert.Contains(error, "cannot be changed from the web UI");
 
         error = registry.Write("general", Values("{\"store\": \"postgres\"}"));
@@ -93,21 +93,19 @@ public class SettingsTest {
     [TestMethod]
     public void Secrets_report_presence_but_never_the_value() {
         var options = Options(new Dictionary<string, string> {
-            ["api-key"] = "super-secret-key",
             ["connection-string"] = "Host=db;Password=hunter2",
         });
         var registry = SettingsRegistry.CreateDefault(options);
 
         var security = registry.Find("security");
-        var apiKey = security.Fields.Single(f => f.Name == "apiKey");
-        Assert.AreEqual("secret", apiKey.Type);
-        Assert.IsTrue(apiKey.IsSet == true);
-        Assert.IsNull(apiKey.Value);
+        var connection = security.Fields.Single(f => f.Name == "connectionString");
+        Assert.AreEqual("secret", connection.Type);
+        Assert.IsTrue(connection.IsSet == true);
+        Assert.IsNull(connection.Value);
 
         // Belt and braces: the serialized payload the API would return must not
-        // contain either secret anywhere.
+        // contain the secret anywhere.
         var serialized = JsonSerializer.Serialize(registry.Sections);
-        Assert.IsFalse(serialized.Contains("super-secret-key"), serialized);
         Assert.IsFalse(serialized.Contains("hunter2"), serialized);
     }
 }

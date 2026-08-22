@@ -14,6 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
+import { useCanWrite } from '../sessionContext';
 
 const RESTART_HINT =
   'Kills the kernel. This is also the only way to stop a cell that will not finish.';
@@ -149,7 +150,8 @@ function explainSaving(): void {
 export function NotebookToolbar(props: NotebookToolbarProps) {
   const bar = useRef<HTMLDivElement>(null);
   const layout = toolbarLayout(useBarWidth(bar));
-  const execution = showsExecution(props.tab) && props.canRun;
+  const canWrite = useCanWrite();
+  const execution = showsExecution(props.tab) && props.canRun && canWrite;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
   const blockedReasons =
     props.promotion && !props.promotion.eligible ? props.promotion.reasons : [];
@@ -275,7 +277,30 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         </div>
       )}
 
+      {/* The Normal|Focus switch is not a write, so it stays for viewers — Focus
+          Mode is a reading layout as much as an editing one. */}
+      {!canWrite && showsExecution(props.tab) && (
+        <div className="flex items-center gap-2">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={props.mode}
+            onValueChange={(value) => value && props.onMode(value as 'normal' | 'focus')}
+            aria-label="Notebook view"
+          >
+            <ToggleGroupItem value="normal" className={TOGGLE}>
+              Normal
+            </ToggleGroupItem>
+            <ToggleGroupItem value="focus" className={TOGGLE}>
+              Focus
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+      )}
+
       {/* Document-level, so these stay on every tab and never collapse. */}
+      {canWrite && (
       <div className="flex items-center gap-2">
       <Button
         variant="secondary"
@@ -304,6 +329,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         <InfoTip label="Why can’t I promote?" onOpen={() => explainBlocked(blockedReasons)} />
       )}
       </div>
+      )}
     </div>
   );
 }

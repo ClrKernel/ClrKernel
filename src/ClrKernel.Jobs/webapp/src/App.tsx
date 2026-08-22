@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Rail } from './components/Rail';
@@ -12,6 +12,10 @@ import { Jobs } from './pages/Jobs';
 import { Notebooks } from './pages/Notebooks';
 import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
+import { Invite } from './pages/Invite';
+import { SignIn, Setup } from './pages/SignIn';
+import { loadSession, type SessionState } from './auth';
+import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
 import { ACCENTS } from './theme/palette';
 
@@ -19,11 +23,48 @@ export function App() {
   // The inline script in index.html already put the accent on <html> before
   // first paint; this only mirrors it so the picker can show a tick.
   const [accent, setAccent] = useState(loadAccent);
-  const isEditor = useLocation().pathname === '/edit';
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isEditor = location.pathname === '/edit';
+  const [session, setSession] = useState<SessionState | null>(null);
+
+  const refresh = useCallback(() => {
+    loadSession().then(setSession).catch(() => setSession(null));
+  }, []);
+  useEffect(refresh, [refresh]);
 
   const accentValue = ACCENTS.find((a) => a.name === accent) ?? ACCENTS[0];
 
+  // The server redirects a signed-out browser here, so these routes render
+  // without the app shell — there is no breadcrumb to show and no rail to
+  // navigate with until you are somebody.
+  const signedOut = ['/signin', '/setup'].includes(location.pathname)
+    || location.pathname.startsWith('/invite/');
+  if (signedOut || (session != null && !session.authenticated)) {
+    const arrive = () => {
+      refresh();
+      navigate('/', { replace: true });
+    };
+    return (
+      <AccentContext.Provider value={accentValue}>
+        <Routes>
+          <Route path="/setup" element={<Setup session={session} onSignedIn={arrive} />} />
+          <Route path="/invite/:code" element={<Invite session={session} onSignedIn={arrive} />} />
+          <Route path="*" element={<SignIn session={session} onSignedIn={arrive} />} />
+        </Routes>
+        <Toaster position="bottom-right" richColors closeButton />
+      </AccentContext.Provider>
+    );
+  }
+
+  // The very first paint, before /api/auth/session has answered. Rendering the
+  // shell here would flash a signed-in app at someone who is not.
+  if (session == null) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
   return (
+    <SessionContext.Provider value={session}>
     <AccentContext.Provider value={accentValue}>
     <TooltipProvider delayDuration={300}>
       {/* Fixed rail, fixed top bar, scrolling content — the page itself never
@@ -77,5 +118,6 @@ export function App() {
       <Toaster position="bottom-right" richColors closeButton />
     </TooltipProvider>
     </AccentContext.Provider>
+    </SessionContext.Provider>
   );
 }

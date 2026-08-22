@@ -13,6 +13,7 @@ import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import type { LspDiagnostic } from '../monaco/lsp';
 import { useCellEditor } from '../monaco/useMonaco';
+import { useCanWrite } from '../sessionContext';
 import {
   connectableLanguage,
   hasEditorServices,
@@ -68,6 +69,9 @@ export function CellEditor({
   const showPreview = isMarkdown && !editing && cell.source.trim().length > 0;
   const connectable = connectableLanguage(cell.languageId, languages);
   const outputs = cleared ? [] : (run?.outputs ?? []);
+  // Viewers get the same notebook without the levers. The server refuses these
+  // routes anyway; hiding them is so nobody reaches for something that will fail.
+  const canWrite = useCanWrite();
 
   return (
     <div className={`notebook-cell notebook-cell-${cell.kind}${run ? ` cell-${run.status}` : ''}`}>
@@ -78,7 +82,7 @@ export function CellEditor({
             just a margin that looks like a mistake. */}
         {!isMarkdown && (
           <div className="cell-gutter-bar">
-            {canRun ? (
+            {canRun && canWrite ? (
               <button
                 className="cell-run-button"
                 onClick={() => onRun('one')}
@@ -103,7 +107,7 @@ export function CellEditor({
           {/* Structural actions float over the editor and appear on hover, so a
               resting cell is code and nothing else. */}
           <div className="cell-float-actions">
-            {!isMarkdown && canRun && (
+            {!isMarkdown && canRun && canWrite && (
               <>
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   onClick={() => onRun('before')}
@@ -121,19 +125,23 @@ export function CellEditor({
                 </Button>
               </>
             )}
-            <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
-              ↑
-            </Button>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
-              onClick={() => onMove(index + 1)}
-              disabled={index === count - 1}
-              title="Move down"
-            >
-              ↓
-            </Button>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} title="Delete this cell">
-              ✕
-            </Button>
+            {canWrite && (
+              <>
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
+                  ↑
+                </Button>
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
+                  onClick={() => onMove(index + 1)}
+                  disabled={index === count - 1}
+                  title="Move down"
+                >
+                  ↓
+                </Button>
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} title="Delete this cell">
+                  ✕
+                </Button>
+              </>
+            )}
           </div>
 
           {showPreview ? (
@@ -158,7 +166,7 @@ export function CellEditor({
               {run?.stale && <Badge variant="outline" className="font-normal" title="This cell changed since it ran">edited since run</Badge>}
             </span>
             <span className="spacer" />
-            {connectable && (
+            {connectable && canWrite && (
               <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                 onClick={onConnect}
                 title={`Build a ${connectable.displayName} connection directive`}
@@ -166,21 +174,30 @@ export function CellEditor({
                 ⛁ Connect
               </Button>
             )}
-            <Select
-              value={isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp')}
-              onValueChange={onLanguage}
-            >
-              <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {languageOptions(languages).map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {canWrite ? (
+              <Select
+                value={isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp')}
+                onValueChange={onLanguage}
+              >
+                <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {languageOptions(languages).map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              // A viewer sees which language a cell is, but cannot change it.
+              <span className="px-1.5 text-sm text-muted-subtle">
+                {languageOptions(languages).find(
+                  (o) => o.value === (isMarkdown ? 'markdown' : cell.languageId ?? 'csharp'),
+                )?.label ?? cell.languageId}
+              </span>
+            )}
             {/* The tag as written, when it differs from the language's own name —
                 ```zsh against the shellscript language, say. */}
             {cell.tag && cell.tag !== cell.languageId && cell.tag !== 'csharp' && (
@@ -294,7 +311,7 @@ function CellBody({
   // Markdown cells get no binding at all, so completion never fires on prose.
   // For the rest, the id the kernel knows the language by — never Monaco's, which
   // calls a C# cell "csharp" and would reach no language service at all.
-  const container = useCellEditor(language, cell.source, onChange, false,
+  const container = useCellEditor(language, cell.source, onChange, !useCanWrite(),
     isMarkdown ? undefined : {
       path,
       cellId: cell.id,
@@ -316,6 +333,9 @@ export function CellInserter({
   onInsert: (kind: 'code' | 'markdown') => void;
   always?: boolean;
 }) {
+  if (!useCanWrite()) {
+    return null;
+  }
   return (
     <div className={always ? 'cell-inserter cell-inserter-always' : 'cell-inserter'}>
       <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert('code')}>

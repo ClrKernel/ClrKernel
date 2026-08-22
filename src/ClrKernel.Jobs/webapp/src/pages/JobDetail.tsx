@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, type Job, type Run } from '../api';
 import { EnvBadge, ErrorBanner, usePolling } from '../components/common';
+import { useCanWrite } from '../sessionContext';
 import { RunTable } from './Dashboard';
 
 interface FormState {
@@ -92,6 +93,7 @@ function NotifyPicker({
 }
 
 export function JobDetail() {
+  const canWrite = useCanWrite();
   const { env = 'default', name } = useParams<{ env: string; name: string }>();
   const [search] = useSearchParams();
   const navigate = useNavigate();
@@ -219,7 +221,7 @@ export function JobDetail() {
           <span className="truncate">{isNew ? 'New job' : name}</span>
           {env !== 'default' && <EnvBadge env={env} />}
         </h1>
-        {!isNew && (
+        {!isNew && canWrite && (
           <div className="flex shrink-0 items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => runNow(false)} disabled={busy}>
               Run now
@@ -250,7 +252,7 @@ export function JobDetail() {
         </TabsList>
 
         <TabsContent value="overview">
-      <div className="form">
+      <fieldset className="form" disabled={!canWrite}>
         <label>
           Name
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} />
@@ -324,8 +326,7 @@ export function JobDetail() {
             <Link to="/jobs">Cancel</Link>
           </Button>
         </div>
-      </div>
-
+      </fieldset>
         </TabsContent>
 
         <TabsContent value="runs">

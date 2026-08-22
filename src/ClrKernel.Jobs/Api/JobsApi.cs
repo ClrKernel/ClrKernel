@@ -621,9 +621,15 @@ public static class JobsApi {
     /// <para>
     /// The gate: the git workflow must be on, the environment must be dev (prod is
     /// read-only and is not a scratchpad), the path must resolve inside the dev
-    /// worktree — and, since an API key is optional, execution is refused when the
-    /// server is bound beyond localhost without one. That combination is remote
-    /// code execution for anyone who can reach the port.
+    /// worktree.
+    /// </para>
+    /// <para>
+    /// It used to carry a fourth clause: refuse to execute when the server was
+    /// bound beyond localhost with no API key, because that combination was remote
+    /// code execution for anyone who could reach the port. That clause is gone
+    /// because the condition cannot arise any more — every route here is
+    /// <c>.AdminOnly()</c>, so reaching this code at all means a signed-in Server
+    /// Admin. The check moved; it was not dropped.
     /// </para>
     /// </summary>
     private static IResult DenyExecution(
@@ -638,12 +644,6 @@ public static class JobsApi {
         }
         if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
             return Results.BadRequest(new { error = "Path is outside the dev area." });
-        }
-        if (string.IsNullOrEmpty(options.ApiKey) && !IsLocalOnly(options.Urls)) {
-            return Results.Json(new {
-                error = "Refusing to run cells: the server is listening beyond localhost with no API key. " +
-                    "Set --api-key (or CLRKERNEL_JOBS_APIKEY), or bind to localhost.",
-            }, statusCode: 403);
         }
         return null;
     }

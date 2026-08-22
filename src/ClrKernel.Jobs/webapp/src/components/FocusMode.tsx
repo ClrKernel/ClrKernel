@@ -12,6 +12,7 @@ import { StatusBadge } from './common';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useFocusEditor } from '../monaco/useMonaco';
+import { useCanWrite } from '../sessionContext';
 import {
   hasEditorServices,
   languageOptions,
@@ -105,7 +106,11 @@ export function FocusMode({
     [cells, activeId, onActivate],
   );
 
+  // Focus Mode is a reading layout too, so a viewer keeps it — without the
+  // controls, and with the editor read-only.
+  const canWrite = useCanWrite();
   const { container: editorRef, relayout } = useFocusEditor({
+    readOnly: !canWrite,
     binding: active == null ? null : {
       path,
       cellId: active.id,
@@ -306,9 +311,11 @@ export function FocusMode({
         {active == null ? (
           <div className="focus-empty-state">
             <p>This notebook has no cells.</p>
-            <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert(null, 'code')}>
-              + Code
-            </Button>
+            {canWrite && (
+              <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert(null, 'code')}>
+                + Code
+              </Button>
+            )}
           </div>
         ) : (
           <>
@@ -316,7 +323,7 @@ export function FocusMode({
               <span className="focus-cell-title">
                 Cell [{activeRun?.executionCount ?? ' '}]
               </span>
-              {canRun && !isMarkdown && (
+              {canRun && canWrite && !isMarkdown && (
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   disabled={busy}
                   onClick={() => onRun(active.id)}
@@ -332,12 +339,15 @@ export function FocusMode({
                 </Badge>
               )}
               <span className="spacer" />
+              {canWrite && (
               <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                 onClick={() => onClearOutput(active.id)}
                 title="Clear this cell's output"
               >
                 Clear output
               </Button>
+              )}
+              {canWrite ? (
               <Select
                 value={isMarkdown ? 'markdown' : (active.languageId ?? 'csharp')}
                 onValueChange={(value) => onLanguage(active.id, value)}
@@ -353,12 +363,21 @@ export function FocusMode({
                   ))}
                 </SelectContent>
               </Select>
+              ) : (
+                <span className="px-1.5 text-sm text-muted-subtle">
+                  {languageOptions(languages).find(
+                    (o) => o.value === (isMarkdown ? 'markdown' : active.languageId ?? 'csharp'),
+                  )?.label ?? active.languageId}
+                </span>
+              )}
+              {canWrite && (
               <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => onDelete(active.id)}
                 title="Delete this cell"
               >
                 ✕
               </Button>
+              )}
             </div>
 
             {/* Height comes from the split ratio alone, so long output can never

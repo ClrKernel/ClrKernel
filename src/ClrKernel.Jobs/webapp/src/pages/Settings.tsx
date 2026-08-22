@@ -4,56 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { api, apiKey, setApiKey, type SettingField, type SettingsSection } from '../api';
+import { api, type SettingField, type SettingsSection } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { TabNav } from '../components/TabNav';
-
-/**
- * The API key the browser sends on every request. It lives here rather than in
- * the top bar because it is configuration, not navigation — and it was the
- * busiest thing in the old header.
- *
- * Browser-local on purpose: it is stored in this browser only and never sent to
- * the server as a setting, so it does not appear in the schema-driven sections
- * below.
- */
-function ApiKeySection() {
-  const [key, setKey] = useState(apiKey);
-  const [saved, setSaved] = useState(false);
-  const stored = apiKey();
-
-  return (
-    <section className="settings-section">
-      <h2 className="mb-1 text-lg font-semibold">This browser</h2>
-      <p className="mb-2 text-base text-muted-foreground">
-        Sent as <code>X-Api-Key</code> on every request. Required only when the server was started
-        with a key; stored in this browser, never written to the server.
-      </p>
-      <form
-        className="flex max-w-md items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setApiKey(key);
-          setSaved(true);
-        }}
-      >
-        <Input
-          type="password"
-          value={key}
-          aria-label="API key"
-          placeholder={stored ? 'Stored — type to replace' : 'API key (if required)'}
-          onChange={(event) => {
-            setKey(event.target.value);
-            setSaved(false);
-          }}
-        />
-        <Button type="submit" variant="secondary" disabled={key === stored}>
-          {saved && key === stored ? 'Saved' : 'Save'}
-        </Button>
-      </form>
-    </section>
-  );
-}
+import { useCanWrite } from '../sessionContext';
+import { AccountSection, UsersSection } from './Account';
 
 function FieldValue({ field }: { field: SettingField }) {
   if (field.type === 'secret') {
@@ -71,6 +26,7 @@ function FieldValue({ field }: { field: SettingField }) {
  * zero UI work — that is the point of the registry.
  */
 function Section({ section }: { section: SettingsSection }) {
+  const canWrite = useCanWrite();
   const [edits, setEdits] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -118,7 +74,8 @@ function Section({ section }: { section: SettingsSection }) {
           <tbody>
             {section.fields.map((field) => {
               // Pinned by CLI/env, or not web-writable at all: display only.
-              const locked = !field.webWritable || (field.source !== 'default' && field.source !== 'settings.json');
+              const locked = !canWrite || !field.webWritable
+                || (field.source !== 'default' && field.source !== 'settings.json');
               return (
                 <tr key={field.name}>
                   <td className="settings-label">
@@ -177,7 +134,7 @@ function Section({ section }: { section: SettingsSection }) {
         </div>
       )}
 
-      {editable.length > 0 && (
+      {editable.length > 0 && canWrite && (
         <Button className="mt-3" size="sm" onClick={save} disabled={busy || !dirty}>
           Save {section.title.toLowerCase()}
         </Button>
@@ -197,16 +154,24 @@ function Section({ section }: { section: SettingsSection }) {
 export function Settings() {
   const { section: slug } = useParams<{ section: string }>();
   const { data, error } = usePolling(() => api.settings(), null);
+  const isAdmin = useCanWrite();
   const sections = data?.sections ?? [];
 
-  const tabs = sections.map((s) => ({ to: `/settings/${s.key}`, label: s.title }));
+  // Your account first — it is about you, and it is the one every role has. The
+  // server's own sections follow, and user management is last and admin-only.
+  const tabs = [
+    { to: '/settings/account', label: 'Your account' },
+    ...sections.map((s) => ({ to: `/settings/${s.key}`, label: s.title })),
+    ...(isAdmin ? [{ to: '/settings/users', label: 'Users' }] : []),
+  ];
   const current = sections.find((s) => s.key === slug);
+  const client = slug === 'account' || (slug === 'users' && isAdmin);
 
   // Only redirect once the sections have actually arrived: bouncing to the
   // first tab while the list is still empty would send you to /settings/
   // undefined on a slow connection.
-  if (sections.length > 0 && slug == null) {
-    return <Navigate to={tabs[0].to} replace />;
+  if (slug == null) {
+    return <Navigate to="/settings/account" replace />;
   }
 
   return (
@@ -217,18 +182,16 @@ export function Settings() {
       />
       <ErrorBanner error={error} />
 
-      {tabs.length > 0 && <TabNav items={tabs} label="Settings sections" className="mb-5" />}
+      <TabNav items={tabs} label="Settings sections" className="mb-5" />
 
-      {current ? (
-        <>
-          <Section section={current} />
-          {/* The API key is browser-local and never leaves this machine, so it
-              is not in the server's schema — but it is a credential, and
-              Security is where someone goes looking for it. */}
-          {current.key === 'security' && <ApiKeySection />}
-        </>
+      {slug === 'account' ? (
+        <AccountSection />
+      ) : slug === 'users' && isAdmin ? (
+        <UsersSection />
+      ) : current ? (
+        <Section section={current} />
       ) : (
-        sections.length > 0 && (
+        sections.length > 0 && !client && (
           <p className="text-base text-muted-foreground">
             No settings section called “{slug}”.{' '}
             <Link className="text-primary hover:underline" to={tabs[0].to}>

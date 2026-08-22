@@ -24,6 +24,7 @@ import {
   type LayoutPrefs,
 } from '../prefs';
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
+import { useCanWrite } from '../sessionContext';
 import { neighbourCell } from '../toc';
 import {
   cellsToRun,
@@ -56,6 +57,7 @@ type Tab = 'notebook' | 'source' | 'diff';
  */
 export function Editor() {
   const [search] = useSearchParams();
+  const canWrite = useCanWrite();
   const path = search.get('path') ?? '';
   const isNotebook = /\.(nb\.)?md$/i.test(path);
 
@@ -125,7 +127,9 @@ export function Editor() {
   // Execution is gated server-side (git workflow, dev only, and a key required
   // off localhost). A rejected status call is how the editor finds out — but a
   // transient failure after a good answer is not that.
-  const canRun = isNotebook && !(sessionError != null && session == null);
+  // Viewers never start a kernel: `canRun` is what every run control keys off,
+  // and the server refuses the routes regardless.
+  const canRun = canWrite && isNotebook && !(sessionError != null && session == null);
   const running = (session?.running ?? false) || pollFast;
   const runState = mergeStatus(cells ?? [], session, ranSource.current);
 
@@ -643,7 +647,7 @@ function SourceEditor({
   language: string;
   onChange: (value: string) => void;
 }) {
-  const container = useFillEditor(language, value, onChange);
+  const container = useFillEditor(language, value, onChange, !useCanWrite());
   return <div className="source-editor" ref={container} />;
 }
 

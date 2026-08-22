@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button';
 import { api, type Job, type Run } from '../api';
 import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../components/common';
 import { matchesQuery } from '../search';
+import { useCanWrite } from '../sessionContext';
 
 export function Jobs() {
   const navigate = useNavigate();
+  const canWrite = useCanWrite();
   const { data, error } = usePolling<{ jobs: Job[]; errors: string[] }>(() => api.jobs(), 5000);
   const { data: health } = usePolling(() => api.health(), null);
   // The catalog does not carry a last-run status, so it comes from the run
@@ -34,9 +36,11 @@ export function Jobs() {
   return (
     <div>
       <PageHeader title="Jobs">
-        <Button asChild size="sm">
-          <Link to={`/jobs/${editableEnv}/new`}>New job</Link>
-        </Button>
+        {canWrite && (
+          <Button asChild size="sm">
+            <Link to={`/jobs/${editableEnv}/new`}>New job</Link>
+          </Button>
+        )}
       </PageHeader>
       <ErrorBanner error={error} />
       {problems.length > 0 && (

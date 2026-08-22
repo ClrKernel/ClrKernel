@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Fido2NetLib;
 using Microsoft.AspNetCore.Builder;
@@ -90,7 +91,7 @@ public static class AuthApi {
                 }
                 var (ceremonyId, creation) = auth.BeginRegistration(
                     RegistrationPurpose.Bootstrap, Guid.NewGuid(), name, null, Array.Empty<Credential>());
-                return Results.Ok(new { ceremonyId, options = creation });
+                return Ceremony(ceremonyId, creation);
             });
 
         api.MapPost("/setup/complete", async (
@@ -105,12 +106,15 @@ public static class AuthApi {
 
         api.MapPost("/signin/begin", (AuthService auth) => {
             var (ceremonyId, options) = auth.BeginAssertion();
-            return Results.Ok(new { ceremonyId, options });
+            return Ceremony(ceremonyId, options);
         });
 
         api.MapPost("/signin/complete", async (
             HttpContext context, AuthService auth, AssertBody body) => {
-                var result = await auth.CompleteAssertionAsync(body?.CeremonyId, body?.Response);
+                var result = await auth.CompleteAssertionAsync(
+                body?.CeremonyId,
+                body == null ? null : JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(
+                    body.Response, _webAuthnJson));
                 if (!result.Ok) {
                     return Results.Json(new { error = result.Error }, statusCode: 401);
                 }
@@ -146,7 +150,7 @@ public static class AuthApi {
                 }
                 var (ceremonyId, creation) = auth.BeginRegistration(
                     RegistrationPurpose.Invite, Guid.NewGuid(), name, code, Array.Empty<Credential>());
-                return Results.Ok(new { ceremonyId, options = creation });
+                return Ceremony(ceremonyId, creation);
             });
 
         api.MapPost("/invite/{code}/complete", async (
@@ -177,7 +181,7 @@ public static class AuthApi {
             var existing = await auth.Store.CredentialsForAsync(user.Id);
             var (ceremonyId, creation) = auth.BeginRegistration(
                 RegistrationPurpose.AddPasskey, user.Id, user.DisplayName, null, existing);
-            return Results.Ok(new { ceremonyId, options = creation });
+            return Ceremony(ceremonyId, creation);
         });
 
         api.MapPost("/passkeys/complete", async (
@@ -186,7 +190,7 @@ public static class AuthApi {
                     return Results.Json(new { error = "Sign in first." }, statusCode: 401);
                 }
                 var result = await auth.CompleteRegistrationAsync(
-                    body?.CeremonyId, body?.Response, body?.PasskeyName);
+                    body?.CeremonyId, Attestation(body), body?.PasskeyName);
                 return result.Ok
                     ? Results.Ok(new { added = true })
                     : Results.BadRequest(new { error = result.Error });
@@ -324,6 +328,28 @@ public static class AuthApi {
 
     // --- helpers -----------------------------------------------------------
 
+    /// <summary>
+    /// A ceremony payload, serialized by System.Text.Json's *defaults* rather than
+    /// through the host's configured options.
+    /// <para>
+    /// The host adds a global <c>JsonStringEnumConverter</c> so run statuses go over
+    /// the wire as their names. A converter in <c>options.Converters</c> outranks a
+    /// type's own <c>[JsonConverter]</c> attribute, so that one converter also
+    /// caught Fido2's enums, and WebAuthn's <c>"public-key"</c>, <c>"required"</c>
+    /// and <c>"none"</c> arrived as <c>"PublicKey"</c>, <c>"Required"</c> and
+    /// <c>"None"</c>. Chrome ignored every one of them and refused the ceremony
+    /// with "No entry in pubKeyCredParams was of type public-key".
+    /// </para>
+    /// </summary>
+    private static IResult Ceremony(string ceremonyId, object options) =>
+        Results.Content(
+            "{\"ceremonyId\":" + JsonSerializer.Serialize(ceremonyId)
+            + ",\"options\":" + JsonSerializer.Serialize(options, _webAuthnJson) + "}",
+            "application/json");
+
+    /// <summary>Deliberately bare: Fido2's own attributes decide the shape.</summary>
+    private static readonly JsonSerializerOptions _webAuthnJson = new(JsonSerializerDefaults.Web);
+
     private static object Describe(User user) => new {
         id = user.Id,
         displayName = user.DisplayName,
@@ -356,10 +382,15 @@ public static class AuthApi {
         return null;
     }
 
+    private static AuthenticatorAttestationRawResponse Attestation(RegisterBody body) =>
+        body == null ? null
+            : JsonSerializer.Deserialize<AuthenticatorAttestationRawResponse>(
+                body.Response, _webAuthnJson);
+
     private static async Task<IResult> FinishRegistration(
         HttpContext context, AuthService auth, RegisterBody body) {
         var result = await auth.CompleteRegistrationAsync(
-            body?.CeremonyId, body?.Response, body?.PasskeyName);
+            body?.CeremonyId, Attestation(body), body?.PasskeyName);
         if (!result.Ok) {
             return Results.BadRequest(new { error = result.Error });
         }
@@ -386,9 +417,13 @@ public static class AuthApi {
 
     // Bodies. Records rather than anonymous binding so the shapes are named.
     public sealed record DisplayNameBody(string DisplayName);
-    public sealed record RegisterBody(
-        string CeremonyId, AuthenticatorAttestationRawResponse Response, string PasskeyName);
-    public sealed record AssertBody(string CeremonyId, AuthenticatorAssertionRawResponse Response);
+    // The browser's credential arrives as an opaque JsonElement and is decoded
+    // below with Fido2's own shape. Binding it directly would run it through the
+    // host's serializer options, whose global enum converter outranks Fido2's
+    // type-level ones — and "internal" then fails to parse as a transport, which
+    // surfaces as a bare 400 with no message at all.
+    public sealed record RegisterBody(string CeremonyId, JsonElement Response, string PasskeyName);
+    public sealed record AssertBody(string CeremonyId, JsonElement Response);
     public sealed record RoleBody(string Role);
     public sealed record DisabledBody(bool Disabled);
     public sealed record InviteBody(string Role, string Label);

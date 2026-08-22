@@ -19,7 +19,7 @@ docker compose -f dev/docker-compose.dbs.yml up -d postgres sqlserver
 The passwords are local throwaways for containers bound to localhost (see the
 compose file). Every key the file accepts, with its flag/env equivalents, is in
 the configuration table in docs/jobs.md — e.g. `notebooksRoot`, `maxParallelism`,
-`apiKey`, `urls`, `gitEnabled`, `gitAuthorName`, `gitAuthorEmail`,
+`relyingPartyId`, `origins`, `urls`, `gitEnabled`, `gitAuthorName`, `gitAuthorEmail`,
 `gitPushRemote`.
 
 **Stale database after pulling schema changes?** Run history is preview data —

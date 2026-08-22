@@ -27,7 +27,6 @@ public class NotebookCellsApiTest {
     private HttpClient _client;
     private EfRunStore _store;
 
-    private const string _apiKey = "test-key";
     private const string _notebook = "reports/daily.nb.md";
     private const string _source = "# Daily\n\nProse here.\n\n```sql\nSELECT 1\n```\n\n```csharp\nvar x = 1;\n```\n";
 
@@ -48,7 +47,6 @@ public class NotebookCellsApiTest {
         var options = new JobsOptions {
             DataDir = Path.Combine(_root, ".data"),
             NotebooksRoot = _root,
-            ApiKey = _apiKey,
             // No kernel to probe in tests: languages come back empty, which parses
             // as C#-only — the documented degraded mode.
             ClrKernelPath = null,
@@ -75,7 +73,6 @@ public class NotebookCellsApiTest {
         _app.Urls.Add("http://127.0.0.1:0");
         await _app.StartAsync();
         _client = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
-        _client.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, _apiKey);
         await TestAuth.SignInAsync(_app, _client, UserRole.ServerAdmin);
     }
 

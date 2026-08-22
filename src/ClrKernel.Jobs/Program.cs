@@ -47,13 +47,21 @@ public static class Program {
           --connection-string <cs>   Connection string for sqlserver/postgres.
           --urls <urls>              serve: listen address
                                      (default http://localhost:5000).
-          --api-key <key>            serve: require this key in the X-Api-Key
-                                     header on /api/* (or CLRKERNEL_JOBS_APIKEY).
+          --rp-id <domain>           serve: the domain passkeys are bound to
+                                     (or CLRKERNEL_JOBS_RPID). Default localhost.
+          --origins <url;url>        serve: origins the browser may present
+                                     (or CLRKERNEL_JOBS_ORIGINS). Default: --urls.
           --max-parallelism <n>      serve: concurrent runs (default 4).
           --git <true|false>         Enable the dev/prod git workflow
                                      (or CLRKERNEL_JOBS_GIT).
           --env <dev|prod>           run: which environment (default dev).
           -h, --help                 Show this help.
+
+        Commands: serve, run, list, validate, git init, new-admin-invite.
+
+        `new-admin-invite` prints a fresh Server Admin invite code. Self-hosted with
+        no email means a lost device is otherwise a permanent lockout; anyone with a
+        shell on this box could do worse, so this is not a new exposure.
 
         Jobs are *.jobs.yaml files beside your notebooks. Example:
 
@@ -114,6 +122,8 @@ public static class Program {
         }
         var catalog = new JobCatalog(options.NotebooksRoot, options.GitEnabled, git);
         switch (command) {
+            case "new-admin-invite":
+                return await NewAdminInviteAsync(options);
             case "serve":
                 return await ServeAsync(catalog, options, git);
             case "list":
@@ -130,6 +140,35 @@ public static class Program {
                 Console.Error.WriteLine($"Unknown command: {command}. See `clrkernel-jobs --help`.");
                 return 2;
         }
+    }
+
+    /// <summary>
+    /// The way back in. Prints one single-use Server Admin invite and exits; it
+    /// touches nothing else, so it is safe to run against a live server.
+    /// </summary>
+    private static async Task<int> NewAdminInviteAsync(JobsOptions options) {
+        IAuthStore store;
+        try {
+            // Create() migrates on the way out, which matters because this may be
+            // the only command anyone has ever run against this data directory.
+            Directory.CreateDirectory(options.DataDir);
+            RunStoreFactory.Create(options);
+            store = RunStoreFactory.CreateAuthStore(options);
+        } catch (Exception e) when (e is InvalidOperationException or ArgumentException) {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
+
+        var invite = await store.CreateInviteAsync(
+            AuthService.NewInviteCode(), UserRole.ServerAdmin, "created from the command line",
+            null, DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
+        var origin = JobsOptions.SplitList(options.Urls ?? "http://localhost:5000").FirstOrDefault()
+            ?? "http://localhost:5000";
+        Console.WriteLine(invite.Code);
+        Console.WriteLine($"{origin}/invite/{invite.Code}");
+        Console.Error.WriteLine(
+            $"Single use, expires {invite.ExpiresAt:u}. Opening it creates a new Server Admin.");
+        return 0;
     }
 
     private static GitService GitFor(JobsOptions options) =>
@@ -215,11 +254,13 @@ public static class Program {
 
         var app = BuildApp(options, catalog, store, git);
         var urls = options.Urls ?? "http://localhost:5000";
-        if (options.ApiKey == null && !urls.Contains("localhost") && !urls.Contains("127.0.0.1")) {
+        if (!JobsApi.IsLocalOnly(urls) && options.RelyingPartyId == "localhost") {
             Console.Error.WriteLine(
-                "  ! Listening beyond localhost with no API key. Set --api-key (or CLRKERNEL_JOBS_APIKEY).");
+                "  ! Listening beyond localhost with the relying party id still 'localhost'. " +
+                "Passkeys are bound to a domain and cannot be moved, so set --rp-id (and serve " +
+                "over HTTPS) before anyone registers one.");
         }
-        Console.WriteLine($"API on {urls}{(options.ApiKey != null ? " (X-Api-Key required)" : string.Empty)}");
+        Console.WriteLine($"API on {urls} (sign-in required; passkeys bound to {options.RelyingPartyId})");
         await app.RunAsync(urls);
         return 0;
     }
@@ -311,7 +352,6 @@ public static class Program {
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 
         var app = builder.Build();
-        app.UseMiddleware<ApiKeyMiddleware>();
         // Before the routes: every handler downstream can then ask who the caller
         // is without each one repeating the cookie lookup.
         app.UseMiddleware<AuthenticationMiddleware>();

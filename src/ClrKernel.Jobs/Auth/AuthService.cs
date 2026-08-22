@@ -178,7 +178,7 @@ public sealed class AuthService {
                 // admin by accident.
                 return AuthResult.Fail("This server already has an account.");
             }
-            user = await _store.CreateUserAsync(ceremony.DisplayName, role);
+            user = await _store.CreateUserAsync(ceremony.UserId, ceremony.DisplayName, role);
         }
 
         await _store.AddCredentialAsync(new Credential {

@@ -175,11 +175,19 @@ public sealed class SettingsRegistry {
                 "browser by design — change these on the host.",
             Fields = {
                 new SettingField {
-                    Name = "apiKey", Label = "API key", Type = "secret",
-                    IsSet = options.ApiKey != null, Source = options.SourceOf("apiKey"),
+                    Name = "relyingPartyId", Label = "Passkey domain", Type = "string",
+                    Value = options.RelyingPartyId, Source = options.SourceOf("relyingPartyId"),
                     WebWritable = false, RestartRequired = true,
-                    Help = "When set, /api/* requires it in the X-Api-Key header. " +
-                        "Set with --api-key or CLRKERNEL_JOBS_APIKEY.",
+                    Help = "The domain passkeys are bound to. A credential cannot move between " +
+                        "domains, so changing this makes every registered passkey stop working. " +
+                        "Set with --rp-id or CLRKERNEL_JOBS_RPID.",
+                },
+                new SettingField {
+                    Name = "origins", Label = "Allowed origins", Type = "string",
+                    Value = string.Join(", ", options.Origins), Source = options.SourceOf("origins"),
+                    WebWritable = false, RestartRequired = true,
+                    Help = "Origins the browser may present during a passkey ceremony. " +
+                        "Defaults to the listen urls; set explicitly behind a TLS proxy.",
                 },
                 new SettingField {
                     Name = "clrkernelPath", Label = "Kernel executable", Type = "string",

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select';
 import { api, type TreeNode } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
+import { useCanWrite } from '../sessionContext';
 
 function Node({
   node,
@@ -91,19 +92,22 @@ function Node({
           {job}
         </Link>
       ))}
-      <button
-        type="button"
-        className="text-xs text-muted-subtle outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => onCreate(node.path)}
-      >
-        + job
-      </button>
+      {editable && (
+        <button
+          type="button"
+          className="text-xs text-muted-subtle outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => onCreate(node.path)}
+        >
+          + job
+        </button>
+      )}
     </div>
   );
 }
 
 export function Notebooks() {
   const navigate = useNavigate();
+  const canWrite = useCanWrite();
   const { data, error } = usePolling(() => api.notebooks(), null);
   const { data: health } = usePolling(() => api.health(), null);
 
@@ -118,7 +122,8 @@ export function Notebooks() {
   }, [environments.length]);
 
   const selected = environments.find((e) => e.name === env);
-  const editable = env === 'dev' && (health?.gitEnabled ?? false);
+  // Editing needs both the git workflow and a role that may write.
+  const editable = env === 'dev' && (health?.gitEnabled ?? false) && canWrite;
 
   return (
     <div>

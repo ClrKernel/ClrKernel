@@ -38,7 +38,6 @@ public class ApiTest {
         _options = new JobsOptions {
             DataDir = Path.Combine(_root, "data"),
             NotebooksRoot = Path.Combine(_root, "notebooks"),
-            ApiKey = _apiKey,
         };
         _store = EfRunStore.Sqlite(Path.Combine(_options.DataDir, "test.db"));
         _store.Migrate();
@@ -51,7 +50,6 @@ public class ApiTest {
         await _app.StartAsync();
         var address = _app.Urls.First();
         _client = new HttpClient { BaseAddress = new Uri(address) };
-        _client.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, _apiKey);
         _admin = await TestAuth.SignInAsync(_app, _client, UserRole.ServerAdmin);
     }
 
@@ -66,7 +64,6 @@ public class ApiTest {
         Directory.Delete(_root, recursive: true);
     }
 
-    private const string _apiKey = "test-key";
     private string NotebookPath => Path.Combine(_root, "notebooks", "etl", "nightly.nb.md");
 
     private static JobWrite NewJob(string name) => new() {
@@ -81,17 +78,6 @@ public class ApiTest {
         var health = await _client.GetFromJsonAsync<JsonElement>("/api/health");
         Assert.AreEqual("ok", health.GetProperty("status").GetString());
         Assert.AreEqual(0, health.GetProperty("jobs").GetInt32());
-    }
-
-    [TestMethod]
-    public async Task Requests_without_the_api_key_are_rejected() {
-        using var anonymous = new HttpClient { BaseAddress = _client.BaseAddress };
-        Assert.AreEqual(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/jobs")).StatusCode);
-        Assert.AreEqual(HttpStatusCode.OK, (await anonymous.GetAsync("/api/health")).StatusCode,
-            "health stays open so a probe works without the key");
-
-        anonymous.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, "wrong");
-        Assert.AreEqual(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/jobs")).StatusCode);
     }
 
     [TestMethod]
@@ -285,7 +271,7 @@ public class ApiTest {
         var settings = await _client.GetFromJsonAsync<JsonElement>("/api/settings");
         var sections = settings.GetProperty("sections");
         Assert.IsTrue(sections.GetArrayLength() >= 3);
-        Assert.IsFalse(settings.GetRawText().Contains(_apiKey),
+        Assert.IsFalse(settings.GetRawText().Contains("hunter2"),
             "the configured API key must never appear in the settings payload");
 
         var saved = await _client.PutAsJsonAsync("/api/settings/general",

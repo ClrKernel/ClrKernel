@@ -123,7 +123,7 @@ public class AuthApiTest {
         Assert.IsTrue(session.GetProperty("needsSetup").GetBoolean());
         Assert.IsFalse(session.GetProperty("authenticated").GetBoolean());
 
-        await _auth.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         session = await _anonymous.GetFromJsonAsync<JsonElement>("/api/auth/session");
         Assert.IsFalse(session.GetProperty("needsSetup").GetBoolean());
     }
@@ -131,7 +131,7 @@ public class AuthApiTest {
     /// <summary>Not a redirect with a helpful message — the route stops existing.</summary>
     [TestMethod]
     public async Task Setup_is_gone_once_the_server_has_an_account() {
-        await _auth.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
 
         var response = await _anonymous.PostAsJsonAsync(
             "/api/auth/setup/begin", new { displayName = "Interloper" });
@@ -240,7 +240,7 @@ public class AuthApiTest {
     [TestMethod]
     public async Task An_admin_cannot_disable_or_remove_themselves() {
         using var admin = await ClientFor(UserRole.ServerAdmin, "Ada");
-        await _auth.CreateUserAsync("Grace", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "Grace", UserRole.ServerAdmin);
         var me = (await admin.GetFromJsonAsync<JsonElement>("/api/users"))
             .GetProperty("users").EnumerateArray().First(u => u.GetProperty("isYou").GetBoolean());
         var id = me.GetProperty("id").GetGuid();
@@ -292,7 +292,7 @@ public class AuthApiTest {
         Assert.AreEqual("/setup", response.Headers.Location?.OriginalString,
             "an unclaimed server sends every door to the same place");
 
-        await _auth.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         response = await browser.GetAsync("/jobs");
         Assert.AreEqual("/signin", response.Headers.Location?.OriginalString);
 

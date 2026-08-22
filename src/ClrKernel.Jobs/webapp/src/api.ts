@@ -230,20 +230,6 @@ export interface Stats {
   byStatus: Record<string, number>;
 }
 
-const KEY_STORAGE = 'clrkernel-jobs-api-key';
-
-export function apiKey(): string {
-  return localStorage.getItem(KEY_STORAGE) ?? '';
-}
-
-export function setApiKey(key: string): void {
-  if (key) {
-    localStorage.setItem(KEY_STORAGE, key);
-  } else {
-    localStorage.removeItem(KEY_STORAGE);
-  }
-}
-
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -251,12 +237,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const key = apiKey();
+  // No credential header: the session cookie rides along with a same-origin
+  // request on its own, and it is HTTP-only precisely so this code cannot see it.
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(key ? { 'X-Api-Key': key } : {}),
       ...init?.headers,
     },
   });
@@ -320,7 +306,7 @@ export const api = {
   run: (id: string) => request<{ run: Run; cells: RunCell[] }>(`/runs/${id}`),
   artifact: (id: string) => request<unknown>(`/runs/${id}/artifact`),
   log: (id: string) =>
-    fetch(`/api/runs/${id}/log`, { headers: apiKey() ? { 'X-Api-Key': apiKey() } : {} }).then((r) =>
+    fetch(`/api/runs/${id}/log`).then((r) =>
       r.ok ? r.text() : '',
     ),
 
@@ -328,9 +314,8 @@ export const api = {
     request<{ environments: { name: string; tree: TreeNode | null }[] }>('/notebooks'),
 
   notebookContent: (env: string, path: string) =>
-    fetch(`/api/envs/${env}/notebooks/content?path=${encodeURIComponent(path)}`, {
-      headers: apiKey() ? { 'X-Api-Key': apiKey() } : {},
-    }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
+    fetch(`/api/envs/${env}/notebooks/content?path=${encodeURIComponent(path)}`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
   saveNotebookContent: (path: string, content: string) =>
     request<{ saved: boolean; commitSha: string }>(
       `/envs/dev/notebooks/content?path=${encodeURIComponent(path)}`,

@@ -26,8 +26,6 @@ public sealed class JobsOptions {
     /// <summary>Explicit path to the clrkernel executable; null = probe PATH and ~/.dotnet/tools.</summary>
     public string ClrKernelPath { get; set; }
     public int MaxParallelism { get; set; } = 4;
-    /// <summary>When set, /api/* requires this key in the X-Api-Key header.</summary>
-    public string ApiKey { get; set; }
     /// <summary>Listen urls for serve; null = http://localhost:5000.</summary>
     public string Urls { get; set; }
     /// <summary>Dev→prod workflow: the notebooks root is a git workspace with dev/prod worktrees.</summary>
@@ -77,7 +75,7 @@ public sealed class JobsOptions {
     /// <summary>
     /// Where a value came from: <c>--flag</c>, the environment variable's name,
     /// <c>settings.json</c>, or <c>default</c>. Keys are the settings.json names
-    /// (store, connectionString, notebooksRoot, dataDir, clrkernelPath, apiKey,
+    /// (store, connectionString, notebooksRoot, dataDir, clrkernelPath, relyingPartyId,
     /// urls, maxParallelism).
     /// </summary>
     public string SourceOf(string key) =>
@@ -150,7 +148,6 @@ public sealed class JobsOptions {
             "connectionString", "connection-string", "CLRKERNEL_JOBS_CONNECTION", Setting("connectionString"), null);
         options.ClrKernelPath = Pick(
             "clrkernelPath", "clrkernel", "CLRKERNEL_JOBS_CLRKERNEL", Setting("clrkernelPath"), null);
-        options.ApiKey = Pick("apiKey", "api-key", "CLRKERNEL_JOBS_APIKEY", Setting("apiKey"), null);
         options.Urls = Pick("urls", "urls", "CLRKERNEL_JOBS_URLS", Setting("urls"), null);
 
         var parallelism = Pick(

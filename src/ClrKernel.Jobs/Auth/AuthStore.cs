@@ -22,7 +22,13 @@ public interface IAuthStore {
     Task<int> UserCountAsync();
     Task<IReadOnlyList<UserSummary>> ListUsersAsync();
     Task<User> FindUserAsync(Guid id);
-    Task<User> CreateUserAsync(string displayName, UserRole role);
+    /// <summary>
+    /// The id is supplied, not generated: it was minted when the passkey ceremony
+    /// began, because WebAuthn writes the user handle into the credential itself.
+    /// Generating a fresh one here would leave every credential pointing at a user
+    /// that does not exist, and assertion fails with nothing readable to say why.
+    /// </summary>
+    Task<User> CreateUserAsync(Guid id, string displayName, UserRole role);
     Task<bool> RenameUserAsync(Guid id, string displayName);
 
     /// <summary>False when it would leave no enabled admin.</summary>
@@ -93,10 +99,10 @@ public sealed class EfAuthStore : IAuthStore {
         return await db.Users.FirstOrDefaultAsync(u => u.Id == id);
     }
 
-    public async Task<User> CreateUserAsync(string displayName, UserRole role) {
+    public async Task<User> CreateUserAsync(Guid id, string displayName, UserRole role) {
         await using var db = _contextFactory();
         var user = new User {
-            Id = Guid.NewGuid(),
+            Id = id,
             DisplayName = displayName,
             Role = role,
             CreatedAt = DateTime.UtcNow,

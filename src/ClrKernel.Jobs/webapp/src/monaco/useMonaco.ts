@@ -162,6 +162,7 @@ export function useFillEditor(
   language: string,
   value: string,
   onChange: (value: string) => void,
+  readOnly = false,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -176,6 +177,7 @@ export function useFillEditor(
       ...focusEditorOptions,
       value,
       language,
+      readOnly,
     });
     editor.current = created;
     const changeListener = created.onDidChangeModelContent(() =>
@@ -221,6 +223,8 @@ export const focusEditorOptions: monaco.editor.IStandaloneEditorConstructionOpti
 };
 
 export interface FocusEditorOptions {
+  /** Viewers read the notebook in the same layout; they just cannot type in it. */
+  readOnly?: boolean;
   binding: CellBinding | null;
   language: string;
   /** The active cell's text, for seeding a model the notebook has not made yet. */
@@ -240,7 +244,7 @@ export interface FocusEditorOptions {
  * before each switch, so a cell comes back exactly as you left it.
  */
 export function useFocusEditor({
-  binding, language, value, onChange, onRun, onRunAndAdvance, onStep,
+  readOnly = false, binding, language, value, onChange, onRun, onRunAndAdvance, onStep,
 }: FocusEditorOptions) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -257,7 +261,7 @@ export function useFocusEditor({
     if (!container.current) {
       return;
     }
-    const created = monaco.editor.create(container.current, focusEditorOptions);
+    const created = monaco.editor.create(container.current, { ...focusEditorOptions, readOnly });
     editor.current = created;
 
     const changeListener = created.onDidChangeModelContent(() =>

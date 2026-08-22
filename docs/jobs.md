@@ -233,9 +233,64 @@ curl -X POST http://localhost:5000/api/jobs/nightly-us/run \
   -d '{"parameters": {"region": "eu", "backfillDate": "2026-08-01"}}'
 ```
 
-Set `--api-key <key>` (or `CLRKERNEL_JOBS_APIKEY`) to require an `X-Api-Key` header
-on `/api/*`; `/api/health` stays open for probes. With no key configured the server
-binds localhost only — if you widen `--urls`, set a key.
+## Accounts and passkeys
+
+Everything needs a signed-in account. Credentials are **passkeys** — there are no
+passwords, and no password to leak or reset.
+
+The first person to reach a server with no accounts gets `/setup`, registers a
+passkey, and becomes its **Server Admin**. That page only accepts requests from the
+machine the server runs on, and it stops existing — 404, not a message — the moment
+an account exists. Everyone after that joins through an invite the admin creates
+under *Settings → Users*: pick a role, copy the link, send it however you like. There
+is no email in this system. Invites are single-use and expire after seven days
+(`--invite-days`).
+
+Two roles, server-wide:
+
+| | Server Admin | Server Viewer |
+|---|---|---|
+| Read notebooks, jobs, runs, output | yes | yes |
+| Run cells, Run All, restart the kernel | yes | **no** |
+| Save, promote, edit jobs and channels | yes | **no** |
+| Manage users, invites and settings | yes | **no** |
+
+The viewer boundary is enforced on every route, not by hiding buttons: running a cell
+is arbitrary code execution on the machine hosting the server, so calling
+`/api/envs/dev/notebooks/run` directly as a viewer returns 403. A viewer's editor is
+read-only, and Focus Mode still works — it is a reading layout too.
+
+### Before anyone else signs in: set the domain
+
+A passkey is bound to a **relying party id**, which is a domain, and a credential
+**cannot be moved between domains**. Anything registered against the default
+`localhost` stops working the day the server answers to a real hostname, and everyone
+re-registers. WebAuthn also refuses any origin that is not HTTPS or `localhost`, so a
+multi-user server means a hostname and TLS.
+
+```bash
+clrkernel-jobs serve --rp-id jobs.example.internal \
+  --origins https://jobs.example.internal --urls http://0.0.0.0:5000
+```
+
+`--rp-id` (`CLRKERNEL_JOBS_RPID`) is the domain; `--origins`
+(`CLRKERNEL_JOBS_ORIGINS`) lists the origins the browser may present and defaults to
+`--urls`, which is what you override when TLS is terminated by a proxy in front.
+
+### Locked out
+
+Self-hosted with no email means a lost device is otherwise permanent. On the box:
+
+```bash
+clrkernel-jobs new-admin-invite --data-dir /var/lib/clrkernel-jobs
+```
+
+That prints one single-use Server Admin invite. Anyone with a shell there could do
+worse already, so this is not a new exposure.
+
+**There is no API key any more, and no machine-callable credential.** Passkeys are
+interactive by definition; if you need a script to drive `/api`, that needs per-user
+API tokens, which do not exist yet.
 
 ## Dev → prod with git
 
@@ -300,9 +355,10 @@ different apps, and the choice is remembered in your browser. Environment and ru
 colours never follow it: `prod` is green and a failure is red whichever accent you pick.
 Light only for now.
 
-The **API key** the browser sends lives on the Settings page under *Browser*. It is
-stored in that browser and never written to the server; you only need it when the
-server was started with `--api-key`.
+Your own account — display name, registered passkeys, and the way out — is under
+*Settings → Your account*. Add a passkey per device: a laptop and a phone means
+losing either is an inconvenience rather than a lockout, which is why the last one
+cannot be removed.
 
 ## The notebook editor
 
@@ -393,11 +449,9 @@ not a rule someone has to remember.
 Saving is a commit on dev, so a save that changes nothing is skipped: a needless commit
 would invalidate the "unchanged since that run" half of the promotion check.
 
-Execution is refused unless the git workflow is on, the file is in `dev/`, and the path
-resolves inside the dev worktree. It is refused outright when `--urls` reaches beyond
-localhost and no `--api-key` is set — running arbitrary code for anyone who can reach
-the port is not a default worth having. Editing and diffing still work; only running
-is gated.
+Execution is refused unless you are a Server Admin, the git workflow is on, the file is
+in `dev/`, and the path resolves inside the dev worktree. Reading and diffing still
+work for everyone; only running and saving are gated.
 
 ## Docker
 
@@ -407,7 +461,8 @@ docker build -f src/ClrKernel.Jobs/Dockerfile -t clrkernel-jobs .
 docker run -p 5000:5000 \
   -v "$PWD/notebooks:/notebooks:ro" \
   -v clrkernel-jobs-data:/data \
-  -e CLRKERNEL_JOBS_APIKEY=choose-a-key \
+  -e CLRKERNEL_JOBS_RPID=jobs.example.internal \
+  -e CLRKERNEL_JOBS_ORIGINS=https://jobs.example.internal \
   clrkernel-jobs
 ```
 
@@ -501,7 +556,10 @@ Every setting takes a CLI flag, an environment variable, or a key in
 | `--connection-string <cs>` | `CLRKERNEL_JOBS_CONNECTION` | — |
 | `--clrkernel <path>` | `CLRKERNEL_JOBS_CLRKERNEL` | PATH, then `~/.dotnet/tools` |
 | `--urls <urls>` | `CLRKERNEL_JOBS_URLS` | `http://localhost:5000` |
-| `--api-key <key>` | `CLRKERNEL_JOBS_APIKEY` | none (localhost only) |
+| `--rp-id <domain>` | `CLRKERNEL_JOBS_RPID` | `localhost` |
+| `--origins <url;url>` | `CLRKERNEL_JOBS_ORIGINS` | the value of `--urls` |
+| `--invite-days <n>` | `CLRKERNEL_JOBS_INVITE_DAYS` | 7 |
+| `--session-days <n>` | `CLRKERNEL_JOBS_SESSION_DAYS` | 14 |
 | `--max-parallelism <n>` | `CLRKERNEL_JOBS_MAX_PARALLELISM` | 4 |
 
 ## Settings
@@ -509,7 +567,7 @@ Every setting takes a CLI flag, an environment variable, or a key in
 The **Settings** page shows every server setting with where it came from (flag, env
 var, settings.json, or default). Web-editable values persist to settings.json;
 anything pinned by a flag or environment variable is locked in the UI. Security and
-execution settings (API key, kernel path, store, connection string, roots) are
+execution settings (passkey domain, kernel path, store, connection string, roots) are
 host-only by design — a browser can never change what the server executes or lock
 you out.
 

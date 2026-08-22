@@ -52,7 +52,7 @@ public class AuthStoreTest {
 
     [TestMethod]
     public async Task A_user_and_their_passkeys_round_trip() {
-        var user = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         await _store.AddCredentialAsync(NewCredential(user.Id, "cred-a"));
         await _store.AddCredentialAsync(NewCredential(user.Id, "cred-b"));
 
@@ -69,7 +69,7 @@ public class AuthStoreTest {
     /// <summary>Two devices is the point of passkeys; one is a lockout waiting to happen.</summary>
     [TestMethod]
     public async Task The_last_passkey_cannot_be_removed() {
-        var user = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         await _store.AddCredentialAsync(NewCredential(user.Id, "only"));
 
         Assert.IsFalse(await _store.RemoveCredentialAsync(user.Id, "only"));
@@ -82,8 +82,8 @@ public class AuthStoreTest {
 
     [TestMethod]
     public async Task Removing_a_user_takes_their_passkeys() {
-        var admin = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
-        var viewer = await _store.CreateUserAsync("Bob", UserRole.ServerViewer);
+        var admin = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        var viewer = await _store.CreateUserAsync(Guid.NewGuid(), "Bob", UserRole.ServerViewer);
         await _store.AddCredentialAsync(NewCredential(viewer.Id, "bob-1"));
 
         Assert.IsTrue(await _store.DeleteUserAsync(viewer.Id));
@@ -95,8 +95,8 @@ public class AuthStoreTest {
 
     [TestMethod]
     public async Task The_last_admin_cannot_be_demoted_disabled_or_removed() {
-        var admin = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
-        await _store.CreateUserAsync("Bob", UserRole.ServerViewer);
+        var admin = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        await _store.CreateUserAsync(Guid.NewGuid(), "Bob", UserRole.ServerViewer);
 
         Assert.IsFalse(await _store.SetRoleAsync(admin.Id, UserRole.ServerViewer));
         Assert.IsFalse(await _store.SetDisabledAsync(admin.Id, true));
@@ -106,8 +106,8 @@ public class AuthStoreTest {
 
     [TestMethod]
     public async Task A_second_admin_unlocks_the_first() {
-        var first = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
-        var second = await _store.CreateUserAsync("Bob", UserRole.ServerViewer);
+        var first = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        var second = await _store.CreateUserAsync(Guid.NewGuid(), "Bob", UserRole.ServerViewer);
         Assert.IsTrue(await _store.SetRoleAsync(second.Id, UserRole.ServerAdmin));
 
         Assert.IsTrue(await _store.SetRoleAsync(first.Id, UserRole.ServerViewer));
@@ -117,8 +117,8 @@ public class AuthStoreTest {
     /// <summary>A disabled admin is not a way in, so it does not count as the last one.</summary>
     [TestMethod]
     public async Task A_disabled_admin_does_not_count_as_cover() {
-        var first = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
-        var second = await _store.CreateUserAsync("Bob", UserRole.ServerAdmin);
+        var first = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        var second = await _store.CreateUserAsync(Guid.NewGuid(), "Bob", UserRole.ServerAdmin);
         Assert.IsTrue(await _store.SetDisabledAsync(second.Id, true));
 
         Assert.IsFalse(await _store.SetDisabledAsync(first.Id, true));
@@ -128,7 +128,7 @@ public class AuthStoreTest {
     [TestMethod]
     public async Task An_invite_is_redeemable_exactly_once() {
         var now = DateTime.UtcNow;
-        var user = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         await _store.CreateInviteAsync("code-1", UserRole.ServerViewer, "Bob", user.Id, now,
             TimeSpan.FromDays(7));
 
@@ -166,7 +166,7 @@ public class AuthStoreTest {
     [TestMethod]
     public async Task A_session_resolves_to_its_user_until_it_expires() {
         var now = DateTime.UtcNow;
-        var user = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         await _store.CreateSessionAsync(new AuthSession {
             Id = "hash-1",
             UserId = user.Id,
@@ -184,8 +184,8 @@ public class AuthStoreTest {
     [TestMethod]
     public async Task A_disabled_user_stops_resolving_immediately() {
         var now = DateTime.UtcNow;
-        await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
-        var bob = await _store.CreateUserAsync("Bob", UserRole.ServerViewer);
+        await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        var bob = await _store.CreateUserAsync(Guid.NewGuid(), "Bob", UserRole.ServerViewer);
         await _store.CreateSessionAsync(new AuthSession {
             Id = "bob-session",
             UserId = bob.Id,
@@ -200,7 +200,7 @@ public class AuthStoreTest {
 
     [TestMethod]
     public async Task Signature_counters_are_persisted() {
-        var user = await _store.CreateUserAsync("Ada", UserRole.ServerAdmin);
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         await _store.AddCredentialAsync(NewCredential(user.Id, "cred"));
         var at = DateTime.UtcNow;
 
