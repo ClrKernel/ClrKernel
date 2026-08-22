@@ -39,6 +39,33 @@ public sealed class JobsOptions {
     /// <summary>The `run` verb's target environment (--env); null = dev in git mode.</summary>
     public string RunEnvironment { get; set; }
 
+    /// <summary>
+    /// The WebAuthn relying party id — the *domain* passkeys are bound to.
+    /// <para>
+    /// Configuration rather than a constant because a credential cannot be moved
+    /// between relying parties: passkeys registered against <c>localhost</c> stop
+    /// working the day the server answers to a real hostname, and everyone has to
+    /// register again. Set this to the final hostname before anyone but you signs
+    /// in. It must be the registrable domain of every origin below, or a suffix of
+    /// it — <c>clrkernel.internal</c> covers <c>https://jobs.clrkernel.internal</c>.
+    /// </para>
+    /// </summary>
+    public string RelyingPartyId { get; set; } = "localhost";
+
+    /// <summary>
+    /// Origins the browser is allowed to present. Defaults to whatever
+    /// <see cref="Urls"/> says, so the common case needs no second setting; behind
+    /// a TLS-terminating proxy the public origin differs from the bind url and has
+    /// to be listed explicitly.
+    /// </summary>
+    public string[] Origins { get; set; } = Array.Empty<string>();
+
+    /// <summary>How long a new invite stays usable.</summary>
+    public int InviteLifetimeDays { get; set; } = 7;
+
+    /// <summary>How long a signed-in browser stays signed in.</summary>
+    public int SessionLifetimeDays { get; set; } = 14;
+
     public string ArtifactsDir => Path.Combine(DataDir, "artifacts");
     public string DefaultSqlitePath => Path.Combine(DataDir, "jobs.db");
 
@@ -58,6 +85,25 @@ public sealed class JobsOptions {
 
     /// <summary>True when the value was supplied by any layer rather than defaulted.</summary>
     public bool IsExplicit(string key) => SourceOf(key) != "default";
+
+    /// <summary>
+    /// Splits a `;` or `,` separated list and normalises each entry to a bare
+    /// origin (scheme, host, port) — a trailing slash or path would never match
+    /// what the browser reports.
+    /// </summary>
+    internal static string[] SplitList(string value) {
+        var parts = new List<string>();
+        foreach (var raw in (value ?? string.Empty).Split(new[] { ';', ',' },
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+            parts.Add(Uri.TryCreate(raw, UriKind.Absolute, out var uri)
+                ? uri.GetLeftPart(UriPartial.Authority)
+                : raw.TrimEnd('/'));
+        }
+        return parts.ToArray();
+    }
+
+    private static int PositiveInt(string value, int fallback) =>
+        value != null && int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
 
     /// <summary>Builds options from parsed CLI flags, applying the env/settings/default layers.</summary>
     public static JobsOptions Resolve(IReadOnlyDictionary<string, string> cliFlags) {
@@ -122,6 +168,21 @@ public sealed class JobsOptions {
         options.GitPushRemote = Pick(
             "gitPushRemote", "git-push-remote", "CLRKERNEL_JOBS_GIT_REMOTE", Setting("gitPushRemote"), null);
         options.RunEnvironment = Cli("env");
+
+        options.RelyingPartyId = Pick(
+            "relyingPartyId", "rp-id", "CLRKERNEL_JOBS_RPID", Setting("relyingPartyId"), "localhost");
+        var origins = Pick("origins", "origins", "CLRKERNEL_JOBS_ORIGINS", Setting("origins"), null);
+        options.Origins = origins != null
+            ? SplitList(origins)
+            // No explicit list: the origins are wherever this server listens. A
+            // bind url is an origin already, minus any path.
+            : SplitList(options.Urls ?? "http://localhost:5000");
+        options.InviteLifetimeDays = PositiveInt(Pick(
+            "inviteLifetimeDays", "invite-days", "CLRKERNEL_JOBS_INVITE_DAYS",
+            Setting("inviteLifetimeDays"), null), 7);
+        options.SessionLifetimeDays = PositiveInt(Pick(
+            "sessionLifetimeDays", "session-days", "CLRKERNEL_JOBS_SESSION_DAYS",
+            Setting("sessionLifetimeDays"), null), 14);
         return options;
     }
 }

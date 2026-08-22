@@ -82,7 +82,7 @@ public static class JobsApi {
                 }
                 using var reader = new StreamReader(context.Request.Body);
                 return SaveToDev(context, target, path, await reader.ReadToEndAsync());
-            });
+            }).AdminOnly();
 
         // The notebook as editable cells, with the languages the kernel can run —
         // the shape the web editor works in. Parsing is NotebookMarkdown's, the same
@@ -134,7 +134,7 @@ public static class JobsApi {
                 }
                 var languages = await kernelLanguages.GetAsync();
                 return SaveToDev(context, target, path, NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
-            });
+            }).AdminOnly();
 
         // --- interactive sessions -------------------------------------------
         //
@@ -158,7 +158,7 @@ public static class JobsApi {
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(resolved)?.KernelLog() });
                 }
-            });
+            }).AdminOnly();
 
         api.MapDelete("/envs/{env}/notebooks/session", (
             HttpContext context, JobCatalog catalog, JobsOptions options,
@@ -168,7 +168,7 @@ public static class JobsApi {
                 }
                 var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
                 return Results.Ok(new { restarted = sessions.Restart(resolved) });
-            });
+            }).AdminOnly();
 
         api.MapPost("/envs/{env}/notebooks/run", async (
             HttpContext context, JobCatalog catalog, JobsOptions options,
@@ -201,7 +201,7 @@ public static class JobsApi {
                 return session.TryStartRun(cells, ids, out _)
                     ? Results.Accepted(value: new { running = ids })
                     : Results.Json(new { error = "This notebook is already running a cell." }, statusCode: 409);
-            });
+            }).AdminOnly();
 
         // What the editor currently has open, so completion and hover have documents
         // to answer about. Called on a debounce while typing, so it must stay cheap
@@ -236,7 +236,7 @@ public static class JobsApi {
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
-            });
+            }).AdminOnly();
 
         // One language question about one cell — completion, its lazy documentation,
         // hover, signature help. A whitelisted kind rather than four near-identical
@@ -286,7 +286,7 @@ public static class JobsApi {
                     // A language feature is never worth failing the editor over.
                     return Results.Ok(new { started = true, result = (object)null, error = e.Message });
                 }
-            });
+            }).AdminOnly();
 
         api.MapGet("/envs/{env}/notebooks/session/status", async (
             HttpContext context, JobCatalog catalog, JobsOptions options, IRunStore store,
@@ -333,7 +333,7 @@ public static class JobsApi {
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
-            });
+            }).AdminOnly();
 
         api.MapGet("/envs/dev/notebooks/promotion", async (
             HttpContext context, JobCatalog catalog, IRunStore store, string path) => {
@@ -364,7 +364,7 @@ public static class JobsApi {
                 var sha = Promotion.Apply(git, eligibility, path);
                 git.TryPush(options.GitPushRemote);
                 return Results.Ok(new { promoted = true, commitSha = sha, paths = eligibility.Paths });
-            });
+            }).AdminOnly();
 
         api.MapGet("/git/diff", (HttpContext context, JobCatalog catalog, string path) => {
             var git = context.RequestServices.GetService(typeof(GitService)) as GitService;
@@ -391,11 +391,11 @@ public static class JobsApi {
         });
 
         api.MapPost("/envs/{env}/jobs", (HttpContext context, JobCatalog catalog, string env, JobWrite write) =>
-            Upsert(catalog, GitOf(context), env, null, write));
+            Upsert(catalog, GitOf(context), env, null, write)).AdminOnly();
 
         api.MapPut("/envs/{env}/jobs/{name}", (
             HttpContext context, JobCatalog catalog, string env, string name, JobWrite write) =>
-            Upsert(catalog, GitOf(context), env, name, write));
+            Upsert(catalog, GitOf(context), env, name, write)).AdminOnly();
 
         api.MapDelete("/envs/{env}/jobs/{name}", (HttpContext context, JobCatalog catalog, string env, string name) => {
             var job = catalog.Load().Find(env, name);
@@ -423,7 +423,7 @@ public static class JobsApi {
                 Mutate();
             }
             return Results.NoContent();
-        });
+        }).AdminOnly();
 
         // The body is read by hand rather than bound: a [FromBody] parameter adds a
         // content-type constraint to route matching, which makes a plain
@@ -458,12 +458,12 @@ public static class JobsApi {
                 return runId == null
                     ? Results.Conflict(new { error = $"{job.Name} already has a run in flight." })
                     : Results.Accepted($"/api/runs/{runId}", new { runId });
-            });
+            }).AdminOnly();
 
         api.MapPost("/envs/{env}/jobs/{name}/cancel", (SchedulerService scheduler, string env, string name) =>
             scheduler.TryCancel(env, name)
                 ? Results.Ok(new { cancelled = true })
-                : Results.NotFound(new { error = $"No in-flight run for '{name}' in {env}." }));
+                : Results.NotFound(new { error = $"No in-flight run for '{name}' in {env}." })).AdminOnly();
 
         api.MapGet("/envs/{env}/jobs/{name}/runs", async (
             IRunStore store, string env, string name, int? limit, int? offset) =>
@@ -539,7 +539,7 @@ public static class JobsApi {
                 return Results.BadRequest(new { error = e.Message });
             }
             return Results.Ok(new { channels = channels.Channels.Count });
-        });
+        }).AdminOnly();
 
         api.MapPost("/channels/{name}/test", async (JobCatalog catalog, Notifier notifier, string name) => {
             var channel = NotificationChannels.Load(catalog.NotebooksRoot).Find(name);
@@ -555,7 +555,7 @@ public static class JobsApi {
                 // The point of a test button is seeing why it failed.
                 return Results.BadRequest(new { error = e.Message });
             }
-        });
+        }).AdminOnly();
 
         // --- settings ---------------------------------------------------------
 
@@ -568,7 +568,7 @@ public static class JobsApi {
                 return error == null
                     ? Results.Ok(new { saved = true, restartRequired = true })
                     : Results.BadRequest(new { error });
-            });
+            }).AdminOnly();
 
         // A mistyped API route must answer 404 JSON, not fall through to the SPA's
         // index.html fallback (which would hand a client 200 text/html).

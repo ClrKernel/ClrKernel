@@ -24,6 +24,7 @@ public class ApiTest {
     private HttpClient _client;
     private EfRunStore _store;
     private JobsOptions _options;
+    private User _admin;
 
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
@@ -42,7 +43,8 @@ public class ApiTest {
         _store = EfRunStore.Sqlite(Path.Combine(_options.DataDir, "test.db"));
         _store.Migrate();
 
-        _app = Program.BuildApp(_options, new JobCatalog(_options.NotebooksRoot), _store);
+        _app = Program.BuildApp(_options, new JobCatalog(_options.NotebooksRoot), _store, null,
+            TestAuth.StoreFor(Path.Combine(_options.DataDir, "test.db")));
         // An ephemeral port: the default 5000 collides with a real `serve` on the
         // dev machine and with any other host started by the suite.
         _app.Urls.Add("http://127.0.0.1:0");
@@ -50,6 +52,7 @@ public class ApiTest {
         var address = _app.Urls.First();
         _client = new HttpClient { BaseAddress = new Uri(address) };
         _client.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, _apiKey);
+        _admin = await TestAuth.SignInAsync(_app, _client, UserRole.ServerAdmin);
     }
 
     [TestCleanup]

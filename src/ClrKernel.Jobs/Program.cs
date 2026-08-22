@@ -195,6 +195,13 @@ public static class Program {
         Console.WriteLine($"clrkernel-jobs scheduler — {result.Jobs.Count} job(s) under {catalog.NotebooksRoot}");
         PrintErrors(result.Errors);
 
+        if ((options.Store ?? "sqlite").Equals("files", StringComparison.OrdinalIgnoreCase)) {
+            Console.Error.WriteLine(
+                "serve needs a database: user accounts and sessions have nowhere to live under " +
+                "--store files. Use --store sqlite (the default, zero config).");
+            return 2;
+        }
+
         Directory.CreateDirectory(options.DataDir);
         IRunStore store;
         try {
@@ -219,7 +226,8 @@ public static class Program {
 
     /// <summary>The scheduler + API host. Shared with the integration tests.</summary>
     internal static WebApplication BuildApp(
-        JobsOptions options, JobCatalog catalog, IRunStore store, GitService git = null) {
+        JobsOptions options, JobCatalog catalog, IRunStore store, GitService git = null,
+        IAuthStore authStore = null) {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
@@ -239,6 +247,12 @@ public static class Program {
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton(store);
+        // Accounts share the run database. Tests hand one in so the host does not
+        // have to re-derive a connection from options it never had.
+        builder.Services.AddSingleton(authStore ?? RunStoreFactory.CreateAuthStore(options));
+        builder.Services.AddSingleton(provider => new AuthService(
+            provider.GetRequiredService<IAuthStore>(), options,
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<AuthService>()));
 
         if (git != null) {
             builder.Services.AddSingleton(git);
@@ -298,6 +312,10 @@ public static class Program {
 
         var app = builder.Build();
         app.UseMiddleware<ApiKeyMiddleware>();
+        // Before the routes: every handler downstream can then ask who the caller
+        // is without each one repeating the cookie lookup.
+        app.UseMiddleware<AuthenticationMiddleware>();
+        app.MapAuthApi();
         app.MapJobsApi();
 
         // The SPA, when it has been built (webapp/ -> wwwroot/). Absent in a
@@ -367,6 +385,13 @@ public static class Program {
         }
         // A broken tree still runs an unaffected job, but the problems are shown.
         PrintErrors(result.Errors);
+
+        if ((options.Store ?? "sqlite").Equals("files", StringComparison.OrdinalIgnoreCase)) {
+            Console.Error.WriteLine(
+                "serve needs a database: user accounts and sessions have nowhere to live under " +
+                "--store files. Use --store sqlite (the default, zero config).");
+            return 2;
+        }
 
         Directory.CreateDirectory(options.DataDir);
         IRunStore store;

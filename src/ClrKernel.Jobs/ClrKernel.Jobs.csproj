@@ -37,6 +37,10 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Cronos" Version="0.11.0" />
+    <!-- WebAuthn attestation/assertion verification. Hand-rolling COSE key parsing
+         and attestation-statement checks is exactly the kind of cryptography that
+         looks right and is not. -->
+    <PackageReference Include="Fido2" Version="4.0.0" />
     <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>

@@ -57,7 +57,8 @@ public class NotebookCellsApiTest {
         _store = EfRunStore.Sqlite(Path.Combine(options.DataDir, "test.db"));
         _store.Migrate();
 
-        _app = Program.BuildApp(options, new JobCatalog(_root, gitLayout: true, _git), _store, _git);
+        _app = Program.BuildApp(options, new JobCatalog(_root, gitLayout: true, _git), _store, _git,
+            TestAuth.StoreFor(Path.Combine(options.DataDir, "test.db")));
         // Stand in for the kernel probe: there is no clrkernel binary here, and an
         // empty language list would parse every ```sql block as prose. Descriptors
         // are data, so seeding is exactly what a live session does.
@@ -75,6 +76,7 @@ public class NotebookCellsApiTest {
         await _app.StartAsync();
         _client = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
         _client.DefaultRequestHeaders.Add(ApiKeyMiddleware.HeaderName, _apiKey);
+        await TestAuth.SignInAsync(_app, _client, UserRole.ServerAdmin);
     }
 
     [TestCleanup]
