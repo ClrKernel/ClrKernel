@@ -77,4 +77,12 @@ describe('breadcrumbFor', () => {
   it('says so when the route is unknown', () => {
     expect(breadcrumbFor('/nowhere')).toEqual([{ label: 'Not found' }]);
   });
+
+  it('names the settings section you are on', () => {
+    expect(breadcrumbFor('/settings')).toEqual([{ label: 'Settings' }]);
+    expect(breadcrumbFor('/settings/security')).toEqual([
+      { label: 'Settings', to: '/settings' },
+      { label: 'Security' },
+    ]);
+  });
 });

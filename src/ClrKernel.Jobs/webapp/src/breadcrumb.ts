@@ -32,6 +32,10 @@ export function middleTruncate(value: string, max = MAX_CRUMB): string {
   return `${value.slice(0, head)}…${value.slice(value.length - (keep - head))}`;
 }
 
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function leaf(label: string, badge?: string): Crumb {
   const short = middleTruncate(label);
   return { label: short, badge, ...(short === label ? {} : { full: label }) };
@@ -67,7 +71,13 @@ export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
       return [leaf('Channels')];
 
     case 'settings':
-      return [leaf('Settings')];
+      // /settings/:section — the section is a tab, and a tab you can link to is
+      // a place, so it earns a crumb. Capitalised rather than looked up: the
+      // titles live on the server and the breadcrumb is rendered before they
+      // arrive.
+      return segments.length >= 2
+        ? [{ label: 'Settings', to: '/settings' }, leaf(titleCase(segments[1]))]
+        : [leaf('Settings')];
 
     case 'runs':
       return [

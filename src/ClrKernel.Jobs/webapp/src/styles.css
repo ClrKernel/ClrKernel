@@ -939,7 +939,9 @@
  * detail, run detail and the notebook editor, and three copies of it is three
  * chances to drift.
  */
-[data-slot='tabs-list'][data-variant='line'] {
+[data-slot='tabs-list'][data-variant='line'],
+[data-tabs='line'] {
+  display: flex;
   width: 100%;
   height: auto;
   gap: 2px;
@@ -948,26 +950,49 @@
   border-bottom: 1px solid var(--border);
 }
 
-[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'] {
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'],
+[data-tabs='line'] [data-slot='tabs-trigger'] {
+  position: relative;
   flex: 0 0 auto;
   height: auto;
   padding: 7px 12px;
   font-size: var(--text-base);
   font-weight: 500;
   color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
-/* The indicator sits *on* the rule, not five pixels under it. */
-[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']::after {
-  background: var(--primary);
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']:hover,
+[data-tabs='line'] [data-slot='tabs-trigger']:hover {
+  color: var(--foreground);
+}
+
+/* The indicator sits *on* the rule, not five pixels under it. Stated in full
+   rather than only overriding colour and offset, because TabNav's links are
+   plain anchors with none of the generated component's utility classes. */
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']::after,
+[data-tabs='line'] [data-slot='tabs-trigger']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
   bottom: -1px;
   height: 2px;
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
-[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'][data-state='active'] {
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'][data-state='active'],
+[data-tabs='line'] [data-slot='tabs-trigger'][data-state='active'] {
   color: var(--foreground);
   font-weight: 600;
   background: transparent;
+}
+
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'][data-state='active']::after,
+[data-tabs='line'] [data-slot='tabs-trigger'][data-state='active']::after {
+  opacity: 1;
 }
 
 /* In the editor the tab row *is* the toolbar, so the rule it underlines is the

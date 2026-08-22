@@ -59,7 +59,11 @@ export function App() {
               <Route path="/jobs/:env/:name" element={<JobDetail />} />
               <Route path="/notebooks" element={<Notebooks />} />
               <Route path="/channels" element={<Channels />} />
+              {/* Settings is tabbed by route: /settings redirects to the first
+                  section, and each section is its own URL so a tab is something
+                  you can link to. */}
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/:section" element={<Settings />} />
               <Route path="/edit" element={<Editor />} />
               <Route path="/runs/:id" element={<RunDetail />} />
               <Route

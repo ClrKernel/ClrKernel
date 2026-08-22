@@ -247,7 +247,9 @@ public static class Program {
         var settings = SettingsRegistry.CreateDefault(options);
         settings.Add(new SettingsSection {
             Key = "git",
-            Title = "Git workflow",
+            // One word: this title is also the label of the Settings tab that
+            // routes to /settings/git.
+            Title = "Git",
             Description = options.GitEnabled
                 ? "Dev→prod promotion is on: edits commit to the dev branch, approvals merge to main."
                 : "Off. Run `clrkernel-jobs git init` on the notebooks root to enable dev→prod promotion.",
