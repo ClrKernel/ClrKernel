@@ -38,7 +38,7 @@ describe('toolbarLayout', () => {
   });
 
   it('degrades monotonically — nothing comes back as the bar narrows', () => {
-    const widths = [1600, 1100, 1099, 1000, 999, 880, 879, 780, 779, 500];
+    const widths = [1600, 1140, 1139, 1000, 999, 880, 879, 780, 779, 500];
     const layouts = widths.map(toolbarLayout);
     const score = (l: ReturnType<typeof toolbarLayout>) =>
       Number(l.restartIconOnly) + Number(l.runAllIconOnly) + Number(!l.showKernelVersion) +

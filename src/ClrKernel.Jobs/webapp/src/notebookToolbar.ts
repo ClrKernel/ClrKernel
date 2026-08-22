@@ -12,8 +12,9 @@
  * actually has. Dragging that sidebar fires no window resize at all.
  *
  * The numbers below are measured, not guessed: the full layout needs about
- * 1088px of bar, and each tier below it is what remains once that tier's label
- * has gone. Re-measure if the controls change size.
+ * 1124px of bar — measured with the promotion-blocked info button present,
+ * which is the wider of the two cases — and each tier below it is what remains
+ * once that tier's label has gone. Re-measure if the controls change.
  */
 
 export interface ToolbarLayout {
@@ -31,7 +32,7 @@ export interface ToolbarLayout {
 }
 
 /** Toolbar widths at which something has to give. */
-export const BREAKPOINTS = { narrow: 780, collapse: 880, tight: 1000, compact: 1100 } as const;
+export const BREAKPOINTS = { narrow: 780, collapse: 880, tight: 1000, compact: 1140 } as const;
 
 export function toolbarLayout(width: number): ToolbarLayout {
   if (width < BREAKPOINTS.narrow) {

@@ -326,6 +326,13 @@ fold into a single menu. The execution controls belong to the Notebook tab and a
 hidden on Source and Diff; saving and promoting are about the document and stay
 everywhere.
 
+When **Promote to production** is unavailable, an ⓘ appears beside it. Click it and
+the reasons — usually a job on this notebook that has not had a green run yet — slide
+up as a notice in the corner, which fades on its own or closes on **Dismiss**. They
+used to sit in a banner above the notebook; the reasons do not change while you work,
+so a permanent banner cost a strip of the screen to say the same thing every time you
+scrolled past it.
+
 Cells run against a **warm kernel** — one per notebook, started on the first run and
 kept alive so variables persist between cells and between runs, exactly as they do in
 VS Code. Per cell: ▶ runs it, **▶ above** runs everything before it, **▶ below** runs

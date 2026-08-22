@@ -1,4 +1,4 @@
-import { MoreHorizontal, Play, RotateCcw } from 'lucide-react';
+import { Info, MoreHorizontal, Play, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from 'sonner';
 import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
 
 const RESTART_HINT =
@@ -82,11 +83,36 @@ export interface NotebookToolbarProps {
  * never wraps: as the window narrows it drops Restart's label, then Run All's
  * label and the kernel version, then folds the execution controls into a menu.
  */
+/**
+ * Why promotion is blocked, as a toast rather than a banner.
+ *
+ * It auto-dismisses, but carries an explicit Dismiss too: the reasons can run to
+ * several lines, and a notice that vanishes mid-sentence while you are reading
+ * it is worse than one you have to close. `id` is fixed so hammering the button
+ * updates the one toast instead of stacking identical copies.
+ */
+function explainBlocked(reasons: string[]): void {
+  toast.warning('Not promotable yet', {
+    id: 'promotion-blocked',
+    duration: 8000,
+    description: (
+      <ul className="mt-1 list-disc space-y-0.5 pl-4">
+        {reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+    ),
+    action: { label: 'Dismiss', onClick: () => toast.dismiss('promotion-blocked') },
+  });
+}
+
 export function NotebookToolbar(props: NotebookToolbarProps) {
   const bar = useRef<HTMLDivElement>(null);
   const layout = toolbarLayout(useBarWidth(bar));
   const execution = showsExecution(props.tab) && props.canRun;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
+  const blockedReasons =
+    props.promotion && !props.promotion.eligible ? props.promotion.reasons : [];
 
   const runAll = (
     <Button
@@ -223,7 +249,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         size="xs"
         onClick={props.onPromote}
         disabled={props.busy || !props.promotion?.eligible}
-        title={props.promotion?.eligible ? 'Ship to production' : props.promotion?.reasons.join('\n')}
+        title={props.promotion?.eligible ? 'Ship to production' : undefined}
       >
         {props.promotion?.isDeletion
           ? 'Promote deletion'
@@ -231,6 +257,21 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             ? 'Promote'
             : 'Promote to production'}
       </Button>
+      {/* Beside the button, not inside it: a disabled button swallows clicks,
+          and this control has to stay clickable precisely when Promote is not.
+          Why you cannot promote is a question you ask occasionally, so it is a
+          thing you reach for — not a banner sitting above the notebook forever. */}
+      {blockedReasons.length > 0 && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Why can’t I promote?"
+          title="Why can’t I promote?"
+          onClick={() => explainBlocked(blockedReasons)}
+        >
+          <Info className="size-3.5" aria-hidden="true" />
+        </Button>
+      )}
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
@@ -460,18 +460,10 @@ export function Editor() {
           </Alert>
         )}
 
-        {promotion && !promotion.eligible && (
-          <Alert variant="warning" className="mb-3">
-            <AlertTitle>Not promotable yet</AlertTitle>
-            <AlertDescription>
-              <ul className="list-disc pl-4">
-                {promotion.reasons.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* "Not promotable yet" used to live here as a permanent banner. It is
+            now the info button beside Promote in the toolbar: the reasons do not
+            change while you work, so re-reading them every time you scroll past
+            is cost without information. */}
       </div>
 
       {tab === 'notebook' &&
