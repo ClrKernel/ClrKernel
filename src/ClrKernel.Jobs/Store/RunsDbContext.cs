@@ -17,6 +17,14 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<RunCell> RunCells => Set<RunCell>();
     public DbSet<JobTriggerState> JobTriggerStates => Set<JobTriggerState>();
 
+    // Accounts live here rather than in a file of their own so one backup covers
+    // the whole server. The consequence is that `--store files` cannot host a
+    // multi-user server; `serve` says so and names the fix.
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Credential> Credentials => Set<Credential>();
+    public DbSet<Invite> Invites => Set<Invite>();
+    public DbSet<AuthSession> Sessions => Set<AuthSession>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Run>(run => {
             run.ToTable("runs");
@@ -64,6 +72,62 @@ public abstract class RunsDbContext : DbContext {
             state.Property(s => s.Environment).HasColumnName("environment").HasMaxLength(16);
             state.Property(s => s.JobName).HasColumnName("job_name");
             state.Property(s => s.LastTriggerAt).HasColumnName("last_trigger_at");
+        });
+
+        modelBuilder.Entity<User>(user => {
+            user.ToTable("users");
+            user.HasKey(u => u.Id);
+            user.Property(u => u.Id).HasColumnName("id");
+            user.Property(u => u.DisplayName).HasColumnName("display_name").IsRequired().HasMaxLength(120);
+            user.Property(u => u.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(16);
+            user.Property(u => u.CreatedAt).HasColumnName("created_at");
+            user.Property(u => u.LastSeenAt).HasColumnName("last_seen_at");
+            user.Property(u => u.Disabled).HasColumnName("disabled");
+        });
+
+        modelBuilder.Entity<Credential>(credential => {
+            credential.ToTable("credentials");
+            credential.HasKey(c => c.Id);
+            // base64url, so it is safe in a URL and readable in a query result.
+            credential.Property(c => c.Id).HasColumnName("id").HasMaxLength(512);
+            credential.Property(c => c.UserId).HasColumnName("user_id");
+            credential.Property(c => c.PublicKey).HasColumnName("public_key").IsRequired();
+            credential.Property(c => c.SignCount).HasColumnName("sign_count");
+            credential.Property(c => c.Transports).HasColumnName("transports").HasMaxLength(128);
+            credential.Property(c => c.AaGuid).HasColumnName("aaguid");
+            credential.Property(c => c.Name).HasColumnName("name").HasMaxLength(120);
+            credential.Property(c => c.CreatedAt).HasColumnName("created_at");
+            credential.Property(c => c.LastUsedAt).HasColumnName("last_used_at");
+            // Removing a user takes their passkeys with them; leaving orphans would
+            // leave credentials that authenticate as nobody.
+            credential.HasOne(c => c.User).WithMany(u => u.Credentials)
+                .HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
+            credential.HasIndex(c => c.UserId);
+        });
+
+        modelBuilder.Entity<Invite>(invite => {
+            invite.ToTable("invites");
+            invite.HasKey(i => i.Code);
+            invite.Property(i => i.Code).HasColumnName("code").HasMaxLength(64);
+            invite.Property(i => i.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(16);
+            invite.Property(i => i.Label).HasColumnName("label").HasMaxLength(200);
+            invite.Property(i => i.CreatedBy).HasColumnName("created_by");
+            invite.Property(i => i.CreatedAt).HasColumnName("created_at");
+            invite.Property(i => i.ExpiresAt).HasColumnName("expires_at");
+            invite.Property(i => i.UsedAt).HasColumnName("used_at");
+            invite.Property(i => i.UsedBy).HasColumnName("used_by");
+            invite.Property(i => i.Revoked).HasColumnName("revoked");
+        });
+
+        modelBuilder.Entity<AuthSession>(session => {
+            session.ToTable("sessions");
+            session.HasKey(s => s.Id);
+            session.Property(s => s.Id).HasColumnName("id").HasMaxLength(64);
+            session.Property(s => s.UserId).HasColumnName("user_id");
+            session.Property(s => s.CreatedAt).HasColumnName("created_at");
+            session.Property(s => s.ExpiresAt).HasColumnName("expires_at");
+            session.Property(s => s.LastSeenAt).HasColumnName("last_seen_at");
+            session.HasIndex(s => s.UserId);
         });
     }
 }

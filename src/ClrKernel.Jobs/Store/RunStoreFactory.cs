@@ -62,6 +62,24 @@ public static class RunStoreFactory {
         }
     }
 
+    /// <summary>
+    /// Accounts, in the same database as the runs. Callers hold a store already, so
+    /// this re-derives the context factory rather than threading one through; the
+    /// factory is a couple of allocations and is built once at startup.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// The store is `files`, which has no database to put accounts in.
+    /// </exception>
+    public static IAuthStore CreateAuthStore(JobsOptions options) {
+        var kind = (options.Store ?? "sqlite").ToLowerInvariant();
+        if (kind == "files") {
+            throw new ArgumentException(
+                "--store files keeps no database, so it cannot hold user accounts. " +
+                "Use --store sqlite (the default, zero config) for a server with sign-in.");
+        }
+        return new EfAuthStore(ContextFactoryFor(kind, options));
+    }
+
     private static string FirstLine(string message) {
         var text = (message ?? string.Empty).Trim();
         var newline = text.IndexOf('\n');
