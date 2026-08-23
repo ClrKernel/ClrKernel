@@ -80,6 +80,7 @@ public sealed class AuthService {
     private readonly ILogger<AuthService> _log;
     private readonly Fido2 _fido;
     private readonly ConcurrentDictionary<string, PendingCeremony> _pending = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Fido2> _loopbackVerifiers = new(StringComparer.Ordinal);
 
     public AuthService(IAuthStore store, JobsOptions options, ILogger<AuthService> log) {
         _store = store;
@@ -93,6 +94,46 @@ public sealed class AuthService {
     }
 
     public IAuthStore Store => _store;
+
+    /// <summary>
+    /// The verifier to check a ceremony against, given the origin the browser
+    /// actually sent.
+    /// <para>
+    /// Normally this is the one built from configuration. The exception is the
+    /// development loop: Vite serves the app on :5173 and proxies <c>/api</c> to
+    /// the server on :5000, so the browser's origin is not the bind url and the
+    /// ceremony is rejected — which is what happens if you follow this repo's own
+    /// dev instructions.
+    /// </para>
+    /// <para>
+    /// A WebAuthn relying party is a *domain*; the port is not part of it, and the
+    /// browser already scopes the credential accordingly. So when the relying party
+    /// is <c>localhost</c> — which is a development configuration by definition,
+    /// and whose passkeys are documented as throwaway — another loopback port is
+    /// the same relying party and refusing it is stricter than WebAuthn itself.
+    /// Anything else, including a real hostname on loopback, still has to be in the
+    /// configured list.
+    /// </para>
+    /// </summary>
+    private Fido2 VerifierFor(string requestOrigin) {
+        if (requestOrigin == null
+            || _options.RelyingPartyId != "localhost"
+            || _options.Origins.Contains(requestOrigin, StringComparer.OrdinalIgnoreCase)
+            || !IsLoopbackOrigin(requestOrigin)) {
+            return _fido;
+        }
+        return _loopbackVerifiers.GetOrAdd(requestOrigin, origin => new Fido2(new Fido2Configuration {
+            ServerDomain = _options.RelyingPartyId,
+            ServerName = "ClrKernel Jobs",
+            Origins = new HashSet<string>(
+                _options.Origins.Append(origin), StringComparer.OrdinalIgnoreCase),
+        }, metadataService: null));
+    }
+
+    internal static bool IsLoopbackOrigin(string origin) =>
+        Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+        && uri.Scheme is "http" or "https"
+        && uri.Host is "localhost" or "127.0.0.1" or "::1" or "[::1]";
 
     public Task<int> UserCountAsync() => _store.UserCountAsync();
 
@@ -137,14 +178,15 @@ public sealed class AuthService {
     /// (bootstrap, invite) or attaches the passkey to the existing one.
     /// </summary>
     public async Task<AuthResult> CompleteRegistrationAsync(
-        string ceremonyId, AuthenticatorAttestationRawResponse response, string passkeyName) {
+        string ceremonyId, AuthenticatorAttestationRawResponse response, string passkeyName,
+        string requestOrigin = null) {
         if (Claim(ceremonyId) is not { Creation: not null } ceremony) {
             return AuthResult.Fail("That registration expired. Start again.");
         }
 
         RegisteredPublicKeyCredential credential;
         try {
-            credential = await _fido.MakeNewCredentialAsync(new MakeNewCredentialParams {
+            credential = await VerifierFor(requestOrigin).MakeNewCredentialAsync(new MakeNewCredentialParams {
                 AttestationResponse = response,
                 OriginalOptions = ceremony.Creation,
                 IsCredentialIdUniqueToUserCallback = async (parameters, _) =>
@@ -216,7 +258,7 @@ public sealed class AuthService {
     }
 
     public async Task<AuthResult> CompleteAssertionAsync(
-        string ceremonyId, AuthenticatorAssertionRawResponse response) {
+        string ceremonyId, AuthenticatorAssertionRawResponse response, string requestOrigin = null) {
         if (Claim(ceremonyId) is not { Assertion: not null } ceremony) {
             return AuthResult.Fail("That sign-in expired. Try again.");
         }
@@ -232,7 +274,7 @@ public sealed class AuthService {
 
         VerifyAssertionResult verified;
         try {
-            verified = await _fido.MakeAssertionAsync(new MakeAssertionParams {
+            verified = await VerifierFor(requestOrigin).MakeAssertionAsync(new MakeAssertionParams {
                 AssertionResponse = response,
                 OriginalOptions = ceremony.Assertion,
                 StoredPublicKey = credential.PublicKey,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Rail } from './components/Rail';
@@ -48,9 +48,29 @@ export function App() {
     return (
       <AccentContext.Provider value={accentValue}>
         <Routes>
-          <Route path="/setup" element={<Setup session={session} onSignedIn={arrive} />} />
+          {/* Claimed already: /setup is not a page any more, and the server 404s
+              it regardless. */}
+          <Route
+            path="/setup"
+            element={
+              session != null && !session.needsSetup
+                ? <Navigate to="/signin" replace />
+                : <Setup session={session} onSignedIn={arrive} />
+            }
+          />
           <Route path="/invite/:code" element={<Invite session={session} onSignedIn={arrive} />} />
-          <Route path="*" element={<SignIn session={session} onSignedIn={arrive} />} />
+          {/* An unclaimed server sends every other door to /setup. The server does
+              this too, but only for documents it serves itself — under `npm run
+              dev` the page comes from Vite on another port and only /api is
+              proxied, so the redirect has to happen here as well. */}
+          <Route
+            path="*"
+            element={
+              session?.needsSetup
+                ? <Navigate to="/setup" replace />
+                : <SignIn session={session} onSignedIn={arrive} />
+            }
+          />
         </Routes>
         <Toaster position="bottom-right" richColors closeButton />
       </AccentContext.Provider>

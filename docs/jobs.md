@@ -277,6 +277,13 @@ clrkernel-jobs serve --rp-id jobs.example.internal \
 (`CLRKERNEL_JOBS_ORIGINS`) lists the origins the browser may present and defaults to
 `--urls`, which is what you override when TLS is terminated by a proxy in front.
 
+While the relying party is the default `localhost`, **any loopback origin is
+accepted** whatever its port. That is what makes `./dev/jobs-dev.sh` work: the page
+comes from Vite on :5173 while the server listens on :5000, and a relying party is a
+domain — the port is not part of it, and the browser scopes the credential the same
+way. Set `--rp-id` to a real hostname and this stops applying; every origin then has
+to be listed.
+
 ### Locked out
 
 Self-hosted with no email means a lost device is otherwise permanent. On the box:

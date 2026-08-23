@@ -268,6 +268,27 @@ public class AuthApiTest {
     }
 
     /// <summary>
+    /// The dev loop serves the page from Vite on one port and proxies /api to the
+    /// server on another, so the browser's origin is not the bind url. A relying
+    /// party is a domain and the port is not part of it, so another loopback port
+    /// is the same relying party — but only while the relying party *is*
+    /// localhost, which is a development configuration by definition.
+    /// </summary>
+    [TestMethod]
+    public void Loopback_origins_are_recognised() {
+        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://localhost:5173"));
+        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://127.0.0.1:5000"));
+        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://[::1]:5000"));
+
+        Assert.IsFalse(AuthService.IsLoopbackOrigin("https://jobs.example.internal"));
+        Assert.IsFalse(AuthService.IsLoopbackOrigin("http://localhost.evil.example"),
+            "a hostname that merely starts with localhost is somebody else's domain");
+        Assert.IsFalse(AuthService.IsLoopbackOrigin("file:///tmp"));
+        Assert.IsFalse(AuthService.IsLoopbackOrigin("not a url"));
+        Assert.IsFalse(AuthService.IsLoopbackOrigin(null));
+    }
+
+    /// <summary>
     /// The cookie's Secure flag, which `Request.IsHttps` alone gets wrong in the
     /// deployment the docs recommend: TLS terminated by a proxy, plain http on the
     /// hop into this process.

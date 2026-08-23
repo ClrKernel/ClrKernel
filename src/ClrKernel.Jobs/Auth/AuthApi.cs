@@ -114,7 +114,8 @@ public static class AuthApi {
                 var result = await auth.CompleteAssertionAsync(
                 body?.CeremonyId,
                 body == null ? null : JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(
-                    body.Response, _webAuthnJson));
+                    body.Response, _webAuthnJson),
+                OriginOf(context));
                 if (!result.Ok) {
                     return Results.Json(new { error = result.Error }, statusCode: 401);
                 }
@@ -190,7 +191,7 @@ public static class AuthApi {
                     return Results.Json(new { error = "Sign in first." }, statusCode: 401);
                 }
                 var result = await auth.CompleteRegistrationAsync(
-                    body?.CeremonyId, Attestation(body), body?.PasskeyName);
+                    body?.CeremonyId, Attestation(body), body?.PasskeyName, OriginOf(context));
                 return result.Ok
                     ? Results.Ok(new { added = true })
                     : Results.BadRequest(new { error = result.Error });
@@ -387,10 +388,18 @@ public static class AuthApi {
             : JsonSerializer.Deserialize<AuthenticatorAttestationRawResponse>(
                 body.Response, _webAuthnJson);
 
+    /// <summary>
+    /// What the browser says it is. Forwarded verbatim by Vite's dev proxy, which
+    /// is how the server learns that the page came from :5173 while it listens on
+    /// :5000.
+    /// </summary>
+    private static string OriginOf(HttpContext context) =>
+        context.Request.Headers.Origin.ToString() is { Length: > 0 } origin ? origin : null;
+
     private static async Task<IResult> FinishRegistration(
         HttpContext context, AuthService auth, RegisterBody body) {
         var result = await auth.CompleteRegistrationAsync(
-            body?.CeremonyId, Attestation(body), body?.PasskeyName);
+            body?.CeremonyId, Attestation(body), body?.PasskeyName, OriginOf(context));
         if (!result.Ok) {
             return Results.BadRequest(new { error = result.Error });
         }
