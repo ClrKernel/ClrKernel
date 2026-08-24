@@ -1,4 +1,4 @@
-import { FilePlus2, GitBranch } from 'lucide-react';
+import { ChevronDown, ChevronRight, FilePlus2, FolderClosed, GitBranch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { api, projectSlug, type TreeNode } from '../api';
 import { BranchOptions, ErrorBanner, PageHeader, usePolling } from '../components/common';
+import { FileBadge } from '../components/FileBadge';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { loadBranch, saveBranch } from '../prefs';
 import { editPath, jobPath, newJobPath } from '../routes';
@@ -47,9 +48,14 @@ function Node({
           onClick={() => setOpen(!open)}
           aria-expanded={open}
         >
-          <span aria-hidden="true" className="w-3 shrink-0 text-[10px] text-muted-subtle">
-            {open ? '▾' : '▸'}
-          </span>
+          {/* The chevron turns; the folder does not. Two drawings for one piece
+              of information is one more than anybody reads. */}
+          {open ? (
+            <ChevronDown className="size-3 shrink-0 text-muted-subtle" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="size-3 shrink-0 text-muted-subtle" aria-hidden="true" />
+          )}
+          <FolderClosed className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           {node.name}
         </button>
         {open &&
@@ -70,7 +76,8 @@ function Node({
   if (node.kind === 'jobs') {
     return (
       <div className={`${row} font-mono text-code text-muted-subtle`} style={indent}>
-        <span aria-hidden="true" className="w-3 shrink-0" />
+        <span aria-hidden="true" className="size-3 shrink-0" />
+        <FileBadge name={node.name} />
         {node.name}
       </div>
     );
@@ -82,7 +89,10 @@ function Node({
   const href = editPath(projectSlug(), env, node.path);
   return (
     <div className={row} style={indent}>
-      <span aria-hidden="true" className="w-3 shrink-0" />
+      {/* The chevron's width, so a file lines up under the folder icon rather
+          than under its arrow. */}
+      <span aria-hidden="true" className="size-3 shrink-0" />
+      <FileBadge name={node.name} />
       {/* Openable on every branch. test and prod are read-only there rather than
           unopenable — the editor is how you read a notebook, not only how you
           change one. */}

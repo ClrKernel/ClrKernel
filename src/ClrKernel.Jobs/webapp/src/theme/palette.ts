@@ -82,6 +82,20 @@ export const ENV = {
  * purpose — the accent never appears inside the editor, so an accent change
  * needs no re-theme.
  */
+/**
+ * File-kind tints for the explorer's little extension badges.
+ *
+ * Three, not one per extension: what a reader needs at a glance is "notebook /
+ * code / configuration", and the letters in the badge say which notebook. All
+ * three are semantic and never accent-derived, for the same reason `prod` is
+ * green whichever accent is in force.
+ */
+export const FILE = {
+  notebook: '#7c3aed',
+  code: '#1d4ed8',
+  config: '#0f766e',
+} as const;
+
 export const EDITOR = {
   background: NEUTRAL.card,
   foreground: '#3d4038',

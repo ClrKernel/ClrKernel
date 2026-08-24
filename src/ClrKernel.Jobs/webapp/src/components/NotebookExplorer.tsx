@@ -1,4 +1,11 @@
-import { ChevronLeft, ChevronRight, FilePlus2, GitBranch } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FilePlus2,
+  FolderClosed,
+  GitBranch,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -13,6 +20,7 @@ import { saveBranch } from '../prefs';
 import { editPath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 import { BranchOptions, usePolling } from './common';
+import { FileBadge } from './FileBadge';
 
 /** The editor link for one file on one branch. */
 function editHref(path: string, branch: string): string {
@@ -209,9 +217,27 @@ export function NotebookExplorer({
               ].join(' ')}
               style={{ paddingLeft: `${10 + row.depth * 12}px` }}
             >
-              <span aria-hidden="true" className="w-[11px] shrink-0 text-[9px] text-muted-subtle">
-                {row.kind === 'folder' ? (row.open ? '▾' : '▸') : ''}
-              </span>
+              {/* The chevron says open or shut; the folder is always the same
+                  drawing. A folder that changes shape as well as direction is
+                  two signals for one piece of information, and the one people
+                  actually read is the arrow. */}
+              {row.kind === 'folder' ? (
+                <>
+                  {row.open ? (
+                    <ChevronDown className="size-3 shrink-0 text-muted-subtle" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="size-3 shrink-0 text-muted-subtle" aria-hidden="true" />
+                  )}
+                  <FolderClosed className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </>
+              ) : (
+                <>
+                  {/* The chevron's width, so files line up under the folder
+                      icon rather than under its arrow. */}
+                  <span aria-hidden="true" className="size-3 shrink-0" />
+                  <FileBadge name={row.name} />
+                </>
+              )}
               <span className="truncate">{row.name}</span>
             </button>
           );
@@ -220,3 +246,4 @@ export function NotebookExplorer({
     </div>
   );
 }
+

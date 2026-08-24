@@ -55,6 +55,12 @@
   --env-prod-bg: #e9f3ec;
   --env-prod-border: #cfe4d6;
 
+  /* File-kind badges in the explorer. Semantic like the env chips: a notebook
+     is a notebook whichever accent is in force. */
+  --file-notebook: #7c3aed;
+  --file-code: #1d4ed8;
+  --file-config: #0f766e;
+
   /* Code. `--code-bg` must equal Monaco's editor.background, or a seam shows
      at the cell edge. */
   --code-bg: #fffefb;
@@ -175,6 +181,9 @@
   --color-env-prod: var(--env-prod);
   --color-env-prod-bg: var(--env-prod-bg);
   --color-env-prod-border: var(--env-prod-border);
+  --color-file-notebook: var(--file-notebook);
+  --color-file-code: var(--file-code);
+  --color-file-config: var(--file-config);
   --color-code-bg: var(--code-bg);
   --color-code-fg: var(--code-fg);
   --color-line-number: var(--line-number);
