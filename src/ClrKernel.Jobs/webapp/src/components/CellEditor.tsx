@@ -13,7 +13,7 @@ import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import type { LspDiagnostic } from '../monaco/lsp';
 import { useCellEditor } from '../monaco/useMonaco';
-import { useCanWrite } from '../sessionContext';
+import { useCanRun, useCanWrite } from '../sessionContext';
 import {
   connectableLanguage,
   hasEditorServices,
@@ -72,6 +72,7 @@ export function CellEditor({
   // Viewers get the same notebook without the levers. The server refuses these
   // routes anyway; hiding them is so nobody reaches for something that will fail.
   const canWrite = useCanWrite();
+  const mayRun = useCanRun();
 
   return (
     <div className={`notebook-cell notebook-cell-${cell.kind}${run ? ` cell-${run.status}` : ''}`}>
@@ -82,7 +83,7 @@ export function CellEditor({
             just a margin that looks like a mistake. */}
         {!isMarkdown && (
           <div className="cell-gutter-bar">
-            {canRun && canWrite ? (
+            {canRun && mayRun ? (
               <button
                 className="cell-run-button"
                 onClick={() => onRun('one')}
@@ -107,7 +108,7 @@ export function CellEditor({
           {/* Structural actions float over the editor and appear on hover, so a
               resting cell is code and nothing else. */}
           <div className="cell-float-actions">
-            {!isMarkdown && canRun && canWrite && (
+            {!isMarkdown && canRun && mayRun && (
               <>
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   onClick={() => onRun('before')}

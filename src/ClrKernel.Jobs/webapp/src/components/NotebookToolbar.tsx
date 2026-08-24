@@ -1,5 +1,6 @@
 import {
   ArrowDownToLine,
+  Copy,
   Info,
   MoreHorizontal,
   Play,
@@ -24,7 +25,7 @@ import { toast } from 'sonner';
 import type { BranchStanding } from '../api';
 import { STATUS_LABEL, STATUS_TITLE, type SaveStatus } from '../autosave';
 import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
-import { useCanWrite } from '../sessionContext';
+import { useCanRun, useCanWrite } from '../sessionContext';
 
 const RESTART_HINT =
   'Kills the kernel. This is also the only way to stop a cell that will not finish.';
@@ -89,6 +90,10 @@ export interface NotebookToolbarProps {
   standing: BranchStanding | null;
   onPush: (message: string) => void;
   onUpdate: () => void;
+  /** Which branch is open — `mine`, `test`, `prod`, or `user-<id>`. */
+  branch: string;
+  /** Copies what is on screen onto your own branch and opens it there. */
+  onCopyToMine: () => void;
 }
 
 /**
@@ -300,7 +305,8 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   const bar = useRef<HTMLDivElement>(null);
   const layout = toolbarLayout(useBarWidth(bar));
   const canWrite = useCanWrite();
-  const execution = showsExecution(props.tab) && props.canRun && canWrite;
+  const mayRun = useCanRun();
+  const execution = showsExecution(props.tab) && props.canRun && mayRun;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
   const blockedReasons =
     props.promotion && !props.promotion.eligible ? props.promotion.reasons : [];
@@ -334,7 +340,17 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   return (
     // Sticky, so Run All stays reachable while scrolling a long notebook in
     // Normal Mode. The tabs' underline sits on the row's own bottom border.
-    <div ref={bar} className="nb-toolbar sticky top-0 z-20 flex h-[44px] shrink-0 items-stretch gap-1.5 overflow-x-auto whitespace-nowrap border-b border-border bg-card px-4">
+    <div
+      ref={bar}
+      className={
+        'nb-toolbar sticky top-0 z-20 flex h-[44px] shrink-0 items-stretch gap-1.5 '
+        + 'overflow-x-auto whitespace-nowrap border-b bg-card px-4 '
+        // Production gets a colour of its own. Everything else about this row is
+        // identical whichever branch you are on, and that is exactly the problem:
+        // the one moment worth interrupting is running something against prod.
+        + (props.branch === 'prod' ? 'border-b-2 border-status-warning' : 'border-border')
+      }
+    >
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
         <TabsList variant="line">
           {props.isNotebook && <TabsTrigger value="notebook">Notebook</TabsTrigger>}
@@ -428,7 +444,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
 
       {/* The Normal|Focus switch is not a write, so it stays for viewers — Focus
           Mode is a reading layout as much as an editing one. */}
-      {!canWrite && showsExecution(props.tab) && (
+      {!execution && showsExecution(props.tab) && (
         <div className="flex items-center gap-2">
           <ToggleGroup
             type="single"
@@ -445,6 +461,26 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
               Focus
             </ToggleGroupItem>
           </ToggleGroup>
+        </div>
+      )}
+
+      {/* Not your branch: say so, and offer the legitimate place to make the
+          change you came here to make. */}
+      {props.branch !== 'mine' && (
+        <div className="flex items-center gap-2">
+          <span
+            className={`whitespace-nowrap text-xs ${
+              props.branch === 'prod' ? 'font-semibold text-status-warning' : 'text-muted-subtle'
+            }`}
+          >
+            {props.branch === 'prod' || props.branch === 'test'
+              ? `${props.branch} — read-only${mayRun ? ', runnable' : ''}`
+              : 'somebody else’s branch — read-only'}
+          </span>
+          <Button variant="outline" size="xs" onClick={props.onCopyToMine}>
+            <Copy className="size-3.5" aria-hidden="true" />
+            Copy to my branch
+          </Button>
         </div>
       )}
 

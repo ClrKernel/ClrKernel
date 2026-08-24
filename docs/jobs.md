@@ -366,6 +366,31 @@ link of its own carries its project in the URL — `/jobs/finance/test/nightly` 
 because two projects may each have a job called `nightly`, and a link that meant
 whichever one you had selected would mean two different jobs.
 
+### Running in test and prod
+
+Read-only means you cannot change the code, not that you cannot execute it. When a
+scheduled job dies at cell seven of twelve at two in the morning, the fix is to run
+the rest — not to edit production. Opening `test` or `prod` in the editor gives you
+a read-only notebook with the run controls intact: cells, Run All, Restart kernel.
+
+- **Who**: Project Members in `test`, Project Admins in `prod`. Nobody, ever, on
+  somebody else's branch.
+- **Its own kernel**, keyed by the person as well as the notebook — two people
+  driving the same production notebook are not sharing one — and dropped after ten
+  idle minutes rather than kept warm.
+- **Never while the schedule is running the same notebook.** Two kernels in one
+  worktree write over each other's outputs, and the one that matters is the one
+  nobody is watching.
+- **Production asks first**, naming the project, the branch and the notebook, and
+  its toolbar carries a warning-toned border so nothing else looks like it.
+- **Copy to my branch** is on the toolbar, because "I just need to tweak this one
+  line" needs somewhere legitimate to go.
+
+Every hand-driven run in `test` or `prod` is recorded — who, when, which cells, and
+how it ended — at `/api/projects/{project}/manual-runs`. It is a log of its own and
+never mistaken for a job run: promotability asks for the latest run of a named job,
+and an audit entry that could answer that would be a hole in the gate.
+
 A personal worktree that is **clean and fully in test** is removed after a month
 of nobody touching it — what goes is a copy of something that already exists, so
 nothing is lost. One holding unsaved work, or commits test has never seen, stays

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ApiError, api, projectSlug, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -24,7 +24,7 @@ import {
   type LayoutPrefs,
 } from '../prefs';
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
-import { ReadOnlyContext, useCanWrite } from '../sessionContext';
+import { BranchAllows, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
 import { neighbourCell } from '../toc';
 import {
@@ -58,12 +58,20 @@ type Tab = 'notebook' | 'source' | 'diff';
  */
 export function Editor() {
   const [search] = useSearchParams();
+  const navigate = useNavigate();
   const canWrite = useCanWrite();
   const path = search.get('path') ?? '';
-  // Which branch you are looking at. Yours unless the link says otherwise —
-  // somebody else's is readable, and read-only for everybody including admins.
+  // Which branch you are looking at. Yours unless the link says otherwise.
+  //
+  // Only your own branch is writable — somebody else's is read-only to everybody
+  // including admins, and so are test and prod. Those two are still *runnable*
+  // though, which is the whole point of being able to open them: a job that died
+  // at cell seven is finished by hand, not by editing production.
   const branch = search.get('branch') ?? 'mine';
-  const readOnlyBranch = branch !== 'mine';
+  const allows = {
+    write: branch === 'mine',
+    run: branch === 'mine' || branch === 'test' || branch === 'prod',
+  };
   const isNotebook = /\.(nb\.)?md$/i.test(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
@@ -269,6 +277,47 @@ export function Editor() {
     };
   }, [path, isNotebook, cells, canRun, reloadSession]);
 
+  /**
+   * Asks once before anything runs against production, naming what it is about to
+   * touch. Once per notebook rather than per cell: driving a failed job home takes
+   * a dozen runs, and a dialog on each of them is a dialog nobody reads. The side
+   * effects are real even though the file is not being changed.
+   */
+  const confirmedProd = useRef(false);
+  function confirmProduction(): boolean {
+    if (branch !== 'prod' || confirmedProd.current) {
+      return true;
+    }
+    const ok = confirm(
+      `Run against PRODUCTION?\n\n`
+      + `Project: ${projectSlug()}\nBranch: prod\nNotebook: ${path}\n\n`
+      + 'Whatever this notebook does, it will really do.');
+    confirmedProd.current = ok;
+    return ok;
+  }
+
+  /**
+   * The legitimate home for "I just need to tweak this one line".
+   *
+   * Copies what is on screen onto your own branch and opens it there — the rule
+   * that test and prod are never edited only holds if the instinct to edit them
+   * has somewhere to go.
+   */
+  async function copyToMine() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.saveNotebookContent(path, await api.notebookContent(branch, path));
+      navigate(`/edit?project=${encodeURIComponent(projectSlug())}`
+        + `&path=${encodeURIComponent(path)}`);
+      setNotice(`Copied ${path} onto your branch.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** The commit moment: everything on your branch becomes one commit on test. */
   async function push(message: string) {
     setError(null);
@@ -357,6 +406,9 @@ export function Editor() {
     const toRun = cellsToRun(cells ?? [], index, mode);
     if (toRun.length === 0) {
       setNotice('Nothing to run there — those cells are all prose.');
+      return;
+    }
+    if (!confirmProduction()) {
       return;
     }
     setError(null);
@@ -479,7 +531,7 @@ export function Editor() {
   return (
     // Somebody else's branch reads exactly like your own and changes in none of
     // the same ways: one flag at the top rather than a `disabled` on every control.
-    <ReadOnlyContext.Provider value={readOnlyBranch}>
+    <BranchAllows.Provider value={allows}>
     {/* The editor is the one page with its own sidebar: file tree on the left,
         toolbar and work area on the right. */}
     <div className="flex min-h-0 flex-1 overflow-hidden" ref={shell}>
@@ -526,6 +578,8 @@ export function Editor() {
         standing={standing}
         onPush={push}
         onUpdate={updateFromTest}
+        branch={branch}
+        onCopyToMine={copyToMine}
       />
 
       {/* Focus Mode measures itself to the bottom of this scroller and gives
@@ -716,7 +770,7 @@ export function Editor() {
       </div>
       </div>
     </div>
-    </ReadOnlyContext.Provider>
+    </BranchAllows.Provider>
   );
 }
 

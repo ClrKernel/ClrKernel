@@ -14,14 +14,14 @@ import { useProjects } from './projectContext';
 export const SessionContext = createContext<SessionState | null>(null);
 
 /**
- * Set where the thing on screen is not yours to change — browsing somebody else's
- * branch, or looking at test.
+ * What the branch on screen allows, layered onto what the role allows.
  *
- * Layered onto the role rather than replacing it, so a page does not have to ask
- * two questions: `useCanWrite()` already means "may I change what I am looking
- * at", and this is the other half of that sentence.
+ * The two are not the same question. test and prod are read-only for everybody and
+ * still runnable — when a scheduled job dies at cell seven, the fix is to run the
+ * rest, not to edit production — so a page asks `useCanWrite()` about editing and
+ * `useCanRun()` about running, and neither has to know which branch it is on.
  */
-export const ReadOnlyContext = createContext(false);
+export const BranchAllows = createContext({ write: true, run: true });
 
 export function useSession(): SessionState | null {
   return useContext(SessionContext);
@@ -41,8 +41,15 @@ function atLeast(role: ProjectRole | null | undefined, minimum: ProjectRole): bo
  * route — this only decides which controls are worth drawing.
  */
 export function useCanWrite(): boolean {
-  const readOnly = useContext(ReadOnlyContext);
-  return !readOnly && atLeast(useProjectRole(), 'ProjectMember');
+  return useContext(BranchAllows).write && atLeast(useProjectRole(), 'ProjectMember');
+}
+
+/**
+ * May run cells here. A Project Member in test, a Project Admin in prod, either on
+ * their own branch — and the server checks again on every one of those.
+ */
+export function useCanRun(): boolean {
+  return useContext(BranchAllows).run && atLeast(useProjectRole(), 'ProjectMember');
 }
 
 /** May configure this project, manage its members, and promote to production. */

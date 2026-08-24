@@ -12,7 +12,7 @@ import { StatusBadge } from './common';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useFocusEditor } from '../monaco/useMonaco';
-import { useCanWrite } from '../sessionContext';
+import { useCanRun, useCanWrite } from '../sessionContext';
 import {
   hasEditorServices,
   languageOptions,
@@ -109,6 +109,7 @@ export function FocusMode({
   // Focus Mode is a reading layout too, so a viewer keeps it — without the
   // controls, and with the editor read-only.
   const canWrite = useCanWrite();
+  const mayRun = useCanRun();
   const { container: editorRef, relayout } = useFocusEditor({
     readOnly: !canWrite,
     binding: active == null ? null : {
@@ -323,7 +324,7 @@ export function FocusMode({
               <span className="focus-cell-title">
                 Cell [{activeRun?.executionCount ?? ' '}]
               </span>
-              {canRun && canWrite && !isMarkdown && (
+              {canRun && mayRun && !isMarkdown && (
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
                   disabled={busy}
                   onClick={() => onRun(active.id)}
