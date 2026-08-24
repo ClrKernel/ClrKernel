@@ -60,12 +60,20 @@ public sealed class JobCatalog {
     /// <summary>The project slug stamped onto every job this catalog finds.</summary>
     public string Project { get; init; } = "default";
 
+    /// <summary>
+    /// What the one environment is called when there is no git layout. "default"
+    /// for a plain folder of notebooks; a personal branch's catalog calls it
+    /// <c>mine</c>, which is the name its routes and its badge use — that branch
+    /// never runs anything, so no run row is ever keyed by it.
+    /// </summary>
+    public string Environment { get; init; } = "default";
+
     /// <summary>The scan root for one environment (the worktree, or the flat root).</summary>
     public string RootFor(string environment) =>
         _gitLayout ? Path.Combine(_notebooksRoot, environment) : _notebooksRoot;
 
     public IReadOnlyList<string> Environments =>
-        _gitLayout ? new[] { GitService.TestBranch, "prod" } : new[] { "default" };
+        _gitLayout ? new[] { GitService.TestBranch, "prod" } : new[] { Environment };
 
     /// <summary>Rescans every environment and returns the current jobs and problems.</summary>
     public CatalogResult Load() {

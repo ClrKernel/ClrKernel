@@ -233,6 +233,27 @@ public sealed class ProjectRegistry {
             new JobCatalog(project.Root, project.GitEnabled, GitFor(project)) { Project = project.Slug });
 
     /// <summary>
+    /// The catalog for one branch. test and prod are both in the project's own
+    /// catalog; a personal branch has a worktree the project catalog never scans,
+    /// so it gets one of its own — a full catalog, because a personal worktree is a
+    /// full checkout rather than an overlay, which is what lets its dependencies
+    /// resolve against jobs that also exist in test.
+    /// </summary>
+    public JobCatalog CatalogFor(Project project, string branch) {
+        if (!GitService.IsUserBranch(branch) || GitFor(project) is not { } git) {
+            return CatalogFor(project);
+        }
+        return _catalogs.GetOrAdd($"{project.Slug}\u0000{branch}", _ =>
+            new JobCatalog(git.PathFor(branch), gitLayout: false, git) {
+                Project = project.Slug,
+                Environment = MineEnvironment,
+            });
+    }
+
+    /// <summary>What a personal branch's catalog calls its one environment.</summary>
+    public const string MineEnvironment = "mine";
+
+    /// <summary>
     /// Every project's jobs in one result, each tagged with the project it came from.
     /// The scheduler and the jobs list both want all of them; a per-project view is a
     /// filter over this, not a different scan.

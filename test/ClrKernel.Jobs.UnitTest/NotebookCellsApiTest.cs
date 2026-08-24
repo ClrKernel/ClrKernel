@@ -147,6 +147,44 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task A_job_is_written_on_your_branch_and_arrives_in_test_by_push() {
+        var created = await _client.PostAsJsonAsync(
+            "/api/projects/default/branches/mine/jobs",
+            new { name = "nightly", notebook = _notebook, enabled = true });
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode,
+            await created.Content.ReadAsStringAsync());
+
+        // Written where you are working, and nowhere else yet.
+        Assert.IsTrue(File.Exists(Path.Combine(MinePath, "reports", "daily.jobs.yaml")));
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "reports", "daily.jobs.yaml")));
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await _client.GetAsync("/api/projects/default/branches/test/jobs/nightly")).StatusCode,
+            "and it is not schedulable until it is pushed");
+
+        // It runs in test and prod; your branch is where you write it.
+        var ran = await _client.PostAsync("/api/projects/default/branches/mine/jobs/nightly/run", null);
+        Assert.AreEqual(HttpStatusCode.BadRequest, ran.StatusCode);
+        StringAssert.Contains(await ran.Content.ReadAsStringAsync(), "Push this to test");
+
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "add a job" }))
+                .StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await _client.GetAsync("/api/projects/default/branches/test/jobs/nightly")).StatusCode);
+    }
+
+    [TestMethod]
+    public async Task Editing_a_job_in_test_or_prod_is_refused() {
+        foreach (var branch in new[] { "test", "prod" }) {
+            var response = await _client.PostAsJsonAsync(
+                $"/api/projects/default/branches/{branch}/jobs",
+                new { name = "nightly", notebook = _notebook, enabled = true });
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, branch);
+            StringAssert.Contains(await response.Content.ReadAsStringAsync(), "read-only");
+        }
+    }
+
+    [TestMethod]
     public async Task Test_and_prod_refuse_a_write_from_everybody() {
         var cells = new object[] {
             new { kind = "code", tag = "sql", source = "SELECT 99" },

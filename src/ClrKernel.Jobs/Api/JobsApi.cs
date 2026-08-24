@@ -685,24 +685,29 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
+                var job = scope.CatalogFor(branch).Load()
+                    .Find(scope.Project.Slug, scope.EnvironmentOf(branch), name);
                 return job == null ? Results.NotFound(new { error = $"No job named '{name}' in {branch}." })
                     : Results.Ok(JobView.From(job));
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/jobs", (
             HttpContext context, ProjectRegistry projects,
-            string project, string branch, JobWrite write) =>
-            Scope.Of(projects, project) is { } scope
-                ? Upsert(scope, branch, null, write)
-                : NoProject(project)).RequiresProject(ProjectRole.ProjectMember);
+            string project, string branch, JobWrite write) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                return Upsert(scope, scope.BranchFor(context, branch), null, write);
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPut("/jobs/{name}", (
             HttpContext context, ProjectRegistry projects,
-            string project, string branch, string name, JobWrite write) =>
-            Scope.Of(projects, project) is { } scope
-                ? Upsert(scope, branch, name, write)
-                : NoProject(project)).RequiresProject(ProjectRole.ProjectMember);
+            string project, string branch, string name, JobWrite write) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                return Upsert(scope, scope.BranchFor(context, branch), name, write);
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapDelete("/jobs/{name}", (
             HttpContext context, ProjectRegistry projects,
@@ -747,6 +752,13 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
+                // Jobs run in test and prod; a personal branch is where you write
+                // them. Cells are how you try one out before it goes anywhere.
+                if (GitService.IsUserBranch(branch)) {
+                    return Results.BadRequest(new {
+                        error = "Jobs run in test and prod. Push this to test, then run it there.",
+                    });
+                }
                 var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
                 if (job == null) {
                     return Results.NotFound(new { error = $"No job named '{name}' in {branch}." });
@@ -934,10 +946,19 @@ public static class JobsApi {
     /// layer that owns its workspace lock. Everything scoped to a project takes this
     /// rather than three parameters that could disagree.
     /// </summary>
-    private sealed record Scope(Project Project, JobCatalog Catalog, GitService Git) {
+    private sealed record Scope(
+        Project Project, JobCatalog Catalog, GitService Git, ProjectRegistry Registry) {
+
+        /// <summary>The catalog that knows this branch's jobs.</summary>
+        public JobCatalog CatalogFor(string branch) => Registry.CatalogFor(Project, branch);
+
+        /// <summary>How a branch names its environment to the catalog and the client.</summary>
+        public string EnvironmentOf(string branch) =>
+            GitService.IsUserBranch(branch) ? ProjectRegistry.MineEnvironment : branch;
+
         public static Scope Of(ProjectRegistry projects, string slug) =>
             projects.Find(slug) is { } project
-                ? new Scope(project, projects.CatalogFor(project), projects.GitFor(project))
+                ? new Scope(project, projects.CatalogFor(project), projects.GitFor(project), projects)
                 : null;
 
         /// <summary>
@@ -1182,21 +1203,21 @@ public static class JobsApi {
     }
 
     /// <summary>
-    /// Creating and editing jobs. The one thing that still writes to <c>test</c>
-    /// directly: a job only means something once it is catalogued, and the catalog
-    /// scans environments, not personal branches. Moving it needs the jobs list to
-    /// be able to say whose unpushed job it is showing — a screen, not a check.
+    /// Creating and editing jobs, on your own branch like everything else you edit.
+    /// The yaml is a file in your worktree, and it reaches what runs by being
+    /// pushed to test.
     /// </summary>
     private static IResult Upsert(Scope scope, string branch, string existingName, JobWrite write) {
-        var catalog = scope.Catalog;
         var git = scope.Git;
-        if (!catalog.Environments.Contains(branch)) {
-            return Results.NotFound(new { error = $"No branch '{branch}'." });
-        }
-        if (catalog.GitLayout && branch != GitService.TestBranch) {
+        if (scope.Catalog.GitLayout && !GitService.IsUserBranch(branch)) {
             return Results.BadRequest(new {
-                error = "prod is read-only — edit in test and promote.",
+                error = "test and prod are read-only. Edit on your own branch and push to test.",
             });
+        }
+        var catalog = scope.CatalogFor(branch);
+        var environment = scope.EnvironmentOf(branch);
+        if (!catalog.Environments.Contains(environment)) {
+            return Results.NotFound(new { error = $"No branch '{branch}'." });
         }
         if (string.IsNullOrWhiteSpace(write?.Name)) {
             return Results.BadRequest(new { error = "A job needs a name." });
@@ -1207,17 +1228,17 @@ public static class JobsApi {
 
         var catalogResult = catalog.Load();
         var existing = existingName != null
-            ? catalogResult.Find(scope.Project.Slug, branch, existingName)
+            ? catalogResult.Find(scope.Project.Slug, environment, existingName)
             : null;
         if (existingName != null && existing == null) {
             return Results.NotFound(new { error = $"No job named '{existingName}' in {branch}." });
         }
-        var clash = catalogResult.Find(scope.Project.Slug, branch, write.Name);
+        var clash = catalogResult.Find(scope.Project.Slug, environment, write.Name);
         if (clash != null && !ReferenceEquals(clash, existing)) {
             return Results.Conflict(new { error = $"A job named '{write.Name}' already exists." });
         }
 
-        var notebook = NotebookTree.SafeResolve(catalog.RootFor(branch), write.Notebook);
+        var notebook = NotebookTree.SafeResolve(catalog.NotebooksRoot, write.Notebook);
         if (notebook == null) {
             return Results.BadRequest(new { error = "Notebook path is outside the notebooks root." });
         }
@@ -1261,20 +1282,18 @@ public static class JobsApi {
         entry.Notify = write.Notify;
 
         try {
-            if (git != null && catalog.GitLayout) {
-                var relative = Path.GetRelativePath(catalog.RootFor(branch), targetFile).Replace('\\', '/');
-                git.WithLock(() => {
-                    JobsFile.Write(targetFile, file, catalog.RootFor(branch));
-                    git.Commit(GitService.TestBranch, $"edit job {write.Name} via web UI", relative);
-                });
+            if (git != null) {
+                // A file write, not a commit — the same rule the notebook editor
+                // follows. Push to test is where either of them becomes history.
+                git.WithLock(() => JobsFile.Write(targetFile, file, catalog.NotebooksRoot));
             } else {
-                JobsFile.Write(targetFile, file, catalog.RootFor(branch));
+                JobsFile.Write(targetFile, file, catalog.NotebooksRoot);
             }
         } catch (Exception e) {
             return Results.BadRequest(new { error = $"Job is not valid: {e.Message}" });
         }
 
-        var saved = catalog.Load().Find(scope.Project.Slug, branch, write.Name);
+        var saved = catalog.Load().Find(scope.Project.Slug, environment, write.Name);
         return existing == null
             ? Results.Created(
                 $"/api/projects/{scope.Project.Slug}/branches/{branch}/jobs/{write.Name}",

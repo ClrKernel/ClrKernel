@@ -224,8 +224,9 @@ which is what makes "nobody edits another user's branch" a property of the route
 rather than a check to remember. A slug nobody registered answers
 **404, not 403** — a project you have no access to is meant to be
 indistinguishable from one that does not exist. Under that prefix: `jobs`
-(including create/update/delete, which edit the yaml files), `jobs/{name}/run` and
-`/cancel`, and `notebooks/content` (GET any branch, PUT test only). With the git
+(including create/update/delete, which edit the yaml files on your own branch),
+`jobs/{name}/run` and `/cancel` (in `test` and `prod`, where jobs run), and
+`notebooks/content` (GET any branch, PUT your own). With the git
 workflow on it also carries `notebooks/cells` (the same file parsed into cells, and
 written back from them — the browser never needs its own copy of the `.nb.md`
 format), `notebooks/promotion` and `notebooks/promote`, plus the editor's session
@@ -365,6 +366,13 @@ link of its own carries its project in the URL — `/jobs/finance/test/nightly` 
 because two projects may each have a job called `nightly`, and a link that meant
 whichever one you had selected would mean two different jobs.
 
+A job is a file like any other, so it is written on your branch too: creating or
+changing one from the Jobs page edits your copy, and it starts running when it is
+pushed to test. A job open in `test` or `prod` is read-only there and offers
+**Edit on my branch**. Jobs only run where they are scheduled — running one from
+your own branch is refused, because cells are how you try a notebook out before
+the job that runs it exists.
+
 **Forgetting** a project unregisters it and touches nothing on disk: the repo, the
 worktrees and the run history all stay, and registering the same folder under the
 same slug brings all of it back.
@@ -415,7 +423,7 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 > branch — delete it there yourself when you are ready; a shared remote is not this
 > process's to prune.
 
-Nobody edits `test` or `prod`. Each person gets a **branch and worktree of their
+Nobody edits `test` or `prod` — notebooks or `*.jobs.yaml` alike. Each person gets a **branch and worktree of their
 own** — `user/<account id>`, checked out at `user-<id>/` beside `test/` and `prod/`
 — created the first time they edit something in that project. Most people never
 touch most projects, so keeping an empty checkout per person per project against

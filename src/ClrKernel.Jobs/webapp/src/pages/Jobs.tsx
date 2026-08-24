@@ -37,8 +37,9 @@ export function Jobs() {
     matchesQuery(query, job.name, job.environment, job.notebook, job.cron, ...job.dependsOn),
   );
   const problems = data?.errors ?? [];
-  // New jobs are created in test when the git workflow is on; prod is promote-only.
-  const editableEnv = health?.gitEnabled ? 'test' : 'default';
+  // A new job is written on your own branch, like everything else you edit; it
+  // reaches what runs by being pushed to test.
+  const editableEnv = health?.gitEnabled ? 'mine' : 'default';
 
   return (
     <div>

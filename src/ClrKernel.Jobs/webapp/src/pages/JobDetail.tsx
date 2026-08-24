@@ -100,6 +100,12 @@ export function JobDetail() {
   const navigate = useNavigate();
   const isNew = name == null;
 
+  // A jobs file is content like any other: you edit your own copy of it. What is
+  // in test and prod is what runs, and it is read-only there for everybody.
+  const editable = env === 'mine' || env === 'default';
+  const mayEdit = canWrite && editable;
+  const mine = `/jobs/${project}/mine/${name ? encodeURIComponent(name) : 'new'}`;
+
   const [form, setForm] = useState<FormState>({ ...EMPTY, notebook: search.get('notebook') ?? '' });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -224,21 +230,35 @@ export function JobDetail() {
         </h1>
         {!isNew && canWrite && (
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => runNow(false)} disabled={busy}>
-              Run now
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => runNow(true)} disabled={busy}>
-              Run with parameters…
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={remove}
-              disabled={busy}
-            >
-              Delete
-            </Button>
+            {/* A job runs where it is scheduled, and is edited where you work. */}
+            {editable ? (
+              <Button variant="outline" size="sm" onClick={() => navigate(`/jobs/${project}/test/${encodeURIComponent(name!)}`)}>
+                See it in test
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={() => navigate(mine)}>
+                  Edit on my branch
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => runNow(false)} disabled={busy}>
+                  Run now
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => runNow(true)} disabled={busy}>
+                  Run with parameters…
+                </Button>
+              </>
+            )}
+            {editable && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={remove}
+                disabled={busy}
+              >
+                Delete
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -253,7 +273,7 @@ export function JobDetail() {
         </TabsList>
 
         <TabsContent value="overview">
-      <fieldset className="form" disabled={!canWrite}>
+      <fieldset className="form" disabled={!mayEdit}>
         <label>
           Name
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} />
