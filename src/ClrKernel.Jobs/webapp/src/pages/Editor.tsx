@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api, projectSlug, setBranch, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
@@ -26,6 +26,7 @@ import {
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
 import { BranchAllows, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
+import { editPath, pathFromSplat } from '../routes';
 import { neighbourCell } from '../toc';
 import {
   cellsToRun,
@@ -57,17 +58,19 @@ type Tab = 'notebook' | 'source' | 'diff';
  * evidence.
  */
 export function Editor() {
-  const [search] = useSearchParams();
+  // /files/:project/edit/:branch/*path — the notebook is the splat because it is
+  // the only part that can be any number of segments deep.
+  const params = useParams<{ project: string; branch: string; '*': string }>();
   const navigate = useNavigate();
   const canWrite = useCanWrite();
-  const path = search.get('path') ?? '';
-  // Which branch you are looking at. Yours unless the link says otherwise.
+  const path = pathFromSplat(params['*']);
+  // Which branch you are looking at.
   //
   // Only your own branch is writable — somebody else's is read-only to everybody
   // including admins, and so are test and prod. Those two are still *runnable*
   // though, which is the whole point of being able to open them: a job that died
   // at cell seven is finished by hand, not by editing production.
-  const branch = search.get('branch') ?? 'mine';
+  const branch = params.branch ?? 'mine';
   const allows = {
     write: branch === 'mine',
     run: branch === 'mine' || branch === 'test' || branch === 'prod',
@@ -325,8 +328,7 @@ export function Editor() {
     setBusy(true);
     try {
       await api.saveNotebookContent(path, await api.notebookContent(branch, path));
-      navigate(`/edit?project=${encodeURIComponent(projectSlug())}`
-        + `&path=${encodeURIComponent(path)}`);
+      navigate(editPath(projectSlug(), 'mine', path));
       setNotice(`Copied ${path} onto your branch.`);
     } catch (e) {
       setError((e as Error).message);

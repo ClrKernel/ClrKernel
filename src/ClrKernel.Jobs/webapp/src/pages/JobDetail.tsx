@@ -16,6 +16,7 @@ import { api, type Job, type Run } from '../api';
 import { CronField } from '../components/CronField';
 import { EnvBadge, ErrorBanner, usePolling } from '../components/common';
 import { notebookPaths } from '../notebook';
+import { jobPath, jobsPath } from '../routes';
 import { useCanWrite } from '../sessionContext';
 import { RunTable } from './Dashboard';
 
@@ -114,7 +115,7 @@ export function JobDetail() {
   // in test and prod is what runs, and it is read-only there for everybody.
   const editable = env === 'mine' || env === 'default';
   const mayEdit = canWrite && editable;
-  const mine = `/jobs/${project}/mine/${name ? encodeURIComponent(name) : 'new'}`;
+  const mine = name ? jobPath(project, 'mine', name) : `${jobsPath(project)}/mine/new`;
 
   const [form, setForm] = useState<FormState>({ ...EMPTY, notebook: search.get('notebook') ?? '' });
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -186,7 +187,7 @@ export function JobDetail() {
     setBusy(true);
     try {
       const saved = isNew ? await api.createJob(env, body) : await api.updateJob(env, name!, body);
-      navigate(`/jobs/${project}/${env}/${encodeURIComponent(saved.name)}`);
+      navigate(jobPath(project, env, saved.name));
       reload();
     } catch (e) {
       setSaveError((e as Error).message);
@@ -232,7 +233,7 @@ export function JobDetail() {
     setBusy(true);
     try {
       await api.deleteJob(env, name!);
-      navigate('/jobs');
+      navigate(jobsPath(project));
     } catch (e) {
       setSaveError((e as Error).message);
     } finally {
@@ -251,7 +252,7 @@ export function JobDetail() {
           <div className="flex shrink-0 items-center gap-2">
             {/* A job runs where it is scheduled, and is edited where you work. */}
             {editable ? (
-              <Button variant="outline" size="sm" onClick={() => navigate(`/jobs/${project}/test/${encodeURIComponent(name!)}`)}>
+              <Button variant="outline" size="sm" onClick={() => navigate(jobPath(project, 'test', name!))}>
                 See it in test
               </Button>
             ) : (
@@ -329,8 +330,8 @@ export function JobDetail() {
           {notebookOptions.length === 0 && (
             <span className="block text-base text-muted-foreground">
               No notebooks on this branch yet — make one from{' '}
-              <Link className="text-primary hover:underline" to="/notebooks">
-                Notebooks
+              <Link className="text-primary hover:underline" to="/files">
+                Files
               </Link>
               .
             </span>
@@ -402,7 +403,7 @@ export function JobDetail() {
             {isNew ? 'Create job' : 'Save changes'}
           </Button>
           <Button asChild variant="outline" size="sm">
-            <Link to="/jobs">Cancel</Link>
+            <Link to={jobsPath(project)}>Cancel</Link>
           </Button>
         </div>
       </fieldset>

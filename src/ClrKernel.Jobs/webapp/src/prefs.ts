@@ -99,10 +99,10 @@ export function saveNotebookState(path: string, state: NotebookState): void {
  * names, and remembering one answer for all of them would mean the wrong one
  * everywhere but where you set it.
  *
- * Deliberately *not* used by the editor: `/edit?path=x` with no branch means
- * your own copy, for everyone. A shared link that resolved against whatever the
- * person opening it last browsed would mean a different file per reader — the
- * same argument that put the project in the URL.
+ * Deliberately *not* used by the editor: the branch is a segment of its URL, so
+ * a link always says which copy it means. Resolving it against whatever the
+ * person opening it last browsed would make one link a different file per
+ * reader — the same argument that put the project in the path.
  */
 export function loadBranch(project: string): string | null {
   return read<Record<string, string>>(BRANCH_KEY, {})[project] ?? null;

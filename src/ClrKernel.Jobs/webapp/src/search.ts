@@ -6,15 +6,17 @@
  * itself is a function of (query, rows) that can be tested without a DOM.
  */
 
-/** Routes whose content the query actually filters. */
-const SEARCHABLE = ['/', '/jobs'];
-
 /**
  * The box is hidden where it would do nothing. A search field that silently
  * ignores what you type is worse than no search field.
+ *
+ * The dashboard and one project's job list — matched by shape rather than by a
+ * literal, since the project is in the path now and `/jobs/finance` filters
+ * exactly as `/jobs/default` does.
  */
 export function showsSearch(pathname: string): boolean {
-  return SEARCHABLE.includes(pathname);
+  const segments = pathname.split('/').filter(Boolean);
+  return segments.length === 0 || (segments[0] === 'jobs' && segments.length === 2);
 }
 
 /**

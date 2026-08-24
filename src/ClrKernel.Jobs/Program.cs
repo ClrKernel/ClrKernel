@@ -373,9 +373,16 @@ public static class Program {
             });
             // Client-side routes (/jobs/x, /runs/id) are served the shell; /api is
             // already handled above and must not fall through to it.
-            app.MapFallbackToFile("index.html", new StaticFileOptions {
-                FileProvider = new PhysicalFileProvider(wwwroot),
-            });
+            //
+            // Two fallbacks, because the default pattern is `{*path:nonfile}` —
+            // it refuses any path whose last segment has a dot in it, so that a
+            // missing script stays a 404 instead of quietly becoming HTML. Every
+            // notebook URL ends in `.nb.md`, so /files needs the unconstrained
+            // pattern; naming just that section keeps the honest 404 everywhere
+            // else, /assets included.
+            var shell = new StaticFileOptions { FileProvider = new PhysicalFileProvider(wwwroot) };
+            app.MapFallbackToFile("/files/{**path}", "index.html", shell);
+            app.MapFallbackToFile("index.html", shell);
         }
         return app;
     }

@@ -1,6 +1,6 @@
 import {
+  FolderTree,
   LayoutGrid,
-  NotebookText,
   Bell,
   Play,
   Settings as SettingsIcon,
@@ -18,7 +18,9 @@ const NAV: { to: string; label: string; icon: LucideIcon; end: boolean; isSpecia
   { to: '/', label: 'ClrKernel Jobs', icon: Terminal, end: true, isSpecial: true },
   { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
   { to: '/jobs', label: 'Jobs', icon: Play, end: false },
-  { to: '/notebooks', label: 'Notebooks', icon: NotebookText, end: false },
+  // Files, not Notebooks: what is under here is notebooks *and* the jobs files
+  // beside them, and a folder tree is what you are looking at either way.
+  { to: '/files', label: 'Files', icon: FolderTree, end: false },
   { to: '/channels', label: 'Channels', icon: Bell, end: false },
 ];
 
@@ -32,7 +34,7 @@ function RailLink({ to, label, icon: Icon, end, isSpecial }: (typeof NAV)[number
   const active = useMatch({ path: to, end }) != null;
 
   return (
-    <div key={to} className={["w-48px", active ? "bg-primary-soft" : "hover:bg-primary-soft", "p-2.5"].join(" ")}>
+    <div className={["w-48px", active ? "bg-primary-soft" : "hover:bg-primary-soft", "p-2.5"].join(" ")}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Link
@@ -82,8 +84,11 @@ export function Rail() {
         <TooltipContent side="right">ClrKernel Jobs</TooltipContent>
       </Tooltip> */}
 
+      {/* Keyed by label, not by `to`: the logo and Dashboard both point at `/`,
+          and two children with the same key is a React warning and a row that
+          can vanish on a re-render. */}
       {NAV.map((item) => (
-          <RailLink key={item.to} {...item} />
+          <RailLink key={item.label} {...item} />
       ))}
 
       <div className="flex-1" />

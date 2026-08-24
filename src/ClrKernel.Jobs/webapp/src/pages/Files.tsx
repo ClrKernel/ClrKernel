@@ -13,6 +13,7 @@ import { api, projectSlug, type TreeNode } from '../api';
 import { BranchOptions, ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { loadBranch, saveBranch } from '../prefs';
+import { editPath, jobPath, newJobPath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 
 function Node({
@@ -75,12 +76,10 @@ function Node({
     );
   }
 
-  // The project and the branch ride in the query string for the same reason they
-  // ride in a job URL: a shared editor link has to open the notebook it was
-  // shared for, on the branch it was shared from.
-  const href =
-    `/edit?project=${encodeURIComponent(projectSlug())}&path=${encodeURIComponent(node.path)}`
-    + `&branch=${encodeURIComponent(env)}`;
+  // The project and the branch are in the path for the same reason the project
+  // is in a job's: a shared link has to open the notebook it was shared for, on
+  // the branch it was shared from.
+  const href = editPath(projectSlug(), env, node.path);
   return (
     <div className={row} style={indent}>
       <span aria-hidden="true" className="w-3 shrink-0" />
@@ -93,7 +92,7 @@ function Node({
       {node.jobs?.map((job) => (
         <Link
           key={job}
-          to={`/jobs/${projectSlug()}/${env}/${encodeURIComponent(job)}`}
+          to={jobPath(projectSlug(), env, job)}
           className="rounded-full border border-env-prod-border bg-env-prod-bg px-2 py-px text-xs font-semibold text-env-prod hover:no-underline"
         >
           {job}
@@ -112,7 +111,7 @@ function Node({
   );
 }
 
-export function Notebooks() {
+export function Files() {
   const navigate = useNavigate();
   const mayEdit = useIsProjectMember();
   const { data, error, reload } = usePolling(() => api.notebooks(), null);
@@ -159,10 +158,7 @@ export function Notebooks() {
     try {
       await createNotebook(wanted);
       reload();
-      navigate(
-        `/edit?project=${encodeURIComponent(projectSlug())}`
-          + `&path=${encodeURIComponent(wanted)}&branch=mine`,
-      );
+      navigate(editPath(projectSlug(), 'mine', wanted));
     } catch (e) {
       setNotice((e as Error).message);
     }
@@ -171,7 +167,7 @@ export function Notebooks() {
   return (
     <div>
       <PageHeader
-        title="Notebooks"
+        title="Files"
         description={
           <>
             Every <code className="font-mono text-code">*.jobs.yaml</code> found here defines jobs.
@@ -244,9 +240,7 @@ export function Notebooks() {
                   // A job is edited on your branch and starts running when you
                   // push it, so a new one is written there whichever branch you
                   // were reading the notebook on.
-                  navigate(
-                    `/jobs/${projectSlug()}/mine/new?notebook=${encodeURIComponent(path)}`,
-                  )
+                  navigate(newJobPath(projectSlug(), 'mine', path))
                 }
               />
             ))}

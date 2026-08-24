@@ -406,7 +406,7 @@ sweep nothing.
 
 The branch you are reading is the chip beside the file name in the breadcrumb, and
 it is a switcher: your own branch, then everybody else's under **Read-only**, then
-`test` and `prod`. The **Notebooks** page and the editor's explorer offer the same
+`test` and `prod`. The **Files** page and the editor's explorer offer the same
 list, so somebody else's work is browsable and not only openable by a link you were
 sent. Branches are listed by the person's name, never by the id in the path.
 
@@ -481,10 +481,10 @@ never touch most projects, so keeping an empty checkout per person per project
 against that possibility is not worth the disk.
 
 Which branch you are browsing is remembered per project, so nobody re-picks it on
-every visit; the editor is the exception, where `/edit?path=…` with no branch means
-your own copy for everybody, or a shared link would open a different file per reader.
+every visit; the editor is the exception, where the branch is a segment of the URL
+so that a link always says which copy it means.
 
-**New notebook** — on the Notebooks page, or in the editor's explorer — makes one.
+**New notebook** — on the Files page, or in the editor's explorer — makes one.
 It takes a path, and the folders in that path are made along with it, so
 `reports/monthly` creates `reports/`. There is no separate *new folder*: git does
 not track an empty one and the file tree does not show it, so a button for it would
@@ -546,15 +546,44 @@ when the volume is mounted at a different path.
 
 ## Getting around
 
-Navigation is a fixed 48px icon rail on the left — Dashboard, Jobs, Notebooks,
+Navigation is a fixed 48px icon rail on the left — Dashboard, Jobs, Files,
 Channels, and Settings at the foot — with the label on hover. The bar across the top is
 a context strip and nothing else: a breadcrumb saying where you are, a search box, and
 the theme picker. What you can *do* lives on the page, not in the chrome.
 
-The search box filters what is in front of you — the run table on the Dashboard, the
-job table on Jobs — and it keeps the query in the URL as `?q=`, so a filtered view is
-something you can bookmark or paste to someone else. It only appears on those two
-pages; elsewhere there is nothing for it to filter.
+**The URL names its project**, and that is the rule the whole shape follows:
+
+| | |
+|---|---|
+| `/` | the dashboard — every project's jobs, grouped, and the recent runs |
+| `/jobs/<project>` | that project's jobs |
+| `/jobs/<project>/<branch>/<name>` | one job |
+| `/files/<project>` | that project's files, on one branch |
+| `/files/<project>/edit/<branch>/<path>` | one notebook, on one branch |
+| `/runs/<id>` | one run |
+| `/channels`, `/settings/<section>` | server-wide, so no project |
+
+A link has to mean one thing, and two projects may each have a `nightly` and a
+`reports/monthly.nb.md`. Having the project in the path is also what lets the
+selector at the root of the breadcrumb *go* somewhere: picking another project
+takes you to the same section in it, rather than changing what the page you are
+on is about while the address bar goes on naming the old one. It takes you to the
+section and not to the same page, because this project's `nightly` is not that
+project's.
+
+The notebook path goes last because it is the only part that can be any number of
+segments deep; `edit` is a literal and the branch is exactly one segment, so
+`reports/monthly.nb.md` stays readable instead of becoming one escaped blob.
+
+`/jobs` and `/files` on their own — what the rail links to, and what you get from
+a bookmark — open the project you were last in, remembered per browser. Links
+written against the old shape (`/notebooks`, `/edit?project=…&path=…&branch=…`)
+redirect to where those things live now.
+
+The search box filters what is in front of you — the run table and the job list on
+the Dashboard, the job table on Jobs — and it keeps the query in the URL as `?q=`,
+so a filtered view is something you can bookmark or paste to someone else. It only
+appears on those two pages; elsewhere there is nothing for it to filter.
 
 The theme picker offers five accents on one shared neutral base — green (the default),
 blue, violet, amber, rose. Only the accent changes, so the app does not look like five

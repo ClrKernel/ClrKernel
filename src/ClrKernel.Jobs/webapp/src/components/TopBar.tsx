@@ -13,6 +13,7 @@ import { api, type BranchSummary } from '../api';
 import { breadcrumbFor } from '../breadcrumb';
 import { usePolling } from './common';
 import { useProjects } from '../projectContext';
+import { editPath, pathFromSplat, sectionOf, switchProject } from '../routes';
 import { showsSearch, withQuery } from '../search';
 import type { AccentName } from '../theme/palette';
 import { AccentPicker } from './AccentPicker';
@@ -24,10 +25,27 @@ import { EnvBadge } from './common';
  * It belongs here rather than on the pages: the rail is icon-only and has
  * nowhere to put it, and a project is not something you do — it is where you
  * are, which is what this strip says.
+ *
+ * Picking one navigates. It used to only set the selection, which left you on a
+ * job or a file belonging to the project you had just left, with the address bar
+ * still naming it — so the only way to open something in another project was to
+ * go out to a list first. It goes to the section rather than to the same page:
+ * this project's `nightly` is not that project's, and the other project's list
+ * is the honest answer to "show me that one instead".
  */
 function ProjectSwitcher() {
   const { projects, current, select } = useProjects();
+  const navigate = useNavigate();
+  const location = useLocation();
   const project = projects.find((p) => p.slug === current);
+
+  function open(slug: string) {
+    select(slug);
+    const to = switchProject(location.pathname, slug);
+    if (to != null) {
+      navigate(to);
+    }
+  }
 
   return (
     <DropdownMenu>
@@ -45,7 +63,7 @@ function ProjectSwitcher() {
         {projects.map((p) => (
           <DropdownMenuItem
             key={p.slug}
-            onSelect={() => select(p.slug)}
+            onSelect={() => open(p.slug)}
             // The tick column keeps the names aligned whichever one is current.
             className={p.slug === current ? 'font-medium text-foreground' : ''}
           >
@@ -75,17 +93,18 @@ function ProjectSwitcher() {
  * Everything but your own is read-only, which the list says rather than leaving
  * you to infer it from a name.
  */
-function BranchSwitcher({ current }: { current: string }) {
-  const location = useLocation();
+function BranchSwitcher({ project, branch: current, path }: {
+  project: string;
+  branch: string;
+  path: string;
+}) {
   const navigate = useNavigate();
   const { data } = usePolling(() => api.branches(), null);
   const branches: BranchSummary[] = data?.branches ?? [];
   const here = branches.find((b) => b.id === current);
 
   function open(branch: BranchSummary) {
-    const params = new URLSearchParams(location.search);
-    params.set('branch', branch.id);
-    navigate({ pathname: location.pathname, search: params.toString() });
+    navigate(editPath(project, branch.id, path));
   }
 
   return (
@@ -141,8 +160,12 @@ export function TopBar({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const crumbs = breadcrumbFor(location.pathname, location.search);
+  const crumbs = breadcrumbFor(location.pathname);
   const query = new URLSearchParams(location.search).get('q') ?? '';
+  // /jobs/:project/… and /files/:project/edit/:branch/*path — the trail is built
+  // from the path, so the pieces the switchers need come from it too.
+  const segments = location.pathname.split('/').filter(Boolean);
+  const inProject = sectionOf(location.pathname) != null;
 
   return (
     <header className="flex h-12.5 shrink-0 items-center border-b border-border bg-card px-4">
@@ -150,10 +173,17 @@ export function TopBar({
         <Link to="/" className="shrink-0 font-semibold text-foreground hover:no-underline">
           ClrKernel Jobs
         </Link>
-        <span aria-hidden="true" className="shrink-0 text-status-idle">
-          /
-        </span>
-        <ProjectSwitcher />
+        {/* Only where a project is what the page is about. The dashboard is the
+            whole server, and Settings and Channels are server-wide: a selector
+            there would be a control with nothing to change. */}
+        {inProject && (
+          <>
+            <span aria-hidden="true" className="shrink-0 text-status-idle">
+              /
+            </span>
+            <ProjectSwitcher />
+          </>
+        )}
         {crumbs.map((crumb, index) => (
           <Fragment key={`${crumb.label}-${index}`}>
             <span aria-hidden="true" className="shrink-0 text-status-idle">
@@ -180,7 +210,11 @@ export function TopBar({
             {/* On the editor the badge is the branch, and the branch is a place
                 you can move to — so it is the switcher rather than a label. */}
             {crumb.badge === 'branch' ? (
-              <BranchSwitcher current={new URLSearchParams(location.search).get('branch') ?? 'mine'} />
+              <BranchSwitcher
+                project={segments[1]}
+                branch={segments[3]}
+                path={pathFromSplat(segments.slice(4).join('/'))}
+              />
             ) : (
               crumb.badge && <EnvBadge env={crumb.badge} />
             )}

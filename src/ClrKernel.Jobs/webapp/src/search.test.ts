@@ -38,8 +38,12 @@ describe('withQuery', () => {
 describe('showsSearch', () => {
   it('is on the two pages it filters and nowhere else', () => {
     expect(showsSearch('/')).toBe(true);
-    expect(showsSearch('/jobs')).toBe(true);
-    expect(showsSearch('/edit')).toBe(false);
+    expect(showsSearch('/jobs/default')).toBe(true);
+    expect(showsSearch('/jobs/finance')).toBe(true);
+    // One job is not a list, so there is nothing here to filter.
+    expect(showsSearch('/jobs/default/test/nightly')).toBe(false);
+    expect(showsSearch('/files/default')).toBe(false);
+    expect(showsSearch('/files/default/edit/mine/etl.nb.md')).toBe(false);
     expect(showsSearch('/settings')).toBe(false);
   });
 });

@@ -10,14 +10,13 @@ import {
 import { api, projectSlug, type TreeNode } from '../api';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
+import { editPath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 import { BranchOptions, usePolling } from './common';
 
 /** The editor link for one file on one branch. */
 function editHref(path: string, branch: string): string {
-  return `/edit?project=${encodeURIComponent(projectSlug())}`
-    + `&path=${encodeURIComponent(path)}`
-    + `&branch=${encodeURIComponent(branch)}`;
+  return editPath(projectSlug(), branch, path);
 }
 
 /** Flattened tree row — the render is a flat list so indentation is padding. */

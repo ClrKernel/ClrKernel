@@ -30,17 +30,17 @@ describe('breadcrumbFor', () => {
   });
 
   it.each([
-    ['/jobs', 'Jobs'],
-    ['/notebooks', 'Notebooks'],
+    ['/jobs/default', 'Jobs'],
+    ['/files/default', 'Files'],
     ['/channels', 'Channels'],
     ['/settings', 'Settings'],
   ])('%s is a single crumb', (pathname, label) => {
     expect(breadcrumbFor(pathname)).toEqual([{ label }]);
   });
 
-  it('puts the job under Jobs and carries its environment as a badge', () => {
-    expect(breadcrumbFor('/jobs/default/test/nightly')).toEqual([
-      { label: 'Jobs', to: '/jobs' },
+  it('puts the job under its own project’s jobs and badges its environment', () => {
+    expect(breadcrumbFor('/jobs/finance/test/nightly')).toEqual([
+      { label: 'Jobs', to: '/jobs/finance' },
       { label: 'nightly', badge: 'test' },
     ]);
   });
@@ -53,21 +53,26 @@ describe('breadcrumbFor', () => {
     expect(breadcrumbFor('/jobs/default/test/nightly%20run')[1].label).toBe('nightly run');
   });
 
-  it('takes the notebook editor’s subject from ?path=, and its badge is the branch switcher', () => {
-    expect(breadcrumbFor('/edit', '?path=demo.nb.md')).toEqual([
-      { label: 'Notebooks', to: '/notebooks' },
+  it('takes the editor’s subject from the path, and its badge is the branch switcher', () => {
+    expect(breadcrumbFor('/files/default/edit/mine/demo.nb.md')).toEqual([
+      { label: 'Files', to: '/files/default' },
       { label: 'demo.nb.md', badge: 'branch' },
     ]);
   });
 
+  it('keeps a nested notebook path whole', () => {
+    expect(breadcrumbFor('/files/default/edit/test/reports/monthly.nb.md')[1].label)
+      .toBe('reports/monthly.nb.md');
+  });
+
   it('keeps the untruncated notebook path for the title attribute', () => {
     const long = 'reporting/monthly/very-long-notebook-name-for-testing.nb.md';
-    const crumb = breadcrumbFor('/edit', `?path=${long}`)[1];
+    const crumb = breadcrumbFor(`/files/default/edit/mine/${long}`)[1];
     expect(crumb.full).toBe(long);
     expect(crumb.label).not.toBe(long);
   });
 
-  it('files a run under Jobs', () => {
+  it('files a run under the jobs you were last looking at', () => {
     expect(breadcrumbFor('/runs/42')).toEqual([
       { label: 'Jobs', to: '/jobs' },
       { label: 'Run 42' },

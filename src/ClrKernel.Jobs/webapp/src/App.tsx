@@ -9,12 +9,13 @@ import { Dashboard } from './pages/Dashboard';
 import { Editor } from './pages/Editor';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
-import { Notebooks } from './pages/Notebooks';
+import { Files } from './pages/Files';
 import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
-import { ProjectProvider, ProjectScope } from './projectContext';
+import { ProjectProvider, ProjectScope, useProjects } from './projectContext';
+import { filesPath, isEditorPath, jobsPath, legacyEditPath } from './routes';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -26,7 +27,7 @@ export function App() {
   const [accent, setAccent] = useState(loadAccent);
   const location = useLocation();
   const navigate = useNavigate();
-  const isEditor = location.pathname === '/edit';
+  const isEditor = isEditorPath(location.pathname);
   const [session, setSession] = useState<SessionState | null>(null);
 
   // Returns the session it loaded, because arriving from a sign-in has to wait
@@ -136,21 +137,48 @@ export function App() {
             }
           >
             <Routes>
+              {/* The dashboard is the whole server, so it names no project. */}
               <Route path="/" element={<Dashboard />} />
-              <Route path="/jobs" element={<Jobs />} />
-              {/* The project is in the path because a link to a job has to mean
-                  one job — two projects may each have a `nightly`. */}
+
+              {/* Everything about a project has that project in its path: a link
+                  to a job or a file has to mean one job or one file, and two
+                  projects may each have a `nightly` and a `reports/monthly.nb.md`.
+                  It is also what lets the switcher in the breadcrumb go
+                  somewhere, rather than change what the page you are on is about
+                  and leave the address bar saying otherwise.
+
+                  The bare section is a door for the rail, a bookmark and a typed
+                  URL; it opens on the project you were last in. */}
+              <Route path="/jobs" element={<LastProject section="jobs" />} />
+              <Route path="/jobs/:project" element={<ProjectScope><Jobs /></ProjectScope>} />
               <Route path="/jobs/:project/:env/new" element={<ProjectScope><JobDetail /></ProjectScope>} />
               <Route path="/jobs/:project/:env/:name" element={<ProjectScope><JobDetail /></ProjectScope>} />
-              <Route path="/notebooks" element={<Notebooks />} />
+
+              <Route path="/files" element={<LastProject section="files" />} />
+              <Route path="/files/:project" element={<ProjectScope><Files /></ProjectScope>} />
+              {/* The path goes last because it is the only variable-length part:
+                  `edit` is a literal and the branch is exactly one segment, so
+                  `reports/monthly.nb.md` can stay readable rather than becoming
+                  one escaped blob. */}
+              <Route
+                path="/files/:project/edit/:branch/*"
+                element={<ProjectScope><Editor /></ProjectScope>}
+              />
+
               <Route path="/channels" element={<Channels />} />
               {/* Settings is tabbed by route: /settings redirects to the first
                   section, and each section is its own URL so a tab is something
                   you can link to. */}
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/:section" element={<Settings />} />
-              <Route path="/edit" element={<ProjectScope><Editor /></ProjectScope>} />
               <Route path="/runs/:id" element={<RunDetail />} />
+
+              {/* Links written before the sections had projects in them. A
+                  shared editor link is the one people actually paste, so it
+                  moves rather than dies. */}
+              <Route path="/notebooks" element={<Navigate to="/files" replace />} />
+              <Route path="/edit" element={<LegacyEdit />} />
+
               <Route
               path="*"
               element={<p className="text-base text-muted-foreground">Not found.</p>}
@@ -165,4 +193,21 @@ export function App() {
     </AccentContext.Provider>
     </SessionContext.Provider>
   );
+}
+
+/**
+ * The bare `/jobs` and `/files`: open the project you were last in.
+ *
+ * `current` is already the remembered one, validated against what is registered
+ * — see ProjectProvider, which renders nothing until that answer has arrived, so
+ * this never redirects to a slug that no longer exists.
+ */
+function LastProject({ section }: { section: 'jobs' | 'files' }) {
+  const { current } = useProjects();
+  return <Navigate to={section === 'jobs' ? jobsPath(current) : filesPath(current)} replace />;
+}
+
+/** `/edit?project=…&path=…&branch=…`, as it is spelled now. */
+function LegacyEdit() {
+  return <Navigate to={legacyEditPath(useLocation().search)} replace />;
 }

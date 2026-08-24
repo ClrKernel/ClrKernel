@@ -1,3 +1,5 @@
+import { pathFromSplat } from './routes';
+
 /**
  * Where you are, as the top bar says it.
  *
@@ -42,11 +44,11 @@ function leaf(label: string, badge?: string): Crumb {
 }
 
 /**
- * `search` is the raw query string, because the notebook editor keeps its
- * subject in `?path=` rather than in the path itself.
+ * The trail for a path. Everything it needs is in the path — including the
+ * project, which is why the switcher at the root of the trail can navigate at
+ * all rather than quietly changing what the page you are on is about.
  */
-export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
-  const params = new URLSearchParams(search);
+export function breadcrumbFor(pathname: string): Crumb[] {
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) {
@@ -54,19 +56,38 @@ export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
   }
 
   switch (segments[0]) {
-    case 'jobs':
-      // /jobs/:project/:env/new and /jobs/:project/:env/:name. The env is part of
-      // the identity so it rides along as the badge; the project is already the
-      // switcher at the root of the trail and is not repeated here.
+    case 'jobs': {
+      // /jobs/:project is the list; /jobs/:project/:env/:name is one job, and the
+      // env is part of its identity so it rides along as the badge. The project
+      // is the switcher at the root of the trail and is not repeated here.
+      if (segments.length < 2) {
+        return [leaf('Jobs')];
+      }
+      const to = `/jobs/${segments[1]}`;
       return segments.length >= 4
         ? [
-            { label: 'Jobs', to: '/jobs' },
+            { label: 'Jobs', to },
             leaf(segments[3] === 'new' ? 'New job' : decodeURIComponent(segments[3]), segments[2]),
           ]
         : [leaf('Jobs')];
+    }
 
-    case 'notebooks':
-      return [leaf('Notebooks')];
+    case 'files': {
+      if (segments.length < 2) {
+        return [leaf('Files')];
+      }
+      const to = `/files/${segments[1]}`;
+      // /files/:project/edit/:branch/*path. The badge is a switcher here rather
+      // than a label: which branch you are reading is a place you can move to.
+      // This only says where it goes; the top bar renders it.
+      if (segments[2] === 'edit') {
+        return [
+          { label: 'Files', to },
+          leaf(pathFromSplat(segments.slice(4).join('/')) || 'Untitled', 'branch'),
+        ];
+      }
+      return [leaf('Files')];
+    }
 
     case 'channels':
       return [leaf('Channels')];
@@ -81,21 +102,13 @@ export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
         : [leaf('Settings')];
 
     case 'runs':
+      // A run belongs to a project, but the crumb only has the path to go on —
+      // so Jobs here means "the jobs you were last looking at", which /jobs
+      // resolves for itself.
       return [
         { label: 'Jobs', to: '/jobs' },
         leaf(segments[1] ? `Run ${segments[1]}` : 'Run'),
       ];
-
-    case 'edit': {
-      const path = params.get('path');
-      // The badge is a switcher here, not a label: which branch you are reading
-      // is a place you can move to. The top bar renders it; this only says where
-      // it goes.
-      return [
-        { label: 'Notebooks', to: '/notebooks' },
-        leaf(path ?? 'Untitled', 'branch'),
-      ];
-    }
 
     default:
       return [leaf('Not found')];

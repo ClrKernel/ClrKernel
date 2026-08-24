@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { api, projectSlug, type Job, type Run } from '../api';
 import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../components/common';
+import { jobPath, newJobPath } from '../routes';
 import { matchesQuery } from '../search';
 import { useCanWrite } from '../sessionContext';
 
@@ -46,7 +47,7 @@ export function Jobs() {
       <PageHeader title="Jobs">
         {canWrite && (
           <Button asChild size="sm">
-            <Link to={`/jobs/${projectSlug()}/${editableEnv}/new`}>New job</Link>
+            <Link to={newJobPath(projectSlug(), editableEnv)}>New job</Link>
           </Button>
         )}
       </PageHeader>
@@ -71,8 +72,8 @@ export function Jobs() {
           ) : (
             <>
               No jobs yet. Add one from the{' '}
-              <Link className="text-primary hover:underline" to="/notebooks">
-                Notebooks
+              <Link className="text-primary hover:underline" to="/files">
+                Files
               </Link>{' '}
               tab.
             </>
@@ -96,7 +97,7 @@ export function Jobs() {
                 key={`${job.environment}/${job.name}`}
                 className="cursor-pointer"
                 onClick={() =>
-                  navigate(`/jobs/${job.project}/${job.environment}/${encodeURIComponent(job.name)}`)
+                  navigate(jobPath(job.project, job.environment, job.name))
                 }
               >
                 <td className="whitespace-nowrap">
