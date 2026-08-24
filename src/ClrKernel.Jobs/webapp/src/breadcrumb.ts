@@ -88,10 +88,11 @@ export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
 
     case 'edit': {
       const path = params.get('path');
-      // Editing is always test — production is promoted to, never edited.
+      // Editing is always your own branch — test and prod are pushed and promoted
+      // to, never edited.
       return [
         { label: 'Notebooks', to: '/notebooks' },
-        leaf(path ?? 'Untitled', 'test'),
+        leaf(path ?? 'Untitled', 'mine'),
       ];
     }
 

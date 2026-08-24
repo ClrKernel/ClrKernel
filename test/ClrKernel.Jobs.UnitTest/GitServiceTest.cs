@@ -62,6 +62,105 @@ public class GitServiceTest {
         Assert.IsFalse(File.Exists(Path.Combine(_dir, "etl.nb.md")), "no stray copy left behind");
     }
 
+    private static readonly Guid _ada = new("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid _grace = new("22222222-2222-2222-2222-222222222222");
+
+    private void WriteUser(Guid user, string relative, string content) {
+        var path = Path.Combine(_git.UserPath(user.ToString("D")), relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        File.WriteAllText(path, content);
+    }
+
+    [TestMethod]
+    public void A_personal_worktree_is_created_once_and_cut_from_test() {
+        _git.Init();
+        WriteTest("etl.nb.md", "v1\n");
+        _git.WithLock(() => _git.Commit("test", "v1"));
+
+        Assert.IsFalse(_git.HasUserWorktree(_ada));
+        var path = _git.EnsureUserWorktree(_ada);
+
+        Assert.IsTrue(_git.HasUserWorktree(_ada));
+        Assert.AreEqual("v1\n", File.ReadAllText(Path.Combine(path, "etl.nb.md")),
+            "it starts as a copy of test");
+        Assert.AreEqual(_git.HeadSha("test"), _git.HeadSha(GitService.BranchForUser(_ada)));
+        Assert.AreEqual(path, _git.EnsureUserWorktree(_ada), "idempotent");
+    }
+
+    [TestMethod]
+    public void PathFor_refuses_a_branch_this_workspace_does_not_have() {
+        _git.Init();
+        // Not a fallback to test: an unknown branch resolving there would put a write
+        // meant for somebody's own branch into the one nobody may write to.
+        Assert.ThrowsExactly<GitException>(() => _git.PathFor("user/not-a-guid"));
+        Assert.ThrowsExactly<GitException>(() => _git.PathFor("whatever"));
+    }
+
+    [TestMethod]
+    public void Pushing_fast_forwards_test_and_names_the_author() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        WriteUser(_ada, "etl.nb.md", "mine\n");
+
+        var result = _git.PushToTest(_ada, "add etl", "Ada Lovelace", "ada@users.local");
+
+        Assert.IsTrue(result.Pushed, result.Error);
+        Assert.AreEqual("mine\n", File.ReadAllText(Path.Combine(_git.TestPath, "etl.nb.md")));
+        Assert.AreEqual(result.Sha, _git.HeadSha("test"));
+        StringAssert.Contains(_git.RunForTests("log", "-1", "--format=%an", "test"), "Ada Lovelace");
+    }
+
+    [TestMethod]
+    public void A_push_is_refused_once_test_has_moved_on() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "grace.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "hers", "Grace", "g@users.local").Pushed);
+
+        WriteUser(_ada, "ada.nb.md", "mine\n");
+        var refused = _git.PushToTest(_ada, "mine", "Ada", "a@users.local");
+
+        Assert.IsFalse(refused.Pushed);
+        Assert.IsTrue(refused.NeedsUpdate);
+        StringAssert.Contains(refused.Error, "Update from test");
+        Assert.AreEqual(1, _git.StandingOf(_ada).Behind);
+
+        // The work is committed on their branch either way — a refused push is not
+        // a lost edit.
+        Assert.AreEqual(1, _git.StandingOf(_ada).Ahead);
+
+        Assert.AreEqual(0, _git.UpdateFromTest(_ada, "Ada", "a@users.local").Count);
+        Assert.IsTrue(_git.PushToTest(_ada, "mine", "Ada", "a@users.local").Pushed);
+        Assert.IsTrue(File.Exists(Path.Combine(_git.TestPath, "ada.nb.md")));
+        Assert.IsTrue(File.Exists(Path.Combine(_git.TestPath, "grace.nb.md")));
+    }
+
+    [TestMethod]
+    public void A_conflicting_update_reports_its_files_and_resolves_nothing() {
+        _git.Init();
+        WriteTest("shared.nb.md", "base\n");
+        _git.WithLock(() => _git.Commit("test", "base"));
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        WriteUser(_grace, "shared.nb.md", "hers\n");
+        _git.PushToTest(_grace, "hers", "Grace", "g@users.local");
+        WriteUser(_ada, "shared.nb.md", "mine\n");
+
+        var conflicts = _git.UpdateFromTest(_ada, "Ada", "a@users.local");
+
+        CollectionAssert.AreEqual(new[] { "shared.nb.md" }, conflicts.ToArray());
+        var left = File.ReadAllText(Path.Combine(_git.UserPath(_ada.ToString("D")), "shared.nb.md"));
+        StringAssert.Contains(left, "mine", "both sides are left in the file, with markers");
+        StringAssert.Contains(left, "hers");
+        CollectionAssert.AreEqual(new[] { "shared.nb.md" }, _git.StandingOf(_ada).Conflicts.ToArray());
+
+        var refused = _git.PushToTest(_ada, "mine", "Ada", "a@users.local");
+        Assert.IsFalse(refused.Pushed, "a conflicted tree cannot be pushed");
+        StringAssert.Contains(refused.Error, "conflicted");
+    }
+
     [TestMethod]
     public void MigrateLegacyLayout_renames_a_0_9_workspace_in_place() {
         _git.Init();

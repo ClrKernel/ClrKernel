@@ -1,4 +1,4 @@
-import { Info, MoreHorizontal, Play, RotateCcw } from 'lucide-react';
+import { ArrowDownToLine, Info, MoreHorizontal, Play, RotateCcw, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
+import type { BranchStanding } from '../api';
 import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
 import { useCanWrite } from '../sessionContext';
 
@@ -74,6 +75,10 @@ export interface NotebookToolbarProps {
   onSave: () => void;
   onPromote: () => void;
   promotion: { eligible: boolean; isDeletion?: boolean; reasons: string[] } | null;
+  /** Where your own branch stands against test. */
+  standing: BranchStanding | null;
+  onPush: (message: string) => void;
+  onUpdate: () => void;
 }
 
 /**
@@ -137,13 +142,117 @@ function explainSaving(): void {
   notice(
     'saving',
     'info',
-    'Every save is a commit',
+    'You are editing your own branch',
     <p className="mt-1">
-      Saving commits to the test branch. Cells you run here execute in a warm kernel that is
-      dropped after 30 idle minutes; those runs never appear in run history and never count
-      towards promotion. Run the notebook’s jobs from the Jobs page — promotion unlocks when
-      every job on this notebook has a clean green run of exactly this content.
+      Saving writes the file to your branch — nobody else sees it and nothing runs from it on a
+      schedule. <strong>Push to test</strong> is the commit: everything you have saved becomes one
+      commit on test, under a message you write. Cells you run here execute in a warm kernel that
+      is dropped after 30 idle minutes; those runs never appear in run history and never count
+      towards promotion. Promotion unlocks when every job on this notebook has a clean green run in
+      test of exactly this content.
     </p>,
+  );
+}
+
+/**
+ * Push to test, and the state that says whether it is worth offering.
+ *
+ * A single button rather than a dialog: the message is the only thing to collect,
+ * and a prompt for one line is a modal for one line. `behind` swaps it for the
+ * update it is blocked on, because pushing over somebody else's work is the case
+ * the server refuses anyway.
+ */
+function PushControl({
+  standing,
+  busy,
+  onPush,
+  onUpdate,
+}: {
+  standing: BranchStanding | null;
+  busy: boolean;
+  onPush: (message: string) => void;
+  onUpdate: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [open, setOpen] = useState(false);
+
+  if (standing?.hasBranch !== true) {
+    return null;
+  }
+  const conflicts = standing.conflicts ?? [];
+  const behind = standing.behind ?? 0;
+  const pending = (standing.ahead ?? 0) > 0 || standing.dirty === true;
+
+  if (conflicts.length > 0) {
+    return (
+      <Button
+        variant="outline"
+        size="xs"
+        onClick={() =>
+          notice('conflicts', 'warning', 'Resolve these first', (
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {conflicts.map((file) => (
+                <li key={file}>{file}</li>
+              ))}
+            </ul>
+          ))
+        }
+      >
+        {conflicts.length} conflicted
+      </Button>
+    );
+  }
+
+  if (behind > 0) {
+    return (
+      <Button variant="outline" size="xs" disabled={busy} onClick={onUpdate}>
+        <ArrowDownToLine className="size-3.5" aria-hidden="true" />
+        Update from test
+      </Button>
+    );
+  }
+
+  if (!pending) {
+    return null;
+  }
+
+  return open ? (
+    <span className="flex items-center gap-1">
+      <input
+        autoFocus
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && message.trim()) {
+            onPush(message.trim());
+            setMessage('');
+            setOpen(false);
+          }
+          if (e.key === 'Escape') {
+            setOpen(false);
+          }
+        }}
+        placeholder="What did you change?"
+        aria-label="Push message"
+        className="h-6 w-[190px] rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
+      />
+      <Button
+        size="xs"
+        disabled={busy || !message.trim()}
+        onClick={() => {
+          onPush(message.trim());
+          setMessage('');
+          setOpen(false);
+        }}
+      >
+        Push
+      </Button>
+    </span>
+  ) : (
+    <Button variant="outline" size="xs" disabled={busy} onClick={() => setOpen(true)}>
+      <Upload className="size-3.5" aria-hidden="true" />
+      Push to test
+    </Button>
   );
 }
 
@@ -310,7 +419,13 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       >
         {props.dirty ? 'Save' : 'Saved'}
       </Button>
-      <InfoTip label="What does saving do?" onOpen={explainSaving} />
+      <InfoTip label="Where does this save to?" onOpen={explainSaving} />
+      <PushControl
+        standing={props.standing}
+        busy={props.busy}
+        onPush={props.onPush}
+        onUpdate={props.onUpdate}
+      />
       <Button
         size="xs"
         onClick={props.onPromote}

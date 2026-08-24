@@ -42,7 +42,7 @@ export function StatusBadge({ status }: { status: RunStatus | CellStatus | strin
 }
 
 /**
- * The environment chip: a tinted pill, `test` amber and `prod` green.
+ * The branch chip: a tinted pill — `test` amber, `prod` green, your own plain.
  *
  * Semantic rather than accent-derived on purpose — production is production
  * whichever accent the user picked, the same rule the ANSI palette follows.
@@ -51,6 +51,9 @@ export function StatusBadge({ status }: { status: RunStatus | CellStatus | strin
  */
 const ENV_CHIP: Record<string, string> = {
   test: 'bg-env-test-bg text-env-test border-env-test-border',
+  // Your own branch is neither of the two things that run; it reads as chrome
+  // rather than as a third environment, because it is not one.
+  mine: 'bg-surface-panel text-muted-foreground border-border',
   prod: 'bg-env-prod-bg text-env-prod border-env-prod-border',
 };
 

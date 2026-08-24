@@ -76,7 +76,8 @@ export function NotebookExplorer({
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   useEffect(() => {
     if (!env && environments.length > 0) {
-      setEnv(environments.find((e) => e.name === 'test')?.name ?? environments[0].name);
+      // Your own branch when you have one — it is what the editor writes to.
+      setEnv(environments.find((e) => e.name === 'mine')?.name ?? environments[0].name);
     }
   }, [environments.length]);
 

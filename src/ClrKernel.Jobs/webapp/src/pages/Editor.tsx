@@ -88,6 +88,13 @@ export function Editor() {
   // wherever this row actually starts, which is not the window's edge.
   const shell = useRef<HTMLDivElement>(null);
 
+  // Where your branch stands against test. Polled slowly: it changes when you
+  // save, push, or somebody else pushes — none of which is a per-second event.
+  const { data: standing, reload: reloadStanding } = usePolling(
+    () => api.branchStanding(),
+    15000,
+  );
+
   const { data: promotion, reload: reloadPromotion } = usePolling(
     () => api.promotionStatus(path),
     null,
@@ -140,7 +147,7 @@ export function Editor() {
   useEffect(() => {
     setError(null);
     api
-      .notebookContent('test', path)
+      .notebookContent('mine', path)
       .then((text) => {
         setSource(text);
         setSavedSource(text);
@@ -148,7 +155,7 @@ export function Editor() {
       .catch(() => setError(`Could not load ${path}.`));
     if (isNotebook) {
       api
-        .notebookCells('test', path)
+        .notebookCells('mine', path)
         .then((result) => {
           setCells(withIds(result.cells));
           setSaved(result.cells);
@@ -253,31 +260,81 @@ export function Editor() {
     };
   }, [path, isNotebook, cells, canRun, reloadSession]);
 
+  /** The commit moment: everything on your branch becomes one commit on test. */
+  async function push(message: string) {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      await api.pushToTest(message);
+      setNotice('Pushed to test.');
+      reloadPromotion();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      reloadStanding();
+    }
+  }
+
+  /** Merges test into your branch. Conflicts come back as files, never resolved. */
+  async function updateFromTest() {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const result = await api.updateFromTest();
+      setNotice(result.merged
+        ? 'Up to date with test.'
+        : `Conflicts left in ${result.conflicts.join(', ')} — resolve the markers, save, then push.`);
+      // The merge changed files under the editor; re-read rather than keep a
+      // buffer that no longer matches what is on disk.
+      const text = await api.notebookContent('mine', path);
+      setSource(text);
+      setSavedSource(text);
+      if (isNotebook) {
+        const reloaded = await api.notebookCells('mine', path);
+        setCells(keepIds(reloaded.cells, []));
+        setSaved(reloaded.cells);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      reloadStanding();
+    }
+  }
+
   async function save() {
     setError(null);
     setNotice(null);
     if (!dirty) {
-      setNotice('Nothing changed — nothing to commit.');
+      setNotice('Nothing changed.');
       return;
     }
     setBusy(true);
     try {
-      const result = tab === 'source' || !isNotebook
-        ? await api.saveNotebookContent(path, source ?? '')
-        : await api.saveNotebookCells(path, toApiCells(cells ?? []));
-      setNotice(`Saved and committed (${result.commitSha.slice(0, 8)}).`);
+      if (tab === 'source' || !isNotebook) {
+        await api.saveNotebookContent(path, source ?? '');
+      } else {
+        await api.saveNotebookCells(path, toApiCells(cells ?? []));
+      }
+      // A file write on your own branch, not a commit — pushing to test is where
+      // work becomes history, and where you say what it was for.
+      setNotice('Saved to your branch.');
       // Re-read: the server is the authority on how cells serialize.
-      const text = await api.notebookContent('test', path);
+      const text = await api.notebookContent('mine', path);
       setSource(text);
       setSavedSource(text);
       if (isNotebook) {
-        const reloaded = await api.notebookCells('test', path);
+        const reloaded = await api.notebookCells('mine', path);
         // Keep the ids the cells were run under: saving should not clear the
         // outputs you just produced.
         setCells((current) => keepIds(reloaded.cells, current ?? []));
         setSaved(reloaded.cells);
       }
       reloadPromotion();
+      reloadStanding();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -453,6 +510,9 @@ export function Editor() {
         onSave={save}
         onPromote={promote}
         promotion={promotion}
+        standing={standing}
+        onPush={push}
+        onUpdate={updateFromTest}
       />
 
       {/* Focus Mode measures itself to the bottom of this scroller and gives

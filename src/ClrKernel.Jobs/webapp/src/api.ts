@@ -51,6 +51,16 @@ export interface Project {
   role: ProjectRole;
 }
 
+export interface BranchStanding {
+  hasBranch: boolean;
+  branch?: string;
+  /** Saved but not yet pushed — a file write, not a commit. */
+  dirty?: boolean;
+  ahead?: number;
+  behind?: number;
+  conflicts?: string[];
+}
+
 export interface ProjectMember {
   userId: string;
   displayName: string;
@@ -415,8 +425,8 @@ export const api = {
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
   saveNotebookContent: (path: string, content: string) =>
-    request<{ saved: boolean; commitSha: string }>(
-      `${scope('test')}/notebooks/content?path=${encodeURIComponent(path)}`,
+    request<{ saved: boolean; branch: string }>(
+      `${scope('mine')}/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
     ),
   // The UI diffs by fetching both environments' content into Monaco. GET
@@ -428,34 +438,34 @@ export const api = {
       `${scope(env)}/notebooks/cells?path=${encodeURIComponent(path)}`,
     ),
   saveNotebookCells: (path: string, cells: ApiCell[]) =>
-    request<{ saved: boolean; commitSha: string }>(
-      `${scope('test')}/notebooks/cells?path=${encodeURIComponent(path)}`,
+    request<{ saved: boolean; branch: string }>(
+      `${scope('mine')}/notebooks/cells?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: JSON.stringify({ cells }) },
     ),
   // Interactive execution against the notebook's warm kernel. None of this
   // writes to the run store: an interactive run never appears in run history
   // and can never become the green evidence promotion requires.
   runCells: (path: string, cells: ApiCell[]) =>
-    request<{ running: string[] }>(`${scope('test')}/notebooks/run?path=${encodeURIComponent(path)}`, {
+    request<{ running: string[] }>(`${scope('mine')}/notebooks/run?path=${encodeURIComponent(path)}`, {
       method: 'POST',
       body: JSON.stringify({ cells }),
     }),
   /** The connection wizard's schema, from the notebook's own kernel. */
   connectionProviders: (path: string, languageId: string) =>
     request<{ providers: ApiConnectionProvider[] }>(
-      `${scope('test')}/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
+      `${scope('mine')}/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
     ),
   /** Starts (or touches) the notebook's kernel. Opening the editor does this, so
    *  language features work on the first keystroke rather than the first run. */
   startSession: (path: string) =>
-    request<ApiSession>(`${scope('test')}/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<ApiSession>(`${scope('mine')}/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'POST',
     }),
   /** Tells the kernel which cells are open, so completion and hover have documents
    *  to answer about. Authoritative: cells left out are closed. */
   syncCells: (path: string, cells: ApiSyncCell[]) =>
     request<{ started: boolean; sent: number }>(
-      `${scope('test')}/notebooks/sync?path=${encodeURIComponent(path)}`,
+      `${scope('mine')}/notebooks/sync?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify({ cells }) },
     ),
   /** One language question about one cell. Returns null when the notebook has no
@@ -463,15 +473,15 @@ export const api = {
    *  cannot answer is silent, never an error. */
   languageRequest: <T>(path: string, body: ApiLanguageRequest) =>
     request<{ started: boolean; result: T | null }>(
-      `${scope('test')}/notebooks/language?path=${encodeURIComponent(path)}`,
+      `${scope('mine')}/notebooks/language?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify(body) },
     ).then((r) => r.result),
   sessionStatus: (path: string) =>
-    request<ApiSession>(`${scope('test')}/notebooks/session/status?path=${encodeURIComponent(path)}`),
+    request<ApiSession>(`${scope('mine')}/notebooks/session/status?path=${encodeURIComponent(path)}`),
   /** Kills the kernel. Also the only interrupt there is — no RPC surface can
    *  cancel a cell that is already running. */
   restartSession: (path: string) =>
-    request<{ restarted: boolean }>(`${scope('test')}/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<{ restarted: boolean }>(`${scope('mine')}/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'DELETE',
     }),
 
@@ -487,6 +497,21 @@ export const api = {
       `${scope('test')}/notebooks/promote?path=${encodeURIComponent(path)}`,
       { method: 'POST' },
     ),
+
+  /** Where your own branch stands against test: unsaved work, and either drift. */
+  branchStanding: () =>
+    request<BranchStanding>(`${project()}/branch`),
+  /** Commits everything on your branch and fast-forwards test onto it. */
+  pushToTest: (message: string) =>
+    request<{ pushed: boolean; commitSha: string }>(`${project()}/branch/push`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+  /** Merges test into your branch, in your own worktree. */
+  updateFromTest: () =>
+    request<{ merged: boolean; conflicts: string[] }>(`${project()}/branch/update`, {
+      method: 'POST',
+    }),
 
   settings: () => request<{ sections: SettingsSection[] }>('/settings'),
   saveSettings: (section: string, values: Record<string, unknown>) =>

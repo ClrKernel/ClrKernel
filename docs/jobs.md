@@ -218,7 +218,10 @@ to), `runs` with per-cell progress, `runs/{id}/artifact` and `/log`, `stats`, an
 `channels` (GET/PUT, plus `channels/{name}/test`).
 
 Anything that reads or writes notebooks names a project and a branch:
-`/api/projects/{project}/branches/{branch}/…`. A slug nobody registered answers
+`/api/projects/{project}/branches/{branch}/…`, where `{branch}` is `test`, `prod`,
+or **`mine`** — your own. There is no spelling that reaches somebody else's branch,
+which is what makes "nobody edits another user's branch" a property of the routes
+rather than a check to remember. A slug nobody registered answers
 **404, not 403** — a project you have no access to is meant to be
 indistinguishable from one that does not exist. Under that prefix: `jobs`
 (including create/update/delete, which edit the yaml files), `jobs/{name}/run` and
@@ -228,7 +231,9 @@ written back from them — the browser never needs its own copy of the `.nb.md`
 format), `notebooks/promotion` and `notebooks/promote`, plus the editor's session
 endpoints: `notebooks/session` (POST to start, DELETE to restart), `notebooks/run`,
 and `notebooks/session/status`. `/api/projects/{project}/git/diff` returns a unified
-diff for one path, which is still the convenient thing over curl.
+diff for one path, which is still the convenient thing over curl, and
+`/api/projects/{project}/branch` (plus `/branch/push` and `/branch/update`) is where
+your own branch stands and how it reaches test.
 
 A run can take one-off parameters that override the job's own for that run only —
 the `*.jobs.yaml` is untouched. The same thing is behind "Run with parameters…" in
@@ -274,8 +279,9 @@ Members* by that project's admins or by a Server Admin:
 | Within one project | Viewer | Member | Admin |
 |---|---|---|---|
 | Read notebooks, jobs, runs, output | yes | yes | yes |
-| Edit and save, edit jobs | **no** | yes | yes |
+| Edit and save on your own branch | **no** | yes | yes |
 | Run cells, Run All, restart the kernel | **no** | yes | yes |
+| Push your branch to `test` | **no** | yes | yes |
 | Promote to production | **no** | **no** | yes |
 | Configure the project, manage its members | **no** | **no** | yes |
 
@@ -290,7 +296,9 @@ name of every project on the server leaks to anyone willing to guess.
 
 None of this is enforced by hiding buttons. Running a cell is arbitrary code
 execution on the machine hosting the server, so calling
-`…/branches/test/notebooks/run` directly without the role returns 403. A viewer's
+`…/branches/mine/notebooks/run` directly without the role returns 403. Writing to
+`test` or `prod` is refused for **every** role including Server Admin — that check is
+on the branch, not on who is asking, so there is no account that could satisfy it. A viewer's
 editor is read-only, and Focus Mode still works — it is a reading layout too.
 
 ### Before anyone else signs in: set the domain
@@ -392,8 +400,9 @@ clrkernel-jobs git init --notebooks ./notebooks
 ```
 
 The folder becomes a **workspace**: a bare repo at `.repo.git` and two folders backed
-by branches — `test/` (branch `test`, where you edit) and `prod/` (branch `main`, what
-the scheduler runs). Existing notebooks are adopted into test and promoted, so
+by branches — `test/` (branch `test`, what has been pushed and is ready to prove
+itself) and `prod/` (branch `main`, what the scheduler runs). Existing notebooks are
+adopted into test and promoted, so
 everything keeps working. `gitEnabled: true` is written to settings.json.
 
 > **Upgrading from 0.9**, where the editable branch was called `dev`: the first start
@@ -402,16 +411,28 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 > branch — delete it there yourself when you are ready; a shared remote is not this
 > process's to prune.
 
+Nobody edits `test` or `prod`. Each person gets a **branch and worktree of their
+own** — `user/<account id>`, checked out at `user-<id>/` beside `test/` and `prod/`
+— created the first time they edit something in that project. Most people never
+touch most projects, so keeping an empty checkout per person per project against
+that possibility is not worth the disk.
+
 The loop:
 
-1. **Edit** in the web UI (test notebooks get an *edit* link in the tree — see
-   [The notebook editor](#the-notebook-editor), where you can also run cells against a
-   warm kernel) or in your own editor inside `test/`. Every UI save is a commit on the
-   test branch.
-2. **Run** the notebook's jobs in test — manually or via the API. Test jobs never run
+1. **Edit** in the web UI (see [The notebook editor](#the-notebook-editor), where you
+   can also run cells against a warm kernel) or in your own editor inside your
+   `user-<id>/` folder. Saving is a **file write, not a commit** — nobody else sees
+   it and nothing runs from it.
+2. **Push to test** from the editor's toolbar. That is the commit: everything you
+   have saved becomes one commit on `test`, under a message you write, authored as
+   you. If `test` has moved since you branched, the push is refused and the button
+   becomes **Update from test** — the merge belongs in your own worktree where you
+   can look at it. Conflicts come back as a list of files with the markers left in
+   them; nothing is ever auto-resolved.
+3. **Run** the notebook's jobs in test — manually or via the API. Test jobs never run
    on a schedule; cron and chaining fire only in prod. Each run records the test
    commit it executed and whether the tree was dirty.
-3. **Promote** from the editor page. The button unlocks only when *every* enabled
+4. **Promote** from the editor page. The button unlocks only when *every* enabled
    job on the notebook has a latest test run that succeeded, as written (no ad-hoc
    parameter overrides, no uncommitted content), with the files unchanged since that
    run — and only if the promotion would leave prod's dependency graph valid.
@@ -480,7 +501,7 @@ hidden on Source and Diff; saving and promoting are about the document and stay
 everywhere.
 
 Two ⓘ buttons sit in that row. One beside **Save** explains what saving does — every
-save is a commit on the test branch, and cells you run here never count towards
+save writes to your own branch, and cells you run here never count towards
 promotion. The other appears beside **Promote to production** when promotion is
 blocked, and gives the reasons: usually a job on this notebook that has not had a green
 run yet. Either opens a notice in the corner that fades on its own or closes on
@@ -543,11 +564,11 @@ requires a real green run of every job on the notebook, launched from the Jobs p
 the API. This is a property of the code — the session has no access to the run store —
 not a rule someone has to remember.
 
-Saving is a commit on test, so a save that changes nothing is skipped: a needless commit
+Saving writes to your own branch, so a save that changes nothing is skipped: a needless commit
 would invalidate the "unchanged since that run" half of the promotion check.
 
 Execution is refused unless you are a Server Admin, the git workflow is on, the file is
-in `test/`, and the path resolves inside the test worktree. Reading and diffing still
+in your own branch, and the path resolves inside your worktree. Reading and diffing still
 work for everyone; only running and saving are gated.
 
 ## Docker

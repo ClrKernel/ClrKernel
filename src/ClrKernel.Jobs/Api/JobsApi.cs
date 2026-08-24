@@ -198,33 +198,48 @@ public static class JobsApi {
 
         // --- notebooks ------------------------------------------------------
 
-        api.MapGet("/projects/{project}/notebooks", (ProjectRegistry projects, string project) => {
-            if (projects.Find(project) is not { } found) {
-                return NoProject(project);
-            }
-            var catalog = projects.CatalogFor(found);
-            var result = catalog.Load();
-            return Results.Ok(new {
-                environments = catalog.Environments.Select(env => new {
+        api.MapGet("/projects/{project}/notebooks", (
+            HttpContext context, ProjectRegistry projects, string project) => {
+                if (projects.Find(project) is not { } found) {
+                    return NoProject(project);
+                }
+                var catalog = projects.CatalogFor(found);
+                var git = projects.GitFor(found);
+                var result = catalog.Load();
+                var trees = catalog.Environments.Select(env => new {
                     name = env,
                     tree = Directory.Exists(catalog.RootFor(env))
                         ? NotebookTree.Build(catalog.RootFor(env), result, found.Slug, env)
                         : null,
-                }),
-            });
-        }).RequiresProject(ProjectRole.ProjectViewer);
+                }).ToList();
+
+                // Your own branch first when you have one: it is where editing
+                // happens, so a file list that only offered test would be showing
+                // you the files you are not the one changing.
+                var user = context.CurrentUser();
+                if (user != null && git != null && git.HasUserWorktree(user.Id)) {
+                    var mine = git.PathFor(GitService.BranchForUser(user.Id));
+                    trees.Insert(0, new {
+                        name = _mineBranch,
+                        tree = NotebookTree.Build(mine, result, found.Slug, null),
+                    });
+                }
+                return Results.Ok(new { environments = trees });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapGet("/notebooks/content", (
-            ProjectRegistry projects, string project, string branch, string path) => {
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
-                if (!scope.Catalog.Environments.Contains(branch)) {
+                branch = scope.BranchFor(context, branch);
+                if (!Reachable(scope, branch)) {
                     return Results.NotFound(new { error = $"No branch '{branch}'." });
                 }
                 // Rooted at the branch's own tree — resolving against the workspace
                 // would happily reach across into the other worktree.
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(branch), path);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
                 if (resolved == null) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
@@ -239,6 +254,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (EditableTarget(scope, branch, path) is not { } target) {
                     return TestWriteError(scope, branch, path);
                 }
@@ -246,22 +262,23 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "File too large (2 MB limit)." });
                 }
                 using var reader = new StreamReader(context.Request.Body);
-                return SaveToTest(scope, target, path, await reader.ReadToEndAsync());
+                return SaveToBranch(context, scope, branch, target, path, await reader.ReadToEndAsync());
             }).RequiresProject(ProjectRole.ProjectMember);
 
         // The notebook as editable cells, with the languages the kernel can run —
         // the shape the web editor works in. Parsing is NotebookMarkdown's, the same
         // reader/writer `clrkernel run` and the VS Code extension agree with.
         scoped.MapGet("/notebooks/cells", async (
-            ProjectRegistry projects, KernelLanguages kernelLanguages,
+            HttpContext context, ProjectRegistry projects, KernelLanguages kernelLanguages,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
-                if (!scope.Catalog.Environments.Contains(branch)) {
+                branch = scope.BranchFor(context, branch);
+                if (!Reachable(scope, branch)) {
                     return Results.NotFound(new { error = $"No branch '{branch}'." });
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(branch), path);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
                 if (resolved == null) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
@@ -286,6 +303,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (EditableTarget(scope, branch, path) is not { } target) {
                     return TestWriteError(scope, branch, path);
                 }
@@ -306,8 +324,8 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
                 }
                 var languages = await kernelLanguages.GetAsync();
-                return SaveToTest(
-                    scope, target, path,
+                return SaveToBranch(
+                    context, scope, branch, target, path,
                     NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
             }).RequiresProject(ProjectRole.ProjectMember);
 
@@ -325,6 +343,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -345,6 +364,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -358,6 +378,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -399,6 +420,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -441,6 +463,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -485,6 +508,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -517,6 +541,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (DenyExecution(scope, branch, path) is { } denial) {
                     return denial;
                 }
@@ -534,10 +559,12 @@ public static class JobsApi {
             }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapGet("/notebooks/promotion", async (
-            ProjectRegistry projects, IRunStore store, string project, string branch, string path) => {
+            HttpContext context, ProjectRegistry projects, IRunStore store,
+            string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (PromotionRefusal(scope, branch, path) is { } refusal) {
                     return refusal;
                 }
@@ -545,11 +572,12 @@ public static class JobsApi {
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/notebooks/promote", async (
-            ProjectRegistry projects, IRunStore store, JobsOptions options,
+            HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 if (PromotionRefusal(scope, branch, path) is { } refusal) {
                     return refusal;
                 }
@@ -562,6 +590,63 @@ public static class JobsApi {
                 scope.Git.TryPush(scope.Project.Remote ?? options.GitPushRemote);
                 return Results.Ok(new { promoted = true, commitSha = sha, paths = eligibility.Paths });
             }).RequiresProject(ProjectRole.ProjectAdmin);
+
+        // --- your branch, and getting it into test ---------------------------
+
+        api.MapGet("/projects/{project}/branch", (
+            HttpContext context, ProjectRegistry projects, string project) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.Ok(new { hasBranch = false });
+                }
+                var user = context.CurrentUser();
+                if (user == null || !scope.Git.HasUserWorktree(user.Id)) {
+                    // No worktree yet is the normal state until the first edit, and
+                    // asking about it must not be what creates one.
+                    return Results.Ok(new { hasBranch = false });
+                }
+                var standing = scope.Git.StandingOf(user.Id);
+                return Results.Ok(new {
+                    hasBranch = true,
+                    branch = GitService.BranchForUser(user.Id),
+                    standing.Dirty,
+                    standing.Ahead,
+                    standing.Behind,
+                    standing.Conflicts,
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        api.MapPost("/projects/{project}/branch/push", async (
+            HttpContext context, ProjectRegistry projects, JobsOptions options, string project) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                var user = context.CurrentUser();
+                var message = (await BodyOf<PushWrite>(context))?.Message?.Trim();
+                if (string.IsNullOrWhiteSpace(message)) {
+                    message = $"changes from {user?.DisplayName}";
+                }
+                var result = scope.Git.PushToTest(user.Id, message, user?.DisplayName, EmailFor(user));
+                if (!result.Pushed) {
+                    return Results.Json(
+                        new { error = result.Error, needsUpdate = result.NeedsUpdate },
+                        statusCode: 409);
+                }
+                scope.Git.TryPush(scope.Project.Remote ?? options.GitPushRemote);
+                return Results.Ok(new { pushed = true, commitSha = result.Sha });
+            }).RequiresProject(ProjectRole.ProjectMember);
+
+        api.MapPost("/projects/{project}/branch/update", (
+            HttpContext context, ProjectRegistry projects, string project) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                var user = context.CurrentUser();
+                var conflicts = scope.Git.UpdateFromTest(user.Id, user?.DisplayName, EmailFor(user));
+                // Conflicts come back as a list of files with markers left in them,
+                // never as a resolution: taking one side automatically is how a merge
+                // silently loses somebody's work.
+                return Results.Ok(new { merged = conflicts.Count == 0, conflicts });
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         api.MapGet("/projects/{project}/git/diff", (
             ProjectRegistry projects, string project, string path) => {
@@ -588,32 +673,38 @@ public static class JobsApi {
         });
 
         scoped.MapGet("/jobs/{name}", (
-            ProjectRegistry projects, string project, string branch, string name) => {
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string name) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
                 return job == null ? Results.NotFound(new { error = $"No job named '{name}' in {branch}." })
                     : Results.Ok(JobView.From(job));
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/jobs", (
-            ProjectRegistry projects, string project, string branch, JobWrite write) =>
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, JobWrite write) =>
             Scope.Of(projects, project) is { } scope
                 ? Upsert(scope, branch, null, write)
                 : NoProject(project)).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPut("/jobs/{name}", (
-            ProjectRegistry projects, string project, string branch, string name, JobWrite write) =>
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string name, JobWrite write) =>
             Scope.Of(projects, project) is { } scope
                 ? Upsert(scope, branch, name, write)
                 : NoProject(project)).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapDelete("/jobs/{name}", (
-            ProjectRegistry projects, string project, string branch, string name) => {
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string name) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
                 if (job == null) {
                     return Results.NotFound(new { error = $"No job named '{name}'." });
@@ -649,20 +740,13 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
+                branch = scope.BranchFor(context, branch);
                 var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
                 if (job == null) {
                     return Results.NotFound(new { error = $"No job named '{name}' in {branch}." });
                 }
 
-                RunOverrides overrides = null;
-                if (context.Request.ContentLength is > 0) {
-                    try {
-                        overrides = await JsonSerializer.DeserializeAsync<RunOverrides>(
-                            context.Request.Body, _bodyJson);
-                    } catch (JsonException e) {
-                        return Results.BadRequest(new { error = $"Body is not valid JSON: {e.Message}" });
-                    }
-                }
+                var overrides = await BodyOf<RunOverrides>(context);
 
                 // Ad-hoc parameters merge over the job's own for this run only; the
                 // *.jobs.yaml is untouched.
@@ -680,7 +764,7 @@ public static class JobsApi {
             }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPost("/jobs/{name}/cancel", (
-            ProjectRegistry projects, SchedulerService scheduler,
+            HttpContext context, ProjectRegistry projects, SchedulerService scheduler,
             string project, string branch, string name) =>
             projects.Find(project) is not { } found
                 ? NoProject(project)
@@ -690,7 +774,7 @@ public static class JobsApi {
             .RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapGet("/jobs/{name}/runs", async (
-            ProjectRegistry projects, IRunStore store,
+            HttpContext context, ProjectRegistry projects, IRunStore store,
             string project, string branch, string name, int? limit, int? offset) =>
             projects.Find(project) is not { } found
                 ? NoProject(project)
@@ -849,7 +933,52 @@ public static class JobsApi {
             projects.Find(slug) is { } project
                 ? new Scope(project, projects.CatalogFor(project), projects.GitFor(project))
                 : null;
+
+        /// <summary>
+        /// The branch a route names, as git knows it. <c>mine</c> is the caller's own
+        /// personal branch, and it is the <em>only</em> way to name a personal branch:
+        /// there is no spelling of the request that reaches someone else's, so
+        /// "nobody edits another user's branch" is a property of the route table
+        /// rather than a check somebody has to remember to write.
+        /// <para>
+        /// Resolving it creates the worktree if this is their first edit here. Lazy
+        /// because most people never touch most projects, and an empty checkout per
+        /// person per project is a lot of disk to keep against that.
+        /// </para>
+        /// </summary>
+        public string BranchFor(HttpContext context, string branch) {
+            if (branch != _mineBranch) {
+                return branch;
+            }
+            if (context.CurrentUser() is not { } user || Git == null) {
+                return null;
+            }
+            Git.EnsureUserWorktree(user.Id);
+            return GitService.BranchForUser(user.Id);
+        }
     }
+
+    /// <summary>What a route calls the caller's own branch.</summary>
+    private const string _mineBranch = "mine";
+
+    /// <summary>
+    /// A branch this project actually has: its environments, or the caller's own.
+    /// <para>
+    /// Environments alone is not the answer any more — that list is <c>test</c> and
+    /// <c>prod</c>, which is what <em>runs</em>, and reading a notebook you are
+    /// editing means reading a branch that is on neither list.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// Where a branch's files are. The catalog places environments; a personal
+    /// branch has a worktree of its own that the catalog never scans.
+    /// </summary>
+    private static string RootOf(Scope scope, string branch) =>
+        GitService.IsUserBranch(branch) ? scope.Git.PathFor(branch) : scope.Catalog.RootFor(branch);
+
+    private static bool Reachable(Scope scope, string branch) =>
+        scope.Catalog.Environments.Contains(branch)
+        || (GitService.IsUserBranch(branch) && scope.Git != null);
 
     /// <summary>Shared refusal for promotion and diff: both compare test against prod.</summary>
     private static IResult PromotionRefusal(Scope scope, string branch, string path) {
@@ -871,11 +1000,15 @@ public static class JobsApi {
     /// which, so the two shapes of write (raw text, cells) refuse identically.
     /// </summary>
     private static string EditableTarget(Scope scope, string branch, string path) {
-        if (!scope.Catalog.GitLayout || branch != GitService.TestBranch || scope.Git == null) {
+        // A personal branch, and nothing else. test and prod are runnable but never
+        // writable, by anybody: this is the server half of that, and it is a check on
+        // the shape of the branch rather than on the caller's role, so no role can
+        // ever satisfy it for test.
+        if (!scope.Catalog.GitLayout || scope.Git == null || !GitService.IsUserBranch(branch)) {
             return null;
         }
-        // Rooted at the test worktree: the workspace root would resolve prod/… too.
-        var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
+        // Rooted at that worktree: the workspace root would resolve prod/… too.
+        var resolved = NotebookTree.SafeResolve(scope.Git.PathFor(branch), path);
         if (resolved == null) {
             return null;
         }
@@ -890,11 +1023,13 @@ public static class JobsApi {
                 error = "Editing needs the git workflow — run `clrkernel-jobs git init`.",
             });
         }
-        if (branch != GitService.TestBranch) {
-            return Results.BadRequest(new { error = "prod is read-only — edit in test and promote." });
+        if (!GitService.IsUserBranch(branch)) {
+            return Results.BadRequest(new {
+                error = "test and prod are read-only. Edit on your own branch and push to test.",
+            });
         }
-        return NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path) == null
-            ? Results.BadRequest(new { error = "Path is outside the test area." })
+        return NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null
+            ? Results.BadRequest(new { error = "Path is outside your branch." })
             : Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
     }
 
@@ -922,11 +1057,16 @@ public static class JobsApi {
                 error = "Running cells needs the git workflow — run `clrkernel-jobs git init`.",
             });
         }
-        if (branch != GitService.TestBranch) {
-            return Results.BadRequest(new { error = "Cells run in test only — prod is read-only." });
+        // Your own branch only, for now: running in test and prod is a separate
+        // feature with guard rails of its own — a concurrency lock against the
+        // scheduler, a disposable session, and an audit row per run.
+        if (!GitService.IsUserBranch(branch)) {
+            return Results.BadRequest(new {
+                error = "Cells run on your own branch. Copy this notebook there to work on it.",
+            });
         }
-        if (NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path) == null) {
-            return Results.BadRequest(new { error = "Path is outside the test area." });
+        if (NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null) {
+            return Results.BadRequest(new { error = "Path is outside your branch." });
         }
         return null;
     }
@@ -952,15 +1092,56 @@ public static class JobsApi {
 
     /// <summary>The one committing writer: the file lands and is committed inside a
     /// single git-lock hold, so racing saves cannot commit each other's bytes.</summary>
-    private static IResult SaveToTest(Scope scope, string resolved, string path, string content) {
+    /// <summary>
+    /// Writes into the caller's own worktree. A <em>file write, not a commit</em>:
+    /// the commit moment is pushing to test, where a person says what the batch of
+    /// work was for.
+    /// <para>
+    /// Saving used to commit because test was the only branch there was, and an
+    /// uncommitted test worktree is a scheduled run picking up half an edit. On a
+    /// personal branch nothing else reads the files, so a commit per save would only
+    /// bury the one message anybody wrote under a hundred nobody did.
+    /// </para>
+    /// </summary>
+    private static IResult SaveToBranch(
+        HttpContext context, Scope scope, string branch, string resolved, string path, string content) {
         var git = scope.Git;
         git.WithLock(() => {
             Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
             File.WriteAllText(resolved, content);
-            git.Commit(GitService.TestBranch, $"edit {path} via web UI", path);
         });
-        return Results.Ok(new { saved = true, commitSha = git.HeadSha(GitService.TestBranch) });
+        return Results.Ok(new { saved = true, branch });
     }
+
+    /// <summary>
+    /// An optional JSON body, or null when there was none. Read by hand rather than
+    /// bound, for the same reason the run route does: a [FromBody] parameter adds a
+    /// content-type constraint to route matching, and a bodyless POST then misses
+    /// the route entirely.
+    /// <para>
+    /// It does not consult Content-Length. A chunked request has none — HttpClient
+    /// sends one for anything it did not buffer — and gating on it means silently
+    /// ignoring a body that is right there.
+    /// </para>
+    /// </summary>
+    private static async Task<T> BodyOf<T>(HttpContext context) where T : class {
+        if (context.Request.ContentLength == 0) {
+            return null;
+        }
+        try {
+            return await JsonSerializer.DeserializeAsync<T>(context.Request.Body, _bodyJson);
+        } catch (JsonException) {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A git author address for an account. There are no email addresses in this
+    /// system — passkeys need none — so this is a stable synthetic one rather than a
+    /// claim about how to reach anybody.
+    /// </summary>
+    private static string EmailFor(User user) =>
+        user == null ? null : $"{user.Id:D}@users.clrkernel.local";
 
     /// <summary>The run, or null when it does not exist or is not the caller's to see.</summary>
     private static async Task<Run> VisibleRun(
@@ -987,6 +1168,12 @@ public static class JobsApi {
             : Results.NotFound(new { error = "No such artifact for this run (it may not have been written yet)." });
     }
 
+    /// <summary>
+    /// Creating and editing jobs. The one thing that still writes to <c>test</c>
+    /// directly: a job only means something once it is catalogued, and the catalog
+    /// scans environments, not personal branches. Moving it needs the jobs list to
+    /// be able to say whose unpushed job it is showing — a screen, not a check.
+    /// </summary>
     private static IResult Upsert(Scope scope, string branch, string existingName, JobWrite write) {
         var catalog = scope.Catalog;
         var git = scope.Git;
@@ -1081,6 +1268,11 @@ public static class JobsApi {
                 JobView.From(saved))
             : Results.Ok(JobView.From(saved));
     }
+}
+
+/// <summary>The commit message a push carries.</summary>
+public sealed class PushWrite {
+    public string Message { get; set; }
 }
 
 /// <summary>One grant, as the members API sets it.</summary>
