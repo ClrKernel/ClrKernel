@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Rail } from './components/Rail';
 import { TopBar } from './components/TopBar';
 import { Channels } from './pages/Channels';
+import { Connections } from './pages/Connections';
 import { Dashboard } from './pages/Dashboard';
 import { Editor } from './pages/Editor';
 import { JobDetail } from './pages/JobDetail';
@@ -15,7 +16,7 @@ import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
 import { ProjectProvider, ProjectScope, useProjects } from './projectContext';
-import { NOTEBOOK_VIEWS, filesPath, isEditorPath, jobsPath, legacyEditPath } from './routes';
+import { NOTEBOOK_VIEWS, filesPath, isFullBleed, jobsPath, legacyEditPath } from './routes';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -27,7 +28,9 @@ export function App() {
   const [accent, setAccent] = useState(loadAccent);
   const location = useLocation();
   const navigate = useNavigate();
-  const isEditor = isEditorPath(location.pathname);
+  // Pages that own their own panes and gutters: the notebook editor, and the
+  // Connections area, which is a tree beside a split of its own.
+  const fullBleed = isFullBleed(location.pathname);
   const [session, setSession] = useState<SessionState | null>(null);
 
   // Returns the session it loaded, because arriving from a sign-in has to wait
@@ -128,10 +131,10 @@ export function App() {
             }}
           />
           <main
-            // The editor manages its own panes and gutters; every other page
-            // takes the standard content padding.
+            // The editor and the Connections area manage their own panes and
+            // gutters; every other page takes the standard content padding.
             className={
-              isEditor
+              fullBleed
                 ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
                 : 'min-h-0 flex-1 overflow-auto px-7 py-5'
             }
@@ -172,6 +175,10 @@ export function App() {
                 />
               ))}
 
+              {/* No project segment: a connection belongs to the server, not to
+                  a repo, so there is nothing for one to name. */}
+              <Route path="/connections" element={<Connections />} />
+              <Route path="/connections/:id" element={<Connections />} />
               <Route path="/channels" element={<Channels />} />
               {/* Settings is tabbed by route: /settings redirects to the first
                   section, and each section is its own URL so a tab is something

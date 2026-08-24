@@ -100,3 +100,15 @@ describe('breadcrumbFor', () => {
     ]);
   });
 });
+
+describe('the connections area', () => {
+  it('is one crumb at the top level', () => {
+    expect(breadcrumbFor('/connections').map((c) => c.label)).toEqual(['Connections']);
+  });
+
+  it('keeps a link back to the list once you are inside one', () => {
+    const crumbs = breadcrumbFor('/connections/abc123');
+    expect(crumbs.map((c) => c.label)).toEqual(['Connections', 'Query']);
+    expect(crumbs[0].to).toBe('/connections');
+  });
+});

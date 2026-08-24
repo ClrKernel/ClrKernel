@@ -1,4 +1,5 @@
 import {
+  Database,
   FolderTree,
   LayoutGrid,
   Bell,
@@ -21,6 +22,8 @@ const NAV: { to: string; label: string; icon: LucideIcon; end: boolean; isSpecia
   // Files, not Notebooks: what is under here is notebooks *and* the jobs files
   // beside them, and a folder tree is what you are looking at either way.
   { to: '/files', label: 'Files', icon: FolderTree, end: false },
+  // Connections has no project in its route: one list for the whole server.
+  { to: '/connections', label: 'Connections', icon: Database, end: false },
   { to: '/channels', label: 'Channels', icon: Bell, end: false },
 ];
 

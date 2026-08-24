@@ -220,10 +220,12 @@ per project repo, written from one server-wide store in the data dir.
 `ConnectionConfig.Upsert` is the writer; `SqlConnectionConfig.ToProperties` / `FromNode` are
 the SQL Server mapping. Neither is new code.
 
-## 4. Phase 1 scope
+## 4. Phase 1 scope — landed
 
 Store, Shared/Mine scoping, the rail destination, the metadata tree, the query editor, the
-results grid, and the audit.
+results grid, and the audit. All of it is in, over four commits; the one thing not yet done is
+running `ConnectionsLiveTest` against a real SQL Server, which is what covers the object-tree
+queries and the reader loop.
 
 **Materialization is phase 2, with its consumer.** Nothing in phase 1 reads `connections.json`
 off disk — the area reads the store directly. The only thing that needs a materialized file in

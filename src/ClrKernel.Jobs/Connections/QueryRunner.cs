@@ -185,10 +185,14 @@ public sealed class QueryRunner {
             error = e.Message;
         } catch (SqlException e) {
             // A failing statement is an answer, not a server fault: it belongs in the
-            // Messages tab beside the row counts, the way SSMS shows it.
+            // Messages tab beside the row counts, the way SSMS shows it. Only the
+            // errors after the first — the first *is* e.Message, and adding it here
+            // too printed every failure twice.
             error = e.Message;
             foreach (SqlError sqlError in e.Errors) {
-                messages.Add(sqlError.Message);
+                if (sqlError.Message != e.Message) {
+                    messages.Add(sqlError.Message);
+                }
             }
         } catch (Exception e) {
             _logger?.LogWarning("Query against '{Connection}' failed: {Error}", connection.Name, e.Message);

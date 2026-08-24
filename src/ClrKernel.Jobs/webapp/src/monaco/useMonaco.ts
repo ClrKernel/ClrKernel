@@ -189,11 +189,22 @@ export function useFillEditor(
    * you, a reload — say so by changing this.
    */
   resetKey: unknown = 0,
+  /**
+   * The editor's primary action, on Ctrl/Cmd+Enter and F5.
+   *
+   * It is handed the selected text when there is a selection and the whole buffer
+   * otherwise. That rule lives here rather than at the call site because it is the
+   * one everybody already has in their fingers from SSMS — run what is highlighted
+   * — and a second copy of it is a second chance to get it wrong.
+   */
+  onRun?: (text: string) => void,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const latestOnChange = useRef(onChange);
   latestOnChange.current = onChange;
+  const latestOnRun = useRef(onRun);
+  latestOnRun.current = onRun;
 
   useEffect(() => {
     if (!container.current) {
@@ -209,6 +220,17 @@ export function useFillEditor(
     const changeListener = created.onDidChangeModelContent(() =>
       latestOnChange.current(created.getValue()),
     );
+    function run() {
+      const selection = created.getSelection();
+      const selected = selection == null ? '' : (created.getModel()?.getValueInRange(selection) ?? '');
+      latestOnRun.current?.(selected.trim().length > 0 ? selected : created.getValue());
+    }
+    // Both, because both are already in people's fingers: Ctrl+Enter from the
+    // notebook, F5 from every query tool there has ever been. addCommand rather
+    // than addAction — an action would also add a context-menu entry for
+    // something the toolbar is already showing.
+    created.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
+    created.addCommand(monaco.KeyCode.F5, run);
     return () => {
       changeListener.dispose();
       // The editor first, then the model. The other way round leaves a live

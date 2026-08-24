@@ -38,6 +38,19 @@ export function newJobPath(project: string, env: string, notebook?: string): str
   return notebook ? `${to}?notebook=${encodeURIComponent(notebook)}` : to;
 }
 
+/**
+ * The Connections area. No project in the path, and that is the point: a
+ * connection belongs to the server, not to a repo — one list of shared ones and
+ * each person's own, whichever project you happen to have been looking at.
+ */
+export function isFullBleed(pathname: string): boolean {
+  return isEditorPath(pathname) || pathname.startsWith('/connections');
+}
+
+export function connectionsPath(id?: string): string {
+  return id == null ? '/connections' : `/connections/${slug(id)}`;
+}
+
 export function filesPath(project: string): string {
   return `/files/${slug(project)}`;
 }

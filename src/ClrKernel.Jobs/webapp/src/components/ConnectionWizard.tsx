@@ -146,13 +146,13 @@ export function ConnectionWizard({
   );
 }
 
-function filled(value: string | boolean | undefined): boolean {
+export function filled(value: string | boolean | undefined): boolean {
   return typeof value === 'boolean' ? true : (value ?? '').trim().length > 0;
 }
 
 /** A setting in a one-of group is satisfied when any member of the group is set —
  *  "server or connection string", not both. */
-function satisfiedByGroup(
+export function satisfiedByGroup(
   setting: ApiConnectionSetting,
   provider: ApiConnectionProvider,
   values: Record<string, string | boolean | undefined>,
@@ -165,7 +165,12 @@ function satisfiedByGroup(
   );
 }
 
-function Field({
+/**
+ * One descriptor-declared setting as an input. Exported because the Connections
+ * area renders the same descriptors — a provider describes its settings once and
+ * both the notebook wizard and the saved-connection form follow it.
+ */
+export function Field({
   setting, value, onChange,
 }: {
   setting: ApiConnectionSetting;

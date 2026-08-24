@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  connectionsPath,
   editPath,
   isEditorPath,
   viewOf,
@@ -112,5 +113,12 @@ describe('job paths', () => {
     expect(newJobPath('default', 'mine', 'reports/monthly.nb.md'))
       .toBe('/jobs/default/mine/new?notebook=reports%2Fmonthly.nb.md');
     expect(newJobPath('default', 'mine')).toBe('/jobs/default/mine/new');
+  });
+});
+
+describe('connectionsPath', () => {
+  it('names no project — a connection belongs to the server, not to a repo', () => {
+    expect(connectionsPath()).toBe('/connections');
+    expect(connectionsPath('abc123')).toBe('/connections/abc123');
   });
 });

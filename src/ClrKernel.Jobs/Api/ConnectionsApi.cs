@@ -503,7 +503,13 @@ public sealed class ProviderView {
         Type = d.Type,
         DisplayName = d.DisplayName,
         Description = d.Description,
-        Settings = d.Settings.Where(s => !s.RuntimeOnly).Select(SettingView.From).ToList(),
+        // `name` is dropped: a provider declares it because the connect directive
+        // carries it, but here the name is the connection's identity — what a
+        // notebook references — and the store owns it. Leaving it in gives the form
+        // two name fields that disagree.
+        Settings = d.Settings
+            .Where(s => !s.RuntimeOnly && !string.Equals(s.Name, "name", StringComparison.OrdinalIgnoreCase))
+            .Select(SettingView.From).ToList(),
     };
 }
 

@@ -597,6 +597,48 @@ export const api = {
       method: 'POST',
     }),
 
+  // --- connections ---------------------------------------------------------
+
+  connections: () => request<{ connections: ApiConnection[] }>('/connections'),
+  /** The form's schema, and whether this server can keep a password at all. */
+  connectionProviderSchema: () =>
+    request<{
+      providers: ApiConnectionProvider[];
+      canPersistSecrets: boolean;
+      secretHelp: string | null;
+    }>('/connections/providers'),
+  saveConnection: (id: string | null, body: ApiConnectionSave) =>
+    request<ApiConnection>(id == null ? '/connections' : `/connections/${encodeURIComponent(id)}`, {
+      method: id == null ? 'POST' : 'PUT',
+      body: JSON.stringify(body),
+    }),
+  deleteConnection: (id: string) =>
+    request<{ removed: string }>(`/connections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  testConnection: (id: string, password?: string) =>
+    request<{ ok: boolean; error: string | null }>(
+      `/connections/${encodeURIComponent(id)}/test`,
+      { method: 'POST', body: JSON.stringify({ password }) },
+    ),
+  /** The client names the query so Cancel can name it too — before the response
+   *  it would otherwise have learned the id from has arrived. */
+  runQuery: (id: string, sql: string, queryId: string, password?: string) =>
+    request<ApiQueryResult>(`/connections/${encodeURIComponent(id)}/query`, {
+      method: 'POST',
+      body: JSON.stringify({ sql, queryId, password }),
+    }),
+  cancelQuery: (id: string, queryId: string) =>
+    request<{ cancelled: boolean }>(`/connections/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ queryId }),
+    }),
+  connectionMetadata: <T>(id: string, body: ApiMetadataRequest) =>
+    request<ApiMetadataReply<T>>(`/connections/${encodeURIComponent(id)}/metadata`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  connectionHistory: (id: string) =>
+    request<{ history: ApiQueryAudit[] }>(`/connections/${encodeURIComponent(id)}/history`),
+
   settings: () => request<{ sections: SettingsSection[] }>('/settings'),
   saveSettings: (section: string, values: Record<string, unknown>) =>
     request<{ saved: boolean; restartRequired: boolean }>(`/settings/${encodeURIComponent(section)}`, {
@@ -610,6 +652,121 @@ export const api = {
   testChannel: (name: string) =>
     request<{ sent: boolean }>(`/channels/${encodeURIComponent(name)}/test`, { method: 'POST' }),
 };
+
+// --- connections ----------------------------------------------------------
+//
+// Server-wide, not per project: one list of shared connections a server admin
+// manages and each person's own, which is why none of these routes go through
+// `scope()`.
+
+export type ConnectionScope = 'shared' | 'private';
+
+export interface ApiConnection {
+  id: string;
+  name: string;
+  scope: ConnectionScope;
+  type: string;
+  settings: Record<string, string>;
+  /** Whether a password exists. Never the password. */
+  secretConfigured: boolean;
+  secretRef: string | null;
+  promptForPassword: boolean;
+  readOnlyUser: string | null;
+  readOnlySecretConfigured: boolean;
+  /** False with a reason rather than a button that fails. */
+  canExecute: boolean;
+  canExecuteReason: string | null;
+  canEdit: boolean;
+  timeoutSeconds: number;
+  rowCap: number;
+  updatedAt: string;
+}
+
+export interface ApiConnectionSave {
+  name: string;
+  scope: ConnectionScope;
+  type: string;
+  settings: Record<string, string>;
+  password?: string;
+  secretRef?: string;
+  promptForPassword?: boolean;
+  readOnlyUser?: string;
+  readOnlyPassword?: string;
+  timeoutSeconds?: number;
+  rowCap?: number;
+}
+
+export interface ApiResultSet {
+  columns: string[];
+  /** `number` | `date` | `string`, for type-aware sorting. */
+  types: string[];
+  /** Already text, and `null` where the database had NULL. */
+  rows: (string | null)[][];
+  /** The cap stopped it short. There is no total — knowing one costs a COUNT. */
+  truncated: boolean;
+}
+
+export interface ApiQueryResult {
+  queryId: string;
+  resultSets: ApiResultSet[];
+  messages: string[];
+  rowsAffected: number;
+  elapsedMs: number;
+  canceled: boolean;
+  error: string | null;
+}
+
+export interface ApiMetadataNode {
+  name: string;
+  kind: 'database' | 'schema' | 'table' | 'view' | 'procedure' | 'function';
+}
+
+export interface ApiColumnDetail {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primaryKey: boolean;
+  identity: boolean;
+}
+
+export interface ApiObjectDetail {
+  columns: ApiColumnDetail[];
+  keys: string[];
+  indexes: string[];
+}
+
+export interface ApiMetadataRequest {
+  level: 'databases' | 'schemas' | 'objects' | 'detail' | 'script';
+  database?: string;
+  schema?: string;
+  object?: string;
+  kind?: string;
+  password?: string;
+}
+
+/** `supported: false` is a provider this server cannot open — the tree shows the
+ *  connection as a leaf rather than as a folder that opens onto nothing. */
+export interface ApiMetadataReply<T> {
+  supported: boolean;
+  reason?: string;
+  error?: string;
+  payload?: T;
+}
+
+export interface ApiQueryAudit {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+  actorId: string;
+  actorName: string;
+  startedAt: string;
+  durationMs: number;
+  statement: string;
+  leastPrivilege: boolean;
+  outcome: string;
+  rowsAffected: number;
+  errorSummary: string | null;
+}
 
 export function isActive(status: RunStatus): boolean {
   return status === 'Pending' || status === 'Running';

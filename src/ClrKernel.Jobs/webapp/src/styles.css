@@ -1036,3 +1036,210 @@
   border-color: var(--primary);
   color: var(--primary);
 }
+
+/* --- the Connections area ------------------------------------------------ */
+
+.connections-page {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.connection-tree {
+  display: flex;
+  width: 280px;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface-panel);
+}
+
+.connection-tree-header {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.connection-tree-rows {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.connection-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  min-height: 24px;
+  font-size: var(--text-sm);
+}
+
+.connection-tree-row:hover {
+  background: var(--color-surface-panel-strong);
+}
+
+.connection-tree-row.is-selected {
+  background: var(--color-primary-soft);
+}
+
+.connection-tree-chevron {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--color-muted-subtle);
+  cursor: pointer;
+}
+
+.connection-tree-label {
+  flex: 1;
+  overflow: hidden;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The row actions stay out of the way until the row is under the pointer —
+   a tree where every row wears three buttons is unreadable. */
+.connection-tree-actions {
+  display: none;
+  gap: 2px;
+}
+
+.connection-tree-row:hover .connection-tree-actions,
+.connection-tree-row:focus-within .connection-tree-actions {
+  display: flex;
+}
+
+.connection-tree-actions button {
+  border: none;
+  background: none;
+  color: var(--color-muted-subtle);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.connection-tree-actions button:hover {
+  color: var(--color-foreground);
+}
+
+.connection-tree-busy,
+.connection-tree-error {
+  color: var(--color-muted-subtle);
+  font-size: var(--text-sm);
+}
+
+.connection-tree-error {
+  padding-right: 8px;
+  color: var(--color-destructive);
+}
+
+.connections-work {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.connections-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-card);
+}
+
+.connections-editor {
+  min-height: 80px;
+}
+
+.connections-results {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.connections-messages {
+  overflow: auto;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+/* --- the results grid --------------------------------------------------- */
+
+.result-grid {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.result-grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.result-grid-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.result-grid-scroll table {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.result-grid-scroll th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-panel);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.result-grid-scroll td {
+  overflow: hidden;
+  max-width: 380px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-grid-gutter {
+  color: var(--color-muted-subtle);
+  text-align: right;
+  user-select: none;
+}
+
+.result-grid-number {
+  text-align: right;
+}
+
+/* NULL and '' look identical in a grid and are not the same thing. */
+.result-grid-null {
+  color: var(--color-muted-subtle);
+  font-style: italic;
+}

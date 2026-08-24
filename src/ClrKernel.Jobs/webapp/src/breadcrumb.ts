@@ -89,6 +89,14 @@ export function breadcrumbFor(pathname: string): Crumb[] {
       return [leaf('Files')];
     }
 
+    case 'connections':
+      // /connections/:id — which connection you have open is a place, so it earns
+      // a crumb. The name is not in the path (the id is), so the page fills it in
+      // by rendering its own heading; the crumb says only that you are inside one.
+      return segments.length >= 2
+        ? [{ label: 'Connections', to: '/connections' }, leaf('Query')]
+        : [leaf('Connections')];
+
     case 'channels':
       return [leaf('Channels')];
 
