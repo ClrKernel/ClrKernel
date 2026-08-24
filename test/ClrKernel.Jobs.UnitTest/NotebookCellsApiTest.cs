@@ -533,6 +533,38 @@ public class NotebookCellsApiTest {
                 new { kind = "completion", cellId = "c0" }, _json)).StatusCode);
     }
 
+    /// <summary>
+    /// Your own branch is in the file list before you have written anything.
+    /// <para>
+    /// It used to appear only once a worktree existed, and a worktree came into
+    /// being on the first save — so the branch you had to be on to save was the one
+    /// the list would not offer until you had saved. A viewer still gets no
+    /// checkout: they can never write to one.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task The_file_list_offers_your_own_branch_before_you_have_used_it() {
+        Assert.IsFalse(_git.HasUserWorktree(_me.Id), "nothing has been written yet");
+
+        var mine = await _client.GetFromJsonAsync<JsonElement>("/api/projects/default/notebooks");
+
+        CollectionAssert.Contains(EnvironmentsOf(mine), ProjectRegistry.MineEnvironment);
+        Assert.IsTrue(_git.HasUserWorktree(_me.Id), "and the branch was made so that is true");
+
+        using var readerClient = new HttpClient { BaseAddress = _client.BaseAddress };
+        var reader = await TestAuth.SignInAsync(_app, readerClient, UserRole.ServerViewer);
+        var theirs = await readerClient.GetFromJsonAsync<JsonElement>("/api/projects/default/notebooks");
+
+        CollectionAssert.DoesNotContain(
+            EnvironmentsOf(theirs), ProjectRegistry.MineEnvironment,
+            "a viewer can never write to a branch, so making them one is disk spent on nothing");
+        Assert.IsFalse(_git.HasUserWorktree(reader.Id));
+    }
+
+    private static string[] EnvironmentsOf(JsonElement payload) =>
+        payload.GetProperty("environments").EnumerateArray()
+            .Select(e => e.GetProperty("name").GetString()).ToArray();
+
     [TestMethod]
     public async Task A_malformed_body_is_a_clear_error_not_a_500() {
         var response = await _client.PutAsync($"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}",

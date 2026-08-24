@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError, api, projectSlug, type ApiCell, type ApiLanguage } from '../api';
+import { ApiError, api, projectSlug, setBranch, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -72,6 +72,12 @@ export function Editor() {
     write: branch === 'mine',
     run: branch === 'mine' || branch === 'test' || branch === 'prod',
   };
+  // Mirrored into the API client rather than threaded through every call: the
+  // kernel routes are reached from Monaco's providers as well as from here, and
+  // handing each of them a branch means carrying one down through the model map.
+  // Set during render, not in an effect, because the polls below start in effects
+  // and would otherwise make their first request against the branch you left.
+  setBranch(branch);
   const isNotebook = /\.(nb\.)?md$/i.test(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
@@ -122,7 +128,10 @@ export function Editor() {
   const { data: session, error: sessionError, reload: reloadSession } = usePolling(
     () => api.sessionStatus(path),
     pollFast ? 400 : null,
-    [path],
+    // The branch is part of which kernel this is: test and prod each get their
+    // own, so switching branches has to ask again rather than keep showing the
+    // status of the session you were looking at.
+    [path, branch],
   );
 
   // The server is the authority in both directions. A click starts polling
@@ -245,7 +254,7 @@ export function Editor() {
     if (isNotebook) {
       api.startSession(path).catch(() => undefined);
     }
-  }, [path, isNotebook]);
+  }, [path, branch, isNotebook]);
 
   // What the editor has open, told to the kernel on a debounce. Language features
   // answer about documents the server holds, so this is what makes them work at all
@@ -275,7 +284,7 @@ export function Editor() {
         clearTimeout(followUp);
       }
     };
-  }, [path, isNotebook, cells, canRun, reloadSession]);
+  }, [path, branch, isNotebook, cells, canRun, reloadSession]);
 
   /**
    * Asks once before anything runs against production, naming what it is about to
@@ -537,6 +546,7 @@ export function Editor() {
     <div className="flex min-h-0 flex-1 overflow-hidden" ref={shell}>
       <NotebookExplorer
         path={path}
+        branch={branch}
         width={layout.explorerWidth}
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}

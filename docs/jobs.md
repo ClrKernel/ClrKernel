@@ -464,9 +464,17 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 
 Nobody edits `test` or `prod` — notebooks or `*.jobs.yaml` alike. Each person gets a **branch and worktree of their
 own** — `user/<account id>`, checked out at `user-<id>/` beside `test/` and `prod/`
-— created the first time they edit something in that project. Most people never
-touch most projects, so keeping an empty checkout per person per project against
-that possibility is not worth the disk.
+— created the first time they open that project's file list. Viewers never get
+one: they can never write to it, and most people never touch most projects, so
+keeping an empty checkout per person per project against that possibility is not
+worth the disk.
+
+**New notebook** — on the Notebooks page, or in the editor's explorer — makes one.
+It takes a path, and the folders in that path are made along with it, so
+`reports/monthly` creates `reports/`. There is no separate *new folder*: git does
+not track an empty one and the file tree does not show it, so a button for it would
+produce nothing you could see. It lands on your own branch whichever branch you
+were reading, which is the same rule as everything else here.
 
 The loop:
 

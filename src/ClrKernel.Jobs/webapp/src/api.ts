@@ -27,6 +27,26 @@ const project = () => `/projects/${encodeURIComponent(currentProject)}`;
 /** `/projects/<slug>/branches/<branch>` — everything that reads or writes a worktree. */
 const scope = (branch: string) => `${project()}/branches/${encodeURIComponent(branch)}`;
 
+/**
+ * Which branch the open notebook is being read from. The same argument as
+ * `currentProject`: the editor holds one notebook on one branch, and the seven
+ * routes that talk to that notebook's kernel would otherwise all be carrying the
+ * identical value down through Monaco's model map to get here.
+ *
+ * Writes are deliberately *not* on it — `saveNotebookContent` and
+ * `saveNotebookCells` name `mine` outright, because the branch you are reading is
+ * never the branch you write to. Reading prod and saving is "copy to my branch",
+ * not "edit production".
+ */
+let currentBranch = 'mine';
+
+export function setBranch(branch: string): void {
+  currentBranch = branch;
+}
+
+/** The branch the editor currently has open. */
+const open = () => scope(currentBranch);
+
 export type RunStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut';
 export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipped';
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
@@ -484,26 +504,26 @@ export const api = {
   // writes to the run store: an interactive run never appears in run history
   // and can never become the green evidence promotion requires.
   runCells: (path: string, cells: ApiCell[]) =>
-    request<{ running: string[] }>(`${scope('mine')}/notebooks/run?path=${encodeURIComponent(path)}`, {
+    request<{ running: string[] }>(`${open()}/notebooks/run?path=${encodeURIComponent(path)}`, {
       method: 'POST',
       body: JSON.stringify({ cells }),
     }),
   /** The connection wizard's schema, from the notebook's own kernel. */
   connectionProviders: (path: string, languageId: string) =>
     request<{ providers: ApiConnectionProvider[] }>(
-      `${scope('mine')}/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
+      `${open()}/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
     ),
   /** Starts (or touches) the notebook's kernel. Opening the editor does this, so
    *  language features work on the first keystroke rather than the first run. */
   startSession: (path: string) =>
-    request<ApiSession>(`${scope('mine')}/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<ApiSession>(`${open()}/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'POST',
     }),
   /** Tells the kernel which cells are open, so completion and hover have documents
    *  to answer about. Authoritative: cells left out are closed. */
   syncCells: (path: string, cells: ApiSyncCell[]) =>
     request<{ started: boolean; sent: number }>(
-      `${scope('mine')}/notebooks/sync?path=${encodeURIComponent(path)}`,
+      `${open()}/notebooks/sync?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify({ cells }) },
     ),
   /** One language question about one cell. Returns null when the notebook has no
@@ -511,15 +531,15 @@ export const api = {
    *  cannot answer is silent, never an error. */
   languageRequest: <T>(path: string, body: ApiLanguageRequest) =>
     request<{ started: boolean; result: T | null }>(
-      `${scope('mine')}/notebooks/language?path=${encodeURIComponent(path)}`,
+      `${open()}/notebooks/language?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify(body) },
     ).then((r) => r.result),
   sessionStatus: (path: string) =>
-    request<ApiSession>(`${scope('mine')}/notebooks/session/status?path=${encodeURIComponent(path)}`),
+    request<ApiSession>(`${open()}/notebooks/session/status?path=${encodeURIComponent(path)}`),
   /** Kills the kernel. Also the only interrupt there is — no RPC surface can
    *  cancel a cell that is already running. */
   restartSession: (path: string) =>
-    request<{ restarted: boolean }>(`${scope('mine')}/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<{ restarted: boolean }>(`${open()}/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'DELETE',
     }),
 

@@ -200,34 +200,40 @@ public static class JobsApi {
 
         // --- notebooks ------------------------------------------------------
 
-        api.MapGet("/projects/{project}/notebooks", (
+        api.MapGet("/projects/{project}/notebooks", async (
             HttpContext context, ProjectRegistry projects, string project) => {
-                if (projects.Find(project) is not { } found) {
+                if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
-                var catalog = projects.CatalogFor(found);
-                var git = projects.GitFor(found);
+                var catalog = scope.Catalog;
                 var result = catalog.Load();
                 var trees = catalog.Environments.Select(env => new {
                     name = env,
                     tree = Directory.Exists(catalog.RootFor(env))
-                        ? NotebookTree.Build(catalog.RootFor(env), result, found.Slug, env)
+                        ? NotebookTree.Build(catalog.RootFor(env), result, scope.Project.Slug, env)
                         : null,
                 }).ToList();
 
-                // Your own branch first when you have one: it is where editing
-                // happens, so a file list that only offered test would be showing
-                // you the files you are not the one changing.
-                var user = context.CurrentUser();
-                if (user != null && git != null && git.HasUserWorktree(user.Id)) {
-                    var mine = git.PathFor(GitService.BranchForUser(user.Id));
+                // Your own branch first: it is where editing happens, so a file list
+                // that only offered test would be showing you the files you are not
+                // the one changing.
+                //
+                // Made here rather than waited for. It used to appear only once a
+                // worktree existed, and a worktree came into being on the first save
+                // — so you could not save until you had picked your branch, and you
+                // could not pick it until you had saved. A viewer still gets no
+                // checkout: they can never write to one.
+                if (scope.Git != null
+                    && await context.ProjectRoleAsync(scope.Project.Slug) >= ProjectRole.ProjectMember
+                    && scope.BranchFor(context, _mineBranch) is { } mine) {
                     // Annotated with this branch's jobs, which is none: the catalog
                     // scans environments, and a personal branch is not one. Leaving
                     // the environment out would annotate with every job on the
                     // server instead, which is a label that is simply untrue.
                     trees.Insert(0, new {
                         name = _mineBranch,
-                        tree = NotebookTree.Build(mine, result, found.Slug, _mineBranch),
+                        tree = NotebookTree.Build(
+                            scope.Git.PathFor(mine), result, scope.Project.Slug, _mineBranch),
                     });
                 }
                 return Results.Ok(new { environments = trees });

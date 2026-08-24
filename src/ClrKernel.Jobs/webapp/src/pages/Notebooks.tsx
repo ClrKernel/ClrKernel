@@ -1,4 +1,4 @@
-import { GitBranch } from 'lucide-react';
+import { FilePlus2, GitBranch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -9,21 +9,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { api, projectSlug, type TreeNode } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
-import { useCanWrite } from '../sessionContext';
+import { createNotebook, promptForNotebook } from '../newNotebook';
+import { useIsProjectMember } from '../sessionContext';
 
 function Node({
   node,
   env,
   depth,
-  editable,
+  mayEdit,
   onCreate,
 }: {
   node: TreeNode;
   env: string;
   depth: number;
-  editable: boolean;
+  /** Whether this person may write jobs — not whether this branch is writable. */
+  mayEdit: boolean;
   onCreate: (path: string) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -55,7 +58,7 @@ function Node({
               node={child}
               env={env}
               depth={depth + 1}
-              editable={editable}
+              mayEdit={mayEdit}
               onCreate={onCreate}
             />
           ))}
@@ -72,20 +75,21 @@ function Node({
     );
   }
 
-  // The project rides in the query string for the same reason it rides in a job
-  // URL: a shared editor link has to open the notebook it was shared for.
+  // The project and the branch ride in the query string for the same reason they
+  // ride in a job URL: a shared editor link has to open the notebook it was
+  // shared for, on the branch it was shared from.
   const href =
-    `/edit?project=${encodeURIComponent(projectSlug())}&path=${encodeURIComponent(node.path)}`;
+    `/edit?project=${encodeURIComponent(projectSlug())}&path=${encodeURIComponent(node.path)}`
+    + `&branch=${encodeURIComponent(env)}`;
   return (
     <div className={row} style={indent}>
       <span aria-hidden="true" className="w-3 shrink-0" />
-      {editable ? (
-        <Link className="font-mono text-code hover:text-primary hover:underline" to={href}>
-          {node.name}
-        </Link>
-      ) : (
-        <span className="font-mono text-code">{node.name}</span>
-      )}
+      {/* Openable on every branch. test and prod are read-only there rather than
+          unopenable — the editor is how you read a notebook, not only how you
+          change one. */}
+      <Link className="font-mono text-code hover:text-primary hover:underline" to={href}>
+        {node.name}
+      </Link>
       {node.jobs?.map((job) => (
         <Link
           key={job}
@@ -95,7 +99,7 @@ function Node({
           {job}
         </Link>
       ))}
-      {editable && (
+      {mayEdit && (
         <button
           type="button"
           className="text-xs text-muted-subtle outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
@@ -110,23 +114,46 @@ function Node({
 
 export function Notebooks() {
   const navigate = useNavigate();
-  const canWrite = useCanWrite();
-  const { data, error } = usePolling(() => api.notebooks(), null);
+  const mayEdit = useIsProjectMember();
+  const { data, error, reload } = usePolling(() => api.notebooks(), null);
   const { data: health } = usePolling(() => api.health(), null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   const [env, setEnv] = useState<string>('');
   // The list arrives after first paint, so the initial selection is set once it
-  // does — test if it exists, because test is the one you can edit.
+  // does — your own branch when there is one, because that is the copy you are
+  // the one changing.
   useEffect(() => {
     if (!env && environments.length > 0) {
-      setEnv(environments.find((e) => e.name === 'test')?.name ?? environments[0].name);
+      setEnv(environments.find((e) => e.name === 'mine')?.name ?? environments[0].name);
     }
   }, [environments.length]);
 
   const selected = environments.find((e) => e.name === env);
-  // Editing needs both the git workflow and a role that may write.
-  const editable = env === 'test' && (health?.gitEnabled ?? false) && canWrite;
+  // Writing needs both the git workflow and a role that may write. Which branch
+  // is on screen is a separate question: everything is written to your own, so
+  // browsing test does not stop you making a notebook.
+  const mayWrite = (health?.gitEnabled ?? false) && mayEdit;
+
+  /** Makes it on your branch and opens it there, whichever branch is on screen. */
+  async function create() {
+    const wanted = promptForNotebook();
+    if (wanted == null) {
+      return;
+    }
+    setNotice(null);
+    try {
+      await createNotebook(wanted);
+      reload();
+      navigate(
+        `/edit?project=${encodeURIComponent(projectSlug())}`
+          + `&path=${encodeURIComponent(wanted)}&branch=mine`,
+      );
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  }
 
   return (
     <div>
@@ -140,6 +167,7 @@ export function Notebooks() {
         }
       />
       <ErrorBanner error={error} />
+      <ErrorBanner error={notice} />
 
       {health && !health.gitEnabled && (
         <Alert variant="warning" className="mb-4 max-w-[640px]">
@@ -164,9 +192,9 @@ export function Notebooks() {
         <p className="text-base text-muted-foreground">No notebooks under the notebooks root.</p>
       ) : (
         <>
-          {/* The handoff shows a branch picker. There is no branch API — the
-              real axis is the environment, which *is* a worktree when the git
-              workflow is on, so this is the same control over honest data. */}
+          {/* Which worktree is being listed: your own branch, then the two that
+              run. Everything but your own is read-only, which the chip says
+              rather than leaving it to be inferred from a name. */}
           <div className="mb-3 flex items-center gap-2">
             <GitBranch className="size-[15px] shrink-0 text-muted-subtle" aria-hidden="true" />
             <Select value={env} onValueChange={setEnv}>
@@ -181,10 +209,17 @@ export function Notebooks() {
                 ))}
               </SelectContent>
             </Select>
-            {!editable && (
+            {env !== 'mine' && (
               <span className="rounded-full border border-border px-2 py-px text-xs font-semibold text-muted-subtle">
                 read-only
               </span>
+            )}
+            <span className="flex-1" />
+            {mayWrite && (
+              <Button variant="outline" size="sm" onClick={create}>
+                <FilePlus2 className="size-3.5" aria-hidden="true" />
+                New notebook
+              </Button>
             )}
           </div>
 
@@ -195,9 +230,14 @@ export function Notebooks() {
                 node={child}
                 env={env}
                 depth={0}
-                editable={editable}
+                mayEdit={mayWrite}
                 onCreate={(path) =>
-                  navigate(`/jobs/${env}/new?notebook=${encodeURIComponent(path)}`)
+                  // A job is edited on your branch and starts running when you
+                  // push it, so a new one is written there whichever branch you
+                  // were reading the notebook on.
+                  navigate(
+                    `/jobs/${projectSlug()}/mine/new?notebook=${encodeURIComponent(path)}`,
+                  )
                 }
               />
             ))}

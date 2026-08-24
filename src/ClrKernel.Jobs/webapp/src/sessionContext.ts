@@ -52,6 +52,17 @@ export function useCanRun(): boolean {
   return useContext(BranchAllows).run && atLeast(useProjectRole(), 'ProjectMember');
 }
 
+/**
+ * May write somewhere in this project, whatever the branch on screen allows.
+ *
+ * Separate from `useCanWrite` on purpose: creating a notebook lands on your
+ * own branch no matter which one you happen to be reading, so the question is
+ * about the role alone.
+ */
+export function useIsProjectMember(): boolean {
+  return atLeast(useProjectRole(), 'ProjectMember');
+}
+
 /** May configure this project, manage its members, and promote to production. */
 export function useIsProjectAdmin(): boolean {
   return atLeast(useProjectRole(), 'ProjectAdmin');
