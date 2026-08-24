@@ -71,6 +71,14 @@ export interface Project {
   role: ProjectRole;
 }
 
+export interface CronPreview {
+  valid: boolean;
+  /** Why it was refused, from Cronos, or null. */
+  error: string | null;
+  /** The next few occurrences as ISO instants. Always UTC — the scheduler's clock. */
+  next: string[];
+}
+
 export interface BranchSummary {
   /** What a route calls it: `mine`, `user-<id>`, `test`, `prod`. */
   id: string;
@@ -470,6 +478,10 @@ export const api = {
     fetch(`/api/runs/${id}/log`).then((r) =>
       r.ok ? r.text() : '',
     ),
+
+  /** What a cron expression actually does, from the scheduler's own parser. */
+  cronPreview: (expression: string) =>
+    request<CronPreview>(`/cron/preview?expression=${encodeURIComponent(expression)}`),
 
   notebooks: () =>
     request<{ environments: { name: string; tree: TreeNode | null }[] }>(`${project()}/notebooks`),

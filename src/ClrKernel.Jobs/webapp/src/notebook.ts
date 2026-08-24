@@ -1,4 +1,4 @@
-import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession, ApiSyncCell } from './api';
+import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession, ApiSyncCell, TreeNode } from './api';
 import type { NotebookOutput } from './ipynb';
 
 /**
@@ -290,4 +290,27 @@ export function mergeStatus(
     };
   }
   return merged;
+}
+
+/**
+ * Every notebook in a tree, as paths relative to its root, depth-first.
+ *
+ * For the job form's notebook picker: a job's notebook has to exist on the branch
+ * the job is written to, and the server refuses one that does not — so offering
+ * the list beats letting somebody type a path and meet that refusal at save.
+ * Jobs files are left out; a job runs a notebook, never another jobs file.
+ */
+export function notebookPaths(tree: TreeNode | null | undefined): string[] {
+  const found: string[] = [];
+  const walk = (nodes: TreeNode[]) => {
+    for (const node of nodes) {
+      if (node.isDirectory) {
+        walk(node.children ?? []);
+      } else if (node.kind === 'notebook') {
+        found.push(node.path);
+      }
+    }
+  };
+  walk(tree?.children ?? []);
+  return found;
 }

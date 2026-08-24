@@ -9,6 +9,7 @@
 
 const GLOBAL_KEY = 'clrkernel-jobs-layout';
 const NOTEBOOK_KEY = 'clrkernel-jobs-notebook-state';
+const BRANCH_KEY = 'clrkernel-jobs-branch';
 
 export interface LayoutPrefs {
   sidebarWidth: number;
@@ -89,4 +90,24 @@ export function loadNotebookState(path: string): NotebookState {
 export function saveNotebookState(path: string, state: NotebookState): void {
   const all = read<Record<string, NotebookState>>(NOTEBOOK_KEY, {});
   write(NOTEBOOK_KEY, { ...all, [path]: { ...all[path], ...state } });
+}
+
+/**
+ * Which branch you were last browsing, per project.
+ *
+ * Per project because they are different sets of files with the same three
+ * names, and remembering one answer for all of them would mean the wrong one
+ * everywhere but where you set it.
+ *
+ * Deliberately *not* used by the editor: `/edit?path=x` with no branch means
+ * your own copy, for everyone. A shared link that resolved against whatever the
+ * person opening it last browsed would mean a different file per reader — the
+ * same argument that put the project in the URL.
+ */
+export function loadBranch(project: string): string | null {
+  return read<Record<string, string>>(BRANCH_KEY, {})[project] ?? null;
+}
+
+export function saveBranch(project: string, branch: string): void {
+  write(BRANCH_KEY, { ...read<Record<string, string>>(BRANCH_KEY, {}), [project]: branch });
 }

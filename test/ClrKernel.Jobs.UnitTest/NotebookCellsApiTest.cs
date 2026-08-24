@@ -565,6 +565,47 @@ public class NotebookCellsApiTest {
         payload.GetProperty("environments").EnumerateArray()
             .Select(e => e.GetProperty("name").GetString()).ToArray();
 
+    /// <summary>
+    /// A job lives on your branch from the moment you write it, and leaves test
+    /// alone until you push.
+    /// <para>
+    /// Two things used to be wrong at once. The jobs list is built from the
+    /// catalog the scheduler reads, which deliberately never scans a personal
+    /// branch — so a job you had just created was simply absent from the page that
+    /// exists to list your jobs. And delete looked for the job in the project's own
+    /// catalog and committed the removal in <em>test's</em> worktree: it found
+    /// nothing on a personal branch, and had it found something it would have
+    /// landed a commit nobody pushed, invalidating the promotion evidence of
+    /// everything else in that tree.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task A_job_on_your_branch_is_listed_and_deletable_without_touching_test() {
+        var testHead = _git.HeadSha(GitService.TestBranch);
+        var created = await _client.PostAsJsonAsync(
+            "/api/projects/default/branches/mine/jobs",
+            new { name = "monthly-close", notebook = _notebook, cron = "30 7 * * 1-5", enabled = true },
+            _json);
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode,
+            await created.Content.ReadAsStringAsync());
+
+        var listed = await _client.GetFromJsonAsync<JsonElement>("/api/jobs");
+        var job = listed.GetProperty("jobs").EnumerateArray()
+            .SingleOrDefault(j => j.GetProperty("name").GetString() == "monthly-close");
+        Assert.AreNotEqual(default, job, "a job you have written is one of your jobs");
+        Assert.AreEqual(ProjectRegistry.MineEnvironment, job.GetProperty("environment").GetString(),
+            "and it says where it is, because that is why it is not running yet");
+
+        Assert.AreEqual(HttpStatusCode.NoContent,
+            (await _client.DeleteAsync("/api/projects/default/branches/mine/jobs/monthly-close"))
+                .StatusCode);
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await _client.GetAsync("/api/projects/default/branches/mine/jobs/monthly-close"))
+                .StatusCode);
+        Assert.AreEqual(testHead, _git.HeadSha(GitService.TestBranch),
+            "neither the write nor the delete is a commit, and neither one is test's");
+    }
+
     [TestMethod]
     public async Task A_malformed_body_is_a_clear_error_not_a_500() {
         var response = await _client.PutAsync($"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}",

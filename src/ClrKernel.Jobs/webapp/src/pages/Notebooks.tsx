@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { api, projectSlug, type TreeNode } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { createNotebook, promptForNotebook } from '../newNotebook';
+import { loadBranch, saveBranch } from '../prefs';
 import { useIsProjectMember } from '../sessionContext';
 
 function Node({
@@ -122,13 +123,26 @@ export function Notebooks() {
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   const [env, setEnv] = useState<string>('');
   // The list arrives after first paint, so the initial selection is set once it
-  // does — your own branch when there is one, because that is the copy you are
-  // the one changing.
+  // does: the branch you were last on in this project, then your own, then
+  // whatever there is. Checked against the list rather than trusted — a
+  // remembered branch can be one that no longer exists, and a Select whose value
+  // matches no option renders blank.
   useEffect(() => {
     if (!env && environments.length > 0) {
-      setEnv(environments.find((e) => e.name === 'mine')?.name ?? environments[0].name);
+      const remembered = loadBranch(projectSlug());
+      setEnv(
+        environments.find((e) => e.name === remembered)?.name
+          ?? environments.find((e) => e.name === 'mine')?.name
+          ?? environments[0].name,
+      );
     }
   }, [environments.length]);
+
+  /** Remembered on change, so nobody re-picks their branch on every visit. */
+  function pick(branch: string) {
+    setEnv(branch);
+    saveBranch(projectSlug(), branch);
+  }
 
   const selected = environments.find((e) => e.name === env);
   // Writing needs both the git workflow and a role that may write. Which branch
@@ -197,7 +211,7 @@ export function Notebooks() {
               rather than leaving it to be inferred from a name. */}
           <div className="mb-3 flex items-center gap-2">
             <GitBranch className="size-[15px] shrink-0 text-muted-subtle" aria-hidden="true" />
-            <Select value={env} onValueChange={setEnv}>
+            <Select value={env} onValueChange={pick}>
               <SelectTrigger className="font-mono" aria-label="Environment">
                 <SelectValue />
               </SelectTrigger>

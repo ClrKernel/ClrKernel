@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -371,6 +372,33 @@ public class ApiTest {
         var response = await _client.GetAsync("/api/nope");
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
         StringAssert.Contains(response.Content.Headers.ContentType?.MediaType, "json");
+    }
+
+    /// <summary>
+    /// What the cron field reads back. Answered by the same Cronos that will accept
+    /// or refuse the expression at save, so the two cannot disagree — and a bad
+    /// expression is an answer rather than an error, because typing one is what
+    /// happens on the way to a good one.
+    /// </summary>
+    [TestMethod]
+    public async Task A_cron_preview_says_when_it_runs_or_why_it_will_not() {
+        var good = await _client.GetFromJsonAsync<JsonElement>("/api/cron/preview?expression=0 2 * * *");
+        Assert.IsTrue(good.GetProperty("valid").GetBoolean());
+        var next = good.GetProperty("next").EnumerateArray()
+            .Select(t => DateTime.Parse(t.GetString(), null, DateTimeStyles.RoundtripKind)).ToList();
+        Assert.AreEqual(5, next.Count);
+        CollectionAssert.AllItemsAreUnique(next);
+        // UTC, because UTC is what SchedulerService.IsDue compares against. A
+        // preview in local time is how somebody schedules the nightly close for
+        // the wrong hour.
+        Assert.IsTrue(next.All(t => t.Hour == 2), string.Join(", ", next));
+
+        var bad = await _client.GetAsync("/api/cron/preview?expression=every tuesday pls");
+        Assert.AreEqual(HttpStatusCode.OK, bad.StatusCode, "a half-typed cron is not a server error");
+        var body = await bad.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.IsFalse(body.GetProperty("valid").GetBoolean());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(body.GetProperty("error").GetString()));
+        Assert.AreEqual(0, body.GetProperty("next").GetArrayLength());
     }
 
     [TestMethod]

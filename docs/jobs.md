@@ -112,6 +112,11 @@ also get a cell editor that runs cells against a live kernel — see
 
 - **Cron jobs** fire when their next occurrence falls inside a tick (every 10s).
   Occurrences missed while the scheduler was down are skipped, not backfilled.
+- **Cron is read in UTC**, not the server's local time. The job form says so and
+  lists the next three occurrences as you type — from the same parser the scheduler
+  runs, so a schedule the field accepts is one that will actually fire. It also
+  offers the usual ones (hourly, nightly, weekdays) as presets, so most jobs need no
+  cron written at all.
 - **A job already running skips its next occurrence** rather than piling up.
 - **Dependencies** are evaluated on every tick: a job fires when *every* job it
   `dependsOn` has a success newer than that job's own last trigger. So fan-in fires
@@ -469,6 +474,10 @@ one: they can never write to it, and most people never touch most projects, so
 keeping an empty checkout per person per project against that possibility is not
 worth the disk.
 
+Which branch you are browsing is remembered per project, so nobody re-picks it on
+every visit; the editor is the exception, where `/edit?path=…` with no branch means
+your own copy for everybody, or a shared link would open a different file per reader.
+
 **New notebook** — on the Notebooks page, or in the editor's explorer — makes one.
 It takes a path, and the folders in that path are made along with it, so
 `reports/monthly` creates `reports/`. There is no separate *new folder*: git does
@@ -487,6 +496,11 @@ The loop:
    *Saved*, *Unsaved*, *Saving…*, or *Save failed* — the last of which is the only
    one you can click, and it retries. `⌘S` / `Ctrl+S` writes now rather than in a
    moment.
+   Jobs are edited the same way and in the same place — creating, changing or
+   deleting one writes your branch's `*.jobs.yaml` and commits nothing. The Jobs
+   page lists what you have written but not yet pushed, badged `mine`, so a job you
+   just made is not missing from the page that exists to list your jobs. Nothing on
+   a personal branch is ever scheduled.
 2. **Push to test** from the editor's toolbar. That is the commit: everything you
    have saved becomes one commit on `test`, under a message you write, authored as
    you. If `test` has moved since you branched, the push is refused and the button

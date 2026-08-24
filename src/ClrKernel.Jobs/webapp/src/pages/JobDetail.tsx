@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, type Job, type Run } from '../api';
+import { CronField } from '../components/CronField';
 import { EnvBadge, ErrorBanner, usePolling } from '../components/common';
+import { notebookPaths } from '../notebook';
 import { useCanWrite } from '../sessionContext';
 import { RunTable } from './Dashboard';
 
@@ -121,6 +131,15 @@ export function JobDetail() {
     [name],
   );
   const { data: channels } = usePolling(() => api.channels(), null);
+  // The notebooks this job could name. A job's notebook has to exist on the branch
+  // the job is written to — the server refuses one that does not — so the list is
+  // the field, rather than a text box that meets that refusal at save time.
+  const { data: trees } = usePolling(() => api.notebooks(), null);
+  const notebooks = notebookPaths((trees?.environments ?? []).find((e) => e.name === env)?.tree);
+  // Whatever it already says, even when that is not on this branch: a job whose
+  // notebook moved must still render as the job it is.
+  const notebookOptions =
+    form.notebook && !notebooks.includes(form.notebook) ? [form.notebook, ...notebooks] : notebooks;
   const channelNames = (channels?.channels ?? []).map((c) => c.name);
   // The jobs file itself, not a client-side re-serialisation of the form: what
   // is on disk is the thing worth showing, and it needs no new endpoint.
@@ -264,6 +283,17 @@ export function JobDetail() {
       </div>
       <ErrorBanner error={error} />
       <ErrorBanner error={saveError} />
+      {isNew && env === 'mine' && (
+        <Alert className="mb-4 max-w-[640px]">
+          <AlertTitle>This job is written on your own branch</AlertTitle>
+          <AlertDescription>
+            Jobs are edited where everything else is — your branch — whichever branch you were
+            browsing when you started. Nothing is scheduled from a personal branch: it begins
+            running when you <strong>Push to test</strong> from the notebook editor, and reaches
+            production by being promoted.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="overview">
         <TabsList variant="line" className="mb-4">
@@ -279,17 +309,45 @@ export function JobDetail() {
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} />
         </label>
         <label>
-          Notebook <span className="text-base text-muted-foreground">(relative to the notebooks root)</span>
-          <Input value={form.notebook} onChange={(e) => update('notebook', e.target.value)} />
+          Notebook{' '}
+          <span className="text-base text-muted-foreground">(on {env})</span>
+          <Select
+            value={form.notebook || undefined}
+            onValueChange={(notebook) => update('notebook', notebook)}
+          >
+            <SelectTrigger className="font-mono" aria-label="Notebook">
+              <SelectValue placeholder="Pick a notebook" />
+            </SelectTrigger>
+            <SelectContent>
+              {notebookOptions.map((notebook) => (
+                <SelectItem key={notebook} value={notebook} className="font-mono">
+                  {notebook}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {notebookOptions.length === 0 && (
+            <span className="block text-base text-muted-foreground">
+              No notebooks on this branch yet — make one from{' '}
+              <Link className="text-primary hover:underline" to="/notebooks">
+                Notebooks
+              </Link>
+              .
+            </span>
+          )}
+          {/* Said here rather than met at save time. Clicking "+ job" on a notebook
+              you were reading in test names a file your branch may not have yet —
+              test moves on without you — and the save refuses it with a message
+              that arrives after the whole form is filled in. */}
+          {trees != null && form.notebook && !notebooks.includes(form.notebook) && (
+            <span className="block text-base text-status-warning">
+              Not on this branch yet. Open it and{' '}
+              <strong>Update from test</strong> first — a job can only name a notebook
+              that is here.
+            </span>
+          )}
         </label>
-        <label>
-          Cron <span className="text-base text-muted-foreground">(empty = manual or dependency-triggered)</span>
-          <Input
-            value={form.cron}
-            placeholder="0 2 * * *"
-            onChange={(e) => update('cron', e.target.value)}
-          />
-        </label>
+        <CronField value={form.cron} disabled={!mayEdit} onChange={(cron) => update('cron', cron)} />
         <label>
           Depends on <span className="text-base text-muted-foreground">(comma-separated job names)</span>
           <Input value={form.dependsOn} onChange={(e) => update('dependsOn', e.target.value)} />

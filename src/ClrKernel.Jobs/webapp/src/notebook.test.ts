@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ApiCell, ApiLanguage, ApiSession } from './api';
+import type { ApiCell, ApiLanguage, ApiSession, TreeNode } from './api';
 import {
   cellsToRun,
   fileLanguage,
@@ -9,6 +9,7 @@ import {
   mergeStatus,
   monacoLanguage,
   moveCell,
+  notebookPaths,
   removeCell,
   setCellLanguage,
   toApiCells,
@@ -262,5 +263,27 @@ describe('isDirty', () => {
 
   it('drops editor-only fields on the way out', () => {
     expect(toApiCells(withIds(saved))[0]).not.toHaveProperty('id');
+  });
+});
+
+describe('notebookPaths', () => {
+  const tree = {
+    name: '/', path: '', isDirectory: true, kind: null, jobs: null,
+    children: [
+      { name: 'reports', path: 'reports', isDirectory: true, kind: null, jobs: null, children: [
+        { name: 'monthly.nb.md', path: 'reports/monthly.nb.md', isDirectory: false, kind: 'notebook', jobs: null, children: null },
+        { name: 'monthly.jobs.yaml', path: 'reports/monthly.jobs.yaml', isDirectory: false, kind: 'jobs', jobs: null, children: null },
+      ] },
+      { name: 'etl.nb.md', path: 'etl.nb.md', isDirectory: false, kind: 'notebook', jobs: null, children: null },
+    ],
+  } as unknown as TreeNode;
+
+  it('finds notebooks at every depth and leaves jobs files out', () => {
+    expect(notebookPaths(tree)).toEqual(['reports/monthly.nb.md', 'etl.nb.md']);
+  });
+
+  it('has nothing to say about a branch with no tree', () => {
+    expect(notebookPaths(null)).toEqual([]);
+    expect(notebookPaths(undefined)).toEqual([]);
   });
 });

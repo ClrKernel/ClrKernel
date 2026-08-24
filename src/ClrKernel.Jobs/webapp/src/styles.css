@@ -118,6 +118,18 @@
     font-weight: 500;
   }
 
+  /* The same shape as a label, for a field whose header carries a control of its
+     own. A <button> inside a <label> takes that label's entire text as its
+     accessible name — "Use a preset" gets announced as the whole schedule field —
+     so such a field is a div and points at its input by id instead. */
+  .form .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
   .form-row {
     display: flex;
     gap: 12px;

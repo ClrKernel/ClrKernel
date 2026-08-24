@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/select';
 import { api, projectSlug, type TreeNode } from '../api';
 import { createNotebook, promptForNotebook } from '../newNotebook';
+import { saveBranch } from '../prefs';
 import { useIsProjectMember } from '../sessionContext';
 import { usePolling } from './common';
 
@@ -151,7 +152,15 @@ export function NotebookExplorer({
 
       <div className="flex items-center gap-1.5 pb-2.5 pl-3.5 pr-2.5">
         <GitBranch className="size-[13px] shrink-0 text-muted-subtle" aria-hidden="true" />
-        <Select value={env} onValueChange={setEnv}>
+        <Select
+          value={env}
+          onValueChange={(branch) => {
+            setEnv(branch);
+            // The same memory the Notebooks page keeps: picking a branch in
+            // either place is picking it for the project.
+            saveBranch(projectSlug(), branch);
+          }}
+        >
           <SelectTrigger
             size="sm"
             className="min-w-0 flex-1 bg-card font-mono text-xs"

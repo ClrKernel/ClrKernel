@@ -794,10 +794,44 @@ public static class JobsApi {
         api.MapGet("/jobs", async (HttpContext context, ProjectRegistry projects) => {
             var visible = await context.VisibleProjectsAsync(projects);
             var result = projects.LoadAll();
-            return Results.Ok(new {
-                jobs = result.Jobs.Where(j => visible.ContainsKey(j.Project)).Select(JobView.From),
-                errors = result.Errors,
-            });
+            var jobs = result.Jobs.Where(j => visible.ContainsKey(j.Project))
+                .Select(JobView.From).ToList();
+
+            // Jobs you have written but not pushed yet.
+            //
+            // They are deliberately not in LoadAll — the scheduler reads that, and a
+            // personal branch is not something that runs. But leaving them out here
+            // means a job you just made is missing from the page whose entire job is
+            // to list your jobs, which reads as the save having failed.
+            //
+            // Only the ones test does not already have, by name: a job you are
+            // editing is the same job, and showing both copies of it would double
+            // the list for the sake of a badge. Against test specifically, not
+            // against everything loaded — a prod-only leftover is not a reason to
+            // hide the copy you are working on.
+            if (context.CurrentUser() is { } user) {
+                var mine = GitService.BranchForUser(user.Id);
+                foreach (var project in projects.Projects) {
+                    if (!visible.TryGetValue(project.Slug, out var role)
+                        || role < ProjectRole.ProjectMember) {
+                        continue;
+                    }
+                    // Asked, never ensured: this route spans every project and the
+                    // dashboard polls it, so making the worktree here would be a
+                    // checkout in every registered project on page load.
+                    if (projects.GitFor(project) is not { } git || !git.HasUserWorktree(user.Id)) {
+                        continue;
+                    }
+                    var inTest = result.Jobs
+                        .Where(j => j.Project == project.Slug && j.Environment == GitService.TestBranch)
+                        .Select(j => j.Name)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    jobs.AddRange(projects.CatalogFor(project, mine).Load().Jobs
+                        .Where(j => !inTest.Contains(j.Name))
+                        .Select(JobView.From));
+                }
+            }
+            return Results.Ok(new { jobs, errors = result.Errors });
         });
 
         scoped.MapGet("/jobs/{name}", (
@@ -838,12 +872,22 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
+                // Deleting a job is editing a jobs file, so it happens where every
+                // other edit does: your own branch. It used to look for the job in
+                // the project's own catalog and commit the removal in test's
+                // worktree — which found nothing on a personal branch, and would
+                // have landed a commit on test that nobody pushed.
+                if (scope.Catalog.GitLayout && !scope.OwnedBy(context, branch)) {
+                    return Results.BadRequest(new {
+                        error = GitService.IsUserBranch(branch)
+                            ? "That is somebody else's branch."
+                            : "test and prod are read-only. Delete on your own branch and push to test.",
+                    });
+                }
+                var catalog = scope.CatalogFor(branch);
+                var job = catalog.Load().Find(scope.Project.Slug, scope.EnvironmentOf(branch), name);
                 if (job == null) {
                     return Results.NotFound(new { error = $"No job named '{name}'." });
-                }
-                if (scope.Catalog.GitLayout && branch != GitService.TestBranch) {
-                    return Results.BadRequest(new { error = "prod is read-only — delete in test and promote." });
                 }
                 void Mutate() {
                     var file = JobsFile.Read(job.SourceFile);
@@ -852,9 +896,11 @@ public static class JobsApi {
                         // A jobs file with an empty list can't be loaded; remove it instead.
                         File.Delete(job.SourceFile);
                     } else {
-                        JobsFile.Write(job.SourceFile, file, scope.Catalog.RootFor(branch));
+                        JobsFile.Write(job.SourceFile, file, catalog.NotebooksRoot);
                     }
-                    scope.Git?.Commit(GitService.TestBranch, $"delete job {name} via web UI", job.SourceFileRelative);
+                    // A file write, not a commit — the rule Upsert and the notebook
+                    // editor both follow. Push to test is where a deletion becomes
+                    // history.
                 }
                 if (scope.Git != null && scope.Catalog.GitLayout) {
                     scope.Git.WithLock(Mutate);
@@ -927,6 +973,38 @@ public static class JobsApi {
                 }))).RequiresProject(ProjectRole.ProjectViewer);
 
         // --- runs -----------------------------------------------------------
+
+        // What a cron actually does, answered by the same Cronos the scheduler and the
+        // save path use. One source of truth, so the field cannot accept an
+        // expression the save will refuse — and cannot read it differently either.
+        //
+        // Next occurrences rather than a sentence of English: "0 2 * * *" described
+        // as "at 02:00 every day" still leaves the reader to work out whose 02:00,
+        // and a list of instants answers that by being one.
+        api.MapGet("/cron/preview", (string expression, int? count) => {
+            if (string.IsNullOrWhiteSpace(expression)) {
+                return Results.Ok(new { valid = false, error = (string)null, next = new List<string>() });
+            }
+            Cronos.CronExpression parsed;
+            try {
+                parsed = Cronos.CronExpression.Parse(expression.Trim());
+            } catch (Cronos.CronFormatException e) {
+                return Results.Ok(new { valid = false, error = e.Message, next = new List<string>() });
+            }
+            // UTC, because UTC is what the scheduler compares against — see
+            // SchedulerService.IsDue. Reading these as local time is how the nightly
+            // close gets scheduled for the wrong hour, so the client says so.
+            var from = DateTime.UtcNow;
+            var next = new List<string>();
+            for (var i = 0; i < Math.Clamp(count ?? 5, 1, 10); i++) {
+                if (parsed.GetNextOccurrence(from, inclusive: false) is not { } occurrence) {
+                    break;
+                }
+                next.Add(occurrence.ToString("o"));
+                from = occurrence;
+            }
+            return Results.Ok(new { valid = true, error = (string)null, next });
+        });
 
         api.MapGet("/runs", async (
             HttpContext context, ProjectRegistry projects, IRunStore store,
