@@ -26,7 +26,7 @@ export function TopBar({
   const query = new URLSearchParams(location.search).get('q') ?? '';
 
   return (
-    <header className="flex h-[46px] shrink-0 items-center gap-2 border-b border-border bg-card px-4">
+    <header className="flex h-12.5 shrink-0 items-center border-b border-border bg-card px-4">
       <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2">
         <Link to="/" className="shrink-0 font-semibold text-foreground hover:no-underline">
           ClrKernel Jobs
