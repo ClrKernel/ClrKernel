@@ -219,9 +219,13 @@ public static class JobsApi {
                 var user = context.CurrentUser();
                 if (user != null && git != null && git.HasUserWorktree(user.Id)) {
                     var mine = git.PathFor(GitService.BranchForUser(user.Id));
+                    // Annotated with this branch's jobs, which is none: the catalog
+                    // scans environments, and a personal branch is not one. Leaving
+                    // the environment out would annotate with every job on the
+                    // server instead, which is a label that is simply untrue.
                     trees.Insert(0, new {
                         name = _mineBranch,
-                        tree = NotebookTree.Build(mine, result, found.Slug, null),
+                        tree = NotebookTree.Build(mine, result, found.Slug, _mineBranch),
                     });
                 }
                 return Results.Ok(new { environments = trees });
