@@ -9,6 +9,7 @@ import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { TabNav } from '../components/TabNav';
 import { useCanWrite } from '../sessionContext';
 import { AccountSection, UsersSection } from './Account';
+import { ProjectsSection } from './Projects';
 
 function FieldValue({ field }: { field: SettingField }) {
   if (field.type === 'secret') {
@@ -161,11 +162,13 @@ export function Settings() {
   // server's own sections follow, and user management is last and admin-only.
   const tabs = [
     { to: '/settings/account', label: 'Your account' },
+    ...(isAdmin ? [{ to: '/settings/projects', label: 'Projects' }] : []),
     ...sections.map((s) => ({ to: `/settings/${s.key}`, label: s.title })),
     ...(isAdmin ? [{ to: '/settings/users', label: 'Users' }] : []),
   ];
   const current = sections.find((s) => s.key === slug);
-  const client = slug === 'account' || (slug === 'users' && isAdmin);
+  const client = slug === 'account'
+    || ((slug === 'users' || slug === 'projects') && isAdmin);
 
   // Only redirect once the sections have actually arrived: bouncing to the
   // first tab while the list is still empty would send you to /settings/
@@ -186,6 +189,8 @@ export function Settings() {
 
       {slug === 'account' ? (
         <AccountSection />
+      ) : slug === 'projects' && isAdmin ? (
+        <ProjectsSection />
       ) : slug === 'users' && isAdmin ? (
         <UsersSection />
       ) : current ? (

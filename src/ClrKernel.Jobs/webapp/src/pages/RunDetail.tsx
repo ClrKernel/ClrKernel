@@ -114,7 +114,7 @@ export function RunDetail() {
         <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold tracking-tight">
           <Link
             className="truncate text-primary hover:underline"
-            to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}
+            to={`/jobs/${run.project}/${run.environment}/${encodeURIComponent(run.jobName)}`}
           >
             {run.jobName}
           </Link>

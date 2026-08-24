@@ -51,7 +51,7 @@ export function RunTable({
                 <td className="whitespace-nowrap">
                   <Link
                     className="font-semibold text-primary hover:underline"
-                    to={`/jobs/${run.environment}/${encodeURIComponent(run.jobName)}`}
+                    to={`/jobs/${run.project}/${run.environment}/${encodeURIComponent(run.jobName)}`}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {run.jobName}

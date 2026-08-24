@@ -94,6 +94,10 @@ public class AuthApiTest {
         yield return ("PUT", "/api/channels", new { channels = Array.Empty<object>() });
         yield return ("POST", "/api/channels/x/test", null);
         yield return ("PUT", "/api/settings/general", new Dictionary<string, object>());
+        yield return ("POST", "/api/projects", new { name = "x", root = "/tmp" });
+        yield return ("PUT", "/api/projects/default", new { name = "x" });
+        yield return ("DELETE", "/api/projects/default", null);
+        yield return ("POST", "/api/projects/default/init", null);
         yield return ("GET", "/api/users", null);
         yield return ("POST", "/api/invites", new { role = "ServerViewer" });
     }

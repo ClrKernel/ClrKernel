@@ -55,12 +55,13 @@ export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
 
   switch (segments[0]) {
     case 'jobs':
-      // /jobs/:env/new and /jobs/:env/:name — the env is part of the identity,
-      // so it rides along as the badge rather than becoming its own crumb.
-      return segments.length >= 3
+      // /jobs/:project/:env/new and /jobs/:project/:env/:name. The env is part of
+      // the identity so it rides along as the badge; the project is already the
+      // switcher at the root of the trail and is not repeated here.
+      return segments.length >= 4
         ? [
             { label: 'Jobs', to: '/jobs' },
-            leaf(segments[2] === 'new' ? 'New job' : decodeURIComponent(segments[2]), segments[1]),
+            leaf(segments[3] === 'new' ? 'New job' : decodeURIComponent(segments[3]), segments[2]),
           ]
         : [leaf('Jobs')];
 

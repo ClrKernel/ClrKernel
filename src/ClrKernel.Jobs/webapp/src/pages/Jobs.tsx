@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { api, type Job, type Run } from '../api';
+import { api, projectSlug, type Job, type Run } from '../api';
 import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../components/common';
 import { matchesQuery } from '../search';
 import { useCanWrite } from '../sessionContext';
@@ -10,7 +10,14 @@ import { useCanWrite } from '../sessionContext';
 export function Jobs() {
   const navigate = useNavigate();
   const canWrite = useCanWrite();
-  const { data, error } = usePolling<{ jobs: Job[]; errors: string[] }>(() => api.jobs(), 5000);
+  const { data, error } = usePolling<{ jobs: Job[]; errors: string[] }>(
+    // /api/jobs spans every project; this page is about the one in the breadcrumb.
+    async () => {
+      const all = await api.jobs();
+      return { ...all, jobs: all.jobs.filter((j) => j.project === projectSlug()) };
+    },
+    5000,
+  );
   const { data: health } = usePolling(() => api.health(), null);
   // The catalog does not carry a last-run status, so it comes from the run
   // list: newest first, so the first sighting of a job is its latest run.
@@ -38,7 +45,7 @@ export function Jobs() {
       <PageHeader title="Jobs">
         {canWrite && (
           <Button asChild size="sm">
-            <Link to={`/jobs/${editableEnv}/new`}>New job</Link>
+            <Link to={`/jobs/${projectSlug()}/${editableEnv}/new`}>New job</Link>
           </Button>
         )}
       </PageHeader>
@@ -88,7 +95,7 @@ export function Jobs() {
                 key={`${job.environment}/${job.name}`}
                 className="cursor-pointer"
                 onClick={() =>
-                  navigate(`/jobs/${job.environment}/${encodeURIComponent(job.name)}`)
+                  navigate(`/jobs/${job.project}/${job.environment}/${encodeURIComponent(job.name)}`)
                 }
               >
                 <td className="whitespace-nowrap">

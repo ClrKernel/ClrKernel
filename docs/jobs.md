@@ -212,7 +212,8 @@ T-SQL and would need bracketing.)
 ## API
 
 Everything the UI does is available over HTTP under `/api`. Server-wide:
-`health`, `projects`, `jobs` (every project's, each carrying the project it belongs
+`health`, `projects` (GET, plus POST/PUT/DELETE and `projects/{slug}/init` for
+Server Admins), `jobs` (every project's, each carrying the project it belongs
 to), `runs` with per-cell progress, `runs/{id}/artifact` and `/log`, `stats`, and
 `channels` (GET/PUT, plus `channels/{name}/test`).
 
@@ -313,7 +314,25 @@ branches. A server that has never registered one still has exactly one — the f
 is not cosmetic: it is what every run row written before projects existed already
 says, so history keeps answering after the upgrade with nothing rewritten.
 
-More than one is `projects.json` in the data directory:
+Register more from **Settings → Projects** (Server Admins only): a name and an
+absolute path to a folder already on the server. If the project uses the workflow
+and its folder is not a workspace yet, the same page offers to make it one —
+the same thing `clrkernel-jobs git init` does, adopting whatever is already there.
+Registering by cloning a repo url is not there yet; put the clone on the server
+first and point at it.
+
+The project you are looking at is the first thing in the breadcrumb, and switching
+there switches the notebooks, jobs, runs and branches under it. Anything with a
+link of its own carries its project in the URL — `/jobs/finance/test/nightly` —
+because two projects may each have a job called `nightly`, and a link that meant
+whichever one you had selected would mean two different jobs.
+
+**Forgetting** a project unregisters it and touches nothing on disk: the repo, the
+worktrees and the run history all stay, and registering the same folder under the
+same slug brings all of it back.
+
+The file behind all of this is `projects.json` in the data directory, and you can
+write it by hand:
 
 ```json
 [
@@ -323,7 +342,13 @@ More than one is `projects.json` in the data directory:
 ]
 ```
 
-Once the file exists it is the list, and `--notebooks` no longer decides. Each
+Once the file exists it is the list, and `--notebooks` no longer decides. A
+project's **slug and folder are fixed** once registered — the slug is written into
+every run row and the folder is where the history those rows describe happened.
+Everything else is editable. Two projects may not overlap on disk: both would find
+the same `*.jobs.yaml` and schedule each job twice.
+
+Each
 project keeps its own worktrees, its own promotion gate, and its own run history —
 two projects may each have a job called `nightly` and they never collide, because
 the project is part of every key.

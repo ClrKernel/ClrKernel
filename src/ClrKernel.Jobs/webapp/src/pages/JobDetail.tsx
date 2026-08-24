@@ -94,7 +94,8 @@ function NotifyPicker({
 
 export function JobDetail() {
   const canWrite = useCanWrite();
-  const { env = 'default', name } = useParams<{ env: string; name: string }>();
+  const { project = 'default', env = 'default', name } =
+    useParams<{ project: string; env: string; name: string }>();
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const isNew = name == null;
@@ -160,7 +161,7 @@ export function JobDetail() {
     setBusy(true);
     try {
       const saved = isNew ? await api.createJob(env, body) : await api.updateJob(env, name!, body);
-      navigate(`/jobs/${env}/${encodeURIComponent(saved.name)}`);
+      navigate(`/jobs/${project}/${env}/${encodeURIComponent(saved.name)}`);
       reload();
     } catch (e) {
       setSaveError((e as Error).message);

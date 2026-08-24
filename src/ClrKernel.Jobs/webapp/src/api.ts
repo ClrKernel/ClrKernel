@@ -31,13 +31,33 @@ export type RunStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Cancel
 export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipped';
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
 
+export type RemoteMode = 'Local' | 'ServerAuthoritative' | 'RemoteAuthoritative';
+
 export interface Project {
   slug: string;
   name: string;
+  root: string;
   gitEnabled: boolean;
-  remoteMode: string;
-  hasRemote: boolean;
+  /** False when git is on but the folder is not a workspace yet. */
+  ready: boolean;
+  remoteMode: RemoteMode;
+  remote: string | null;
+  /** The *name* of a secret, never a credential. */
+  remoteSecret: string | null;
+  pushUserBranches: boolean;
   environments: string[];
+}
+
+/** What registering or editing a project sends. No credential, ever — see above. */
+export interface ProjectWrite {
+  slug?: string;
+  name: string;
+  root?: string;
+  gitEnabled: boolean;
+  remoteMode: RemoteMode;
+  remote?: string | null;
+  remoteSecret?: string | null;
+  pushUserBranches: boolean;
 }
 
 export interface Job {
@@ -316,7 +336,21 @@ export const api = {
   stats: (days = 7) => request<Stats>(`/stats?days=${days}`),
 
   projects: () => request<{ projects: Project[] }>('/projects'),
+  registerProject: (write: ProjectWrite) =>
+    request<Project>('/projects', { method: 'POST', body: JSON.stringify(write) }),
+  saveProject: (slug: string, write: ProjectWrite) =>
+    request<Project>(`/projects/${encodeURIComponent(slug)}`, {
+      method: 'PUT',
+      body: JSON.stringify(write),
+    }),
+  /** Forgets a project. Nothing on disk is touched. */
+  forgetProject: (slug: string) =>
+    request<void>(`/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
+  /** Turns the project's folder into a test/prod workspace. Idempotent. */
+  initProject: (slug: string) =>
+    request<{ message: string }>(`/projects/${encodeURIComponent(slug)}/init`, { method: 'POST' }),
 
+  // Every project's jobs; the page filters to the one you are looking at.
   jobs: () => request<{ jobs: Job[]; errors: string[] }>('/jobs'),
   job: (env: string, name: string) => request<Job>(`${scope(env)}/jobs/${encodeURIComponent(name)}`),
   createJob: (env: string, job: Partial<Job>) =>
@@ -340,7 +374,10 @@ export const api = {
   jobRuns: (env: string, name: string, limit = 25) =>
     request<Run[]>(`${scope(env)}/jobs/${encodeURIComponent(name)}/runs?limit=${limit}`),
 
-  runs: (limit = 25) => request<Run[]>(`/runs?limit=${limit}`),
+  // Scoped to the selected project: the breadcrumb says which project you are
+  // in, so a list that quietly spanned all of them would be saying otherwise.
+  runs: (limit = 25) =>
+    request<Run[]>(`/runs?limit=${limit}&project=${encodeURIComponent(currentProject)}`),
   run: (id: string) => request<{ run: Run; cells: RunCell[] }>(`/runs/${id}`),
   artifact: (id: string) => request<unknown>(`/runs/${id}/artifact`),
   log: (id: string) =>

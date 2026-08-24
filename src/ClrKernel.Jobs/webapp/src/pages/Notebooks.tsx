@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { api, type TreeNode } from '../api';
+import { api, projectSlug, type TreeNode } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { useCanWrite } from '../sessionContext';
 
@@ -86,7 +86,7 @@ function Node({
       {node.jobs?.map((job) => (
         <Link
           key={job}
-          to={`/jobs/${env}/${encodeURIComponent(job)}`}
+          to={`/jobs/${projectSlug()}/${env}/${encodeURIComponent(job)}`}
           className="rounded-full border border-env-prod-border bg-env-prod-bg px-2 py-px text-xs font-semibold text-env-prod hover:no-underline"
         >
           {job}

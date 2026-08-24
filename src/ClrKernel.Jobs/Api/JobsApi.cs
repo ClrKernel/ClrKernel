@@ -64,6 +64,62 @@ public static class JobsApi {
                 ? Results.Ok(ProjectView.From(found, projects))
                 : NoProject(project));
 
+        api.MapPost("/projects", (ProjectRegistry projects, ProjectWrite write) => {
+            if (write == null) {
+                return Results.BadRequest(new { error = "A project needs a name and a folder." });
+            }
+            try {
+                var created = projects.Register(write.ToProject());
+                return Results.Created($"/api/projects/{created.Slug}", ProjectView.From(created, projects));
+            } catch (ProjectRegistry.ProjectException e) {
+                return Results.BadRequest(new { error = e.Message });
+            }
+        }).AdminOnly();
+
+        api.MapPut("/projects/{project}", (
+            ProjectRegistry projects, string project, ProjectWrite write) => {
+                if (write == null) {
+                    return Results.BadRequest(new { error = "Nothing to change." });
+                }
+                try {
+                    var updated = projects.Update(project, write.ApplyTo);
+                    return updated == null
+                        ? NoProject(project)
+                        : Results.Ok(ProjectView.From(updated, projects));
+                } catch (ProjectRegistry.ProjectException e) {
+                    return Results.BadRequest(new { error = e.Message });
+                }
+            }).AdminOnly();
+
+        // Turns a project's folder into a test/prod workspace — the same thing
+        // `clrkernel-jobs git init` does, offered here because registering a project
+        // from the browser and then being told to go and run a shell command is not
+        // a workflow. Idempotent, and it adopts whatever is already in the folder.
+        api.MapPost("/projects/{project}/init", (ProjectRegistry projects, string project) => {
+            if (projects.Find(project) is not { } found) {
+                return NoProject(project);
+            }
+            if (projects.GitFor(found) is not { } git) {
+                return Results.BadRequest(new {
+                    error = "This project does not use the test/prod workflow. Turn it on first.",
+                });
+            }
+            try {
+                return Results.Ok(new { message = git.Init() });
+            } catch (GitException e) {
+                return Results.BadRequest(new { error = e.Message });
+            }
+        }).AdminOnly();
+
+        // Unregisters only. Nothing on disk is touched — see ProjectRegistry.
+        api.MapDelete("/projects/{project}", (ProjectRegistry projects, string project) => {
+            try {
+                return projects.Unregister(project) ? Results.NoContent() : NoProject(project);
+            } catch (ProjectRegistry.ProjectException e) {
+                return Results.BadRequest(new { error = e.Message });
+            }
+        }).AdminOnly();
+
         // --- notebooks ------------------------------------------------------
 
         api.MapGet("/projects/{project}/notebooks", (ProjectRegistry projects, string project) => {
@@ -916,22 +972,64 @@ public static class JobsApi {
     }
 }
 
+/// <summary>
+/// A project as a registration or an edit describes it. Both use one shape, and the
+/// fields an edit may not change are ignored rather than rejected: the slug is
+/// written into every run row and the root is where that history happened.
+/// </summary>
+public sealed class ProjectWrite {
+    public string Slug { get; set; }
+    public string Name { get; set; }
+    public string Root { get; set; }
+    public bool GitEnabled { get; set; }
+    public RemoteMode RemoteMode { get; set; } = RemoteMode.Local;
+    public string Remote { get; set; }
+    /// <summary>The name of a secret, never a credential. See <see cref="Project.RemoteSecret"/>.</summary>
+    public string RemoteSecret { get; set; }
+    public bool PushUserBranches { get; set; }
+
+    public Project ToProject() {
+        var project = new Project { Slug = Slug, Name = Name, Root = Root };
+        ApplyTo(project);
+        return project;
+    }
+
+    public void ApplyTo(Project project) {
+        project.Name = Name ?? project.Name;
+        project.GitEnabled = GitEnabled;
+        project.RemoteMode = RemoteMode;
+        project.Remote = string.IsNullOrWhiteSpace(Remote) ? null : Remote.Trim();
+        project.RemoteSecret = string.IsNullOrWhiteSpace(RemoteSecret) ? null : RemoteSecret.Trim();
+        project.PushUserBranches = PushUserBranches;
+    }
+}
+
 /// <summary>A project as the API returns it. No credential ever appears here.</summary>
 public sealed class ProjectView {
     public string Slug { get; set; }
     public string Name { get; set; }
+    /// <summary>Where it lives. Admins configure this; it is not a secret.</summary>
+    public string Root { get; set; }
     public bool GitEnabled { get; set; }
+    /// <summary>False when git is on but `git init` has not been run on the folder yet.</summary>
+    public bool Ready { get; set; }
     public string RemoteMode { get; set; }
-    /// <summary>Whether a remote is configured — never the remote's credential.</summary>
-    public bool HasRemote { get; set; }
+    public string Remote { get; set; }
+    /// <summary>The *name* of the secret holding the remote's credential, never the credential.</summary>
+    public string RemoteSecret { get; set; }
+    public bool PushUserBranches { get; set; }
     public IReadOnlyList<string> Environments { get; set; }
 
     public static ProjectView From(Project project, ProjectRegistry projects) => new() {
         Slug = project.Slug,
         Name = project.Name,
+        Root = project.Root,
         GitEnabled = project.GitEnabled,
+        Ready = !project.GitEnabled || projects.GitFor(project)?.LayoutExists == true,
         RemoteMode = project.RemoteMode.ToString(),
-        HasRemote = !string.IsNullOrWhiteSpace(project.Remote),
+        Remote = project.Remote,
+        RemoteSecret = project.RemoteSecret,
+        PushUserBranches = project.PushUserBranches,
         Environments = projects.CatalogFor(project).Environments,
     };
 }

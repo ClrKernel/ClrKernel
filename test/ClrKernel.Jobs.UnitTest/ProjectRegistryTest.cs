@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -97,6 +98,100 @@ public class ProjectRegistryTest {
     public void A_project_without_the_git_workflow_has_no_git_layer() =>
         Assert.IsNull(new ProjectRegistry(Options(), NullLoggerFactory.Instance)
             .GitFor(new ProjectRegistry(Options(), NullLoggerFactory.Instance).Default));
+
+    [TestMethod]
+    public void Registering_the_second_project_persists_the_first_one_too() {
+        var finance = Path.Combine(_dir, "finance");
+        Directory.CreateDirectory(finance);
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+
+        var created = registry.Register(new Project { Name = "Finance Close", Root = finance });
+
+        Assert.AreEqual("finance-close", created.Slug, "the slug comes from the name");
+        // The implicit project exists only in memory until something is written.
+        // Persisting just the new one would delete it, and with it every run row
+        // that names it.
+        var onDisk = ProjectsFile.Read(Options().DataDir);
+        CollectionAssert.AreEqual(
+            new[] { "default", "finance-close" }, onDisk.Select(p => p.Slug).ToArray());
+    }
+
+    [TestMethod]
+    public void A_project_cannot_overlap_one_already_registered() {
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+        var inside = Path.Combine(_dir, "notebooks", "reports");
+        Directory.CreateDirectory(inside);
+
+        // Both would find the same *.jobs.yaml, so the same job would be scheduled
+        // twice under two project names.
+        foreach (var root in new[] { Path.Combine(_dir, "notebooks"), inside, _dir }) {
+            var e = Assert.ThrowsExactly<ProjectRegistry.ProjectException>(
+                () => registry.Register(new Project { Name = "Overlapping", Root = root }));
+            StringAssert.Contains(e.Message, "overlaps");
+        }
+    }
+
+    [TestMethod]
+    public void Registration_refuses_a_slug_that_is_taken_and_a_folder_that_is_not_there() {
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+        var finance = Path.Combine(_dir, "finance");
+        Directory.CreateDirectory(finance);
+
+        StringAssert.Contains(
+            Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
+                new Project { Slug = "default", Name = "Clash", Root = finance })).Message,
+            "already registered");
+        StringAssert.Contains(
+            Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
+                new Project { Name = "Missing", Root = Path.Combine(_dir, "nowhere") })).Message,
+            "No folder at");
+        StringAssert.Contains(
+            Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
+                new Project { Name = "Relative", Root = "notebooks" })).Message,
+            "absolute path");
+    }
+
+    [TestMethod]
+    public void An_edit_cannot_move_a_project_or_rename_its_slug() {
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+        var root = registry.Default.Root;
+
+        var updated = registry.Update("default", p => {
+            p.Name = "Renamed";
+            p.Slug = "something-else";
+            p.Root = Path.Combine(_dir, "finance");
+            p.RemoteMode = RemoteMode.ServerAuthoritative;
+            p.Remote = "origin";
+            p.RemoteSecret = "GIT_TOKEN";
+        });
+
+        Assert.AreEqual("Renamed", updated.Name);
+        Assert.AreEqual("default", updated.Slug, "the slug is in every run row");
+        Assert.AreEqual(root, updated.Root, "the history those rows describe happened here");
+        Assert.AreEqual(RemoteMode.ServerAuthoritative, updated.RemoteMode);
+        Assert.AreEqual("GIT_TOKEN", updated.RemoteSecret, "a secret reference, not a secret");
+        Assert.IsNull(registry.Update("nope", _ => { }));
+    }
+
+    [TestMethod]
+    public void Unregistering_leaves_the_folder_alone_and_refuses_the_last_project() {
+        var finance = Path.Combine(_dir, "finance");
+        Directory.CreateDirectory(finance);
+        File.WriteAllText(Path.Combine(finance, "close.nb.md"), "```csharp\n1+1\n```\n");
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+        registry.Register(new Project { Slug = "finance", Name = "Finance", Root = finance });
+
+        Assert.IsTrue(registry.Unregister("finance"));
+        Assert.IsNull(registry.Find("finance"));
+        Assert.IsTrue(File.Exists(Path.Combine(finance, "close.nb.md")),
+            "unregistering forgets a project; it does not delete one");
+        Assert.IsFalse(registry.Unregister("finance"), "already gone");
+
+        StringAssert.Contains(
+            Assert.ThrowsExactly<ProjectRegistry.ProjectException>(
+                () => registry.Unregister("default")).Message,
+            "only project");
+    }
 
     [TestMethod]
     [DataRow("My Notebooks", "my-notebooks")]

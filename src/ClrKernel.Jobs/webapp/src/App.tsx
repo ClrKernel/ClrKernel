@@ -14,7 +14,7 @@ import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
-import { api, setProject } from './api';
+import { ProjectProvider, ProjectScope } from './projectContext';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -45,26 +45,6 @@ export function App() {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  // Which project the API client addresses. Resolved before the shell renders,
-  // not alongside it: `default` is only the right guess for a server that has
-  // registered nothing, and every request made before this settles would 404 on
-  // a server whose projects.json names something else. Failures still let the
-  // app through — the default is a working answer for the common case.
-  const [projectReady, setProjectReady] = useState(false);
-  useEffect(() => {
-    if (session?.authenticated !== true) {
-      return;
-    }
-    api.projects()
-      .then(({ projects }) => {
-        if (projects[0]) {
-          setProject(projects[0].slug);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => setProjectReady(true));
-  }, [session?.authenticated]);
 
   const accentValue = ACCENTS.find((a) => a.name === accent) ?? ACCENTS[0];
 
@@ -118,17 +98,16 @@ export function App() {
     );
   }
 
-  // The very first paint, before /api/auth/session and /api/projects have
-  // answered. Rendering the shell here would flash a signed-in app at someone
-  // who is not, and would fire notebook requests at a project slug we are still
-  // guessing at.
-  if (session == null || !projectReady) {
+  // The very first paint, before /api/auth/session has answered. Rendering the
+  // shell here would flash a signed-in app at someone who is not.
+  if (session == null) {
     return <div className="min-h-screen bg-background" />;
   }
 
   return (
     <SessionContext.Provider value={session}>
     <AccentContext.Provider value={accentValue}>
+    <ProjectProvider>
     <TooltipProvider delayDuration={300}>
       {/* Fixed rail, fixed top bar, scrolling content — the page itself never
           scrolls, so the chrome cannot slide away under a long notebook.
@@ -159,8 +138,10 @@ export function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/jobs" element={<Jobs />} />
-              <Route path="/jobs/:env/new" element={<JobDetail />} />
-              <Route path="/jobs/:env/:name" element={<JobDetail />} />
+              {/* The project is in the path because a link to a job has to mean
+                  one job — two projects may each have a `nightly`. */}
+              <Route path="/jobs/:project/:env/new" element={<ProjectScope><JobDetail /></ProjectScope>} />
+              <Route path="/jobs/:project/:env/:name" element={<ProjectScope><JobDetail /></ProjectScope>} />
               <Route path="/notebooks" element={<Notebooks />} />
               <Route path="/channels" element={<Channels />} />
               {/* Settings is tabbed by route: /settings redirects to the first
@@ -168,7 +149,7 @@ export function App() {
                   you can link to. */}
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/:section" element={<Settings />} />
-              <Route path="/edit" element={<Editor />} />
+              <Route path="/edit" element={<ProjectScope><Editor /></ProjectScope>} />
               <Route path="/runs/:id" element={<RunDetail />} />
               <Route
               path="*"
@@ -180,6 +161,7 @@ export function App() {
       </div>
       <Toaster position="bottom-right" richColors closeButton />
     </TooltipProvider>
+    </ProjectProvider>
     </AccentContext.Provider>
     </SessionContext.Provider>
   );

@@ -39,18 +39,18 @@ describe('breadcrumbFor', () => {
   });
 
   it('puts the job under Jobs and carries its environment as a badge', () => {
-    expect(breadcrumbFor('/jobs/test/nightly')).toEqual([
+    expect(breadcrumbFor('/jobs/default/test/nightly')).toEqual([
       { label: 'Jobs', to: '/jobs' },
       { label: 'nightly', badge: 'test' },
     ]);
   });
 
   it('names an unsaved job rather than showing the literal route segment', () => {
-    expect(breadcrumbFor('/jobs/prod/new')[1].label).toBe('New job');
+    expect(breadcrumbFor('/jobs/default/prod/new')[1].label).toBe('New job');
   });
 
   it('decodes an escaped job name', () => {
-    expect(breadcrumbFor('/jobs/test/nightly%20run')[1].label).toBe('nightly run');
+    expect(breadcrumbFor('/jobs/default/test/nightly%20run')[1].label).toBe('nightly run');
   });
 
   it('takes the notebook editor’s subject from ?path=, and it is always test', () => {

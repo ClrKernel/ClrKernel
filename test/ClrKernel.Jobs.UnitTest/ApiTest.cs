@@ -164,6 +164,47 @@ public class ApiTest {
     }
 
     [TestMethod]
+    public async Task A_project_can_be_registered_configured_and_forgotten() {
+        var finance = Path.Combine(_root, "finance");
+        Directory.CreateDirectory(finance);
+
+        var created = await _client.PostAsJsonAsync("/api/projects",
+            new { name = "Finance Close", root = finance });
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode,
+            await created.Content.ReadAsStringAsync());
+        var view = await created.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.AreEqual("finance-close", view.GetProperty("slug").GetString());
+
+        // Its jobs and notebooks are reachable under its own slug straight away.
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await _client.GetAsync("/api/projects/finance-close/notebooks")).StatusCode);
+
+        var edited = await _client.PutAsJsonAsync("/api/projects/finance-close", new {
+            name = "Finance",
+            root = "/somewhere/else",
+            remoteMode = "ServerAuthoritative",
+            remote = "origin",
+            remoteSecret = "FINANCE_GIT_TOKEN",
+        });
+        var after = await edited.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.AreEqual("Finance", after.GetProperty("name").GetString());
+        Assert.AreEqual(finance, after.GetProperty("root").GetString(), "the root is not editable");
+        // A reference, and the only thing about a remote credential this API ever
+        // holds — there is no field here that could carry the credential itself.
+        Assert.AreEqual("FINANCE_GIT_TOKEN", after.GetProperty("remoteSecret").GetString());
+
+        Assert.AreEqual(HttpStatusCode.NoContent,
+            (await _client.DeleteAsync("/api/projects/finance-close")).StatusCode);
+        Assert.IsTrue(File.Exists(Path.Combine(finance)) || Directory.Exists(finance),
+            "unregistering forgets a project; it does not delete one");
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await _client.GetAsync("/api/projects/finance-close")).StatusCode);
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.DeleteAsync("/api/projects/default")).StatusCode,
+            "the last project cannot be forgotten");
+    }
+
+    [TestMethod]
     public async Task The_notebook_tree_and_content_respect_the_root() {
         var payload = await _client.GetFromJsonAsync<JsonElement>("/api/projects/default/notebooks");
         var envs = payload.GetProperty("environments");
