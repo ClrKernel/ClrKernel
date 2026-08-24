@@ -43,6 +43,13 @@ public interface IRunStore {
     Task FinishManualRunAsync(Guid id, string outcome, string errorSummary, DateTime finishedAt);
     Task<IReadOnlyList<ManualRun>> QueryManualRunsAsync(ManualRunQuery query);
 
+    /// <summary>Records a finished statement against a shared connection. Written
+    /// after the fact rather than opened and closed like a run: a query is one round
+    /// trip, and nobody polls it.</summary>
+    Task RecordQueryAsync(QueryAudit audit);
+
+    Task<IReadOnlyList<QueryAudit>> QueryAuditAsync(QueryAuditQuery query);
+
     /// <summary>Marks rows stuck in Pending/Running (from a crash) as Failed. Returns the count.</summary>
     Task<int> MarkOrphansFailedAsync();
 }

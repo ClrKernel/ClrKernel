@@ -152,6 +152,24 @@ public sealed class EfRunStore : IRunStore {
         return await runs.OrderByDescending(r => r.StartedAt).Take(query.Limit).ToListAsync();
     }
 
+    public async Task RecordQueryAsync(QueryAudit audit) {
+        using var db = _contextFactory();
+        db.QueryAudits.Add(audit);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<QueryAudit>> QueryAuditAsync(QueryAuditQuery query) {
+        using var db = _contextFactory();
+        var audits = db.QueryAudits.AsNoTracking();
+        if (!string.IsNullOrEmpty(query.ConnectionId)) {
+            audits = audits.Where(a => a.ConnectionId == query.ConnectionId);
+        }
+        if (query.ActorId != null) {
+            audits = audits.Where(a => a.ActorId == query.ActorId);
+        }
+        return await audits.OrderByDescending(a => a.StartedAt).Take(query.Limit).ToListAsync();
+    }
+
     public async Task<Run> GetLastSuccessfulRunAsync(string project, string environment, string jobName) {
         using var db = _contextFactory();
         return await db.Runs.AsNoTracking()

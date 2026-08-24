@@ -105,6 +105,53 @@ public sealed class ManualRunQuery {
     public int Limit { get; set; } = 50;
 }
 
+/// <summary>
+/// One statement run against a shared connection: who, when, which connection, and
+/// what they sent. The same "who ran that against production?" question the manual-run
+/// audit answers, in a different costume.
+/// <para>
+/// Only shared connections are recorded. A private connection is the person's own
+/// credential against a server they could reach with SSMS anyway — logging it would be
+/// surveillance rather than audit, and the database's own trail already has it.
+/// </para>
+/// </summary>
+public sealed class QueryAudit {
+    public Guid Id { get; set; }
+    public string ConnectionId { get; set; }
+
+    /// <summary>Kept beside the id: the connection may be renamed or removed by the
+    /// time anyone asks.</summary>
+    public string ConnectionName { get; set; }
+
+    public Guid ActorId { get; set; }
+    public string ActorName { get; set; }
+    public DateTime StartedAt { get; set; }
+    public double DurationMs { get; set; }
+
+    /// <summary>What was sent, verbatim. A truncated statement is not evidence.</summary>
+    public string Statement { get; set; }
+
+    /// <summary>Whether the least-privilege login was used — that is, whether this ran
+    /// as the read-only credential or as the connection's own.</summary>
+    public bool LeastPrivilege { get; set; }
+
+    /// <summary>Succeeded | Failed | Cancelled.</summary>
+    public string Outcome { get; set; }
+
+    public int RowsAffected { get; set; }
+    public string ErrorSummary { get; set; }
+}
+
+public sealed class QueryAuditQuery {
+    /// <summary>null = every connection.</summary>
+    public string ConnectionId { get; set; }
+
+    /// <summary>null = everybody. A non-admin only ever asks about themselves.</summary>
+    public Guid? ActorId { get; set; }
+
+    public int Limit { get; set; } = 50;
+}
+
 /// <summary>Fan-in freshness bookkeeping: when each job was last triggered.</summary>
 public sealed class JobTriggerState {
     public string Project { get; set; } = "default";

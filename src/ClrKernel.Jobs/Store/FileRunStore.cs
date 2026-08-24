@@ -267,6 +267,47 @@ public sealed class FileRunStore : IRunStore {
             runs.OrderByDescending(r => r.StartedAt).Take(query.Limit).ToList());
     }
 
+    private string QueryAuditPath => Path.Combine(_root, "..", "connection-queries.jsonl");
+
+    public async Task RecordQueryAsync(QueryAudit audit) {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(QueryAuditPath))!);
+        await File.AppendAllTextAsync(
+            QueryAuditPath, JsonSerializer.Serialize(audit, _compact) + "\n");
+    }
+
+    public Task<IReadOnlyList<QueryAudit>> QueryAuditAsync(QueryAuditQuery query) {
+        var audits = ReadQueryAudits().AsEnumerable();
+        if (!string.IsNullOrEmpty(query.ConnectionId)) {
+            audits = audits.Where(a =>
+                string.Equals(a.ConnectionId, query.ConnectionId, StringComparison.OrdinalIgnoreCase));
+        }
+        if (query.ActorId != null) {
+            audits = audits.Where(a => a.ActorId == query.ActorId);
+        }
+        return Task.FromResult<IReadOnlyList<QueryAudit>>(
+            audits.OrderByDescending(a => a.StartedAt).Take(query.Limit).ToList());
+    }
+
+    private List<QueryAudit> ReadQueryAudits() {
+        var audits = new List<QueryAudit>();
+        if (!File.Exists(QueryAuditPath)) {
+            return audits;
+        }
+        foreach (var line in File.ReadAllLines(QueryAuditPath)) {
+            if (line.Trim().Length == 0) {
+                continue;
+            }
+            try {
+                if (JsonSerializer.Deserialize<QueryAudit>(line, _compact) is { } audit) {
+                    audits.Add(audit);
+                }
+            } catch (JsonException) {
+                // A truncated final line from a crash must not lose the rest.
+            }
+        }
+        return audits;
+    }
+
     private static readonly JsonSerializerOptions _compact = new() {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter() },

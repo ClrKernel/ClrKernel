@@ -275,6 +275,101 @@ public class ConnectionsApiTest {
         Assert.IsNull(reread[0].OwnerId, "a shared connection belongs to nobody in particular");
     }
 
+    // --- execution ----------------------------------------------------------
+
+    [TestMethod]
+    public async Task ANonAdminCannotRunAgainstASharedConnectionWithoutAReadOnlyLogin() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var created = await CreateAsync(Shared("warehouse"));
+
+        await SignInAsync(UserRole.ServerUser);
+        var response = await _client.PostAsJsonAsync(
+            $"/api/connections/{created.GetProperty("id").GetString()}/query",
+            new Dictionary<string, object> { ["sql"] = "SELECT 1" });
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.AreEqual(0, (await HistoryAsync(created)).Count,
+            "a refused query never reached a database and is not an execution");
+    }
+
+    [TestMethod]
+    public async Task AnUnreachableServerIsAnAnswerRatherThanAFailedRequest() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var created = await CreateAsync(Unreachable("warehouse", "shared"));
+
+        var result = await RunAsync(created, "SELECT 1");
+        Assert.IsFalse(string.IsNullOrEmpty(result.GetProperty("error").GetString()),
+            "a connection that cannot be opened belongs in the Messages tab, not in a 500");
+        Assert.IsFalse(result.GetProperty("canceled").GetBoolean());
+    }
+
+    [TestMethod]
+    public async Task RunningAgainstASharedConnectionIsAudited() {
+        await SignInAsync(UserRole.ServerAdmin, "Grace");
+        var created = await CreateAsync(Unreachable("warehouse", "shared"));
+        await RunAsync(created, "SELECT top 10 * FROM dbo.Orders");
+
+        var history = await HistoryAsync(created);
+        Assert.AreEqual(1, history.Count);
+        Assert.AreEqual("Grace", history[0].GetProperty("actorName").GetString());
+        Assert.AreEqual("warehouse", history[0].GetProperty("connectionName").GetString());
+        Assert.AreEqual("SELECT top 10 * FROM dbo.Orders", history[0].GetProperty("statement").GetString(),
+            "a truncated statement is not evidence");
+        Assert.AreEqual("Failed", history[0].GetProperty("outcome").GetString());
+        Assert.IsFalse(history[0].GetProperty("leastPrivilege").GetBoolean(),
+            "an admin runs as the connection's own login");
+    }
+
+    [TestMethod]
+    public async Task RunningAgainstYourOwnConnectionIsNotAudited() {
+        await SignInAsync(UserRole.ServerUser);
+        var created = await CreateAsync(Unreachable("scratch", "private"));
+        await RunAsync(created, "SELECT 1");
+
+        Assert.AreEqual(0, (await HistoryAsync(created)).Count,
+            "a private connection is the person's own credential; logging it is surveillance, not audit");
+    }
+
+    [TestMethod]
+    public async Task CancellingAQueryYouDidNotStartDoesNothing() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var created = await CreateAsync(Unreachable("warehouse", "shared"));
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/connections/{created.GetProperty("id").GetString()}/cancel",
+            new Dictionary<string, object> { ["queryId"] = "somebody-elses-query" });
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var body = JsonSerializer.Deserialize<JsonElement>(
+            await response.Content.ReadAsStringAsync(), _json);
+        Assert.IsFalse(body.GetProperty("cancelled").GetBoolean());
+    }
+
+    [TestMethod]
+    public void TheLeastPrivilegeLoginIsWhatANonAdminRunsAs() {
+        var runner = new QueryRunner(
+            SecretStore.ForProviders(new InMemorySecretProvider()),
+            NullLogger<QueryRunner>.Instance);
+        var connection = new StoredConnection {
+            Id = "c1",
+            Name = "warehouse",
+            Type = "SqlServer",
+            Settings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                ["server"] = "dw.db.local",
+                ["database"] = "dw",
+                ["auth"] = "sql",
+                ["user"] = "svc",
+            },
+            SecretRef = "primary",
+            ReadOnlyUser = "reader",
+            ReadOnlySecretRef = "reader-secret",
+        };
+
+        Assert.AreEqual("svc", runner.SpecFor(connection, leastPrivilege: false).User);
+        var restricted = runner.SpecFor(connection, leastPrivilege: true);
+        Assert.AreEqual("reader", restricted.User);
+        Assert.AreEqual("reader-secret", restricted.SecretRef,
+            "the second credential is the read-only boundary; the app-side check is only a message");
+    }
+
     // --- helpers ------------------------------------------------------------
 
     private Task<User> SignInAsync(UserRole role, string displayName = null) =>
@@ -283,6 +378,29 @@ public class ConnectionsApiTest {
     private static Dictionary<string, object> Shared(string name) => Body(name, "shared");
 
     private static Dictionary<string, object> Private(string name) => Body(name, "private");
+
+    /// <summary>A connection nothing is listening on, with a one-second connect
+    /// timeout — enough to exercise the whole path from stored settings to an open
+    /// attempt without needing a database.</summary>
+    private static Dictionary<string, object> Unreachable(string name, string scope) {
+        var body = Body(name, scope);
+        body["settings"] = new Dictionary<string, string> {
+            ["connectionString"] = "Server=127.0.0.1,1;Connect Timeout=1;Encrypt=false",
+        };
+        return body;
+    }
+
+    private async Task<JsonElement> RunAsync(JsonElement connection, string sql) {
+        var response = await _client.PostAsJsonAsync(
+            $"/api/connections/{connection.GetProperty("id").GetString()}/query",
+            new Dictionary<string, object> { ["sql"] = sql });
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        return JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), _json);
+    }
+
+    private async Task<List<JsonElement>> HistoryAsync(JsonElement connection) =>
+        (await GetJsonAsync($"/api/connections/{connection.GetProperty("id").GetString()}/history"))
+            .GetProperty("history").EnumerateArray().ToList();
 
     private static Dictionary<string, object> Body(string name, string scope) => new() {
         ["name"] = name,

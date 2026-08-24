@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.SqlServer;
@@ -63,6 +64,95 @@ public static class ConnectionsApi {
 
         api.MapPut("/{id}", (HttpContext context, ConnectionStore store, string id, ConnectionBody body) =>
             Save(context, store, id, body));
+
+        // --- execution ------------------------------------------------------
+
+        api.MapPost("/{id}/test", async (
+            HttpContext context, ConnectionStore store, QueryRunner runner, string id,
+            TestBody body, CancellationToken cancellationToken) => {
+                if (Executable(context, store, id, out var connection, out var refusal) is false) {
+                    return refusal;
+                }
+                var error = await runner.TestAsync(
+                    connection, LeastPrivilege(context, connection), body?.Password, cancellationToken);
+                return Results.Ok(new { ok = error == null, error });
+            });
+
+        api.MapPost("/{id}/query", async (
+            HttpContext context, ConnectionStore store, QueryRunner runner, IRunStore runs,
+            string id, QueryBody body, CancellationToken cancellationToken) => {
+                if (Executable(context, store, id, out var connection, out var refusal) is false) {
+                    return refusal;
+                }
+                var sql = (body?.Sql ?? string.Empty).Trim();
+                if (sql.Length == 0) {
+                    return Results.BadRequest(new { error = "There is nothing to run." });
+                }
+                var user = context.CurrentUser();
+                var leastPrivilege = LeastPrivilege(context, connection);
+                // The client names the query so it can cancel it, and a client-chosen id
+                // is fine because cancelling checks who started it, not who knows the id.
+                var queryId = Trimmed(body.QueryId) ?? Guid.NewGuid().ToString("N");
+                var startedAt = DateTime.UtcNow;
+
+                var result = await runner.RunAsync(
+                    connection, sql, leastPrivilege, user.Id, queryId, body.Password, cancellationToken);
+
+                if (connection.Scope == ConnectionScope.Shared) {
+                    await runs.RecordQueryAsync(new QueryAudit {
+                        Id = Guid.NewGuid(),
+                        ConnectionId = connection.Id,
+                        ConnectionName = connection.Name,
+                        ActorId = user.Id,
+                        ActorName = user.DisplayName,
+                        StartedAt = startedAt,
+                        DurationMs = result.ElapsedMs,
+                        Statement = sql,
+                        LeastPrivilege = leastPrivilege,
+                        Outcome = result.Canceled ? "Cancelled" : result.Error == null ? "Succeeded" : "Failed",
+                        RowsAffected = result.RowsAffected,
+                        ErrorSummary = result.Error,
+                    });
+                }
+                return Results.Ok(new {
+                    queryId,
+                    result.ResultSets,
+                    result.Messages,
+                    result.RowsAffected,
+                    result.ElapsedMs,
+                    result.Canceled,
+                    result.Error,
+                });
+            });
+
+        api.MapPost("/{id}/cancel", (
+            HttpContext context, ConnectionStore store, QueryRunner runner, string id, CancelBody body) => {
+                if (Executable(context, store, id, out _, out var refusal) is false) {
+                    return refusal;
+                }
+                return Results.Ok(new { cancelled = runner.Cancel(body?.QueryId, context.CurrentUser().Id) });
+            });
+
+        // Shared connections only — a private one is somebody's own credential
+        // against a server they could reach with SSMS anyway, and logging it would be
+        // surveillance rather than audit.
+        api.MapGet("/{id}/history", async (
+            HttpContext context, ConnectionStore store, IRunStore runs, string id) => {
+                if (context.CurrentUser() is not { } user) {
+                    return Unauthorized();
+                }
+                var connection = store.Find(id, user);
+                if (connection == null) {
+                    return NoSuchConnection(id);
+                }
+                var history = await runs.QueryAuditAsync(new QueryAuditQuery {
+                    ConnectionId = connection.Id,
+                    // Everyone's, for an admin; your own otherwise. Who ran what against a
+                    // shared database is an admin's question, not everybody's.
+                    ActorId = context.IsAdmin() ? null : user.Id,
+                });
+                return Results.Ok(new { history });
+            });
 
         api.MapDelete("/{id}", (HttpContext context, ConnectionStore store, string id) => {
             if (context.CurrentUser() is not { } user) {
@@ -169,6 +259,45 @@ public static class ConnectionsApi {
             : Results.Json(new { error = "That is not your connection." }, statusCode: 403);
     }
 
+    /// <summary>
+    /// Resolves the connection and decides whether this caller may run against it.
+    /// One function for test, query and cancel: three copies of an authorization
+    /// check is three chances for one of them to be wrong.
+    /// </summary>
+    private static bool Executable(
+        HttpContext context, ConnectionStore store, string id,
+        out StoredConnection connection, out IResult refusal) {
+        connection = null;
+        if (context.CurrentUser() is not { } user) {
+            refusal = Unauthorized();
+            return false;
+        }
+        connection = store.Find(id, user);
+        if (connection == null) {
+            refusal = NoSuchConnection(id);
+            return false;
+        }
+        if (connection.Scope == ConnectionScope.Shared && !context.IsAdmin()
+            && !store.HasSecret(connection.ReadOnlySecretRef)) {
+            refusal = Results.Json(new {
+                error = "Read-only execution is not configured on this connection, so only a "
+                    + "server admin can run against it.",
+            }, statusCode: 403);
+            return false;
+        }
+        refusal = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether this execution uses the least-privilege login. Everyone below a server
+    /// admin does, on a shared connection — that credential is the read-only boundary,
+    /// because reading the SQL to decide whether it writes loses to <c>EXEC</c>,
+    /// <c>SELECT … INTO</c> and dynamic SQL.
+    /// </summary>
+    private static bool LeastPrivilege(HttpContext context, StoredConnection connection) =>
+        connection.Scope == ConnectionScope.Shared && !context.IsAdmin();
+
     private static IResult Unauthorized() =>
         Results.Json(new { error = "Sign in first." }, statusCode: 401);
 
@@ -194,6 +323,26 @@ public static class ConnectionsApi {
         }
         return cleaned;
     }
+}
+
+/// <summary>A password for a prompt-every-session connection, supplied for this call
+/// only and never stored.</summary>
+public sealed class TestBody {
+    public string Password { get; set; }
+}
+
+public sealed class QueryBody {
+    public string Sql { get; set; }
+
+    /// <summary>What Cancel will name. The client picks it so it can cancel before the
+    /// response it would have learned the id from arrives.</summary>
+    public string QueryId { get; set; }
+
+    public string Password { get; set; }
+}
+
+public sealed class CancelBody {
+    public string QueryId { get; set; }
 }
 
 /// <summary>What a create or update sends. Passwords come in and are never sent back.</summary>

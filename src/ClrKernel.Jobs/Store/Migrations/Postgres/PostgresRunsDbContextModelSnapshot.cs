@@ -272,6 +272,71 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
                     b.ToTable("project_members", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Jobs.QueryAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("connection_id");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("connection_name");
+
+                    b.Property<double>("DurationMs")
+                        .HasColumnType("double precision")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasColumnType("text")
+                        .HasColumnName("error_summary");
+
+                    b.Property<bool>("LeastPrivilege")
+                        .HasColumnType("boolean")
+                        .HasColumnName("least_privilege");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("RowsAffected")
+                        .HasColumnType("integer")
+                        .HasColumnName("rows_affected");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Statement")
+                        .HasColumnType("text")
+                        .HasColumnName("statement");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("StartedAt");
+
+                    b.ToTable("connection_queries", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Jobs.Run", b =>
                 {
                     b.Property<Guid>("Id")

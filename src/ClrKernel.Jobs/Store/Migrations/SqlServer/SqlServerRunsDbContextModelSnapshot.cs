@@ -272,6 +272,71 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                     b.ToTable("project_members", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Jobs.QueryAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("connection_id");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("connection_name");
+
+                    b.Property<double>("DurationMs")
+                        .HasColumnType("float")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("error_summary");
+
+                    b.Property<bool>("LeastPrivilege")
+                        .HasColumnType("bit")
+                        .HasColumnName("least_privilege");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("RowsAffected")
+                        .HasColumnType("int")
+                        .HasColumnName("rows_affected");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Statement")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("statement");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("StartedAt");
+
+                    b.ToTable("connection_queries", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Jobs.Run", b =>
                 {
                     b.Property<Guid>("Id")

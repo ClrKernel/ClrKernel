@@ -17,6 +17,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<RunCell> RunCells => Set<RunCell>();
     public DbSet<JobTriggerState> JobTriggerStates => Set<JobTriggerState>();
     public DbSet<ManualRun> ManualRuns => Set<ManualRun>();
+    public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
 
     // Accounts live here rather than in a file of their own so one backup covers
     // the whole server. The consequence is that `--store files` cannot host a
@@ -89,6 +90,27 @@ public abstract class RunsDbContext : DbContext {
             // No foreign key to users: the point of an audit row is that it outlives
             // the account, and a cascade would delete exactly the evidence somebody
             // came looking for.
+        });
+
+        modelBuilder.Entity<QueryAudit>(audit => {
+            audit.ToTable("connection_queries");
+            audit.HasKey(a => a.Id);
+            audit.Property(a => a.Id).HasColumnName("id");
+            audit.Property(a => a.ConnectionId).HasColumnName("connection_id").IsRequired().HasMaxLength(64);
+            audit.Property(a => a.ConnectionName).HasColumnName("connection_name").HasMaxLength(200);
+            audit.Property(a => a.ActorId).HasColumnName("actor_id");
+            audit.Property(a => a.ActorName).HasColumnName("actor_name").HasMaxLength(120);
+            audit.Property(a => a.StartedAt).HasColumnName("started_at");
+            audit.Property(a => a.DurationMs).HasColumnName("duration_ms");
+            audit.Property(a => a.Statement).HasColumnName("statement");
+            audit.Property(a => a.LeastPrivilege).HasColumnName("least_privilege");
+            audit.Property(a => a.Outcome).HasColumnName("outcome").HasMaxLength(16);
+            audit.Property(a => a.RowsAffected).HasColumnName("rows_affected");
+            audit.Property(a => a.ErrorSummary).HasColumnName("error_summary");
+            audit.HasIndex(a => a.StartedAt);
+            audit.HasIndex(a => a.ConnectionId);
+            // No foreign key to users, for the same reason the manual-run audit has
+            // none: the row has to outlive the account it is about.
         });
 
         modelBuilder.Entity<JobTriggerState>(state => {

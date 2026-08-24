@@ -21,6 +21,22 @@ public sealed class RawConnectionNode {
         SecretRefs = secretRefs;
     }
 
+    /// <summary>
+    /// A node assembled in memory rather than read from a file — for a caller that
+    /// already holds a connection's settings (the Jobs connection store) and wants the
+    /// provider's own mapping applied to them. Going through this rather than building
+    /// a provider spec by hand is what keeps the aliases, defaults and type inference
+    /// in <c>SqlConnectionConfig.FromNode</c> as the only copy of that knowledge.
+    /// </summary>
+    public static RawConnectionNode FromValues(
+        string name, string type,
+        IReadOnlyDictionary<string, string> values,
+        IReadOnlyDictionary<string, string> secretRefs = null) =>
+        new RawConnectionNode(
+            name, type, sourceFile: null,
+            values ?? new Dictionary<string, string>(),
+            secretRefs ?? new Dictionary<string, string>());
+
     /// <summary>The node name (the key in the config file).</summary>
     public string Name { get; }
 
