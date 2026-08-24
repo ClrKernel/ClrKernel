@@ -16,6 +16,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<Run> Runs => Set<Run>();
     public DbSet<RunCell> RunCells => Set<RunCell>();
     public DbSet<JobTriggerState> JobTriggerStates => Set<JobTriggerState>();
+    public DbSet<ManualRun> ManualRuns => Set<ManualRun>();
 
     // Accounts live here rather than in a file of their own so one backup covers
     // the whole server. The consequence is that `--store files` cannot host a
@@ -65,6 +66,29 @@ public abstract class RunsDbContext : DbContext {
             cell.Property(c => c.StartedAt).HasColumnName("started_at");
             cell.Property(c => c.FinishedAt).HasColumnName("finished_at");
             cell.Property(c => c.ErrorSummary).HasColumnName("error_summary");
+        });
+
+        modelBuilder.Entity<ManualRun>(run => {
+            run.ToTable("manual_runs");
+            run.HasKey(r => r.Id);
+            run.Property(r => r.Id).HasColumnName("id");
+            run.Property(r => r.Project).HasColumnName("project").IsRequired().HasMaxLength(64);
+            run.Property(r => r.Environment).HasColumnName("environment").IsRequired().HasMaxLength(16);
+            run.Property(r => r.NotebookPath).HasColumnName("notebook_path").IsRequired();
+            run.Property(r => r.ActorId).HasColumnName("actor_id");
+            run.Property(r => r.ActorName).HasColumnName("actor_name").HasMaxLength(120);
+            run.Property(r => r.StartedAt).HasColumnName("started_at");
+            run.Property(r => r.FinishedAt).HasColumnName("finished_at");
+            run.Property(r => r.Cells).HasColumnName("cells");
+            run.Property(r => r.CellCount).HasColumnName("cell_count");
+            run.Property(r => r.Overrides).HasColumnName("overrides");
+            run.Property(r => r.Outcome).HasColumnName("outcome").HasMaxLength(16);
+            run.Property(r => r.ErrorSummary).HasColumnName("error_summary");
+            run.HasIndex(r => new { r.Project, r.Environment, r.NotebookPath });
+            run.HasIndex(r => r.StartedAt);
+            // No foreign key to users: the point of an audit row is that it outlives
+            // the account, and a cascade would delete exactly the evidence somebody
+            // came looking for.
         });
 
         modelBuilder.Entity<JobTriggerState>(state => {

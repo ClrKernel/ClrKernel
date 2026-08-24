@@ -173,6 +173,77 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                     b.ToTable("job_trigger_state", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Jobs.ManualRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<int>("CellCount")
+                        .HasColumnType("int")
+                        .HasColumnName("cell_count");
+
+                    b.Property<string>("Cells")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("cells");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("environment");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("error_summary");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("NotebookPath")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)")
+                        .HasColumnName("notebook_path");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("Overrides")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("overrides");
+
+                    b.Property<string>("Project")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("project");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedAt");
+
+                    b.HasIndex("Project", "Environment", "NotebookPath");
+
+                    b.ToTable("manual_runs", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Jobs.ProjectMembership", b =>
                 {
                     b.Property<string>("ProjectSlug")

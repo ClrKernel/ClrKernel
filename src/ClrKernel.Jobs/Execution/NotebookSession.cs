@@ -117,6 +117,13 @@ public sealed class NotebookSession : IDisposable {
     public string CellUri(string cellId) => $"{NotebookUri}#{cellId}";
 
     public DateTime LastActivity { get; private set; }
+
+    /// <summary>
+    /// A session for driving test or prod by hand. It is nobody's editor, so it is
+    /// dropped soon after it goes quiet rather than kept warm for half an hour —
+    /// state built up by hand should not still be sitting there later.
+    /// </summary>
+    public bool Ephemeral { get; init; }
     public IReadOnlyList<LanguageDescriptor> Languages { get; private set; } = Array.Empty<LanguageDescriptor>();
     public string KernelName { get; private set; }
     public string KernelVersion { get; private set; }

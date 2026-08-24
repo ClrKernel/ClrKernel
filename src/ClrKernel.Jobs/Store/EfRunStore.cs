@@ -122,6 +122,36 @@ public sealed class EfRunStore : IRunStore {
             .Where(c => c.RunId == runId).OrderBy(c => c.CellIndex).ToListAsync();
     }
 
+    public async Task StartManualRunAsync(ManualRun run) {
+        using var db = _contextFactory();
+        db.ManualRuns.Add(run);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task FinishManualRunAsync(
+        Guid id, string outcome, string errorSummary, DateTime finishedAt) {
+        using var db = _contextFactory();
+        await db.ManualRuns.Where(r => r.Id == id).ExecuteUpdateAsync(set => set
+            .SetProperty(r => r.Outcome, outcome)
+            .SetProperty(r => r.ErrorSummary, errorSummary)
+            .SetProperty(r => r.FinishedAt, finishedAt));
+    }
+
+    public async Task<IReadOnlyList<ManualRun>> QueryManualRunsAsync(ManualRunQuery query) {
+        using var db = _contextFactory();
+        var runs = db.ManualRuns.AsNoTracking();
+        if (!string.IsNullOrEmpty(query.Project)) {
+            runs = runs.Where(r => r.Project == query.Project);
+        }
+        if (!string.IsNullOrEmpty(query.Environment)) {
+            runs = runs.Where(r => r.Environment == query.Environment);
+        }
+        if (!string.IsNullOrEmpty(query.NotebookPath)) {
+            runs = runs.Where(r => r.NotebookPath == query.NotebookPath);
+        }
+        return await runs.OrderByDescending(r => r.StartedAt).Take(query.Limit).ToListAsync();
+    }
+
     public async Task<Run> GetLastSuccessfulRunAsync(string project, string environment, string jobName) {
         using var db = _contextFactory();
         return await db.Runs.AsNoTracking()

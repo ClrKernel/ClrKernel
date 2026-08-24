@@ -68,6 +68,43 @@ public sealed class RunCell {
     public string ErrorSummary { get; set; }
 }
 
+/// <summary>
+/// Somebody driving a notebook by hand in test or prod.
+/// <para>
+/// Its own table rather than a row in <c>runs</c>, because it is not a job run and
+/// nothing should ever mistake it for one: promotability asks for the latest run of
+/// a named job, and an audit entry that could answer that question is a hole in the
+/// gate. This records who did what; run history records what the schedule did.
+/// </para>
+/// </summary>
+public sealed class ManualRun {
+    public Guid Id { get; set; }
+    public string Project { get; set; } = "default";
+    /// <summary>test | prod. Running by hand anywhere else is not audited — or allowed.</summary>
+    public string Environment { get; set; }
+    public string NotebookPath { get; set; }
+    public Guid ActorId { get; set; }
+    /// <summary>Kept beside the id: the account may be gone by the time anyone asks.</summary>
+    public string ActorName { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? FinishedAt { get; set; }
+    /// <summary>Which cells, in order, as the editor identifies them.</summary>
+    public string Cells { get; set; }
+    public int CellCount { get; set; }
+    /// <summary>Parameters overridden for this execution only, as JSON, or null.</summary>
+    public string Overrides { get; set; }
+    /// <summary>Running | Succeeded | Failed.</summary>
+    public string Outcome { get; set; } = "Running";
+    public string ErrorSummary { get; set; }
+}
+
+public sealed class ManualRunQuery {
+    public string Project { get; set; }
+    public string Environment { get; set; }
+    public string NotebookPath { get; set; }
+    public int Limit { get; set; } = 50;
+}
+
 /// <summary>Fan-in freshness bookkeeping: when each job was last triggered.</summary>
 public sealed class JobTriggerState {
     public string Project { get; set; } = "default";

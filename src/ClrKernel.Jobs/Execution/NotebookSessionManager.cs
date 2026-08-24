@@ -27,6 +27,14 @@ public sealed class NotebookSessionManager : BackgroundService {
 
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// How long a hand-driven test or prod session lingers. Shorter than an
+    /// editor's, because nobody is editing: long enough to read the output and run
+    /// the next cell, short enough that state assembled by hand is not still there
+    /// an hour later.
+    /// </summary>
+    public static readonly TimeSpan EphemeralIdleTimeout = TimeSpan.FromMinutes(10);
+
     private readonly ConcurrentDictionary<string, NotebookSession> _sessions = new(StringComparer.Ordinal);
     private readonly JobsOptions _options;
     private readonly ILogger _logger;
@@ -40,9 +48,9 @@ public sealed class NotebookSessionManager : BackgroundService {
         _languages = languages;
     }
 
-    /// <summary>An existing session for this notebook, or null.</summary>
-    public NotebookSession Find(string notebookPath) =>
-        _sessions.TryGetValue(notebookPath, out var session) ? session : null;
+    /// <summary>An existing session under this key, or null.</summary>
+    public NotebookSession Find(string key) =>
+        _sessions.TryGetValue(key, out var session) ? session : null;
 
     public IReadOnlyList<NotebookSession> Sessions => _sessions.Values.ToList();
 
@@ -51,14 +59,23 @@ public sealed class NotebookSessionManager : BackgroundService {
     /// held by a busy session — the message names them, so the answer ("stop that
     /// run, or close that notebook") is obvious.
     /// </summary>
-    public async Task<NotebookSession> GetOrStartAsync(string notebookPath, CancellationToken cancellationToken) {
-        if (_sessions.TryGetValue(notebookPath, out var existing)) {
+    /// <param name="key">
+    /// What this session is filed under. The notebook's path for the editor, so
+    /// re-opening a notebook finds the kernel you left running. Hand-driving test or
+    /// prod adds the person to it: two people running the same production notebook
+    /// must not be sharing one kernel, whatever else is true.
+    /// </param>
+    public async Task<NotebookSession> GetOrStartAsync(
+        string notebookPath, CancellationToken cancellationToken,
+        string key = null, bool ephemeral = false) {
+        key ??= notebookPath;
+        if (_sessions.TryGetValue(key, out var existing)) {
             existing.Touch();
             return existing;
         }
         await _starting.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            if (_sessions.TryGetValue(notebookPath, out existing)) {
+            if (_sessions.TryGetValue(key, out existing)) {
                 existing.Touch();
                 return existing;
             }
@@ -69,11 +86,11 @@ public sealed class NotebookSessionManager : BackgroundService {
                 // A live kernel outranks the cached probe, and keeps outranking it: a
                 // language registered mid-session by #r has to reach the parser too,
                 // or its cells stop being cells the next time the file is read.
-                onLanguages: languages => _languages?.Seed(languages));
+                onLanguages: languages => _languages?.Seed(languages)) { Ephemeral = ephemeral };
             // Start the kernel here rather than on first run, so a broken
             // configuration is reported when the editor opens, not mid-cell.
             await session.EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
-            _sessions[notebookPath] = session;
+            _sessions[key] = session;
             _logger.LogInformation("Notebook session started for {Notebook} ({Kernel} {Version}).",
                 notebookPath, session.KernelName, session.KernelVersion);
             return session;
@@ -87,11 +104,11 @@ public sealed class NotebookSessionManager : BackgroundService {
     /// neither kernel RPC surface can cancel a running cell, so a wedged one is
     /// stopped by killing the process.
     /// </summary>
-    public bool Restart(string notebookPath) {
-        if (!_sessions.TryRemove(notebookPath, out var session)) {
+    public bool Restart(string key) {
+        if (!_sessions.TryRemove(key, out var session)) {
             return false;
         }
-        _logger.LogInformation("Notebook session restarted for {Notebook}.", notebookPath);
+        _logger.LogInformation("Notebook session restarted for {Notebook}.", session.NotebookPath);
         session.Dispose();
         return true;
     }
@@ -119,7 +136,8 @@ public sealed class NotebookSessionManager : BackgroundService {
                         _sessions.Values.Select(s => Name(s.NotebookPath)))}). " +
                     "Wait for one to finish, or restart its kernel.");
             }
-            _sessions.TryRemove(victim.NotebookPath, out _);
+            _sessions.TryRemove(
+                _sessions.First(entry => ReferenceEquals(entry.Value, victim)).Key, out _);
             _logger.LogInformation("Evicting idle notebook session for {Notebook}.", victim.NotebookPath);
             victim.Dispose();
         }
@@ -129,12 +147,17 @@ public sealed class NotebookSessionManager : BackgroundService {
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         try {
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false)) {
-                var cutoff = DateTime.UtcNow - IdleTimeout;
-                foreach (var session in _sessions.Values.Where(s => !s.Busy && s.LastActivity < cutoff).ToList()) {
-                    if (_sessions.TryRemove(session.NotebookPath, out _)) {
-                        _logger.LogInformation("Notebook session for {Notebook} idle for {Minutes:0} minutes; stopping its kernel.",
-                            session.NotebookPath, IdleTimeout.TotalMinutes);
-                        session.Dispose();
+                var now = DateTime.UtcNow;
+                foreach (var session in _sessions.ToList()) {
+                    var idle = session.Value.Ephemeral ? EphemeralIdleTimeout : IdleTimeout;
+                    if (session.Value.Busy || now - session.Value.LastActivity < idle) {
+                        continue;
+                    }
+                    if (_sessions.TryRemove(session.Key, out _)) {
+                        _logger.LogInformation(
+                            "Notebook session for {Notebook} idle for {Minutes:0} minutes; stopping its kernel.",
+                            session.Value.NotebookPath, idle.TotalMinutes);
+                        session.Value.Dispose();
                     }
                 }
             }
@@ -145,9 +168,9 @@ public sealed class NotebookSessionManager : BackgroundService {
 
     public override async Task StopAsync(CancellationToken cancellationToken) {
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
-        foreach (var session in _sessions.Values.ToList()) {
-            _sessions.TryRemove(session.NotebookPath, out _);
-            session.Dispose();
+        foreach (var entry in _sessions.ToList()) {
+            _sessions.TryRemove(entry.Key, out _);
+            entry.Value.Dispose();
         }
     }
 

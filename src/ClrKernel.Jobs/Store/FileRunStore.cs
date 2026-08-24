@@ -224,6 +224,74 @@ public sealed class FileRunStore : IRunStore {
             Matches(r.Run, project, environment, jobName)
             && r.Run.Status is RunStatus.Pending or RunStatus.Running));
 
+    // --- the audit of hand-driven runs --------------------------------------
+    //
+    // One line of JSON each, appended. `serve` needs a database, so nothing here
+    // can actually reach these — but an audit with a silent hole in it is worse
+    // than no audit, so the file store keeps one rather than pretending.
+
+    private string ManualRunsPath => Path.Combine(_root, "..", "manual-runs.jsonl");
+
+    public async Task StartManualRunAsync(ManualRun run) {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(ManualRunsPath))!);
+        await File.AppendAllTextAsync(
+            ManualRunsPath, JsonSerializer.Serialize(run, _compact) + "\n");
+    }
+
+    public async Task FinishManualRunAsync(
+        Guid id, string outcome, string errorSummary, DateTime finishedAt) {
+        var all = ReadManualRuns();
+        var run = all.FirstOrDefault(r => r.Id == id);
+        if (run == null) {
+            return;
+        }
+        run.Outcome = outcome;
+        run.ErrorSummary = errorSummary;
+        run.FinishedAt = finishedAt;
+        await File.WriteAllTextAsync(ManualRunsPath,
+            string.Concat(all.Select(r => JsonSerializer.Serialize(r, _compact) + "\n")));
+    }
+
+    public Task<IReadOnlyList<ManualRun>> QueryManualRunsAsync(ManualRunQuery query) {
+        var runs = ReadManualRuns().AsEnumerable();
+        if (!string.IsNullOrEmpty(query.Project)) {
+            runs = runs.Where(r => string.Equals(r.Project, query.Project, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrEmpty(query.Environment)) {
+            runs = runs.Where(r => string.Equals(r.Environment, query.Environment, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrEmpty(query.NotebookPath)) {
+            runs = runs.Where(r => string.Equals(r.NotebookPath, query.NotebookPath, StringComparison.OrdinalIgnoreCase));
+        }
+        return Task.FromResult<IReadOnlyList<ManualRun>>(
+            runs.OrderByDescending(r => r.StartedAt).Take(query.Limit).ToList());
+    }
+
+    private static readonly JsonSerializerOptions _compact = new() {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    private List<ManualRun> ReadManualRuns() {
+        if (!File.Exists(ManualRunsPath)) {
+            return new List<ManualRun>();
+        }
+        var runs = new List<ManualRun>();
+        foreach (var line in File.ReadAllLines(ManualRunsPath)) {
+            if (line.Trim().Length == 0) {
+                continue;
+            }
+            try {
+                if (JsonSerializer.Deserialize<ManualRun>(line, _compact) is { } run) {
+                    runs.Add(run);
+                }
+            } catch (JsonException) {
+                // A truncated final line from a crash must not lose the rest.
+            }
+        }
+        return runs;
+    }
+
     // --- trigger state (one small shared file) ------------------------------
 
     private Dictionary<string, DateTime> ReadTriggers() {

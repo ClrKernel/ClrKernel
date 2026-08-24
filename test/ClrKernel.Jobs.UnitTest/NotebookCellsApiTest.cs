@@ -185,6 +185,43 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task Running_in_test_is_audited_and_running_in_prod_needs_an_admin() {
+        // No clrkernel binary here, so the session fails to start — which is after
+        // the permission and the audit, which is what this is about.
+        var started = await _client.PostAsJsonAsync(
+            $"/api/projects/default/branches/test/notebooks/run?path={_notebook}",
+            new { cells = new[] { new { kind = "code", tag = "csharp", source = "1+1", id = "c0" } } });
+        Assert.AreNotEqual(HttpStatusCode.Forbidden, started.StatusCode,
+            "test is read-only, not un-runnable — a job that dies at cell seven is " +
+            "fixed by running the rest");
+
+        using var viewer = new HttpClient { BaseAddress = _client.BaseAddress };
+        await TestAuth.SignInAsync(_app, viewer, UserRole.ServerViewer, "Auditor");
+        Assert.AreEqual(HttpStatusCode.Forbidden,
+            (await viewer.PostAsJsonAsync(
+                $"/api/projects/default/branches/test/notebooks/run?path={_notebook}",
+                new { cells = new[] { new { kind = "code", tag = "csharp", source = "1+1" } } }))
+            .StatusCode,
+            "a viewer runs nothing anywhere");
+    }
+
+    [TestMethod]
+    public async Task Nobody_runs_anything_on_somebody_else_s_branch() {
+        using var other = new HttpClient { BaseAddress = _client.BaseAddress };
+        var them = await TestAuth.SignInAsync(_app, other, UserRole.ServerAdmin, "Grace Hopper");
+        await other.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=hers.nb.md",
+            new StringContent("hers\n"));
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/projects/default/branches/user-{them.Id:D}/notebooks/run?path=hers.nb.md",
+            new { cells = new[] { new { kind = "code", tag = "csharp", source = "1+1" } } });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        StringAssert.Contains(await response.Content.ReadAsStringAsync(), "somebody else's branch");
+    }
+
+    [TestMethod]
     public async Task Test_and_prod_refuse_a_write_from_everybody() {
         var cells = new object[] {
             new { kind = "code", tag = "sql", source = "SELECT 99" },
@@ -452,9 +489,16 @@ public class NotebookCellsApiTest {
             (await _client.PostAsJsonAsync("/api/projects/default/branches/mine/notebooks/sync?path=../../../etc/passwd",
                 new { cells = Array.Empty<object>() }, _json)).StatusCode);
 
-        // prod has no session and never runs anything from the editor.
-        Assert.AreNotEqual(HttpStatusCode.OK,
+        // prod is runnable by a project's admins, so the editor may tell a kernel
+        // there what is open. Anyone below that gets nothing.
+        Assert.AreEqual(HttpStatusCode.OK,
             (await _client.PostAsJsonAsync($"/api/projects/default/branches/prod/notebooks/sync?path={_notebook}",
+                new { cells = Array.Empty<object>() }, _json)).StatusCode);
+
+        using var viewer = new HttpClient { BaseAddress = _client.BaseAddress };
+        await TestAuth.SignInAsync(_app, viewer, UserRole.ServerViewer, "Auditor");
+        Assert.AreEqual(HttpStatusCode.Forbidden,
+            (await viewer.PostAsJsonAsync($"/api/projects/default/branches/prod/notebooks/sync?path={_notebook}",
                 new { cells = Array.Empty<object>() }, _json)).StatusCode);
 
         var malformed = await _client.PostAsync($"/api/projects/default/branches/mine/notebooks/sync?path={_notebook}",

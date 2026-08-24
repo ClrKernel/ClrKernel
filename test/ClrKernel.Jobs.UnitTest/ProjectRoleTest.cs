@@ -35,7 +35,7 @@ public class ProjectRoleTest {
     [TestInitialize]
     public async Task Setup() {
         _root = Path.Combine(Path.GetTempPath(), "clrkernel-roles-" + Guid.NewGuid().ToString("N"));
-        foreach (var name in new[] { "data", "reports", "finance" }) {
+        foreach (var name in new[] { "data", "reports", "finance", "shipping" }) {
             Directory.CreateDirectory(Path.Combine(_root, name));
         }
         foreach (var (project, notebook) in new[] { ("reports", "etl"), ("finance", "close") }) {
@@ -48,9 +48,18 @@ public class ProjectRoleTest {
             DataDir = Path.Combine(_root, "data"),
             NotebooksRoot = Path.Combine(_root, "reports"),
         };
+        // A third one with the workflow on: running is a test/prod question, and
+        // the other two are flat folders where there is no such thing.
+        File.WriteAllText(Path.Combine(_root, "shipping", "manifest.nb.md"), "```csharp\n1+1\n```\n");
+        new GitService(Path.Combine(_root, "shipping"), NullLogger.Instance).Init();
+
         ProjectsFile.Write(_options.DataDir, new[] {
             new Project { Slug = "reports", Name = "Reports", Root = Path.Combine(_root, "reports") },
             new Project { Slug = "finance", Name = "Finance", Root = Path.Combine(_root, "finance") },
+            new Project {
+                Slug = "shipping", Name = "Shipping",
+                Root = Path.Combine(_root, "shipping"), GitEnabled = true,
+            },
         });
 
         var dbPath = Path.Combine(_options.DataDir, "test.db");
@@ -149,7 +158,8 @@ public class ProjectRoleTest {
     public async Task A_server_viewer_reads_every_project_and_writes_to_none() {
         using var viewer = await ClientFor(UserRole.ServerViewer);
 
-        CollectionAssert.AreEquivalent(new[] { "reports", "finance" }, await SlugsAsync(viewer));
+        CollectionAssert.AreEquivalent(
+            new[] { "reports", "finance", "shipping" }, await SlugsAsync(viewer));
         Assert.AreEqual(HttpStatusCode.OK,
             (await viewer.GetAsync("/api/projects/reports/notebooks")).StatusCode);
         Assert.AreEqual(HttpStatusCode.Forbidden,
@@ -197,6 +207,34 @@ public class ProjectRoleTest {
                     Assert.AreNotEqual(HttpStatusCode.NotFound, status,
                         $"{role} must be able to see {method} {path}");
                 }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task Members_run_in_test_and_only_admins_run_in_prod() {
+        var body = new { cells = new[] { new { kind = "code", tag = "csharp", source = "1+1" } } };
+        const string notebook = "manifest.nb.md";
+
+        using var member = await ClientFor(UserRole.ServerUser, ("shipping", ProjectRole.ProjectMember));
+        using var admin = await ClientFor(UserRole.ServerUser, ("shipping", ProjectRole.ProjectAdmin));
+        using var viewer = await ClientFor(UserRole.ServerUser, ("shipping", ProjectRole.ProjectViewer));
+
+        // Nothing here starts a kernel — there is no clrkernel binary — so what is
+        // under test is the refusal, and 403 is the only status that means refused.
+        foreach (var (client, branch, refused) in new[] {
+            (member, "test", false),
+            (member, "prod", true),
+            (admin, "prod", false),
+            (viewer, "test", true),
+        }) {
+            var status = (await client.PostAsJsonAsync(
+                $"/api/projects/shipping/branches/{branch}/notebooks/run?path={notebook}", body))
+                .StatusCode;
+            if (refused) {
+                Assert.AreEqual(HttpStatusCode.Forbidden, status, $"{branch}");
+            } else {
+                Assert.AreNotEqual(HttpStatusCode.Forbidden, status, $"{branch}");
             }
         }
     }

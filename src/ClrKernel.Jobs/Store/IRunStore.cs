@@ -34,6 +34,15 @@ public interface IRunStore {
     Task<DateTime?> GetLastTriggerAsync(string project, string environment, string jobName);
     Task SetLastTriggerAsync(string project, string environment, string jobName, DateTime triggeredAt);
 
+    // --- driving a notebook by hand in test or prod -------------------------
+    //
+    // Separate from runs on purpose: this is who did what, not what the schedule
+    // did, and nothing here may ever answer "has this job run in test".
+
+    Task StartManualRunAsync(ManualRun run);
+    Task FinishManualRunAsync(Guid id, string outcome, string errorSummary, DateTime finishedAt);
+    Task<IReadOnlyList<ManualRun>> QueryManualRunsAsync(ManualRunQuery query);
+
     /// <summary>Marks rows stuck in Pending/Running (from a crash) as Failed. Returns the count.</summary>
     Task<int> MarkOrphansFailedAsync();
 }

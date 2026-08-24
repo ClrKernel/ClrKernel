@@ -350,42 +350,46 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
                 try {
                     // The session seeds kernelLanguages itself, on start and again
                     // whenever #r adds one — one place, so the two cannot drift.
-                    var session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
+                    var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
+                    var session = await sessions.GetOrStartAsync(
+                        resolved, context.RequestAborted, key, ephemeral);
                     return Results.Ok(SessionView.From(session, false));
                 } catch (Exception e) {
-                    return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(resolved)?.KernelLog() });
+                    return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(SessionFor(context, scope, branch, resolved).Key)?.KernelLog() });
                 }
             }).RequiresProject(ProjectRole.ProjectMember);
 
-        scoped.MapDelete("/notebooks/session", (
+        scoped.MapDelete("/notebooks/session", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
             NotebookSessionManager sessions, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
-                return Results.Ok(new { restarted = sessions.Restart(resolved) });
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
+                return Results.Ok(new {
+                    restarted = sessions.Restart(SessionFor(context, scope, branch, resolved).Key),
+                });
             }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPost("/notebooks/run", async (
-            HttpContext context, ProjectRegistry projects, JobsOptions options,
+            HttpContext context, ProjectRegistry projects, JobsOptions options, IRunStore store,
             NotebookSessionManager sessions, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 CellWrite request;
@@ -397,10 +401,15 @@ public static class JobsApi {
                 if (request?.Cells is not { Count: > 0 }) {
                     return Results.BadRequest(new { error = "Body must be { cells: [...] } with at least one cell." });
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
+                if (await DenyOverlap(scope, store, branch, resolved) is { } busy) {
+                    return busy;
+                }
                 NotebookSession session;
                 try {
-                    session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
+                    var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
+                    session = await sessions.GetOrStartAsync(
+                        resolved, context.RequestAborted, key, ephemeral);
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
@@ -410,9 +419,15 @@ public static class JobsApi {
                 var ids = request.Cells.Select((c, i) => c.Id ?? $"run{i}").ToList();
                 // The run continues after the response: a long cell must not hold an
                 // HTTP request open, and the editor polls status for progress.
-                return session.TryStartRun(cells, ids, out _)
-                    ? Results.Accepted(value: new { running = ids })
-                    : Results.Json(new { error = "This notebook is already running a cell." }, statusCode: 409);
+                if (!session.TryStartRun(cells, ids, out var completion)) {
+                    return Results.Json(
+                        new { error = "This notebook is already running a cell." }, statusCode: 409);
+                }
+                // "Who ran that against production?" is the question somebody will
+                // actually ask, so running in test or prod leaves a row saying so.
+                // Your own branch does not: nothing there has happened to anyone else.
+                await AuditAsync(context, store, scope, branch, path, ids, completion);
+                return Results.Accepted(value: new { running = ids });
             }).RequiresProject(ProjectRole.ProjectMember);
 
         // What the editor currently has open, so completion and hover have documents
@@ -427,7 +442,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 SyncWrite request;
@@ -442,8 +457,8 @@ public static class JobsApi {
                 if (request.Cells.Count > 1000) {
                     return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
-                var session = sessions.Find(resolved);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
+                var session = sessions.Find(SessionFor(context, scope, branch, resolved).Key);
                 if (session == null) {
                     return Results.Ok(new { started = false, sent = 0 });
                 }
@@ -470,7 +485,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 LanguageRequest request;
@@ -485,8 +500,8 @@ public static class JobsApi {
                 if (string.IsNullOrEmpty(request.CellId)) {
                     return Results.BadRequest(new { error = "cellId is required." });
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
-                var session = sessions.Find(resolved);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
+                var session = sessions.Find(SessionFor(context, scope, branch, resolved).Key);
                 if (session == null) {
                     // Same reasoning as sync: typing must not spawn kernels. The
                     // editor starts the session when it opens the notebook.
@@ -515,10 +530,10 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
                 // A scheduled run of this notebook may be in flight in its own kernel;
                 // the editor says so rather than leaving the file changing unexplained.
                 // Checked before the session lookup, because the warning is most useful
@@ -531,7 +546,7 @@ public static class JobsApi {
                     string.Equals(j.NotebookPath, resolved, StringComparison.OrdinalIgnoreCase))) {
                     scheduled |= await store.HasActiveRunAsync(job.Project, job.Environment, job.Name);
                 }
-                var session = sessions.Find(resolved);
+                var session = sessions.Find(SessionFor(context, scope, branch, resolved).Key);
                 return session == null
                     ? Results.Ok(new { running = false, started = false, scheduledRunActive = scheduled })
                     : Results.Ok(SessionView.From(session, scheduled));
@@ -548,15 +563,17 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(context, scope, branch, path) is { } denial) {
+                if (await DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 if (string.IsNullOrWhiteSpace(languageId)) {
                     return Results.BadRequest(new { error = "languageId is required." });
                 }
-                var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
+                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
                 try {
-                    var session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
+                    var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
+                    var session = await sessions.GetOrStartAsync(
+                        resolved, context.RequestAborted, key, ephemeral);
                     var reply = await session.DescribeConnectionsAsync(languageId, context.RequestAborted);
                     return Results.Ok(new { providers = reply });
                 } catch (Exception e) {
@@ -598,6 +615,24 @@ public static class JobsApi {
             }).RequiresProject(ProjectRole.ProjectAdmin);
 
         // --- your branch, and getting it into test ---------------------------
+
+        // Who drove this notebook by hand, and what happened. Any Project Viewer may
+        // read it: an audit nobody can see answers nothing.
+        api.MapGet("/projects/{project}/manual-runs", async (
+            ProjectRegistry projects, IRunStore store,
+            string project, string branch, string path, int? limit) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                return Results.Ok(new {
+                    runs = await store.QueryManualRunsAsync(new ManualRunQuery {
+                        Project = scope.Project.Slug,
+                        Environment = branch,
+                        NotebookPath = path,
+                        Limit = Clamp(limit),
+                    }),
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         // --- personal worktrees, for whoever has to tidy up -------------------
 
@@ -1190,24 +1225,104 @@ public static class JobsApi {
     /// Admin. The check moved; it was not dropped.
     /// </para>
     /// </summary>
-    private static IResult DenyExecution(HttpContext context, Scope scope, string branch, string path) {
+    private static async Task<IResult> DenyExecution(
+        HttpContext context, Scope scope, string branch, string path) {
         if (!scope.Catalog.GitLayout) {
             return Results.BadRequest(new {
                 error = "Running cells needs the git workflow — run `clrkernel-jobs git init`.",
             });
         }
-        // Your own branch only, for now: running in test and prod is a separate
-        // feature with guard rails of its own — a concurrency lock against the
-        // scheduler, a disposable session, and an audit row per run. Running in
-        // somebody else's is not a feature at all; the kernel would be writing into
-        // their worktree.
+        // Three places code may run, and they are not the same permission.
+        //
+        // Your own branch is where you work. test and prod are read-only but still
+        // *runnable*: when a scheduled job dies at cell seven of twelve at two in the
+        // morning, the fix is to run the rest, not to edit production. Somebody
+        // else's branch is neither — the kernel would be working inside their files.
         if (!scope.OwnedBy(context, branch)) {
-            return Results.BadRequest(new {
-                error = "Cells run on your own branch. Open this notebook there to work on it.",
-            });
+            if (GitService.IsUserBranch(branch)) {
+                return Results.BadRequest(new {
+                    error = "That is somebody else's branch. Open this notebook on yours.",
+                });
+            }
+            if (branch == "prod" && await context.ProjectRoleAsync(scope.Project.Slug)
+                    is not ProjectRole.ProjectAdmin) {
+                return Results.Json(
+                    new { error = "Only this project's admins run anything in production." },
+                    statusCode: 403);
+            }
+            if (branch != "prod" && branch != GitService.TestBranch) {
+                return Results.NotFound(new { error = $"No branch '{branch}'." });
+            }
         }
-        if (NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null) {
-            return Results.BadRequest(new { error = "Path is outside your branch." });
+        if (NotebookTree.SafeResolve(RootOf(scope, branch), path) == null) {
+            return Results.BadRequest(new { error = "Path is outside this branch." });
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Which session a run belongs to. The notebook's path when it is your own
+    /// branch, so re-opening the editor finds the kernel you left; the person as
+    /// well when it is test or prod, because two people hand-running the same
+    /// production notebook sharing one kernel is not a thing anybody wants.
+    /// </summary>
+    private static (string Key, bool Ephemeral) SessionFor(
+        HttpContext context, Scope scope, string branch, string resolved) =>
+        scope.OwnedBy(context, branch)
+            ? (resolved, false)
+            : ($"{resolved}\u0000{context.CurrentUser()?.Id:D}", true);
+
+    /// <summary>
+    /// Opens an audit row for a hand-driven run in test or prod, and closes it when
+    /// the batch finishes. Nothing is awaited but the open: the run outlives the
+    /// request, which is the whole reason the row has to be closed by a continuation
+    /// rather than by whoever polls next.
+    /// </summary>
+    private static async Task AuditAsync(
+        HttpContext context, IRunStore store, Scope scope, string branch, string path,
+        IReadOnlyList<string> ids, Task completion) {
+        if (branch != GitService.TestBranch && branch != "prod") {
+            return;
+        }
+        var user = context.CurrentUser();
+        var record = new ManualRun {
+            Id = Guid.NewGuid(),
+            Project = scope.Project.Slug,
+            Environment = branch,
+            NotebookPath = path,
+            ActorId = user?.Id ?? Guid.Empty,
+            ActorName = user?.DisplayName,
+            StartedAt = DateTime.UtcNow,
+            Cells = string.Join(",", ids),
+            CellCount = ids.Count,
+        };
+        await store.StartManualRunAsync(record);
+        _ = completion.ContinueWith(
+            finished => store.FinishManualRunAsync(
+                record.Id,
+                finished.IsFaulted ? "Failed" : "Succeeded",
+                finished.Exception?.GetBaseException().Message,
+                DateTime.UtcNow),
+            TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// Refuses a hand-driven run while the schedule is running the same notebook.
+    /// Two kernels in one worktree write over each other's outputs, and the one that
+    /// matters is the one nobody is watching.
+    /// </summary>
+    private static async Task<IResult> DenyOverlap(
+        Scope scope, IRunStore store, string branch, string resolved) {
+        if (branch != GitService.TestBranch && branch != "prod") {
+            return null;
+        }
+        foreach (var job in scope.Catalog.Load().In(scope.Project.Slug, branch).Where(j =>
+                     string.Equals(j.NotebookPath, resolved, StringComparison.OrdinalIgnoreCase))) {
+            if (await store.HasActiveRunAsync(job.Project, job.Environment, job.Name)) {
+                return Results.Json(
+                    new { error = $"'{job.Name}' is running this notebook right now. Wait for it." },
+                    statusCode: 409);
+            }
         }
         return null;
     }
