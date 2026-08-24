@@ -84,11 +84,15 @@ public sealed class EfRunStore : IRunStore {
             .Skip(query.Offset).Take(query.Limit).ToListAsync();
     }
 
-    public async Task<RunStats> GetStatsAsync(TimeSpan window) {
+    public async Task<RunStats> GetStatsAsync(
+        TimeSpan window, IReadOnlyCollection<string> projects = null) {
         using var db = _contextFactory();
         var since = DateTime.UtcNow - window;
-        var counts = await db.Runs.AsNoTracking()
-            .Where(r => r.CreatedAt >= since)
+        var runs = db.Runs.AsNoTracking().Where(r => r.CreatedAt >= since);
+        if (projects != null) {
+            runs = runs.Where(r => projects.Contains(r.Project));
+        }
+        var counts = await runs
             .GroupBy(r => r.Status)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync();

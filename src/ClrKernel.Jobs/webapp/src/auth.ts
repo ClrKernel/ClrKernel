@@ -5,7 +5,7 @@ import {
 } from '@simplewebauthn/browser';
 
 /** Server-wide roles. Names match the C# enum, which is what the API sends. */
-export type Role = 'ServerAdmin' | 'ServerViewer';
+export type Role = 'ServerAdmin' | 'ServerViewer' | 'ServerUser';
 
 export interface SessionUser {
   id: string;

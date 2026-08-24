@@ -4,16 +4,79 @@ using System.Collections.Generic;
 namespace ClrKernel.Jobs;
 
 /// <summary>
-/// Server-wide, not per notebook or per job. Two is the whole set on purpose: the
-/// interesting boundary is "may execute arbitrary code on this machine", and every
-/// finer distinction anyone might want still sits on the same side of it.
+/// What an account is across the whole server. Stored by name, so the order here
+/// is free to change and new values are free to be appended.
 /// </summary>
 public enum UserRole {
-    /// <summary>Everything: edit, run, promote, manage users and settings.</summary>
+    /// <summary>Everything: edit, run, promote, manage users, settings and projects.</summary>
     ServerAdmin,
 
-    /// <summary>Read-only. May look at anything; may change or run nothing.</summary>
+    /// <summary>
+    /// Read-only across every project — the auditor's role. Deliberately not the
+    /// default for a new account: an account that can read every project makes
+    /// per-project grants pointless, because nothing is ever private to a project.
+    /// </summary>
     ServerViewer,
+
+    /// <summary>
+    /// The baseline: no access to any project at all until granted some. Projects
+    /// a Server User has no grant on are not enumerable to them — they do not
+    /// appear in the switcher and their ids answer 404, not 403.
+    /// </summary>
+    ServerUser,
+}
+
+/// <summary>
+/// What an account is <em>within one project</em>.
+/// <para>
+/// The order is load-bearing: an effective role is the higher of what the server
+/// role implies and any explicit grant, and "higher" is this enum's own order. A
+/// grant can raise someone's access on one project and never lower it.
+/// </para>
+/// </summary>
+public enum ProjectRole {
+    /// <summary>Read everything in the project, including other people's branches.</summary>
+    ProjectViewer,
+
+    /// <summary>Owns a branch here: edits it, runs it, pushes it to test.</summary>
+    ProjectMember,
+
+    /// <summary>
+    /// Everything within the project: promote to prod, configure the remote,
+    /// manage members, prune worktrees. Still cannot write to another user's branch.
+    /// </summary>
+    ProjectAdmin,
+}
+
+/// <summary>One person's explicit grant on one project.</summary>
+public sealed class ProjectMembership {
+    public string ProjectSlug { get; set; }
+    public Guid UserId { get; set; }
+    public ProjectRole Role { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>How the two tiers of role compose.</summary>
+public static class ProjectAccess {
+    /// <summary>
+    /// The role <paramref name="user"/> actually has on a project, or null for no
+    /// access at all. <paramref name="grant"/> is their explicit membership, if any.
+    /// </summary>
+    public static ProjectRole? Effective(User user, ProjectRole? grant) {
+        if (user is null or { Disabled: true }) {
+            return null;
+        }
+        var implied = user.Role switch {
+            // A Server Admin is an admin of every project, including ones created
+            // after their account was.
+            UserRole.ServerAdmin => ProjectRole.ProjectAdmin,
+            UserRole.ServerViewer => ProjectRole.ProjectViewer,
+            _ => (ProjectRole?)null,
+        };
+        return implied == null ? grant
+            : grant == null ? implied
+            : (ProjectRole)Math.Max((int)implied.Value, (int)grant.Value);
+    }
 }
 
 public sealed class User {

@@ -32,6 +32,7 @@ export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipp
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
 
 export type RemoteMode = 'Local' | 'ServerAuthoritative' | 'RemoteAuthoritative';
+export type ProjectRole = 'ProjectViewer' | 'ProjectMember' | 'ProjectAdmin';
 
 export interface Project {
   slug: string;
@@ -46,6 +47,16 @@ export interface Project {
   remoteSecret: string | null;
   pushUserBranches: boolean;
   environments: string[];
+  /** What you may do here. Projects you may do nothing in are not listed at all. */
+  role: ProjectRole;
+}
+
+export interface ProjectMember {
+  userId: string;
+  displayName: string;
+  serverRole: string;
+  role: ProjectRole;
+  createdAt: string;
 }
 
 /** What registering or editing a project sends. No credential, ever — see above. */
@@ -349,6 +360,18 @@ export const api = {
   /** Turns the project's folder into a test/prod workspace. Idempotent. */
   initProject: (slug: string) =>
     request<{ message: string }>(`/projects/${encodeURIComponent(slug)}/init`, { method: 'POST' }),
+
+  members: (slug: string) =>
+    request<{ members: ProjectMember[]; candidates: { userId: string; displayName: string }[] }>(
+      `/projects/${encodeURIComponent(slug)}/members`,
+    ),
+  setMember: (slug: string, userId: string, role: ProjectRole) =>
+    request<{ granted: boolean }>(
+      `/projects/${encodeURIComponent(slug)}/members/${userId}`,
+      { method: 'PUT', body: JSON.stringify({ role }) },
+    ),
+  removeMember: (slug: string, userId: string) =>
+    request<void>(`/projects/${encodeURIComponent(slug)}/members/${userId}`, { method: 'DELETE' }),
 
   // Every project's jobs; the page filters to the one you are looking at.
   jobs: () => request<{ jobs: Job[]; errors: string[] }>('/jobs'),

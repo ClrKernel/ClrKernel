@@ -24,6 +24,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<Credential> Credentials => Set<Credential>();
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AuthSession> Sessions => Set<AuthSession>();
+    public DbSet<ProjectMembership> ProjectMemberships => Set<ProjectMembership>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Run>(run => {
@@ -120,6 +121,23 @@ public abstract class RunsDbContext : DbContext {
             invite.Property(i => i.UsedAt).HasColumnName("used_at");
             invite.Property(i => i.UsedBy).HasColumnName("used_by");
             invite.Property(i => i.Revoked).HasColumnName("revoked");
+        });
+
+        modelBuilder.Entity<ProjectMembership>(member => {
+            member.ToTable("project_members");
+            // The project is a slug rather than a foreign key: projects live in
+            // projects.json, not in this database, and a grant that outlives an
+            // unregistered project is what makes re-registering it restore access.
+            member.HasKey(m => new { m.ProjectSlug, m.UserId });
+            member.Property(m => m.ProjectSlug).HasColumnName("project").HasMaxLength(64);
+            member.Property(m => m.UserId).HasColumnName("user_id");
+            member.Property(m => m.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(24);
+            member.Property(m => m.CreatedAt).HasColumnName("created_at");
+            member.HasIndex(m => m.UserId);
+            // Deleting an account takes its grants with it; a grant naming nobody
+            // would be a row that can never match a caller and never be cleaned up.
+            member.HasOne<User>().WithMany()
+                .HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AuthSession>(session => {

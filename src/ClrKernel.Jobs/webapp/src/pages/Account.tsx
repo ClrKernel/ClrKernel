@@ -16,8 +16,16 @@ import { useSession } from '../sessionContext';
 import { timeAgo } from '../ipynb';
 
 const ROLES: { value: Role; label: string; hint: string }[] = [
-  { value: 'ServerAdmin', label: 'Server Admin', hint: 'Edit, run, promote, manage users.' },
-  { value: 'ServerViewer', label: 'Server Viewer', hint: 'Read-only. Cannot run anything.' },
+  // Server User first: it is the one to reach for. The other two are server-wide
+  // powers, and an account that can read every project makes a per-project grant
+  // pointless — nothing is ever private to a project.
+  {
+    value: 'ServerUser',
+    label: 'Server User',
+    hint: 'Sees only the projects they are added to.',
+  },
+  { value: 'ServerViewer', label: 'Server Viewer', hint: 'Reads every project. For auditors.' },
+  { value: 'ServerAdmin', label: 'Server Admin', hint: 'Everything, in every project.' },
 ];
 
 function roleLabel(role: Role): string {
@@ -51,7 +59,7 @@ export function AccountSection() {
     <section className="settings-section">
       <p className="mb-3 max-w-[78ch] text-base text-muted-foreground">
         You are signed in as <strong>{session?.user?.displayName}</strong> —{' '}
-        {roleLabel(session?.user?.role ?? 'ServerViewer')}. Roles are set by an admin.
+        {roleLabel(session?.user?.role ?? 'ServerUser')}. Roles are set by an admin.
       </p>
       <ErrorBanner error={error ?? loadError} />
 
@@ -152,7 +160,7 @@ export function UsersSection() {
   const session = useSession();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [role, setRole] = useState<Role>('ServerViewer');
+  const [role, setRole] = useState<Role>('ServerUser');
   const [label, setLabel] = useState('');
   const { data: users, error: usersError, reload: reloadUsers } = usePolling(
     () => accounts.users(), null);

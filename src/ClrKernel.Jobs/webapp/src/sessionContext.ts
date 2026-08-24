@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react';
+import type { ProjectRole } from './api';
 import type { SessionState } from './auth';
+import { useProjects } from './projectContext';
 
 /**
  * Who is signed in, for the whole app.
@@ -15,6 +17,34 @@ export function useSession(): SessionState | null {
   return useContext(SessionContext);
 }
 
+const ORDER: ProjectRole[] = ['ProjectViewer', 'ProjectMember', 'ProjectAdmin'];
+
+function atLeast(role: ProjectRole | null | undefined, minimum: ProjectRole): boolean {
+  return role != null && ORDER.indexOf(role) >= ORDER.indexOf(minimum);
+}
+
+/**
+ * May edit and run in the project you are looking at.
+ *
+ * Project-relative rather than server-wide: the same account can own a branch in
+ * one project and be a stranger to the next. The server checks again on every
+ * route — this only decides which controls are worth drawing.
+ */
 export function useCanWrite(): boolean {
+  return atLeast(useProjectRole(), 'ProjectMember');
+}
+
+/** May configure this project, manage its members, and promote to production. */
+export function useIsProjectAdmin(): boolean {
+  return atLeast(useProjectRole(), 'ProjectAdmin');
+}
+
+/** Server-wide administration: accounts, settings, channels, registering projects. */
+export function useIsServerAdmin(): boolean {
   return useContext(SessionContext)?.user?.role === 'ServerAdmin';
+}
+
+function useProjectRole(): ProjectRole | undefined {
+  const { projects, current } = useProjects();
+  return projects.find((p) => p.slug === current)?.role;
 }

@@ -173,6 +173,34 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
                     b.ToTable("job_trigger_state", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Jobs.ProjectMembership", b =>
+                {
+                    b.Property<string>("ProjectSlug")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("project");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("role");
+
+                    b.HasKey("ProjectSlug", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("project_members", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Jobs.Run", b =>
                 {
                     b.Property<Guid>("Id")
@@ -353,6 +381,15 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ClrKernel.Jobs.ProjectMembership", b =>
+                {
+                    b.HasOne("ClrKernel.Jobs.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ClrKernel.Jobs.User", b =>

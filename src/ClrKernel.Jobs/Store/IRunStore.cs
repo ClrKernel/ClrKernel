@@ -14,7 +14,11 @@ public interface IRunStore {
     Task UpdateRunAsync(Run run);
     Task<Run> GetRunAsync(Guid id);
     Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query);
-    Task<RunStats> GetStatsAsync(TimeSpan window);
+    /// <param name="projects">
+    /// Limit the count to these projects; null counts every one. The dashboard is a
+    /// number, and a number is as much of a leak as a list.
+    /// </param>
+    Task<RunStats> GetStatsAsync(TimeSpan window, IReadOnlyCollection<string> projects = null);
 
     Task SaveCellsAsync(Guid runId, IReadOnlyList<RunCell> cells);
     Task UpdateCellAsync(RunCell cell);

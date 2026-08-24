@@ -253,19 +253,45 @@ under *Settings → Users*: pick a role, copy the link, send it however you like
 is no email in this system. Invites are single-use and expire after seven days
 (`--invite-days`).
 
-Two roles, server-wide:
+### Roles
 
-| | Server Admin | Server Viewer |
-|---|---|---|
-| Read notebooks, jobs, runs, output | yes | yes |
-| Run cells, Run All, restart the kernel | yes | **no** |
-| Save, promote, edit jobs and channels | yes | **no** |
-| Manage users, invites and settings | yes | **no** |
+Two tiers. **Server roles** are what an account is across the whole server:
 
-The viewer boundary is enforced on every route, not by hiding buttons: running a cell
-is arbitrary code execution on the machine hosting the server, so calling
-`…/branches/test/notebooks/run` directly as a viewer returns 403. A viewer's editor is
-read-only, and Focus Mode still works — it is a reading layout too.
+| | Server Admin | Server Viewer | Server User |
+|---|---|---|---|
+| Manage accounts, invites, settings, channels | yes | **no** | **no** |
+| Register and forget projects | yes | **no** | **no** |
+| Sees, by default | every project | every project, read-only | **nothing** |
+
+**Server User is the one to hand out.** An account that can read every project makes
+per-project grants pointless — nothing is ever private to a project — so Server
+Viewer is the auditor's role rather than the default, and a new invite starts at
+Server User.
+
+**Project roles** are grants on one project, set under *Settings → Projects →
+Members* by that project's admins or by a Server Admin:
+
+| Within one project | Viewer | Member | Admin |
+|---|---|---|---|
+| Read notebooks, jobs, runs, output | yes | yes | yes |
+| Edit and save, edit jobs | **no** | yes | yes |
+| Run cells, Run All, restart the kernel | **no** | yes | yes |
+| Promote to production | **no** | **no** | yes |
+| Configure the project, manage its members | **no** | **no** | yes |
+
+A grant is the **higher** of the two: a Server Admin is an admin of every project
+whether granted or not, and an explicit grant raises someone's access on that one
+project and never lowers it. A project cannot be left with no Project Admin of its
+own.
+
+A project you have no access to is **invisible, not refused**: it is absent from the
+switcher and from every list, and its id answers **404, not 403** — otherwise the
+name of every project on the server leaks to anyone willing to guess.
+
+None of this is enforced by hiding buttons. Running a cell is arbitrary code
+execution on the machine hosting the server, so calling
+`…/branches/test/notebooks/run` directly without the role returns 403. A viewer's
+editor is read-only, and Focus Mode still works — it is a reading layout too.
 
 ### Before anyone else signs in: set the domain
 

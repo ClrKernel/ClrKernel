@@ -61,6 +61,25 @@ public interface IAuthStore {
     Task<bool> RedeemInviteAsync(string code, Guid userId, DateTime now);
     Task<bool> RevokeInviteAsync(string code);
 
+    // --- per-project grants -------------------------------------------------
+
+    /// <summary>Every grant on one project, newest last.</summary>
+    Task<IReadOnlyList<ProjectMembership>> MembersOfAsync(string project);
+
+    /// <summary>Every grant one person holds, keyed by project slug.</summary>
+    Task<IReadOnlyDictionary<string, ProjectRole>> GrantsForAsync(Guid userId);
+
+    /// <summary>Adds or changes one grant.</summary>
+    Task SetMemberAsync(string project, Guid userId, ProjectRole role, DateTime now);
+
+    /// <summary>
+    /// Removes a grant, unless it is the project's last Project Admin — a project
+    /// with nobody to configure it is a project nobody can fix. Server Admins are
+    /// admins of every project, but they are not <em>members</em> of one, so they do
+    /// not count: the guard is about the project's own list.
+    /// </summary>
+    Task<bool> RemoveMemberAsync(string project, Guid userId);
+
     Task CreateSessionAsync(AuthSession session);
     Task<(AuthSession Session, User User)> FindSessionAsync(string id, DateTime now);
     Task TouchSessionAsync(string id, DateTime now);
@@ -172,6 +191,51 @@ public sealed class EfAuthStore : IAuthStore {
         await using var db = _contextFactory();
         db.Credentials.Add(credential);
         await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<ProjectMembership>> MembersOfAsync(string project) {
+        using var db = _contextFactory();
+        return await db.ProjectMemberships.AsNoTracking()
+            .Where(m => m.ProjectSlug == project)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyDictionary<string, ProjectRole>> GrantsForAsync(Guid userId) {
+        using var db = _contextFactory();
+        return await db.ProjectMemberships.AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .ToDictionaryAsync(m => m.ProjectSlug, m => m.Role, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task SetMemberAsync(string project, Guid userId, ProjectRole role, DateTime now) {
+        using var db = _contextFactory();
+        var existing = await db.ProjectMemberships
+            .FirstOrDefaultAsync(m => m.ProjectSlug == project && m.UserId == userId);
+        if (existing == null) {
+            db.ProjectMemberships.Add(new ProjectMembership {
+                ProjectSlug = project,
+                UserId = userId,
+                Role = role,
+                CreatedAt = now,
+            });
+        } else {
+            existing.Role = role;
+        }
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<bool> RemoveMemberAsync(string project, Guid userId) {
+        using var db = _contextFactory();
+        // The whole test is in the WHERE clause, so two callers racing to remove
+        // the last two admins cannot both succeed.
+        var removed = await db.ProjectMemberships
+            .Where(m => m.ProjectSlug == project && m.UserId == userId)
+            .Where(m => m.Role != ProjectRole.ProjectAdmin
+                || db.ProjectMemberships.Count(other =>
+                    other.ProjectSlug == project && other.Role == ProjectRole.ProjectAdmin) > 1)
+            .ExecuteDeleteAsync();
+        return removed > 0;
     }
 
     public async Task<Credential> FindCredentialAsync(string credentialId) {

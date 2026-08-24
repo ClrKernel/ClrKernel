@@ -29,19 +29,28 @@ public static class JobsApi {
         // cannot name someone else's branch cannot write to it.
         var scoped = api.MapGroup("/projects/{project}/branches/{branch}");
 
-        api.MapGet("/health", (ProjectRegistry projects) => {
-            var result = projects.LoadAll();
+        api.MapGet("/health", async (HttpContext context, ProjectRegistry projects) => {
+            // Counts and errors are scoped the same way the lists are: a project
+            // someone cannot see should not be visible to them as a number either.
+            var visible = await context.VisibleProjectsAsync(projects);
+            var all = projects.LoadAll();
+            var result = new CatalogResult {
+                Jobs = all.Jobs.Where(j => visible.ContainsKey(j.Project)).ToList(),
+                Errors = all.Errors,
+                Environments = all.Environments,
+            };
             var pushes = projects.Projects
+                .Where(p => visible.ContainsKey(p.Slug))
                 .Select(p => new { Project = p, Git = projects.GitFor(p) })
                 .Where(g => g.Git?.LastPush.At != null)
                 .ToList();
             return Results.Ok(new {
                 status = result.Errors.Count == 0 ? "ok" : "degraded",
                 jobs = result.Jobs.Count,
-                projects = projects.Projects.Count,
+                projects = visible.Count,
                 notebooksRoot = projects.Default.Root,
                 environments = projects.Environments,
-                gitEnabled = projects.Projects.Any(p => p.GitEnabled),
+                gitEnabled = projects.Projects.Any(p => visible.ContainsKey(p.Slug) && p.GitEnabled),
                 // A push that can never succeed must not be silent divergence.
                 lastPush = pushes.Count == 0 ? null : pushes.Select(g => new {
                     project = g.Project.Slug,
@@ -56,13 +65,23 @@ public static class JobsApi {
 
         // --- projects -------------------------------------------------------
 
-        api.MapGet("/projects", (ProjectRegistry projects) =>
-            Results.Ok(new { projects = projects.Projects.Select(p => ProjectView.From(p, projects)) }));
+        // Only what the caller may see. A project they have no grant on is not
+        // listed, does not appear in the switcher, and 404s if they guess its id.
+        api.MapGet("/projects", async (HttpContext context, ProjectRegistry projects) => {
+            var visible = await context.VisibleProjectsAsync(projects);
+            return Results.Ok(new {
+                projects = projects.Projects
+                    .Where(p => visible.ContainsKey(p.Slug))
+                    .Select(p => ProjectView.From(p, projects, visible[p.Slug])),
+            });
+        });
 
-        api.MapGet("/projects/{project}", (ProjectRegistry projects, string project) =>
+        api.MapGet("/projects/{project}", async (
+            HttpContext context, ProjectRegistry projects, string project) =>
             projects.Find(project) is { } found
-                ? Results.Ok(ProjectView.From(found, projects))
-                : NoProject(project));
+                ? Results.Ok(ProjectView.From(
+                    found, projects, await context.ProjectRoleAsync(found.Slug)))
+                : NoProject(project)).RequiresProject(ProjectRole.ProjectViewer);
 
         api.MapPost("/projects", (ProjectRegistry projects, ProjectWrite write) => {
             if (write == null) {
@@ -89,7 +108,64 @@ public static class JobsApi {
                 } catch (ProjectRegistry.ProjectException e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectAdmin);
+
+        // --- who is in a project --------------------------------------------
+        //
+        // Managed by the project's own admins as well as by Server Admins: the
+        // point of per-project grants is that a project can be run by people who
+        // are nobody in particular server-wide.
+
+        api.MapGet("/projects/{project}/members", async (
+            ProjectRegistry projects, IAuthStore auth, string project) => {
+                if (projects.Find(project) is not { } found) {
+                    return NoProject(project);
+                }
+                var members = await auth.MembersOfAsync(found.Slug);
+                var users = (await auth.ListUsersAsync()).ToDictionary(u => u.User.Id);
+                return Results.Ok(new {
+                    members = members
+                        .Where(m => users.ContainsKey(m.UserId))
+                        .Select(m => new {
+                            userId = m.UserId,
+                            displayName = users[m.UserId].User.DisplayName,
+                            serverRole = users[m.UserId].User.Role.ToString(),
+                            role = m.Role.ToString(),
+                            m.CreatedAt,
+                        }),
+                    // Who could be added. Server Admins are already admins here and
+                    // do not need a grant, so offering one would be a no-op row.
+                    candidates = users.Values
+                        .Where(u => u.User.Role != UserRole.ServerAdmin
+                            && !members.Any(m => m.UserId == u.User.Id))
+                        .Select(u => new { userId = u.User.Id, u.User.DisplayName }),
+                });
+            }).RequiresProject(ProjectRole.ProjectAdmin);
+
+        api.MapPut("/projects/{project}/members/{userId:guid}", async (
+            ProjectRegistry projects, IAuthStore auth, string project, Guid userId, MemberWrite write) => {
+                if (projects.Find(project) is not { } found) {
+                    return NoProject(project);
+                }
+                if (await auth.FindUserAsync(userId) == null) {
+                    return Results.NotFound(new { error = "No such account." });
+                }
+                await auth.SetMemberAsync(found.Slug, userId, write?.Role ?? ProjectRole.ProjectViewer,
+                    DateTime.UtcNow);
+                return Results.Ok(new { granted = true });
+            }).RequiresProject(ProjectRole.ProjectAdmin);
+
+        api.MapDelete("/projects/{project}/members/{userId:guid}", async (
+            ProjectRegistry projects, IAuthStore auth, string project, Guid userId) => {
+                if (projects.Find(project) is not { } found) {
+                    return NoProject(project);
+                }
+                return await auth.RemoveMemberAsync(found.Slug, userId)
+                    ? Results.NoContent()
+                    : Results.BadRequest(new {
+                        error = "That is this project's last admin. Grant someone else first.",
+                    });
+            }).RequiresProject(ProjectRole.ProjectAdmin);
 
         // Turns a project's folder into a test/prod workspace — the same thing
         // `clrkernel-jobs git init` does, offered here because registering a project
@@ -109,7 +185,7 @@ public static class JobsApi {
             } catch (GitException e) {
                 return Results.BadRequest(new { error = e.Message });
             }
-        }).AdminOnly();
+        }).RequiresProject(ProjectRole.ProjectAdmin);
 
         // Unregisters only. Nothing on disk is touched — see ProjectRegistry.
         api.MapDelete("/projects/{project}", (ProjectRegistry projects, string project) => {
@@ -118,7 +194,7 @@ public static class JobsApi {
             } catch (ProjectRegistry.ProjectException e) {
                 return Results.BadRequest(new { error = e.Message });
             }
-        }).AdminOnly();
+        }).RequiresProject(ProjectRole.ProjectAdmin);
 
         // --- notebooks ------------------------------------------------------
 
@@ -136,7 +212,7 @@ public static class JobsApi {
                         : null,
                 }),
             });
-        });
+        }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapGet("/notebooks/content", (
             ProjectRegistry projects, string project, string branch, string path) => {
@@ -155,7 +231,7 @@ public static class JobsApi {
                 return File.Exists(resolved)
                     ? Results.Text(File.ReadAllText(resolved), "text/plain")
                     : Results.NotFound(new { error = $"No such file: {path}" });
-            });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPut("/notebooks/content", async (
             ProjectRegistry projects, string project, string branch, string path,
@@ -171,7 +247,7 @@ public static class JobsApi {
                 }
                 using var reader = new StreamReader(context.Request.Body);
                 return SaveToTest(scope, target, path, await reader.ReadToEndAsync());
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         // The notebook as editable cells, with the languages the kernel can run —
         // the shape the web editor works in. Parsing is NotebookMarkdown's, the same
@@ -202,7 +278,7 @@ public static class JobsApi {
                     cells = cells.Select((c, i) => CellView.From(c, i, languages)),
                     languages,
                 });
-            });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPut("/notebooks/cells", async (
             ProjectRegistry projects, KernelLanguages kernelLanguages,
@@ -233,7 +309,7 @@ public static class JobsApi {
                 return SaveToTest(
                     scope, target, path,
                     NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         // --- interactive sessions -------------------------------------------
         //
@@ -261,7 +337,7 @@ public static class JobsApi {
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(resolved)?.KernelLog() });
                 }
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapDelete("/notebooks/session", (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
@@ -274,7 +350,7 @@ public static class JobsApi {
                 }
                 var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
                 return Results.Ok(new { restarted = sessions.Restart(resolved) });
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPost("/notebooks/run", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
@@ -310,7 +386,7 @@ public static class JobsApi {
                 return session.TryStartRun(cells, ids, out _)
                     ? Results.Accepted(value: new { running = ids })
                     : Results.Json(new { error = "This notebook is already running a cell." }, statusCode: 409);
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         // What the editor currently has open, so completion and hover have documents
         // to answer about. Called on a debounce while typing, so it must stay cheap
@@ -348,7 +424,7 @@ public static class JobsApi {
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         // One language question about one cell — completion, its lazy documentation,
         // hover, signature help. A whitelisted kind rather than four near-identical
@@ -401,7 +477,7 @@ public static class JobsApi {
                     // A language feature is never worth failing the editor over.
                     return Results.Ok(new { started = true, result = (object)null, error = e.Message });
                 }
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapGet("/notebooks/session/status", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options, IRunStore store,
@@ -429,7 +505,7 @@ public static class JobsApi {
                 return session == null
                     ? Results.Ok(new { running = false, started = false, scheduledRunActive = scheduled })
                     : Results.Ok(SessionView.From(session, scheduled));
-            });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         // The connection wizard's schema. Answered by the notebook's own kernel so
         // a package `#r`-ed into this session contributes its providers too — the
@@ -455,7 +531,7 @@ public static class JobsApi {
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapGet("/notebooks/promotion", async (
             ProjectRegistry projects, IRunStore store, string project, string branch, string path) => {
@@ -466,7 +542,7 @@ public static class JobsApi {
                     return refusal;
                 }
                 return Results.Ok(await Promotion.CheckAsync(scope.Project, projects, store, path));
-            });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/notebooks/promote", async (
             ProjectRegistry projects, IRunStore store, JobsOptions options,
@@ -485,7 +561,7 @@ public static class JobsApi {
                 var sha = Promotion.Apply(scope.Git, eligibility, path);
                 scope.Git.TryPush(scope.Project.Remote ?? options.GitPushRemote);
                 return Results.Ok(new { promoted = true, commitSha = sha, paths = eligibility.Paths });
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectAdmin);
 
         api.MapGet("/projects/{project}/git/diff", (
             ProjectRegistry projects, string project, string path) => {
@@ -496,15 +572,19 @@ public static class JobsApi {
                     return refusal;
                 }
                 return Results.Text(scope.Git.UnifiedDiff(path), "text/plain");
-            });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         // --- jobs -----------------------------------------------------------
 
         // Every project's jobs: the dashboard is a view of the whole server, and a
         // job carries the project it belongs to.
-        api.MapGet("/jobs", (ProjectRegistry projects) => {
+        api.MapGet("/jobs", async (HttpContext context, ProjectRegistry projects) => {
+            var visible = await context.VisibleProjectsAsync(projects);
             var result = projects.LoadAll();
-            return Results.Ok(new { jobs = result.Jobs.Select(JobView.From), errors = result.Errors });
+            return Results.Ok(new {
+                jobs = result.Jobs.Where(j => visible.ContainsKey(j.Project)).Select(JobView.From),
+                errors = result.Errors,
+            });
         });
 
         scoped.MapGet("/jobs/{name}", (
@@ -515,19 +595,19 @@ public static class JobsApi {
                 var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
                 return job == null ? Results.NotFound(new { error = $"No job named '{name}' in {branch}." })
                     : Results.Ok(JobView.From(job));
-            });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/jobs", (
             ProjectRegistry projects, string project, string branch, JobWrite write) =>
             Scope.Of(projects, project) is { } scope
                 ? Upsert(scope, branch, null, write)
-                : NoProject(project)).AdminOnly();
+                : NoProject(project)).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPut("/jobs/{name}", (
             ProjectRegistry projects, string project, string branch, string name, JobWrite write) =>
             Scope.Of(projects, project) is { } scope
                 ? Upsert(scope, branch, name, write)
-                : NoProject(project)).AdminOnly();
+                : NoProject(project)).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapDelete("/jobs/{name}", (
             ProjectRegistry projects, string project, string branch, string name) => {
@@ -558,7 +638,7 @@ public static class JobsApi {
                     Mutate();
                 }
                 return Results.NoContent();
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         // The body is read by hand rather than bound: a [FromBody] parameter adds a
         // content-type constraint to route matching, which makes a plain
@@ -597,7 +677,7 @@ public static class JobsApi {
                 return runId == null
                     ? Results.Conflict(new { error = $"{job.Name} already has a run in flight." })
                     : Results.Accepted($"/api/runs/{runId}", new { runId });
-            }).AdminOnly();
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPost("/jobs/{name}/cancel", (
             ProjectRegistry projects, SchedulerService scheduler,
@@ -607,7 +687,7 @@ public static class JobsApi {
                 : scheduler.TryCancel(found.Slug, branch, name)
                     ? Results.Ok(new { cancelled = true })
                     : Results.NotFound(new { error = $"No in-flight run for '{name}' in {branch}." }))
-            .AdminOnly();
+            .RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapGet("/jobs/{name}/runs", async (
             ProjectRegistry projects, IRunStore store,
@@ -620,12 +700,17 @@ public static class JobsApi {
                     JobName = name,
                     Limit = Clamp(limit),
                     Offset = offset ?? 0,
-                })));
+                }))).RequiresProject(ProjectRole.ProjectViewer);
 
         // --- runs -----------------------------------------------------------
 
         api.MapGet("/runs", async (
-            IRunStore store, string status, string project, string env, int? limit, int? offset) => {
+            HttpContext context, ProjectRegistry projects, IRunStore store,
+            string status, string project, string env, int? limit, int? offset) => {
+                var visible = await context.VisibleProjectsAsync(projects);
+                if (project != null && !visible.ContainsKey(project)) {
+                    return NoProject(project);
+                }
                 RunStatus? parsed = null;
                 if (!string.IsNullOrEmpty(status)) {
                     if (!Enum.TryParse<RunStatus>(status, ignoreCase: true, out var value)) {
@@ -633,29 +718,45 @@ public static class JobsApi {
                     }
                     parsed = value;
                 }
-                return Results.Ok(await store.QueryRunsAsync(new RunQuery {
+                var runs = await store.QueryRunsAsync(new RunQuery {
                     Project = project,
                     Environment = env,
                     Status = parsed,
                     Limit = Clamp(limit),
                     Offset = offset ?? 0,
-                }));
+                });
+                // Named one project: checked above. Named none: the history of a
+                // project you cannot see is part of what you cannot see.
+                return Results.Ok(project != null
+                    ? runs
+                    : runs.Where(r => visible.ContainsKey(r.Project ?? ProjectRegistry.DefaultSlug))
+                        .ToList());
             });
 
-        api.MapGet("/runs/{id:guid}", async (IRunStore store, Guid id) => {
-            var run = await store.GetRunAsync(id);
-            return run == null ? Results.NotFound(new { error = $"No run {id}." })
-                : Results.Ok(new { run, cells = await store.GetCellsAsync(id) });
-        });
+        // A run is part of its project, and so is the fact that it happened: these
+        // three answer 404 for a run in a project the caller cannot see, which is
+        // the same thing they answer for a run id that never existed.
+        api.MapGet("/runs/{id:guid}", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store, Guid id) => {
+                var run = await store.GetRunAsync(id);
+                return await VisibleRun(context, projects, run) == null
+                    ? Results.NotFound(new { error = $"No run {id}." })
+                    : Results.Ok(new { run, cells = await store.GetCellsAsync(id) });
+            });
 
-        api.MapGet("/runs/{id:guid}/artifact", async (IRunStore store, JobsOptions options, Guid id) =>
-            await ServeRunFile(store, options, id, r => r.ArtifactPath, "application/json"));
+        api.MapGet("/runs/{id:guid}/artifact", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options, Guid id) =>
+            await ServeRunFile(context, projects, store, options, id, r => r.ArtifactPath, "application/json"));
 
-        api.MapGet("/runs/{id:guid}/log", async (IRunStore store, JobsOptions options, Guid id) =>
-            await ServeRunFile(store, options, id, r => r.LogPath, "text/plain"));
+        api.MapGet("/runs/{id:guid}/log", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options, Guid id) =>
+            await ServeRunFile(context, projects, store, options, id, r => r.LogPath, "text/plain"));
 
-        api.MapGet("/stats", async (IRunStore store, int? days) =>
-            Results.Ok(await store.GetStatsAsync(TimeSpan.FromDays(Math.Clamp(days ?? 7, 1, 365)))));
+        api.MapGet("/stats", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store, int? days) =>
+            Results.Ok(await store.GetStatsAsync(
+                TimeSpan.FromDays(Math.Clamp(days ?? 7, 1, 365)),
+                (await context.VisibleProjectsAsync(projects)).Keys.ToList())));
 
         // --- notification channels -------------------------------------------
 
@@ -861,9 +962,19 @@ public static class JobsApi {
         return Results.Ok(new { saved = true, commitSha = git.HeadSha(GitService.TestBranch) });
     }
 
+    /// <summary>The run, or null when it does not exist or is not the caller's to see.</summary>
+    private static async Task<Run> VisibleRun(
+        HttpContext context, ProjectRegistry projects, Run run) =>
+        run != null
+        && (await context.VisibleProjectsAsync(projects))
+            .ContainsKey(run.Project ?? ProjectRegistry.DefaultSlug)
+            ? run
+            : null;
+
     private static async Task<IResult> ServeRunFile(
-        IRunStore store, JobsOptions options, Guid id, Func<Run, string> select, string contentType) {
-        var run = await store.GetRunAsync(id);
+        HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options,
+        Guid id, Func<Run, string> select, string contentType) {
+        var run = await VisibleRun(context, projects, await store.GetRunAsync(id));
         if (run == null) {
             return Results.NotFound(new { error = $"No run {id}." });
         }
@@ -972,6 +1083,11 @@ public static class JobsApi {
     }
 }
 
+/// <summary>One grant, as the members API sets it.</summary>
+public sealed class MemberWrite {
+    public ProjectRole Role { get; set; }
+}
+
 /// <summary>
 /// A project as a registration or an edit describes it. Both use one shape, and the
 /// fields an edit may not change are ignored rather than rejected: the slug is
@@ -1020,18 +1136,23 @@ public sealed class ProjectView {
     public bool PushUserBranches { get; set; }
     public IReadOnlyList<string> Environments { get; set; }
 
-    public static ProjectView From(Project project, ProjectRegistry projects) => new() {
-        Slug = project.Slug,
-        Name = project.Name,
-        Root = project.Root,
-        GitEnabled = project.GitEnabled,
-        Ready = !project.GitEnabled || projects.GitFor(project)?.LayoutExists == true,
-        RemoteMode = project.RemoteMode.ToString(),
-        Remote = project.Remote,
-        RemoteSecret = project.RemoteSecret,
-        PushUserBranches = project.PushUserBranches,
-        Environments = projects.CatalogFor(project).Environments,
-    };
+    /// <summary>What the caller may do here. Never null on a project they can see.</summary>
+    public string Role { get; set; }
+
+    public static ProjectView From(
+        Project project, ProjectRegistry projects, ProjectRole? role = null) => new() {
+            Role = role?.ToString(),
+            Slug = project.Slug,
+            Name = project.Name,
+            Root = project.Root,
+            GitEnabled = project.GitEnabled,
+            Ready = !project.GitEnabled || projects.GitFor(project)?.LayoutExists == true,
+            RemoteMode = project.RemoteMode.ToString(),
+            Remote = project.Remote,
+            RemoteSecret = project.RemoteSecret,
+            PushUserBranches = project.PushUserBranches,
+            Environments = projects.CatalogFor(project).Environments,
+        };
 }
 
 /// <summary>A job as the API returns it (absolute paths stay server-side).</summary>

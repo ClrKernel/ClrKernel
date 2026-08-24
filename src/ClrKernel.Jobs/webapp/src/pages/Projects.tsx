@@ -11,9 +11,130 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { api, type Project, type ProjectWrite, type RemoteMode } from '../api';
-import { ErrorBanner } from '../components/common';
+import {
+  api,
+  type Project,
+  type ProjectRole,
+  type ProjectWrite,
+  type RemoteMode,
+} from '../api';
+import { ErrorBanner, usePolling } from '../components/common';
 import { rememberProject, useProjects } from '../projectContext';
+import { useIsServerAdmin } from '../sessionContext';
+
+const PROJECT_ROLES: { value: ProjectRole; label: string; hint: string }[] = [
+  { value: 'ProjectViewer', label: 'Viewer', hint: 'Reads everything here, changes nothing.' },
+  { value: 'ProjectMember', label: 'Member', hint: 'Owns a branch: edits it, runs it, pushes to test.' },
+  { value: 'ProjectAdmin', label: 'Admin', hint: 'Promotes to production, configures, manages members.' },
+];
+
+/**
+ * Who has been granted something on one project.
+ *
+ * Server Admins are admins of every project without a grant, so they are not
+ * offered one — a row that changes nothing is a row that invites you to wonder
+ * what it does.
+ */
+function Members({ project }: { project: Project }) {
+  const { data, error, reload } = usePolling(() => api.members(project.slug), null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [adding, setAdding] = useState('');
+
+  async function run(work: () => Promise<unknown>) {
+    setProblem(null);
+    try {
+      await work();
+      reload();
+    } catch (e) {
+      setProblem((e as Error).message);
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      <h3 className="mb-2 text-base font-semibold">Who can use {project.name}</h3>
+      <ErrorBanner error={problem ?? error} />
+      <div className="table-box">
+        <table className="table">
+          <tbody>
+            {(data?.members ?? []).map((member) => (
+              <tr key={member.userId}>
+                <td>{member.displayName}</td>
+                <td>
+                  <Select
+                    value={member.role}
+                    onValueChange={(role) =>
+                      run(() => api.setMember(project.slug, member.userId, role as ProjectRole))
+                    }
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROJECT_ROLES.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </td>
+                <td className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove ${member.displayName}`}
+                    onClick={() => run(() => api.removeMember(project.slug, member.userId))}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {data?.members.length === 0 && (
+              <tr>
+                <td colSpan={3} className="text-muted-foreground">
+                  Nobody has been granted access to this project specifically. Server Admins can
+                  always reach it; Server Viewers can read it.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {(data?.candidates ?? []).length > 0 && (
+        <div className="mt-2 flex items-center gap-2">
+          <Select value={adding} onValueChange={setAdding}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Add someone…" />
+            </SelectTrigger>
+            <SelectContent>
+              {(data?.candidates ?? []).map((c) => (
+                <SelectItem key={c.userId} value={c.userId}>
+                  {c.displayName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!adding}
+            onClick={() =>
+              run(async () => {
+                await api.setMember(project.slug, adding, 'ProjectMember');
+                setAdding('');
+              })
+            }
+          >
+            Add as member
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const REMOTE_MODES: { value: RemoteMode; label: string; hint: string }[] = [
   { value: 'Local', label: 'No remote', hint: 'This server holds the only copy.' },
@@ -159,6 +280,10 @@ function writeOf(project: Project): ProjectWrite {
  */
 export function ProjectsSection() {
   const { projects, current, select } = useProjects();
+  // Registering and forgetting are server-wide: they decide what exists. Everything
+  // else on this page a project's own admins can do.
+  const isServerAdmin = useIsServerAdmin();
+  const [members, setMembers] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<ProjectWrite | null>(null);
@@ -244,6 +369,13 @@ export function ProjectsSection() {
                   <Button
                     variant="ghost"
                     size="xs"
+                    onClick={() => setMembers(members === project.slug ? null : project.slug)}
+                  >
+                    Members
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
                     onClick={() => setEditing({ slug: project.slug, write: writeOf(project) })}
                   >
                     Configure
@@ -251,9 +383,10 @@ export function ProjectsSection() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    hidden={!isServerAdmin}
                     aria-label={`Forget ${project.name}`}
                     title="Forget this project. Nothing on disk is deleted."
-                    disabled={busy || projects.length === 1}
+                    disabled={busy || projects.length === 1 || !isServerAdmin}
                     onClick={() =>
                       run(
                         () => api.forgetProject(project.slug),
@@ -269,6 +402,10 @@ export function ProjectsSection() {
           </tbody>
         </table>
       </div>
+
+      {members != null && projects.some((p) => p.slug === members) && (
+        <Members project={projects.find((p) => p.slug === members)!} />
+      )}
 
       {editing && (
         <div className="mt-4">
@@ -319,9 +456,11 @@ export function ProjectsSection() {
           </div>
         </div>
       ) : (
-        <Button className="mt-3" size="sm" variant="outline" onClick={() => setAdding({ ...BLANK })}>
-          Register a project
-        </Button>
+        isServerAdmin && (
+          <Button className="mt-3" size="sm" variant="outline" onClick={() => setAdding({ ...BLANK })}>
+            Register a project
+          </Button>
+        )
       )}
     </section>
   );

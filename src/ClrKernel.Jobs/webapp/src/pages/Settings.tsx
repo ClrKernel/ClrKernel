@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { api, type SettingField, type SettingsSection } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { TabNav } from '../components/TabNav';
-import { useCanWrite } from '../sessionContext';
+import { useIsProjectAdmin, useIsServerAdmin } from '../sessionContext';
 import { AccountSection, UsersSection } from './Account';
 import { ProjectsSection } from './Projects';
 
@@ -27,7 +27,7 @@ function FieldValue({ field }: { field: SettingField }) {
  * zero UI work — that is the point of the registry.
  */
 function Section({ section }: { section: SettingsSection }) {
-  const canWrite = useCanWrite();
+  const canWrite = useIsServerAdmin();
   const [edits, setEdits] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -155,20 +155,23 @@ function Section({ section }: { section: SettingsSection }) {
 export function Settings() {
   const { section: slug } = useParams<{ section: string }>();
   const { data, error } = usePolling(() => api.settings(), null);
-  const isAdmin = useCanWrite();
+  const isServerAdmin = useIsServerAdmin();
+  // Managing a project's own members needs only that project.
+  const isProjectAdmin = useIsProjectAdmin();
   const sections = data?.sections ?? [];
 
   // Your account first — it is about you, and it is the one every role has. The
   // server's own sections follow, and user management is last and admin-only.
   const tabs = [
     { to: '/settings/account', label: 'Your account' },
-    ...(isAdmin ? [{ to: '/settings/projects', label: 'Projects' }] : []),
+    ...(isServerAdmin || isProjectAdmin ? [{ to: '/settings/projects', label: 'Projects' }] : []),
     ...sections.map((s) => ({ to: `/settings/${s.key}`, label: s.title })),
-    ...(isAdmin ? [{ to: '/settings/users', label: 'Users' }] : []),
+    ...(isServerAdmin ? [{ to: '/settings/users', label: 'Users' }] : []),
   ];
   const current = sections.find((s) => s.key === slug);
   const client = slug === 'account'
-    || ((slug === 'users' || slug === 'projects') && isAdmin);
+    || (slug === 'users' && isServerAdmin)
+    || (slug === 'projects' && (isServerAdmin || isProjectAdmin));
 
   // Only redirect once the sections have actually arrived: bouncing to the
   // first tab while the list is still empty would send you to /settings/
@@ -189,9 +192,9 @@ export function Settings() {
 
       {slug === 'account' ? (
         <AccountSection />
-      ) : slug === 'projects' && isAdmin ? (
+      ) : slug === 'projects' && (isServerAdmin || isProjectAdmin) ? (
         <ProjectsSection />
-      ) : slug === 'users' && isAdmin ? (
+      ) : slug === 'users' && isServerAdmin ? (
         <UsersSection />
       ) : current ? (
         <Section section={current} />

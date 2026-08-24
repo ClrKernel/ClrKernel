@@ -165,9 +165,13 @@ public sealed class FileRunStore : IRunStore {
             runs.Skip(query.Offset).Take(query.Limit).ToList());
     }
 
-    public Task<RunStats> GetStatsAsync(TimeSpan window) {
+    public Task<RunStats> GetStatsAsync(
+        TimeSpan window, IReadOnlyCollection<string> projects = null) {
         var since = DateTime.UtcNow - window;
-        var runs = AllRecords().Select(r => r.Run).Where(r => r.CreatedAt >= since).ToList();
+        var runs = AllRecords().Select(r => r.Run)
+            .Where(r => r.CreatedAt >= since
+                && (projects == null || projects.Contains(r.Project ?? "default")))
+            .ToList();
         return Task.FromResult(new RunStats {
             Total = runs.Count,
             Succeeded = runs.Count(r => r.Status == RunStatus.Succeeded),

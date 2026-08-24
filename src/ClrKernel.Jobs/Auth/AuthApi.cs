@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
@@ -19,6 +20,63 @@ public static class AuthContext {
 
     public static bool IsAdmin(this HttpContext context) =>
         context.CurrentUser() is { Role: UserRole.ServerAdmin };
+
+    private const string _grantsItem = "clrkernel.grants";
+
+    /// <summary>
+    /// The caller's grants, loaded at most once per request. Most requests never
+    /// ask; the ones that do usually ask twice — the filter, then a handler deciding
+    /// what to return — and the editor polls often enough for the second query to be
+    /// worth not making.
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string, ProjectRole>> GrantsAsync(
+        HttpContext context, Guid userId) {
+        if (context.Items.TryGetValue(_grantsItem, out var cached)) {
+            return (IReadOnlyDictionary<string, ProjectRole>)cached;
+        }
+        var store = context.RequestServices.GetService(typeof(IAuthStore)) as IAuthStore;
+        IReadOnlyDictionary<string, ProjectRole> grants = store == null
+            ? new Dictionary<string, ProjectRole>()
+            : await store.GrantsForAsync(userId);
+        context.Items[_grantsItem] = grants;
+        return grants;
+    }
+
+    /// <summary>
+    /// What the caller may do in one project, or null for no access — which covers
+    /// both "not granted" and "no such project", deliberately: the answer to those
+    /// two has to look the same from outside.
+    /// </summary>
+    public static async Task<ProjectRole?> ProjectRoleAsync(this HttpContext context, string project) {
+        if (context.CurrentUser() is not { } user || string.IsNullOrWhiteSpace(project)) {
+            return null;
+        }
+        var registry = context.RequestServices.GetService(typeof(ProjectRegistry)) as ProjectRegistry;
+        if (registry?.Find(project) is not { } found) {
+            return null;
+        }
+        var grants = await GrantsAsync(context, user.Id);
+        return ProjectAccess.Effective(
+            user, grants.TryGetValue(found.Slug, out var grant) ? grant : (ProjectRole?)null);
+    }
+
+    /// <summary>Every project the caller may see, with what they may do in each.</summary>
+    public static async Task<IReadOnlyDictionary<string, ProjectRole>> VisibleProjectsAsync(
+        this HttpContext context, ProjectRegistry registry) {
+        var visible = new Dictionary<string, ProjectRole>(StringComparer.OrdinalIgnoreCase);
+        if (context.CurrentUser() is not { } user) {
+            return visible;
+        }
+        var grants = await GrantsAsync(context, user.Id);
+        foreach (var project in registry.Projects) {
+            var role = ProjectAccess.Effective(
+                user, grants.TryGetValue(project.Slug, out var grant) ? grant : (ProjectRole?)null);
+            if (role is { } effective) {
+                visible[project.Slug] = effective;
+            }
+        }
+        return visible;
+    }
 
     /// <summary>
     /// The one gate for anything that writes or executes. Returns null when the
@@ -45,11 +103,52 @@ public static class AuthContext {
 /// Marks a route as writing or executing. Applied at the route table rather than
 /// inside each handler so the whole policy can be read in one pass — the question
 /// "what can a viewer do" is answered by looking for the routes without it.
+/// <para>
+/// <see cref="AdminOnly"/> is for server-wide concerns: accounts, settings,
+/// channels, registering a project. Anything <em>inside</em> a project uses
+/// <see cref="RequiresProject"/> instead, because a Server User can be an admin of
+/// one project and a stranger to the next.
+/// </para>
 /// </summary>
 public static class AdminOnlyExtensions {
     public static RouteHandlerBuilder AdminOnly(this RouteHandlerBuilder builder) =>
         builder.AddEndpointFilter(async (context, next) =>
             context.HttpContext.RequireAdmin() ?? await next(context));
+
+    /// <summary>
+    /// Requires at least <paramref name="minimum"/> on the project the route names.
+    /// The <c>{project}</c> route value is read here rather than in the handler, so
+    /// there is one place to read the whole policy — and one place it can be wrong.
+    /// <para>
+    /// A caller with no access at all gets 404 and never 403: a project you cannot
+    /// see must be indistinguishable from one that does not exist, or the names of
+    /// every project on the server leak to anyone willing to guess.
+    /// </para>
+    /// </summary>
+    public static RouteHandlerBuilder RequiresProject(
+        this RouteHandlerBuilder builder, ProjectRole minimum) =>
+        builder.AddEndpointFilter(async (context, next) => {
+            var http = context.HttpContext;
+            if (http.CurrentUser() == null) {
+                return Results.Json(new { error = "Sign in first." }, statusCode: 401);
+            }
+            var slug = http.Request.RouteValues.TryGetValue("project", out var value)
+                ? value as string
+                : null;
+            var role = await http.ProjectRoleAsync(slug);
+            if (role == null) {
+                return Results.NotFound(new { error = $"No project '{slug}'." });
+            }
+            return role < minimum
+                ? Results.Json(new { error = RefusalFor(minimum) }, statusCode: 403)
+                : await next(context);
+        });
+
+    private static string RefusalFor(ProjectRole minimum) => minimum switch {
+        ProjectRole.ProjectAdmin => "Only this project's admins can do that.",
+        ProjectRole.ProjectMember => "You have read-only access to this project.",
+        _ => "You do not have access to this project.",
+    };
 }
 
 /// <summary>
