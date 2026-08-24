@@ -120,7 +120,9 @@ public sealed class NotifyRules {
 
 /// <summary>One flattened, validated job: a file entry with its defaults merged in.</summary>
 public sealed class JobDefinition {
-    /// <summary>dev | prod, or "default" when the git workflow is off. Frozen names —
+    /// <summary>The project whose workspace this job was found in.</summary>
+    public string Project { get; set; } = "default";
+    /// <summary>test | prod, or "default" when the git workflow is off. Frozen names —
     /// they are part of the run store's keys.</summary>
     public string Environment { get; set; } = "default";
     public string Name { get; set; }
@@ -145,6 +147,7 @@ public sealed class JobDefinition {
     /// on disk is unchanged — only this execution sees them.
     /// </summary>
     public JobDefinition With(IReadOnlyDictionary<string, object> parameters) => new() {
+        Project = Project,
         Environment = Environment,
         Name = Name,
         SourceFile = SourceFile,

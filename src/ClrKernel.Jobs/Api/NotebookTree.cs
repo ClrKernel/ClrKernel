@@ -76,10 +76,11 @@ public static class NotebookTree {
     /// The notebooks/jobs-files tree under the root, with each notebook annotated
     /// with the jobs that run it. Directories with no notebooks are pruned.
     /// </summary>
-    public static TreeNode Build(string root, CatalogResult catalog, string environment = null) {
+    public static TreeNode Build(
+        string root, CatalogResult catalog, string project = null, string environment = null) {
         var jobs = environment == null
             ? catalog.Jobs
-            : catalog.In(environment);
+            : catalog.In(project, environment);
         var jobsByNotebook = jobs
             .GroupBy(j => j.NotebookPath, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Select(j => j.Name).OrderBy(n => n).ToList(),

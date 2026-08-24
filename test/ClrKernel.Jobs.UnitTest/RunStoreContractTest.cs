@@ -142,22 +142,22 @@ public class RunStoreContractTest {
     public async Task Scheduler_state_survives_the_round_trip(string kind) {
         var store = StoreFor(kind);
 
-        Assert.IsNull(await store.GetLastSuccessfulRunAsync("default", "a"));
-        Assert.IsNull(await store.GetLastTriggerAsync("default", "a"));
-        Assert.IsFalse(await store.HasActiveRunAsync("default", "a"));
+        Assert.IsNull(await store.GetLastSuccessfulRunAsync("default", "default", "a"));
+        Assert.IsNull(await store.GetLastTriggerAsync("default", "default", "a"));
+        Assert.IsFalse(await store.HasActiveRunAsync("default", "default", "a"));
 
         await store.CreateRunAsync(NewRun("a", RunStatus.Succeeded, DateTime.UtcNow.AddMinutes(-10)));
         var newest = await store.CreateRunAsync(NewRun("a", RunStatus.Succeeded, DateTime.UtcNow));
-        Assert.AreEqual(newest.Id, (await store.GetLastSuccessfulRunAsync("default", "a")).Id);
+        Assert.AreEqual(newest.Id, (await store.GetLastSuccessfulRunAsync("default", "default", "a")).Id);
 
         var at = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
-        await store.SetLastTriggerAsync("default", "a", at);
-        Assert.AreEqual(at, await store.GetLastTriggerAsync("default", "a"));
-        await store.SetLastTriggerAsync("default", "a", at.AddHours(1));
-        Assert.AreEqual(at.AddHours(1), await store.GetLastTriggerAsync("default", "a"), "upsert, not insert");
+        await store.SetLastTriggerAsync("default", "default", "a", at);
+        Assert.AreEqual(at, await store.GetLastTriggerAsync("default", "default", "a"));
+        await store.SetLastTriggerAsync("default", "default", "a", at.AddHours(1));
+        Assert.AreEqual(at.AddHours(1), await store.GetLastTriggerAsync("default", "default", "a"), "upsert, not insert");
 
         await store.CreateRunAsync(NewRun("a", RunStatus.Running));
-        Assert.IsTrue(await store.HasActiveRunAsync("default", "a"));
+        Assert.IsTrue(await store.HasActiveRunAsync("default", "default", "a"));
     }
 
     [TestMethod]

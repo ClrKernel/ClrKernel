@@ -13,13 +13,15 @@ public sealed class CatalogResult {
     /// <summary>The environments this catalog covers ("default", or "test"+"prod").</summary>
     public IReadOnlyList<string> Environments { get; init; } = new[] { "default" };
 
-    public JobDefinition Find(string environment, string name) =>
-        Jobs.FirstOrDefault(j =>
-            string.Equals(j.Environment, environment, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(j.Name, name, StringComparison.OrdinalIgnoreCase));
+    public JobDefinition Find(string project, string environment, string name) =>
+        In(project, environment).FirstOrDefault(j =>
+            string.Equals(j.Name, name, StringComparison.OrdinalIgnoreCase));
 
-    public IEnumerable<JobDefinition> In(string environment) =>
-        Jobs.Where(j => string.Equals(j.Environment, environment, StringComparison.OrdinalIgnoreCase));
+    /// <summary>One project's jobs in one environment — the unit every route works in.</summary>
+    public IEnumerable<JobDefinition> In(string project, string environment) =>
+        Jobs.Where(j =>
+            string.Equals(j.Project, project, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(j.Environment, environment, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>
@@ -54,6 +56,9 @@ public sealed class JobCatalog {
 
     public string NotebooksRoot => _notebooksRoot;
     public bool GitLayout => _gitLayout;
+
+    /// <summary>The project slug stamped onto every job this catalog finds.</summary>
+    public string Project { get; init; } = "default";
 
     /// <summary>The scan root for one environment (the worktree, or the flat root).</summary>
     public string RootFor(string environment) =>
@@ -117,6 +122,7 @@ public sealed class JobCatalog {
         var byName = new Dictionary<string, JobDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var job in found) {
             job.Environment = environment;
+            job.Project = Project;
             if (byName.TryGetValue(job.Name, out var other)) {
                 errors.Add($"{Prefix(environment)}{Relative(root, job.SourceFile)}: duplicate job name " +
                     $"'{job.Name}' (also in {Relative(root, other.SourceFile)}).");

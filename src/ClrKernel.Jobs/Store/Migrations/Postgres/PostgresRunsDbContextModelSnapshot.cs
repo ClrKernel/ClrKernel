@@ -150,6 +150,11 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
 
             modelBuilder.Entity("ClrKernel.Jobs.JobTriggerState", b =>
                 {
+                    b.Property<string>("Project")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("project");
+
                     b.Property<string>("Environment")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
@@ -163,7 +168,7 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_trigger_at");
 
-                    b.HasKey("Environment", "JobName");
+                    b.HasKey("Project", "Environment", "JobName");
 
                     b.ToTable("job_trigger_state", (string)null);
                 });
@@ -227,6 +232,12 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
                         .HasColumnType("text")
                         .HasColumnName("notebook_path");
 
+                    b.Property<string>("Project")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("project");
+
                     b.Property<DateTime?>("ScheduledFor")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_for");
@@ -255,7 +266,7 @@ namespace ClrKernel.Jobs.Store.Migrations.Postgres
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("Environment", "JobName");
+                    b.HasIndex("Project", "Environment", "JobName");
 
                     b.ToTable("runs", (string)null);
                 });

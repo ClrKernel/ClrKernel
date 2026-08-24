@@ -33,15 +33,12 @@ public class EnvironmentMigrationTest {
         Directory.Delete(_dir, recursive: true);
     }
 
-    private static Run NewRun(string environment) => new() {
-        Id = Guid.NewGuid(),
-        Environment = environment,
-        JobName = "nightly",
-        NotebookPath = "etl.nb.md",
-        Status = RunStatus.Succeeded,
-        CreatedAt = DateTime.UtcNow,
-        CommitSha = new string('a', 40),
-    };
+    /// <summary>One runs row in the pre-projects schema, which had no project column.</summary>
+    private static string InsertRun(string environment, string id) =>
+        "INSERT INTO runs (id, environment, job_name, notebook_path, status, trigger_type, " +
+        "attempt, created_at, was_dirty, had_overrides) VALUES " +
+        $"('{id}', '{environment}', 'nightly', 'etl.nb.md', 'Succeeded', 'Schedule', 1, " +
+        "'2026-08-01 00:00:00', 0, 0)";
 
     [TestMethod]
     public async Task Sqlite_history_written_under_dev_is_found_under_test() {
@@ -51,17 +48,16 @@ public class EnvironmentMigrationTest {
             .UseSqlite(connectionString).Options;
 
         // Stop at the 0.9 schema, then write the rows a 0.9 server would have.
+        // Raw SQL, not the entity model: the model has moved on since, and inserting
+        // through it would be writing today's columns into yesterday's table.
         using (var db = new SqliteRunsDbContext(contextOptions)) {
             // "AddAuth" is the last migration before the rename — the 0.9 schema.
             db.GetInfrastructure().GetRequiredService<IMigrator>().Migrate("AddAuth");
-            db.Runs.Add(NewRun("dev"));
-            db.Runs.Add(NewRun("prod"));
-            db.JobTriggerStates.Add(new JobTriggerState {
-                Environment = "dev",
-                JobName = "nightly",
-                LastTriggerAt = DateTime.UtcNow,
-            });
-            await db.SaveChangesAsync();
+            db.Database.ExecuteSqlRaw(InsertRun("dev", "11111111-1111-1111-1111-111111111111"));
+            db.Database.ExecuteSqlRaw(InsertRun("prod", "22222222-2222-2222-2222-222222222222"));
+            db.Database.ExecuteSqlRaw(
+                "INSERT INTO job_trigger_state (environment, job_name, last_trigger_at) " +
+                "VALUES ('dev', 'nightly', '2026-08-01 00:00:00')");
         }
 
         var store = RunStoreFactory.Create(options);   // applies the rest, rename included
@@ -73,7 +69,39 @@ public class EnvironmentMigrationTest {
             "and to nothing under the old name");
         Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { Environment = "prod" })).Count,
             "prod is untouched");
-        Assert.IsNotNull(await store.GetLastTriggerAsync("test", "nightly"), "the fan-in clock travels too");
+        Assert.IsNotNull(await store.GetLastTriggerAsync("default", "test", "nightly"),
+            "the fan-in clock travels too");
+    }
+
+    /// <summary>
+    /// The project column lands on rows that predate it. Worth its own test because
+    /// adding it changes job_trigger_state's <em>primary key</em>, which SQLite can
+    /// only do by rebuilding the table — and a rebuild that quietly loses its rows
+    /// looks exactly like a table that was always empty.
+    /// </summary>
+    [TestMethod]
+    public async Task Rows_written_before_projects_belong_to_the_default_project() {
+        var options = new JobsOptions { DataDir = _dir, NotebooksRoot = _dir, Store = "sqlite" };
+        var contextOptions = new DbContextOptionsBuilder<SqliteRunsDbContext>()
+            .UseSqlite($"Data Source={options.DefaultSqlitePath}").Options;
+
+        // "RenameDevToTest" is the last migration before projects existed.
+        using (var db = new SqliteRunsDbContext(contextOptions)) {
+            db.GetInfrastructure().GetRequiredService<IMigrator>().Migrate("RenameDevToTest");
+            db.Database.ExecuteSqlRaw(InsertRun("test", "11111111-1111-1111-1111-111111111111"));
+            db.Database.ExecuteSqlRaw(
+                "INSERT INTO job_trigger_state (environment, job_name, last_trigger_at) " +
+                "VALUES ('test', 'nightly', '2026-08-01 00:00:00')");
+        }
+
+        var store = RunStoreFactory.Create(options);
+
+        var runs = await store.QueryRunsAsync(new RunQuery { Project = ProjectRegistry.DefaultSlug });
+        Assert.AreEqual(1, runs.Count, "the run belongs to the default project");
+        Assert.AreEqual("test", runs[0].Environment);
+        Assert.IsNotNull(
+            await store.GetLastTriggerAsync(ProjectRegistry.DefaultSlug, "test", "nightly"),
+            "the primary-key rebuild carried the trigger row");
     }
 
     [TestMethod]
@@ -102,6 +130,6 @@ public class EnvironmentMigrationTest {
         Assert.AreEqual(0, (await store.QueryRunsAsync(new RunQuery { Environment = "dev" })).Count);
         Assert.IsTrue(Directory.Exists(Path.Combine(options.ArtifactsDir, "test", "nightly")),
             "the artifacts moved with the record");
-        Assert.IsNotNull(await store.GetLastTriggerAsync("test", "nightly"));
+        Assert.IsNotNull(await store.GetLastTriggerAsync("default", "test", "nightly"));
     }
 }

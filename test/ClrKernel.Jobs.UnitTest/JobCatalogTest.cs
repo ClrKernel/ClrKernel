@@ -40,7 +40,7 @@ public class JobCatalogTest {
         var result = new JobCatalog(_root).Load();
         Assert.AreEqual(0, result.Errors.Count, string.Join("; ", result.Errors));
         Assert.AreEqual(2, result.Jobs.Count);
-        Assert.IsNotNull(result.Find("default", "A"), "job lookup is case-insensitive");
+        Assert.IsNotNull(result.Find("default", "default", "A"), "job lookup is case-insensitive");
     }
 
     [TestMethod]
@@ -96,7 +96,7 @@ public class JobCatalogTest {
         Write("good.jobs.yaml", "notebook: ./nb.nb.md\njobs: [{name: good}]");
         Write("bad.jobs.yaml", "jobs: [ {name: ");
         var result = new JobCatalog(_root).Load();
-        Assert.IsNotNull(result.Find("default", "good"));
+        Assert.IsNotNull(result.Find("default", "default", "good"));
         Assert.IsTrue(result.Errors.Any(e => e.StartsWith("bad.jobs.yaml")),
             string.Join("; ", result.Errors));
     }

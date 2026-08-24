@@ -16,6 +16,7 @@ namespace ClrKernel.Jobs.UnitTest;
 public class PromotionTest {
     private string _dir;
     private GitService _git;
+    private ProjectRegistry _projects;
     private JobCatalog _catalog;
     private EfRunStore _store;
 
@@ -23,9 +24,12 @@ public class PromotionTest {
     public void Setup() {
         _dir = Path.Combine(Path.GetTempPath(), "clrkernel-promo-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
-        _git = new GitService(_dir, NullLogger.Instance);
+        _projects = new ProjectRegistry(
+            new JobsOptions { DataDir = _dir, NotebooksRoot = _dir, GitEnabled = true },
+            NullLoggerFactory.Instance);
+        _git = _projects.GitFor(_projects.Default);
         _git.Init();
-        _catalog = new JobCatalog(_dir, gitLayout: true, _git);
+        _catalog = _projects.CatalogFor(_projects.Default);
         _store = EfRunStore.Sqlite(Path.Combine(_dir, "test.db"));
         _store.Migrate();
     }
@@ -56,6 +60,7 @@ public class PromotionTest {
         bool dirty = false, bool overrides = false, string sha = null) {
         return await _store.CreateRunAsync(new Run {
             Id = Guid.NewGuid(),
+            Project = ProjectRegistry.DefaultSlug,
             Environment = "test",
             JobName = job,
             NotebookPath = "etl.nb.md",
@@ -71,7 +76,7 @@ public class PromotionTest {
     }
 
     private Task<PromotionEligibility> CheckAsync() =>
-        Promotion.CheckAsync(_catalog, _git, _store, "etl.nb.md");
+        Promotion.CheckAsync(_projects.Default, _projects, _store, "etl.nb.md");
 
     [TestMethod]
     public async Task A_never_run_job_is_not_promotable() {
@@ -125,8 +130,8 @@ public class PromotionTest {
 
         // The prod catalog now schedules it; and re-promoting has nothing to carry.
         var catalog = _catalog.Load();
-        Assert.IsNotNull(catalog.Find("prod", "etl"));
-        Assert.AreEqual("0 2 * * *", catalog.Find("prod", "etl").Cron);
+        Assert.IsNotNull(catalog.Find("default", "prod", "etl"));
+        Assert.AreEqual("0 2 * * *", catalog.Find("default", "prod", "etl").Cron);
         var again = await CheckAsync();
         Assert.IsFalse(again.Eligible);
         StringAssert.Contains(again.Reasons.Single(), "identical");
@@ -140,7 +145,7 @@ public class PromotionTest {
         CommitDev("b.jobs.yaml", "notebook: ./b.nb.md\njobs: [{name: b, dependsOn: [a]}]");
         await RecordRunAsync(job: "b");
 
-        var result = await Promotion.CheckAsync(_catalog, _git, _store, "b.nb.md");
+        var result = await Promotion.CheckAsync(_projects.Default, _projects, _store, "b.nb.md");
         Assert.IsFalse(result.Eligible);
         Assert.IsTrue(result.Reasons.Any(r => r.Contains("would break prod") && r.Contains("'a'")),
             string.Join("; ", result.Reasons));
@@ -151,7 +156,7 @@ public class PromotionTest {
         SeedNotebookAndJob();
         await RecordRunAsync();
         Promotion.Apply(_git, await CheckAsync(), "etl.nb.md");
-        Assert.IsNotNull(_catalog.Load().Find("prod", "etl"));
+        Assert.IsNotNull(_catalog.Load().Find("default", "prod", "etl"));
 
         // Delete in test, commit; the promotion carries the removal.
         _git.WithLock(() => {
@@ -166,7 +171,7 @@ public class PromotionTest {
 
         Promotion.Apply(_git, eligibility, "etl.nb.md");
         Assert.IsFalse(File.Exists(Path.Combine(_git.ProdPath, "etl.nb.md")));
-        Assert.IsNull(_catalog.Load().Find("prod", "etl"), "prod no longer schedules it");
+        Assert.IsNull(_catalog.Load().Find("default", "prod", "etl"), "prod no longer schedules it");
     }
 
     [TestMethod]
@@ -188,7 +193,7 @@ public class PromotionTest {
             CommitSha = _git.HeadSha("test"),
         });
 
-        var result = await Promotion.CheckAsync(_catalog, _git, _store, "multi.nb.md");
+        var result = await Promotion.CheckAsync(_projects.Default, _projects, _store, "multi.nb.md");
         Assert.IsFalse(result.Eligible);
         StringAssert.Contains(result.Reasons.Single(), "'eu'");
     }

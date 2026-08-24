@@ -4,11 +4,45 @@
 import type { NotebookOutput } from './ipynb';
 import type { LspDiagnostic } from './monaco/lsp';
 
+/**
+ * The project every scoped route is built from.
+ *
+ * One module-level value rather than a parameter threaded through every page: a
+ * server that has registered nothing runs exactly one project, and the pages that
+ * would carry it around have nothing to choose between. The switcher sets it.
+ */
+let currentProject = 'default';
+
+export function setProject(slug: string): void {
+  currentProject = slug;
+}
+
+export function projectSlug(): string {
+  return currentProject;
+}
+
+/** `/projects/<slug>` — notebooks trees and anything else that is per project. */
+const project = () => `/projects/${encodeURIComponent(currentProject)}`;
+
+/** `/projects/<slug>/branches/<branch>` — everything that reads or writes a worktree. */
+const scope = (branch: string) => `${project()}/branches/${encodeURIComponent(branch)}`;
+
 export type RunStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled' | 'TimedOut';
 export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipped';
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
 
+export interface Project {
+  slug: string;
+  name: string;
+  gitEnabled: boolean;
+  remoteMode: string;
+  hasRemote: boolean;
+  environments: string[];
+}
+
 export interface Job {
+  /** The project whose workspace this job lives in. */
+  project: string;
   /** test | prod, or "default" when the git workflow is off. */
   environment: string;
   name: string;
@@ -25,6 +59,7 @@ export interface Job {
 
 export interface Run {
   id: string;
+  project: string;
   environment: string;
   jobName: string;
   notebookPath: string;
@@ -273,34 +308,37 @@ export const api = {
       status: string;
       jobs: number;
       notebooksRoot: string;
+      projects: number;
       environments: string[];
       gitEnabled: boolean;
       errors: string[];
     }>('/health'),
   stats: (days = 7) => request<Stats>(`/stats?days=${days}`),
 
+  projects: () => request<{ projects: Project[] }>('/projects'),
+
   jobs: () => request<{ jobs: Job[]; errors: string[] }>('/jobs'),
-  job: (env: string, name: string) => request<Job>(`/envs/${env}/jobs/${encodeURIComponent(name)}`),
+  job: (env: string, name: string) => request<Job>(`${scope(env)}/jobs/${encodeURIComponent(name)}`),
   createJob: (env: string, job: Partial<Job>) =>
-    request<Job>(`/envs/${env}/jobs`, { method: 'POST', body: JSON.stringify(job) }),
+    request<Job>(`${scope(env)}/jobs`, { method: 'POST', body: JSON.stringify(job) }),
   updateJob: (env: string, name: string, job: Partial<Job>) =>
-    request<Job>(`/envs/${env}/jobs/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(job) }),
+    request<Job>(`${scope(env)}/jobs/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(job) }),
   deleteJob: (env: string, name: string) =>
-    request<void>(`/envs/${env}/jobs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    request<void>(`${scope(env)}/jobs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   /** Optional parameters apply to this run only; the job's yaml is untouched. */
   runJob: (env: string, name: string, parameters?: Record<string, unknown>) =>
-    request<{ runId: string }>(`/envs/${env}/jobs/${encodeURIComponent(name)}/run`, {
+    request<{ runId: string }>(`${scope(env)}/jobs/${encodeURIComponent(name)}/run`, {
       method: 'POST',
       ...(parameters && Object.keys(parameters).length > 0
         ? { body: JSON.stringify({ parameters }) }
         : {}),
     }),
   cancelJob: (env: string, name: string) =>
-    request<{ cancelled: boolean }>(`/envs/${env}/jobs/${encodeURIComponent(name)}/cancel`, {
+    request<{ cancelled: boolean }>(`${scope(env)}/jobs/${encodeURIComponent(name)}/cancel`, {
       method: 'POST',
     }),
   jobRuns: (env: string, name: string, limit = 25) =>
-    request<Run[]>(`/envs/${env}/jobs/${encodeURIComponent(name)}/runs?limit=${limit}`),
+    request<Run[]>(`${scope(env)}/jobs/${encodeURIComponent(name)}/runs?limit=${limit}`),
 
   runs: (limit = 25) => request<Run[]>(`/runs?limit=${limit}`),
   run: (id: string) => request<{ run: Run; cells: RunCell[] }>(`/runs/${id}`),
@@ -311,14 +349,14 @@ export const api = {
     ),
 
   notebooks: () =>
-    request<{ environments: { name: string; tree: TreeNode | null }[] }>('/notebooks'),
+    request<{ environments: { name: string; tree: TreeNode | null }[] }>(`${project()}/notebooks`),
 
   notebookContent: (env: string, path: string) =>
-    fetch(`/api/envs/${env}/notebooks/content?path=${encodeURIComponent(path)}`)
+    fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
   saveNotebookContent: (path: string, content: string) =>
     request<{ saved: boolean; commitSha: string }>(
-      `/envs/test/notebooks/content?path=${encodeURIComponent(path)}`,
+      `${scope('test')}/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
     ),
   // The UI diffs by fetching both environments' content into Monaco. GET
@@ -327,37 +365,37 @@ export const api = {
   // written server-side so the browser never needs its own copy of the format.
   notebookCells: (env: string, path: string) =>
     request<{ cells: ApiCell[]; languages: ApiLanguage[] }>(
-      `/envs/${env}/notebooks/cells?path=${encodeURIComponent(path)}`,
+      `${scope(env)}/notebooks/cells?path=${encodeURIComponent(path)}`,
     ),
   saveNotebookCells: (path: string, cells: ApiCell[]) =>
     request<{ saved: boolean; commitSha: string }>(
-      `/envs/test/notebooks/cells?path=${encodeURIComponent(path)}`,
+      `${scope('test')}/notebooks/cells?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: JSON.stringify({ cells }) },
     ),
   // Interactive execution against the notebook's warm kernel. None of this
   // writes to the run store: an interactive run never appears in run history
   // and can never become the green evidence promotion requires.
   runCells: (path: string, cells: ApiCell[]) =>
-    request<{ running: string[] }>(`/envs/test/notebooks/run?path=${encodeURIComponent(path)}`, {
+    request<{ running: string[] }>(`${scope('test')}/notebooks/run?path=${encodeURIComponent(path)}`, {
       method: 'POST',
       body: JSON.stringify({ cells }),
     }),
   /** The connection wizard's schema, from the notebook's own kernel. */
   connectionProviders: (path: string, languageId: string) =>
     request<{ providers: ApiConnectionProvider[] }>(
-      `/envs/test/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
+      `${scope('test')}/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
     ),
   /** Starts (or touches) the notebook's kernel. Opening the editor does this, so
    *  language features work on the first keystroke rather than the first run. */
   startSession: (path: string) =>
-    request<ApiSession>(`/envs/test/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<ApiSession>(`${scope('test')}/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'POST',
     }),
   /** Tells the kernel which cells are open, so completion and hover have documents
    *  to answer about. Authoritative: cells left out are closed. */
   syncCells: (path: string, cells: ApiSyncCell[]) =>
     request<{ started: boolean; sent: number }>(
-      `/envs/test/notebooks/sync?path=${encodeURIComponent(path)}`,
+      `${scope('test')}/notebooks/sync?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify({ cells }) },
     ),
   /** One language question about one cell. Returns null when the notebook has no
@@ -365,15 +403,15 @@ export const api = {
    *  cannot answer is silent, never an error. */
   languageRequest: <T>(path: string, body: ApiLanguageRequest) =>
     request<{ started: boolean; result: T | null }>(
-      `/envs/test/notebooks/language?path=${encodeURIComponent(path)}`,
+      `${scope('test')}/notebooks/language?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify(body) },
     ).then((r) => r.result),
   sessionStatus: (path: string) =>
-    request<ApiSession>(`/envs/test/notebooks/session/status?path=${encodeURIComponent(path)}`),
+    request<ApiSession>(`${scope('test')}/notebooks/session/status?path=${encodeURIComponent(path)}`),
   /** Kills the kernel. Also the only interrupt there is — no RPC surface can
    *  cancel a cell that is already running. */
   restartSession: (path: string) =>
-    request<{ restarted: boolean }>(`/envs/test/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<{ restarted: boolean }>(`${scope('test')}/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'DELETE',
     }),
 
@@ -383,10 +421,10 @@ export const api = {
       reasons: string[];
       paths: string[];
       isDeletion: boolean;
-    }>(`/envs/test/notebooks/promotion?path=${encodeURIComponent(path)}`),
+    }>(`${scope('test')}/notebooks/promotion?path=${encodeURIComponent(path)}`),
   promote: (path: string) =>
     request<{ promoted: boolean; commitSha: string }>(
-      `/envs/test/notebooks/promote?path=${encodeURIComponent(path)}`,
+      `${scope('test')}/notebooks/promote?path=${encodeURIComponent(path)}`,
       { method: 'POST' },
     ),
 

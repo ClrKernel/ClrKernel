@@ -211,24 +211,30 @@ T-SQL and would need bracketing.)
 
 ## API
 
-Everything the UI does is available over HTTP under `/api` — `health`, `notebooks`,
-`jobs` (including create/update/delete, which edit the yaml files), `jobs/{name}/run`
-and `/cancel`, `runs` with per-cell progress, `runs/{id}/artifact` and `/log`,
-`stats`, and `channels` (GET/PUT, plus `channels/{name}/test`).
+Everything the UI does is available over HTTP under `/api`. Server-wide:
+`health`, `projects`, `jobs` (every project's, each carrying the project it belongs
+to), `runs` with per-cell progress, `runs/{id}/artifact` and `/log`, `stats`, and
+`channels` (GET/PUT, plus `channels/{name}/test`).
 
-With the git workflow on, `envs/{env}/notebooks/` adds `content` (GET any
-environment, PUT test only), `cells` (the same file parsed into cells, and written back
-from them — the browser never needs its own copy of the `.nb.md` format), `promotion`
-and `promote`, plus the editor's session endpoints: `session` (POST to start, DELETE
-to restart), `run`, and `session/status`. `git/diff` returns a unified diff for one
-path, which is still the convenient thing over curl.
+Anything that reads or writes notebooks names a project and a branch:
+`/api/projects/{project}/branches/{branch}/…`. A slug nobody registered answers
+**404, not 403** — a project you have no access to is meant to be
+indistinguishable from one that does not exist. Under that prefix: `jobs`
+(including create/update/delete, which edit the yaml files), `jobs/{name}/run` and
+`/cancel`, and `notebooks/content` (GET any branch, PUT test only). With the git
+workflow on it also carries `notebooks/cells` (the same file parsed into cells, and
+written back from them — the browser never needs its own copy of the `.nb.md`
+format), `notebooks/promotion` and `notebooks/promote`, plus the editor's session
+endpoints: `notebooks/session` (POST to start, DELETE to restart), `notebooks/run`,
+and `notebooks/session/status`. `/api/projects/{project}/git/diff` returns a unified
+diff for one path, which is still the convenient thing over curl.
 
 A run can take one-off parameters that override the job's own for that run only —
 the `*.jobs.yaml` is untouched. The same thing is behind "Run with parameters…" in
 the job editor:
 
 ```bash
-curl -X POST http://localhost:5000/api/jobs/nightly-us/run \
+curl -X POST http://localhost:5000/api/projects/default/branches/test/jobs/nightly-us/run \
   -H 'Content-Type: application/json' \
   -d '{"parameters": {"region": "eu", "backfillDate": "2026-08-01"}}'
 ```
@@ -257,7 +263,7 @@ Two roles, server-wide:
 
 The viewer boundary is enforced on every route, not by hiding buttons: running a cell
 is arbitrary code execution on the machine hosting the server, so calling
-`/api/envs/test/notebooks/run` directly as a viewer returns 403. A viewer's editor is
+`…/branches/test/notebooks/run` directly as a viewer returns 403. A viewer's editor is
 read-only, and Focus Mode still works — it is a reading layout too.
 
 ### Before anyone else signs in: set the domain
@@ -298,6 +304,33 @@ worse already, so this is not a new exposure.
 **There is no API key any more, and no machine-callable credential.** Passkeys are
 interactive by definition; if you need a script to drive `/api`, that needs per-user
 API tokens, which do not exist yet.
+
+## Projects
+
+A **project** is one repo, one folder on disk, and its own notebooks, jobs and
+branches. A server that has never registered one still has exactly one — the folder
+`--notebooks` points at, named after that folder, with the slug `default`. That slug
+is not cosmetic: it is what every run row written before projects existed already
+says, so history keeps answering after the upgrade with nothing rewritten.
+
+More than one is `projects.json` in the data directory:
+
+```json
+[
+  { "slug": "default", "name": "Notebooks", "root": "/srv/notebooks", "gitEnabled": true },
+  { "slug": "finance", "name": "Finance",   "root": "/srv/finance",   "gitEnabled": true,
+    "remoteMode": "ServerAuthoritative", "remote": "origin", "remoteSecret": "FINANCE_GIT_TOKEN" }
+]
+```
+
+Once the file exists it is the list, and `--notebooks` no longer decides. Each
+project keeps its own worktrees, its own promotion gate, and its own run history —
+two projects may each have a job called `nightly` and they never collide, because
+the project is part of every key.
+
+`remoteSecret` is the **name** of a secret, never a credential: it resolves at use
+time from the OS credential store or `CLRKERNEL_SECRET_*`, the same rule every
+connection in this repo follows. Nothing writes a token to this file.
 
 ## Test → prod with git
 

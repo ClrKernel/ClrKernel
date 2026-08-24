@@ -30,6 +30,7 @@ public abstract class RunsDbContext : DbContext {
             run.ToTable("runs");
             run.HasKey(r => r.Id);
             run.Property(r => r.Id).HasColumnName("id");
+            run.Property(r => r.Project).HasColumnName("project").IsRequired().HasMaxLength(64);
             run.Property(r => r.Environment).HasColumnName("environment").IsRequired().HasMaxLength(16);
             run.Property(r => r.JobName).HasColumnName("job_name").IsRequired();
             run.Property(r => r.NotebookPath).HasColumnName("notebook_path");
@@ -49,7 +50,7 @@ public abstract class RunsDbContext : DbContext {
             run.Property(r => r.CommitSha).HasColumnName("commit_sha").HasMaxLength(64);
             run.Property(r => r.WasDirty).HasColumnName("was_dirty");
             run.Property(r => r.HadOverrides).HasColumnName("had_overrides");
-            run.HasIndex(r => new { r.Environment, r.JobName });
+            run.HasIndex(r => new { r.Project, r.Environment, r.JobName });
             run.HasIndex(r => r.CreatedAt);
         });
 
@@ -67,8 +68,10 @@ public abstract class RunsDbContext : DbContext {
 
         modelBuilder.Entity<JobTriggerState>(state => {
             state.ToTable("job_trigger_state");
-            // Composite key: a dev run must never advance prod's trigger clock.
-            state.HasKey(s => new { s.Environment, s.JobName });
+            // Composite key: a test run must never advance prod's trigger clock, and
+            // two projects with a job of the same name must not share one either.
+            state.HasKey(s => new { s.Project, s.Environment, s.JobName });
+            state.Property(s => s.Project).HasColumnName("project").HasMaxLength(64);
             state.Property(s => s.Environment).HasColumnName("environment").HasMaxLength(16);
             state.Property(s => s.JobName).HasColumnName("job_name");
             state.Property(s => s.LastTriggerAt).HasColumnName("last_trigger_at");

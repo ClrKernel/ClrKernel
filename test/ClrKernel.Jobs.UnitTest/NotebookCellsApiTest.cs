@@ -23,6 +23,7 @@ namespace ClrKernel.Jobs.UnitTest;
 public class NotebookCellsApiTest {
     private string _root;
     private GitService _git;
+    private ProjectRegistry _projects;
     private WebApplication _app;
     private HttpClient _client;
     private EfRunStore _store;
@@ -36,7 +37,19 @@ public class NotebookCellsApiTest {
     public async Task Setup() {
         _root = Path.Combine(Path.GetTempPath(), "clrkernel-cells-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        _git = new GitService(_root, NullLogger.Instance);
+        var gitOptions = new JobsOptions {
+            DataDir = Path.Combine(_root, ".data"),
+            NotebooksRoot = _root,
+            GitEnabled = true,
+            // No kernel to probe in tests: languages come back empty, which parses
+            // as C#-only — the documented degraded mode.
+            ClrKernelPath = null,
+        };
+        // From the registry rather than a second instance: a GitService owns the
+        // lock that serializes writes to its workspace, and two of them on one
+        // workspace would be two locks.
+        _projects = new ProjectRegistry(gitOptions, NullLoggerFactory.Instance);
+        _git = _projects.GitFor(_projects.Default);
         _git.Init();
 
         var devFile = Path.Combine(_git.TestPath, _notebook);
@@ -44,18 +57,12 @@ public class NotebookCellsApiTest {
         File.WriteAllText(devFile, _source);
         _git.WithLock(() => _git.Commit("test", "add notebook"));
 
-        var options = new JobsOptions {
-            DataDir = Path.Combine(_root, ".data"),
-            NotebooksRoot = _root,
-            // No kernel to probe in tests: languages come back empty, which parses
-            // as C#-only — the documented degraded mode.
-            ClrKernelPath = null,
-        };
+        var options = gitOptions;
         Directory.CreateDirectory(options.DataDir);
         _store = EfRunStore.Sqlite(Path.Combine(options.DataDir, "test.db"));
         _store.Migrate();
 
-        _app = Program.BuildApp(options, new JobCatalog(_root, gitLayout: true, _git), _store, _git,
+        _app = Program.BuildApp(options, _projects, _store,
             TestAuth.StoreFor(Path.Combine(options.DataDir, "test.db")));
         // Stand in for the kernel probe: there is no clrkernel binary here, and an
         // empty language list would parse every ```sql block as prose. Descriptors
@@ -92,7 +99,7 @@ public class NotebookCellsApiTest {
     }
 
     private async Task<JsonElement> GetCellsAsync(string env = "test") =>
-        await _client.GetFromJsonAsync<JsonElement>($"/api/envs/{env}/notebooks/cells?path={_notebook}");
+        await _client.GetFromJsonAsync<JsonElement>($"/api/projects/default/branches/{env}/notebooks/cells?path={_notebook}");
 
     [TestMethod]
     public async Task A_notebook_opens_as_cells_with_its_tags() {
@@ -115,7 +122,7 @@ public class NotebookCellsApiTest {
         var body = await GetCellsAsync();
 
         var response = await _client.PutAsJsonAsync(
-            $"/api/envs/test/notebooks/cells?path={_notebook}",
+            $"/api/projects/default/branches/test/notebooks/cells?path={_notebook}",
             new { cells = body.GetProperty("cells") }, _json);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
 
@@ -141,7 +148,7 @@ public class NotebookCellsApiTest {
             })
             .ToList();
 
-        var response = await _client.PutAsJsonAsync($"/api/envs/test/notebooks/cells?path={_notebook}", new { cells }, _json);
+        var response = await _client.PutAsJsonAsync($"/api/projects/default/branches/test/notebooks/cells?path={_notebook}", new { cells }, _json);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
 
         var written = File.ReadAllText(Path.Combine(_git.TestPath, _notebook));
@@ -156,7 +163,7 @@ public class NotebookCellsApiTest {
             new { kind = "markdown", tag = (string)null, source = "# New" },
             new { kind = "code", tag = (string)null, languageId = "sql", source = "SELECT 42" },
         };
-        var response = await _client.PutAsJsonAsync($"/api/envs/test/notebooks/cells?path={_notebook}", new { cells }, _json);
+        var response = await _client.PutAsJsonAsync($"/api/projects/default/branches/test/notebooks/cells?path={_notebook}", new { cells }, _json);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
 
         // The kernel probe found no languages here, so TagFor falls back to csharp
@@ -169,15 +176,15 @@ public class NotebookCellsApiTest {
     [TestMethod]
     public async Task Paths_outside_the_dev_area_and_non_notebooks_are_refused() {
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.GetAsync("/api/envs/test/notebooks/cells?path=../../../etc/passwd")).StatusCode);
+            (await _client.GetAsync("/api/projects/default/branches/test/notebooks/cells?path=../../../etc/passwd")).StatusCode);
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.PutAsJsonAsync("/api/envs/test/notebooks/cells?path=../../../etc/passwd",
+            (await _client.PutAsJsonAsync("/api/projects/default/branches/test/notebooks/cells?path=../../../etc/passwd",
                 new { cells = Array.Empty<object>() }, _json)).StatusCode);
 
         // Not executable markdown: the editor falls back to raw text for these.
         File.WriteAllText(Path.Combine(_git.TestPath, "reports", "daily.jobs.yaml"), "notebook: ./daily.nb.md\njobs: []\n");
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.GetAsync("/api/envs/test/notebooks/cells?path=reports/daily.jobs.yaml")).StatusCode);
+            (await _client.GetAsync("/api/projects/default/branches/test/notebooks/cells?path=reports/daily.jobs.yaml")).StatusCode);
     }
 
     [TestMethod]
@@ -192,7 +199,7 @@ public class NotebookCellsApiTest {
         Assert.AreEqual(3, prod.GetProperty("cells").GetArrayLength(), "prod is readable");
 
         var write = await _client.PutAsJsonAsync(
-            $"/api/envs/prod/notebooks/cells?path={_notebook}", new { cells = Array.Empty<object>() }, _json);
+            $"/api/projects/default/branches/prod/notebooks/cells?path={_notebook}", new { cells = Array.Empty<object>() }, _json);
         Assert.AreEqual(HttpStatusCode.BadRequest, write.StatusCode);
         StringAssert.Contains(await write.Content.ReadAsStringAsync(), "read-only");
     }
@@ -205,7 +212,7 @@ public class NotebookCellsApiTest {
         // No test here can start a kernel, which is exactly the condition being
         // asserted: it answers, it says nothing was sent, and it does not fail.
         var response = await _client.PostAsJsonAsync(
-            $"/api/envs/test/notebooks/sync?path={_notebook}",
+            $"/api/projects/default/branches/test/notebooks/sync?path={_notebook}",
             new { cells = new[] { new { id = "c0", languageId = "csharp-script", source = "var a = 1;" } } },
             _json);
 
@@ -218,15 +225,15 @@ public class NotebookCellsApiTest {
     [TestMethod]
     public async Task Sync_is_gated_like_execution_because_it_drives_a_live_kernel() {
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.PostAsJsonAsync("/api/envs/test/notebooks/sync?path=../../../etc/passwd",
+            (await _client.PostAsJsonAsync("/api/projects/default/branches/test/notebooks/sync?path=../../../etc/passwd",
                 new { cells = Array.Empty<object>() }, _json)).StatusCode);
 
         // prod has no session and never runs anything from the editor.
         Assert.AreNotEqual(HttpStatusCode.OK,
-            (await _client.PostAsJsonAsync($"/api/envs/prod/notebooks/sync?path={_notebook}",
+            (await _client.PostAsJsonAsync($"/api/projects/default/branches/prod/notebooks/sync?path={_notebook}",
                 new { cells = Array.Empty<object>() }, _json)).StatusCode);
 
-        var malformed = await _client.PostAsync($"/api/envs/test/notebooks/sync?path={_notebook}",
+        var malformed = await _client.PostAsync($"/api/projects/default/branches/test/notebooks/sync?path={_notebook}",
             new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));
         Assert.AreEqual(HttpStatusCode.BadRequest, malformed.StatusCode);
     }
@@ -237,7 +244,7 @@ public class NotebookCellsApiTest {
         // is not something to offer over HTTP. Only four kinds exist.
         foreach (var kind in new[] { "clrkernel/execute", "textDocument/completion", "", "shutdown" }) {
             var response = await _client.PostAsJsonAsync(
-                $"/api/envs/test/notebooks/language?path={_notebook}",
+                $"/api/projects/default/branches/test/notebooks/language?path={_notebook}",
                 new { kind, cellId = "c0", languageId = "csharp-script", source = "x", line = 0, character = 1 },
                 _json);
             Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, $"kind '{kind}' must be refused");
@@ -246,7 +253,7 @@ public class NotebookCellsApiTest {
         // A known kind with no session is silent, not an error: nothing here may
         // start a kernel, for the same reason sync may not.
         var ok = await _client.PostAsJsonAsync(
-            $"/api/envs/test/notebooks/language?path={_notebook}",
+            $"/api/projects/default/branches/test/notebooks/language?path={_notebook}",
             new { kind = "completion", cellId = "c0", languageId = "csharp-script", source = "x", line = 0, character = 1 },
             _json);
         Assert.AreEqual(HttpStatusCode.OK, ok.StatusCode);
@@ -254,13 +261,13 @@ public class NotebookCellsApiTest {
         Assert.IsFalse(body.GetProperty("started").GetBoolean());
 
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await _client.PostAsJsonAsync("/api/envs/test/notebooks/language?path=../../../etc/passwd",
+            (await _client.PostAsJsonAsync("/api/projects/default/branches/test/notebooks/language?path=../../../etc/passwd",
                 new { kind = "completion", cellId = "c0" }, _json)).StatusCode);
     }
 
     [TestMethod]
     public async Task A_malformed_body_is_a_clear_error_not_a_500() {
-        var response = await _client.PutAsync($"/api/envs/test/notebooks/cells?path={_notebook}",
+        var response = await _client.PutAsync($"/api/projects/default/branches/test/notebooks/cells?path={_notebook}",
             new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         StringAssert.Contains(await response.Content.ReadAsStringAsync(), "error");

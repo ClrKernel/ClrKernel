@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.Jobs.UnitTest;
@@ -47,7 +48,8 @@ public class AuthApiTest {
         _store.Migrate();
         _auth = TestAuth.StoreFor(dbPath);
 
-        _app = Program.BuildApp(_options, new JobCatalog(_options.NotebooksRoot), _store, null, _auth);
+        _app = Program.BuildApp(
+            _options, new ProjectRegistry(_options, NullLoggerFactory.Instance), _store, _auth);
         _app.Urls.Add("http://127.0.0.1:0");
         await _app.StartAsync();
         _anonymous = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
@@ -72,23 +74,23 @@ public class AuthApiTest {
 
     /// <summary>Every route that writes or executes, as one table.</summary>
     private static IEnumerable<(string Method, string Path, object Body)> WritingRoutes() {
-        yield return ("PUT", "/api/envs/default/notebooks/content?path=etl/nightly.nb.md", "x");
-        yield return ("PUT", "/api/envs/default/notebooks/cells?path=etl/nightly.nb.md",
+        yield return ("PUT", "/api/projects/default/branches/default/notebooks/content?path=etl/nightly.nb.md", "x");
+        yield return ("PUT", "/api/projects/default/branches/default/notebooks/cells?path=etl/nightly.nb.md",
             new { cells = Array.Empty<object>() });
-        yield return ("POST", "/api/envs/test/notebooks/session?path=etl/nightly.nb.md", null);
-        yield return ("DELETE", "/api/envs/test/notebooks/session?path=etl/nightly.nb.md", null);
-        yield return ("POST", "/api/envs/test/notebooks/run?path=etl/nightly.nb.md",
+        yield return ("POST", "/api/projects/default/branches/test/notebooks/session?path=etl/nightly.nb.md", null);
+        yield return ("DELETE", "/api/projects/default/branches/test/notebooks/session?path=etl/nightly.nb.md", null);
+        yield return ("POST", "/api/projects/default/branches/test/notebooks/run?path=etl/nightly.nb.md",
             new { cells = Array.Empty<object>() });
-        yield return ("POST", "/api/envs/test/notebooks/sync?path=etl/nightly.nb.md",
+        yield return ("POST", "/api/projects/default/branches/test/notebooks/sync?path=etl/nightly.nb.md",
             new { cells = Array.Empty<object>() });
-        yield return ("POST", "/api/envs/test/notebooks/language?path=etl/nightly.nb.md",
+        yield return ("POST", "/api/projects/default/branches/test/notebooks/language?path=etl/nightly.nb.md",
             new { kind = "completion", cellId = "c0", line = 0, character = 0 });
-        yield return ("POST", "/api/envs/test/notebooks/promote?path=etl/nightly.nb.md", null);
-        yield return ("POST", "/api/envs/default/jobs", new { name = "x", notebook = "etl/nightly.nb.md" });
-        yield return ("PUT", "/api/envs/default/jobs/x", new { name = "x", notebook = "etl/nightly.nb.md" });
-        yield return ("DELETE", "/api/envs/default/jobs/x", null);
-        yield return ("POST", "/api/envs/default/jobs/x/run", null);
-        yield return ("POST", "/api/envs/default/jobs/x/cancel", null);
+        yield return ("POST", "/api/projects/default/branches/test/notebooks/promote?path=etl/nightly.nb.md", null);
+        yield return ("POST", "/api/projects/default/branches/default/jobs", new { name = "x", notebook = "etl/nightly.nb.md" });
+        yield return ("PUT", "/api/projects/default/branches/default/jobs/x", new { name = "x", notebook = "etl/nightly.nb.md" });
+        yield return ("DELETE", "/api/projects/default/branches/default/jobs/x", null);
+        yield return ("POST", "/api/projects/default/branches/default/jobs/x/run", null);
+        yield return ("POST", "/api/projects/default/branches/default/jobs/x/cancel", null);
         yield return ("PUT", "/api/channels", new { channels = Array.Empty<object>() });
         yield return ("POST", "/api/channels/x/test", null);
         yield return ("PUT", "/api/settings/general", new Dictionary<string, object>());
@@ -167,8 +169,8 @@ public class AuthApiTest {
         using var viewer = await ClientFor(UserRole.ServerViewer);
 
         foreach (var path in new[] {
-            "/api/jobs", "/api/runs", "/api/stats", "/api/notebooks", "/api/channels",
-            "/api/settings", "/api/envs/default/notebooks/content?path=etl/nightly.nb.md",
+            "/api/jobs", "/api/runs", "/api/stats", "/api/projects/default/notebooks", "/api/channels",
+            "/api/settings", "/api/projects/default/branches/default/notebooks/content?path=etl/nightly.nb.md",
         }) {
             var response = await viewer.GetAsync(path);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, $"GET {path} is reading");
@@ -181,7 +183,7 @@ public class AuthApiTest {
 
         Assert.AreEqual(HttpStatusCode.OK, (await admin.GetAsync("/api/users")).StatusCode);
         Assert.AreEqual(HttpStatusCode.OK, (await admin.GetAsync("/api/invites")).StatusCode);
-        var created = await admin.PostAsJsonAsync("/api/envs/default/jobs",
+        var created = await admin.PostAsJsonAsync("/api/projects/default/branches/default/jobs",
             new { name = "nightly", notebook = "etl/nightly.nb.md" });
         Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
     }

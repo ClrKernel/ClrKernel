@@ -30,11 +30,11 @@ public class SchedulerTest {
         _store.Migrate();
 
         var options = new JobsOptions { DataDir = _root, NotebooksRoot = _root };
-        var catalog = new JobCatalog(_root);
-        var executor = new JobExecutor(_store, options, NullLogger.Instance);
+        var projects = new ProjectRegistry(options, NullLoggerFactory.Instance);
+        var executor = new JobExecutor(_store, options, NullLogger.Instance, projects);
         var notifier = new Notifier(options, NullLogger.Instance);
         _scheduler = new SchedulerService(
-            catalog, _store, executor, notifier, options, NullLogger<SchedulerService>.Instance) {
+            projects, _store, executor, notifier, options, NullLogger<SchedulerService>.Instance) {
             RetryDelay = TimeSpan.Zero,
         };
 
@@ -56,7 +56,8 @@ public class SchedulerTest {
                 FinishedAt = DateTime.UtcNow,
             };
             // Mirror the executor's contract: a run moves the job's trigger clock.
-            await _store.SetLastTriggerAsync(job.Environment ?? "default", job.Name, DateTime.UtcNow);
+            await _store.SetLastTriggerAsync(
+                job.Project ?? "default", job.Environment ?? "default", job.Name, DateTime.UtcNow);
             return await _store.CreateRunAsync(run);
         };
     }
@@ -212,7 +213,7 @@ public class SchedulerTest {
     [TestMethod]
     public async Task A_manual_trigger_returns_the_run_id_it_will_use() {
         WriteJobs("notebook: ./nb.nb.md\njobs: [{name: manual}]");
-        var job = new JobCatalog(_root).Load().Find("default", "manual");
+        var job = new JobCatalog(_root).Load().Find("default", "default", "manual");
 
         var runId = _scheduler.TriggerManual(job);
         Assert.IsNotNull(runId);
@@ -227,7 +228,7 @@ public class SchedulerTest {
     [TestMethod]
     public async Task Cancelling_an_in_flight_run_signals_its_token() {
         WriteJobs("notebook: ./nb.nb.md\njobs: [{name: slow}]");
-        var job = new JobCatalog(_root).Load().Find("default", "slow");
+        var job = new JobCatalog(_root).Load().Find("default", "default", "slow");
 
         var started = new TaskCompletionSource();
         var observed = new TaskCompletionSource<bool>();
@@ -244,11 +245,11 @@ public class SchedulerTest {
 
         _scheduler.TriggerManual(job);
         await started.Task;
-        Assert.IsTrue(_scheduler.TryCancel("default", "slow"));
+        Assert.IsTrue(_scheduler.TryCancel("default", "default", "slow"));
         Assert.IsTrue(await observed.Task, "the run observes the cancellation");
         await _scheduler.DrainAsync();
 
-        Assert.IsFalse(_scheduler.TryCancel("default", "slow"), "nothing in flight once it has finished");
+        Assert.IsFalse(_scheduler.TryCancel("default", "default", "slow"), "nothing in flight once it has finished");
     }
 
     private async Task<Run> Succeed(string jobName) {

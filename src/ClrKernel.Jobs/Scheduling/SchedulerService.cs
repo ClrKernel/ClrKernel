@@ -28,7 +28,7 @@ namespace ClrKernel.Jobs;
 /// on startup, rows left Running by a crash are marked Failed.
 /// </summary>
 public sealed class SchedulerService : BackgroundService {
-    private readonly JobCatalog _catalog;
+    private readonly ProjectRegistry _projects;
     private readonly IRunStore _store;
     private readonly JobsOptions _options;
     private readonly ILogger<SchedulerService> _logger;
@@ -46,9 +46,9 @@ public sealed class SchedulerService : BackgroundService {
     private readonly Notifier _notifier;
 
     public SchedulerService(
-        JobCatalog catalog, IRunStore store, JobExecutor executor, Notifier notifier,
+        ProjectRegistry projects, IRunStore store, JobExecutor executor, Notifier notifier,
         JobsOptions options, ILogger<SchedulerService> logger) {
-        _catalog = catalog;
+        _projects = projects;
         _store = store;
         _notifier = notifier;
         _options = options;
@@ -74,15 +74,21 @@ public sealed class SchedulerService : BackgroundService {
     }
 
     /// <summary>Cancels a job's in-flight run (kills its kernel). False when none is ours.</summary>
-    public bool TryCancel(string environment, string jobName) {
-        if (_activeJobs.TryGetValue($"{environment}:{jobName}", out var cancellation)) {
+    public bool TryCancel(string project, string environment, string jobName) {
+        if (_activeJobs.TryGetValue(KeyOf(project, environment, jobName), out var cancellation)) {
             cancellation.Cancel();
             return true;
         }
         return false;
     }
 
-    private static string KeyOf(JobDefinition job) => $"{job.Environment}:{job.Name}";
+    // The project is part of the key, not decoration: two projects are each allowed
+    // a job called `nightly`, and a key without it would make one of them look
+    // already-running and silently skip its occurrence.
+    private static string KeyOf(JobDefinition job) => KeyOf(job.Project, job.Environment, job.Name);
+
+    private static string KeyOf(string project, string environment, string jobName) =>
+        $"{project}:{environment}:{jobName}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         _stoppingToken = stoppingToken;
@@ -93,8 +99,8 @@ public sealed class SchedulerService : BackgroundService {
 
         var lastTick = DateTime.UtcNow;
         _logger.LogInformation(
-            "Scheduler started: notebooks {Root}, tick {Tick}s, max parallelism {Parallelism}.",
-            _catalog.NotebooksRoot, TickInterval.TotalSeconds, _options.MaxParallelism);
+            "Scheduler started: {Projects} project(s), tick {Tick}s, max parallelism {Parallelism}.",
+            _projects.Projects.Count, TickInterval.TotalSeconds, _options.MaxParallelism);
 
         try {
             while (true) {
@@ -119,13 +125,13 @@ public sealed class SchedulerService : BackgroundService {
 
     /// <summary>One pass over the catalog for the (from, to] window.</summary>
     internal async Task TickAsync(DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken) {
-        var catalog = _catalog.Load();
+        var catalog = _projects.LoadAll();
         foreach (var error in catalog.Errors) {
             _logger.LogWarning("Catalog: {Error}", error);
         }
 
         // Automatic triggers fire only where the scheduler owns execution: prod in
-        // the git workflow, or the single default environment without it. Dev runs
+        // the git workflow, or the single default environment without it. Test runs
         // are always deliberate (manual / API).
         foreach (var job in catalog.Jobs.Where(j => j.Enabled && j.Environment is "prod" or "default")) {
             if (_activeJobs.ContainsKey(KeyOf(job))) {
@@ -133,7 +139,7 @@ public sealed class SchedulerService : BackgroundService {
             }
 
             if (job.Cron != null && IsDue(job.Cron, fromUtc, toUtc)) {
-                if (await _store.HasActiveRunAsync(job.Environment, job.Name)) {
+                if (await _store.HasActiveRunAsync(job.Project, job.Environment, job.Name)) {
                     _logger.LogWarning("{Job} is due but still has an active run; skipping this occurrence.", job.Name);
                     continue;
                 }
@@ -143,7 +149,8 @@ public sealed class SchedulerService : BackgroundService {
 
             if (job.DependsOn.Count > 0) {
                 var causedBy = await DependencyReadyAsync(job);
-                if (causedBy != null && !await _store.HasActiveRunAsync(job.Environment, job.Name)) {
+                if (causedBy != null
+                    && !await _store.HasActiveRunAsync(job.Project, job.Environment, job.Name)) {
                     Launch(new RunRequest(job, RunTrigger.Dependency, causedBy.Id, null), cancellationToken);
                 }
             }
@@ -164,11 +171,12 @@ public sealed class SchedulerService : BackgroundService {
         if (job.DependsOn.Count == 0) {
             return null;
         }
-        var lastTrigger = await _store.GetLastTriggerAsync(job.Environment, job.Name) ?? DateTime.MinValue;
+        var lastTrigger = await _store.GetLastTriggerAsync(job.Project, job.Environment, job.Name)
+            ?? DateTime.MinValue;
         Run newest = null;
         foreach (var dependency in job.DependsOn) {
-            // Dependencies resolve within the same environment only.
-            var success = await _store.GetLastSuccessfulRunAsync(job.Environment, dependency);
+            // Dependencies resolve within the same environment of the same project only.
+            var success = await _store.GetLastSuccessfulRunAsync(job.Project, job.Environment, dependency);
             if (success?.FinishedAt is not { } finished || finished <= lastTrigger) {
                 return null;
             }

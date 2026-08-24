@@ -29,15 +29,18 @@ public sealed class JobExecutor {
     private readonly IRunStore _store;
     private readonly JobsOptions _options;
     private readonly ILogger _logger;
-    private readonly GitService _git;
+    private readonly ProjectRegistry _projects;
 
-    /// <param name="git">Present when the git workflow is enabled: runs record the
-    /// environment's HEAD and whether the tree was dirty — promotion evidence.</param>
-    public JobExecutor(IRunStore store, JobsOptions options, ILogger logger, GitService git = null) {
+    /// <param name="projects">
+    /// Where the job's project — and so its git layer — comes from. Runs record the
+    /// environment's HEAD and whether the tree was dirty, which is the evidence
+    /// promotion stands on, and each project has its own repo to ask.
+    /// </param>
+    public JobExecutor(IRunStore store, JobsOptions options, ILogger logger, ProjectRegistry projects = null) {
         _store = store;
         _options = options;
         _logger = logger;
-        _git = git;
+        _projects = projects;
     }
 
     /// <summary>Raised on every cell state change (run, cell, total code cells) — the CLI/API progress feed.</summary>
@@ -46,8 +49,10 @@ public sealed class JobExecutor {
     public async Task<Run> ExecuteAsync(
         JobDefinition job, RunTrigger trigger, Guid? causedByRunId = null, int attempt = 1,
         Guid? runId = null, bool hadOverrides = false, CancellationToken cancellationToken = default) {
+        var git = _projects?.Find(job.Project) is { } project ? _projects.GitFor(project) : null;
         var run = new Run {
             Id = runId ?? Guid.NewGuid(),
+            Project = job.Project ?? ProjectRegistry.DefaultSlug,
             Environment = job.Environment ?? "default",
             JobName = job.Name,
             NotebookPath = job.NotebookRelative,
@@ -62,12 +67,12 @@ public sealed class JobExecutor {
         // Promotion evidence, captured BEFORE the notebook is parsed: a save that
         // lands between capture and parse must invalidate, not sneak in.
         run.HadOverrides = hadOverrides;
-        if (_git != null && job.Environment is GitService.TestBranch or "prod") {
+        if (git != null && job.Environment is GitService.TestBranch or "prod") {
             try {
-                run.CommitSha = _git.HeadSha(job.Environment);
+                run.CommitSha = git.HeadSha(job.Environment);
                 var relativeYaml = Path.GetRelativePath(
-                    _git.PathFor(job.Environment), job.SourceFile).Replace('\\', '/');
-                run.WasDirty = _git.IsDirty(job.Environment, job.NotebookRelative, relativeYaml);
+                    git.PathFor(job.Environment), job.SourceFile).Replace('\\', '/');
+                run.WasDirty = git.IsDirty(job.Environment, job.NotebookRelative, relativeYaml);
             } catch (GitException e) {
                 _logger.LogWarning("Could not capture git state for {Job}: {Error}", job.Name, e.Message);
                 run.WasDirty = true; // unknown provenance is treated as dirty
@@ -83,7 +88,7 @@ public sealed class JobExecutor {
         run.LogPath = Path.GetRelativePath(_options.DataDir, logPath).Replace('\\', '/');
         // Every run — scheduled, manual, or chained — moves the job's trigger clock,
         // which is what the dependency freshness rule compares successes against.
-        await _store.SetLastTriggerAsync(run.Environment, job.Name, DateTime.UtcNow);
+        await _store.SetLastTriggerAsync(run.Project, run.Environment, job.Name, DateTime.UtcNow);
         await _store.CreateRunAsync(run);
 
         using var log = new StreamWriter(logPath) { AutoFlush = true };

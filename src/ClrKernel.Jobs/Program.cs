@@ -116,35 +116,30 @@ public static class Program {
             return GitCommand(options, jobName);
         }
 
-        var git = options.GitEnabled ? GitFor(options) : null;
-        if (git != null) {
-            // Before LayoutExists is consulted: a 0.9 workspace has dev/ where
-            // test/ belongs, so the layout only looks intact once this has run.
-            if (git.MigrateLegacyLayout()) {
-                Console.Error.WriteLine(
-                    $"{options.NotebooksRoot}: renamed the dev branch and worktree to test. " +
-                    "A configured remote keeps its old dev branch — delete it there when you are ready.");
-            }
-            if (git.LayoutExists) {
-                git.Repair(); // worktree gitdir pointers are absolute; volumes move
-            }
+        using var registryLogging = LoggerFactory.Create(b => b.AddConsole());
+        var projects = new ProjectRegistry(options, registryLogging);
+        // Before any layout is consulted: a 0.9 workspace has dev/ where test/
+        // belongs, so it only looks intact once this has run.
+        foreach (var migrated in projects.PrepareWorkspaces()) {
+            Console.Error.WriteLine(
+                $"{migrated.Root}: renamed the dev branch and worktree to test. " +
+                "A configured remote keeps its old dev branch — delete it there when you are ready.");
         }
-        var catalog = new JobCatalog(options.NotebooksRoot, options.GitEnabled, git);
         switch (command) {
             case "new-admin-invite":
                 return await NewAdminInviteAsync(options);
             case "serve":
-                return await ServeAsync(catalog, options, git);
+                return await ServeAsync(projects, options);
             case "list":
-                return List(catalog);
+                return List(projects);
             case "validate":
-                return Validate(catalog);
+                return Validate(projects);
             case "run":
                 if (jobName == null) {
                     Console.Error.WriteLine("run needs a job name. See `clrkernel-jobs --help`.");
                     return 2;
                 }
-                return await RunAsync(catalog, options, jobName);
+                return await RunAsync(projects, options, jobName);
             default:
                 Console.Error.WriteLine($"Unknown command: {command}. See `clrkernel-jobs --help`.");
                 return 2;
@@ -235,14 +230,15 @@ public static class Program {
             (One-shot commands like `run` still default to sqlite.)
             """;
 
-    private static async Task<int> ServeAsync(JobCatalog catalog, JobsOptions options, GitService git) {
+    private static async Task<int> ServeAsync(ProjectRegistry projects, JobsOptions options) {
         if (MissingStoreError(options) is { } missingStore) {
             Console.Error.WriteLine(missingStore);
             return 2;
         }
 
-        var result = catalog.Load();
-        Console.WriteLine($"clrkernel-jobs scheduler — {result.Jobs.Count} job(s) under {catalog.NotebooksRoot}");
+        var result = projects.LoadAll();
+        Console.WriteLine($"clrkernel-jobs scheduler — {result.Jobs.Count} job(s) in " +
+            $"{projects.Projects.Count} project(s)");
         PrintErrors(result.Errors);
 
         if ((options.Store ?? "sqlite").Equals("files", StringComparison.OrdinalIgnoreCase)) {
@@ -263,7 +259,7 @@ public static class Program {
             return 2;
         }
 
-        var app = BuildApp(options, catalog, store, git);
+        var app = BuildApp(options, projects, store);
         var urls = options.Urls ?? "http://localhost:5000";
         if (!JobsApi.IsLocalOnly(urls) && options.RelyingPartyId == "localhost") {
             Console.Error.WriteLine(
@@ -278,8 +274,7 @@ public static class Program {
 
     /// <summary>The scheduler + API host. Shared with the integration tests.</summary>
     internal static WebApplication BuildApp(
-        JobsOptions options, JobCatalog catalog, IRunStore store, GitService git = null,
-        IAuthStore authStore = null) {
+        JobsOptions options, ProjectRegistry projects, IRunStore store, IAuthStore authStore = null) {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
@@ -297,7 +292,7 @@ public static class Program {
             json.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton(catalog);
+        builder.Services.AddSingleton(projects);
         builder.Services.AddSingleton(store);
         // Accounts share the run database. Tests hand one in so the host does not
         // have to re-derive a connection from options it never had.
@@ -305,10 +300,6 @@ public static class Program {
         builder.Services.AddSingleton(provider => new AuthService(
             provider.GetRequiredService<IAuthStore>(), options,
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<AuthService>()));
-
-        if (git != null) {
-            builder.Services.AddSingleton(git);
-        }
 
         var settings = SettingsRegistry.CreateDefault(options);
         settings.Add(new SettingsSection {
@@ -349,7 +340,8 @@ public static class Program {
         });
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(provider => new JobExecutor(
-            store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(), git));
+            store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(),
+            projects));
         builder.Services.AddSingleton(provider => new Notifier(
             options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>()));
         // What the kernel can run, for parsing notebooks and filling the editor's
@@ -388,27 +380,30 @@ public static class Program {
         return app;
     }
 
-    private static int List(JobCatalog catalog) {
-        var result = catalog.Load();
+    private static int List(ProjectRegistry projects) {
+        var result = projects.LoadAll();
         if (result.Jobs.Count == 0 && result.Errors.Count == 0) {
-            Console.WriteLine($"No *.jobs.yaml files under {catalog.NotebooksRoot}.");
+            Console.WriteLine($"No *.jobs.yaml files under {projects.Default.Root}.");
             return 0;
         }
+        var many = projects.Projects.Count > 1;
         foreach (var job in result.Jobs
-                     .OrderBy(j => j.Environment).ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)) {
+                     .OrderBy(j => j.Project).ThenBy(j => j.Environment)
+                     .ThenBy(j => j.Name, StringComparer.OrdinalIgnoreCase)) {
             var schedule = job.Cron != null ? $"cron '{job.Cron}'" : "manual";
             var deps = job.DependsOn.Count > 0 ? $", needs {string.Join(", ", job.DependsOn)}" : string.Empty;
             var disabled = job.Enabled ? string.Empty : " [disabled]";
             var env = job.Environment == "default" ? string.Empty : $"[{job.Environment}] ";
-            Console.WriteLine($"  {env}{job.Name}{disabled} — {job.NotebookRelative} ({schedule}{deps})");
+            var project = many ? $"{job.Project}/" : string.Empty;
+            Console.WriteLine($"  {project}{env}{job.Name}{disabled} — {job.NotebookRelative} ({schedule}{deps})");
         }
         PrintErrors(result.Errors);
         return result.Errors.Count == 0 ? 0 : 1;
     }
 
-    private static int Validate(JobCatalog catalog) {
-        var result = catalog.Load();
-        Console.WriteLine($"{result.Jobs.Count} job(s) in {catalog.NotebooksRoot}");
+    private static int Validate(ProjectRegistry projects) {
+        var result = projects.LoadAll();
+        Console.WriteLine($"{result.Jobs.Count} job(s) in {projects.Projects.Count} project(s)");
         PrintErrors(result.Errors);
         Console.WriteLine(result.Errors.Count == 0 ? "OK" : $"{result.Errors.Count} problem(s).");
         return result.Errors.Count == 0 ? 0 : 1;
@@ -420,17 +415,23 @@ public static class Program {
         }
     }
 
-    private static async Task<int> RunAsync(JobCatalog catalog, JobsOptions options, string jobName) {
+    private static async Task<int> RunAsync(
+        ProjectRegistry projects, JobsOptions options, string jobName) {
+        // ponytail: `run` targets one project — the default — because it is the
+        // one-shot command and nobody has asked to name another. Add --project when
+        // somebody does.
+        var project = projects.Default;
+        var catalog = projects.CatalogFor(project);
         var environment = catalog.GitLayout
             ? (options.RunEnvironment ?? GitService.TestBranch)
             : "default";
         var result = catalog.Load();
-        var job = result.Find(environment, jobName);
+        var job = result.Find(project.Slug, environment, jobName);
         if (job == null) {
             Console.Error.WriteLine(result.Jobs.Count == 0
                 ? $"No jobs found under {catalog.NotebooksRoot}."
                 : $"No job named '{jobName}' in {environment}. Known: " +
-                  string.Join(", ", result.In(environment).Select(j => j.Name)) + ".");
+                  string.Join(", ", result.In(project.Slug, environment).Select(j => j.Name)) + ".");
             PrintErrors(result.Errors);
             return 2;
         }
@@ -457,8 +458,8 @@ public static class Program {
             builder.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
             builder.SetMinimumLevel(LogLevel.Warning);
         });
-        var executor = new JobExecutor(store, options, loggerFactory.CreateLogger<JobExecutor>(),
-            catalog.GitLayout ? GitFor(options) : null);
+        var executor = new JobExecutor(
+            store, options, loggerFactory.CreateLogger<JobExecutor>(), projects);
         executor.CellProgress += (_, cell, total) => {
             var step = $"[{cell.CellIndex + 1}/{total}]";
             switch (cell.Status) {

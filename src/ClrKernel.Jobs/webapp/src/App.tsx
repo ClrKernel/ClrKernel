@@ -14,6 +14,7 @@ import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
+import { api, setProject } from './api';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -32,6 +33,19 @@ export function App() {
     loadSession().then(setSession).catch(() => setSession(null));
   }, []);
   useEffect(refresh, [refresh]);
+
+  // Which project the API client addresses. A server that has registered nothing
+  // runs one project called `default`, which is what the client already assumes;
+  // this only matters once projects.json names something else. Failures are
+  // deliberately silent — the default is a working answer.
+  useEffect(() => {
+    if (session?.authenticated !== true) {
+      return;
+    }
+    api.projects()
+      .then(({ projects }) => projects[0] && setProject(projects[0].slug))
+      .catch(() => undefined);
+  }, [session?.authenticated]);
 
   const accentValue = ACCENTS.find((a) => a.name === accent) ?? ACCENTS[0];
 

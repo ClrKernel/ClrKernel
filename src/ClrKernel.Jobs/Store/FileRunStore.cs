@@ -81,6 +81,10 @@ public sealed class FileRunStore : IRunStore {
         public List<RunCell> Cells { get; set; } = new();
     }
 
+    // ponytail: the directory is <environment>/<job>/<id>, with no project segment —
+    // the project is inside run.json and every query filters on it. Adding one would
+    // split the tree between old and new runs for no gain; `serve` needs a database
+    // anyway, so a multi-project file store is a command-line-only arrangement.
     private string DirectoryFor(Run run) =>
         Path.Combine(_root, run.Environment ?? "default", run.JobName, run.Id.ToString("N"));
 
@@ -145,6 +149,9 @@ public sealed class FileRunStore : IRunStore {
 
     public Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
         var runs = AllRecords().Select(r => r.Run);
+        if (!string.IsNullOrEmpty(query.Project)) {
+            runs = runs.Where(r => string.Equals(r.Project ?? "default", query.Project, StringComparison.OrdinalIgnoreCase));
+        }
         if (!string.IsNullOrEmpty(query.Environment)) {
             runs = runs.Where(r => string.Equals(r.Environment, query.Environment, StringComparison.OrdinalIgnoreCase));
         }
@@ -196,20 +203,21 @@ public sealed class FileRunStore : IRunStore {
         Task.FromResult<IReadOnlyList<RunCell>>(
             (Find(runId)?.Cells ?? new List<RunCell>()).OrderBy(c => c.CellIndex).ToList());
 
-    private static bool Matches(Run run, string environment, string jobName) =>
-        string.Equals(run.Environment ?? "default", environment, StringComparison.OrdinalIgnoreCase)
+    private static bool Matches(Run run, string project, string environment, string jobName) =>
+        string.Equals(run.Project ?? "default", project, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(run.Environment ?? "default", environment, StringComparison.OrdinalIgnoreCase)
         && string.Equals(run.JobName, jobName, StringComparison.OrdinalIgnoreCase);
 
-    public Task<Run> GetLastSuccessfulRunAsync(string environment, string jobName) =>
+    public Task<Run> GetLastSuccessfulRunAsync(string project, string environment, string jobName) =>
         Task.FromResult(AllRecords()
             .Select(r => r.Run)
-            .Where(r => Matches(r, environment, jobName) && r.Status == RunStatus.Succeeded)
+            .Where(r => Matches(r, project, environment, jobName) && r.Status == RunStatus.Succeeded)
             .OrderByDescending(r => r.FinishedAt)
             .FirstOrDefault());
 
-    public Task<bool> HasActiveRunAsync(string environment, string jobName) =>
+    public Task<bool> HasActiveRunAsync(string project, string environment, string jobName) =>
         Task.FromResult(AllRecords().Any(r =>
-            Matches(r.Run, environment, jobName)
+            Matches(r.Run, project, environment, jobName)
             && r.Run.Status is RunStatus.Pending or RunStatus.Running));
 
     // --- trigger state (one small shared file) ------------------------------
@@ -226,14 +234,25 @@ public sealed class FileRunStore : IRunStore {
         }
     }
 
-    public Task<DateTime?> GetLastTriggerAsync(string environment, string jobName) =>
-        Task.FromResult(ReadTriggers().TryGetValue($"{environment}/{jobName}", out var at)
+    /// <summary>
+    /// The default project keeps the two-part key it has always had, so an existing
+    /// triggers.json still answers after the upgrade; anything registered later is
+    /// namespaced by its slug.
+    /// </summary>
+    private static string TriggerKey(string project, string environment, string jobName) =>
+        string.Equals(project ?? "default", "default", StringComparison.OrdinalIgnoreCase)
+            ? $"{environment}/{jobName}"
+            : $"{project}/{environment}/{jobName}";
+
+    public Task<DateTime?> GetLastTriggerAsync(string project, string environment, string jobName) =>
+        Task.FromResult(ReadTriggers().TryGetValue(TriggerKey(project, environment, jobName), out var at)
             ? at : (DateTime?)null);
 
-    public async Task SetLastTriggerAsync(string environment, string jobName, DateTime triggeredAt) {
+    public async Task SetLastTriggerAsync(
+        string project, string environment, string jobName, DateTime triggeredAt) {
         using var _ = await _triggerLock.EnterAsync();
         var triggers = ReadTriggers();
-        triggers[$"{environment}/{jobName}"] = triggeredAt;
+        triggers[TriggerKey(project, environment, jobName)] = triggeredAt;
         Directory.CreateDirectory(Path.GetDirectoryName(_triggersPath)!);
         var staging = _triggersPath + ".tmp";
         await File.WriteAllTextAsync(staging, JsonSerializer.Serialize(triggers, _json));

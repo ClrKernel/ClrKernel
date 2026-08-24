@@ -30,15 +30,17 @@ public sealed class PromotionEligibility {
 /// </summary>
 public static class Promotion {
     public static async Task<PromotionEligibility> CheckAsync(
-        JobCatalog catalog, GitService git, IRunStore store, string notebookPath) {
+        Project project, ProjectRegistry projects, IRunStore store, string notebookPath) {
+        var catalog = projects.CatalogFor(project);
+        var git = projects.GitFor(project);
         var reasons = new List<string>();
         var evidence = new Dictionary<string, Guid>();
         var catalogResult = catalog.Load();
 
-        var testJobs = catalogResult.In(GitService.TestBranch)
+        var testJobs = catalogResult.In(project.Slug, GitService.TestBranch)
             .Where(j => string.Equals(j.NotebookRelative, notebookPath, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        var prodJobs = catalogResult.In("prod")
+        var prodJobs = catalogResult.In(project.Slug, "prod")
             .Where(j => string.Equals(j.NotebookRelative, notebookPath, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
@@ -59,7 +61,7 @@ public static class Promotion {
         if (isDeletion) {
             // Deleting from prod needs no green run — only that nothing is executing.
             foreach (var job in prodJobs) {
-                if (await store.HasActiveRunAsync("prod", job.Name)) {
+                if (await store.HasActiveRunAsync(project.Slug, "prod", job.Name)) {
                     reasons.Add($"'{job.Name}' has a prod run in flight.");
                 }
             }
@@ -69,6 +71,7 @@ public static class Promotion {
             }
             foreach (var job in testJobs.Where(j => j.Enabled)) {
                 var latest = (await store.QueryRunsAsync(new RunQuery {
+                    Project = project.Slug,
                     Environment = GitService.TestBranch,
                     JobName = job.Name,
                     Limit = 1,
@@ -97,8 +100,8 @@ public static class Promotion {
                     reasons.Add($"'{job.Name}' files changed since its green run — run it again.");
                     continue;
                 }
-                if (await store.HasActiveRunAsync(GitService.TestBranch, job.Name)
-                    || await store.HasActiveRunAsync("prod", job.Name)) {
+                if (await store.HasActiveRunAsync(project.Slug, GitService.TestBranch, job.Name)
+                    || await store.HasActiveRunAsync(project.Slug, "prod", job.Name)) {
                     reasons.Add($"'{job.Name}' has a run in flight.");
                     continue;
                 }
@@ -107,7 +110,7 @@ public static class Promotion {
 
             // The prod graph must still validate after the swap: prod jobs not from
             // this notebook + this notebook’s test jobs.
-            var simulated = catalogResult.In("prod")
+            var simulated = catalogResult.In(project.Slug, "prod")
                 .Where(j => !string.Equals(j.NotebookRelative, notebookPath, StringComparison.OrdinalIgnoreCase))
                 .Concat(testJobs)
                 .ToList();
