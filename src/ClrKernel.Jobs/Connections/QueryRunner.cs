@@ -102,6 +102,26 @@ public sealed class QueryRunner {
         return spec;
     }
 
+    /// <summary>
+    /// Closes the pooled sockets for a connection — what Disconnect actually does.
+    /// <para>
+    /// ADO.NET's pool is keyed by connection string and shared across everyone using
+    /// it, so this is server-wide rather than per person. That is harmless — the next
+    /// query opens a new socket — and it is the only honest meaning "disconnect" can
+    /// have when the connection is pooled rather than held.
+    /// </para>
+    /// </summary>
+    public void Disconnect(StoredConnection connection, bool leastPrivilege) {
+        try {
+            using var live = new SqlConnection(SpecFor(connection, leastPrivilege).BuildConnectionString(_secrets));
+            SqlConnection.ClearPool(live);
+        } catch (Exception e) {
+            // A connection whose credential no longer resolves has no pool to clear.
+            _logger?.LogDebug("Clearing the pool for '{Connection}' did nothing: {Error}",
+                connection.Name, e.Message);
+        }
+    }
+
     /// <summary>Opens and closes a connection, to prove the settings and credential
     /// work before anyone types a query against them.</summary>
     public async Task<string> TestAsync(

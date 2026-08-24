@@ -339,6 +339,26 @@ public static class Program {
                 },
             },
         });
+        settings.Add(new SettingsSection {
+            Key = "connections",
+            Title = "Connections",
+            Description =
+                "Saved database connections are server-wide: shared ones a server admin manages, "
+                + "and each person's own, which nobody else can see.",
+            Fields = {
+                new SettingField {
+                    Name = "privateConnectionsReadOnly", Label = "Private connections are read-only too",
+                    Type = "bool",
+                    Value = options.PrivateConnectionsReadOnly,
+                    Source = options.SourceOf("privateConnectionsReadOnly"),
+                    WebWritable = true, RestartRequired = true,
+                    Help = "Off by default: a private connection is somebody's own credential against "
+                        + "a server they could reach with SSMS anyway, so the app is not the boundary "
+                        + "there. On, private connections follow the same rule as shared ones — no "
+                        + "least-privilege login configured, no execution for anyone but a server admin.",
+                },
+            },
+        });
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(provider => new JobExecutor(
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(),

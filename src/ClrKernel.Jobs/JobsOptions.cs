@@ -30,6 +30,17 @@ public sealed class JobsOptions {
     public string Urls { get; set; }
     /// <summary>Dev→prod workflow: the notebooks root is a git workspace with dev/prod worktrees.</summary>
     public bool GitEnabled { get; set; }
+
+    /// <summary>
+    /// Hold private connections to the same read-only rule as shared ones: no
+    /// least-privilege login configured, no execution for anyone but a server admin.
+    /// <para>
+    /// Off by default, because a private connection is the person's own credential
+    /// against a server they could reach with SSMS anyway — the app is not the
+    /// security boundary there. On for installs that would rather it were.
+    /// </para>
+    /// </summary>
+    public bool PrivateConnectionsReadOnly { get; set; }
     public string GitAuthorName { get; set; }
     public string GitAuthorEmail { get; set; }
     /// <summary>Remote name/url to push after commits and promotions; empty = local only.</summary>
@@ -165,6 +176,11 @@ public sealed class JobsOptions {
 
         var gitEnabled = Pick("gitEnabled", "git", "CLRKERNEL_JOBS_GIT", Setting("gitEnabled"), null);
         options.GitEnabled = gitEnabled != null && bool.TryParse(gitEnabled, out var g) && g;
+        var privateReadOnly = Pick(
+            "privateConnectionsReadOnly", "private-connections-read-only",
+            "CLRKERNEL_JOBS_PRIVATE_READONLY", Setting("privateConnectionsReadOnly"), null);
+        options.PrivateConnectionsReadOnly =
+            privateReadOnly != null && bool.TryParse(privateReadOnly, out var pr) && pr;
         options.GitAuthorName = Pick(
             "gitAuthorName", "git-author-name", "CLRKERNEL_JOBS_GIT_AUTHOR", Setting("gitAuthorName"), null);
         options.GitAuthorEmail = Pick(

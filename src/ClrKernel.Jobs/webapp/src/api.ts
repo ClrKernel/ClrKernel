@@ -631,6 +631,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ queryId }),
     }),
+  /** Drops the pooled sockets. The tree forgets what it loaded at the same time,
+   *  so "connected" and "we have its objects" stay one fact rather than two. */
+  disconnectConnection: (id: string) =>
+    request<{ disconnected: string }>(`/connections/${encodeURIComponent(id)}/disconnect`, {
+      method: 'POST',
+    }),
   connectionMetadata: <T>(id: string, body: ApiMetadataRequest) =>
     request<ApiMetadataReply<T>>(`/connections/${encodeURIComponent(id)}/metadata`, {
       method: 'POST',

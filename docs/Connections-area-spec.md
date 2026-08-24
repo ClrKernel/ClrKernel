@@ -253,8 +253,16 @@ and Execute is disabled for everyone below Server Admin — disabled and explain
 enabled-and-hoping. The app-side statement check stays as a clearer error message, never as
 the mechanism.
 
-Private connections are governed by the database login itself, with an install-level switch
-to force the same rule on them.
+Private connections are governed by the database login itself. The install-level switch that
+forces the same rule on them is `--private-connections-read-only` /
+`CLRKERNEL_JOBS_PRIVATE_READONLY` / `privateConnectionsReadOnly` in `settings.json`, and it is
+shown in Settings → Connections. Off by default.
+
+**Disconnect is real, not a UI state.** It clears the ADO.NET pool for that connection string
+and drops everything the tree had loaded, so "connected" and "we have its objects" stay one
+fact. The pool is keyed by connection string and shared, so one person's Disconnect drops the
+pooled sockets for everybody — harmless, since the next query opens a new one, and it is the
+only honest meaning the word can have when the connection is pooled rather than held.
 
 ## Defaults taken without asking
 

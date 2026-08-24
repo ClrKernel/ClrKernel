@@ -6,6 +6,7 @@ import {
   FileCode2,
   Folder,
   Plug,
+  PlugZap,
   Table2,
   type LucideIcon,
 } from 'lucide-react';
@@ -137,6 +138,22 @@ export function ConnectionTree({
     }
   }
 
+  /** Drops the pooled sockets and everything this connection had loaded. */
+  async function disconnect(node: Node) {
+    setChildren((c) => dropUnder(c, node.key));
+    setDetails((d) => dropUnder(d, node.key));
+    setOpen((current) => {
+      const next = new Set(current);
+      for (const key of next) {
+        if (key.startsWith(node.key)) {
+          next.delete(key);
+        }
+      }
+      return next;
+    });
+    await api.disconnectConnection(node.connection.id).catch(() => undefined);
+  }
+
   /** Reload one node and everything under it — the explicit Refresh, because a
    *  cached tree that quietly went stale is worse than one you refresh. */
   async function refresh(node: Node) {
@@ -170,7 +187,13 @@ export function ConnectionTree({
           </p>
         )}
         {rows.map((node) => {
-          const Icon = ICONS[node.type === 'object' ? node.kind ?? 'table' : node.type] ?? Columns3;
+          // A connection is "connected" exactly when we have its objects — one fact
+          // rather than a status kept beside the thing it describes and free to
+          // disagree with it.
+          const connected = node.type === 'connection' && children[node.key] != null;
+          const Icon = node.type === 'connection' && connected
+            ? PlugZap
+            : ICONS[node.type === 'object' ? node.kind ?? 'table' : node.type] ?? Columns3;
           const expandable = node.type !== 'detail' && !node.leaf;
           const isOpen = open.has(node.key);
           return (
@@ -193,7 +216,10 @@ export function ConnectionTree({
                 ) : (
                   <span className="connection-tree-chevron" aria-hidden="true" />
                 )}
-                <Icon className="size-3.5 shrink-0 text-muted-subtle" aria-hidden="true" />
+                <Icon
+                  className={`size-3.5 shrink-0 ${connected ? 'text-status-success' : 'text-muted-subtle'}`}
+                  aria-hidden="true"
+                />
                 <button
                   className="connection-tree-label"
                   onClick={() => {
@@ -210,7 +236,19 @@ export function ConnectionTree({
                   {node.label}
                 </button>
                 {node.type === 'connection' && (
-                  <ConnectionActions node={node} onEdit={onEdit} onRefresh={() => refresh(node)} />
+                  <>
+                    {connected && (
+                      <span className="sr-only">connected</span>
+                    )}
+                    <ConnectionActions
+                      node={node}
+                      connected={connected}
+                      onEdit={onEdit}
+                      onRefresh={() => refresh(node)}
+                      onConnect={() => toggle(node)}
+                      onDisconnect={() => disconnect(node)}
+                    />
+                  </>
                 )}
                 {node.type === 'object' && (
                   <span className="connection-tree-actions">
@@ -236,15 +274,25 @@ export function ConnectionTree({
 }
 
 function ConnectionActions({
-  node, onEdit, onRefresh,
+  node, connected, onEdit, onRefresh, onConnect, onDisconnect,
 }: {
   node: Node;
+  connected: boolean;
   onEdit: (connection: ApiConnection) => void;
   onRefresh: () => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
 }) {
   return (
     <span className="connection-tree-actions">
-      <button onClick={onRefresh} title="Reload this connection's objects">⟳</button>
+      {connected ? (
+        <button onClick={onDisconnect} title="Disconnect — closes the pooled sockets">⏻</button>
+      ) : (
+        <button onClick={onConnect} title="Connect and list the databases">⏵</button>
+      )}
+      {connected && (
+        <button onClick={onRefresh} title="Reload this connection's objects">⟳</button>
+      )}
       {node.connection.canEdit && (
         <button onClick={() => onEdit(node.connection)} title="Edit this connection">✎</button>
       )}

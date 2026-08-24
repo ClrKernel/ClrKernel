@@ -41,47 +41,50 @@ public static class ConnectionsApi {
                             + "Give the name of a secret and set the matching CLRKERNEL_SECRET_* variable.",
                 }));
 
-        api.MapGet("/", (HttpContext context, ConnectionStore store) => {
+        api.MapGet("/", (HttpContext context, ConnectionStore store, JobsOptions options) => {
             if (context.CurrentUser() is not { } user) {
                 return Unauthorized();
             }
             return Results.Ok(new {
-                connections = store.VisibleTo(user).Select(c => ConnectionView.From(c, store, context)),
+                connections = store.VisibleTo(user).Select(c => ConnectionView.From(c, store, context, options)),
             });
         });
 
-        api.MapGet("/{id}", (HttpContext context, ConnectionStore store, string id) => {
+        api.MapGet("/{id}", (HttpContext context, ConnectionStore store, JobsOptions options, string id) => {
             if (context.CurrentUser() is not { } user) {
                 return Unauthorized();
             }
             return store.Find(id, user) is { } found
-                ? Results.Ok(ConnectionView.From(found, store, context))
+                ? Results.Ok(ConnectionView.From(found, store, context, options))
                 : NoSuchConnection(id);
         });
 
-        api.MapPost("/", (HttpContext context, ConnectionStore store, ConnectionBody body) =>
-            Save(context, store, id: null, body));
+        api.MapPost("/", (
+                HttpContext context, ConnectionStore store, JobsOptions options, ConnectionBody body) =>
+            Save(context, store, options, id: null, body));
 
-        api.MapPut("/{id}", (HttpContext context, ConnectionStore store, string id, ConnectionBody body) =>
-            Save(context, store, id, body));
+        api.MapPut("/{id}", (
+                HttpContext context, ConnectionStore store, JobsOptions options, string id,
+                ConnectionBody body) =>
+            Save(context, store, options, id, body));
 
         // --- execution ------------------------------------------------------
 
         api.MapPost("/{id}/test", async (
-            HttpContext context, ConnectionStore store, QueryRunner runner, string id,
-            TestBody body, CancellationToken cancellationToken) => {
-                if (Executable(context, store, id, out var connection, out var refusal) is false) {
+            HttpContext context, ConnectionStore store, QueryRunner runner, JobsOptions options,
+            string id, TestBody body, CancellationToken cancellationToken) => {
+                if (Executable(context, store, options, id, out var connection, out var refusal) is false) {
                     return refusal;
                 }
                 var error = await runner.TestAsync(
-                    connection, LeastPrivilege(context, connection), body?.Password, cancellationToken);
+                    connection, LeastPrivilege(context, options, connection), body?.Password, cancellationToken);
                 return Results.Ok(new { ok = error == null, error });
             });
 
         api.MapPost("/{id}/query", async (
             HttpContext context, ConnectionStore store, QueryRunner runner, IRunStore runs,
-            string id, QueryBody body, CancellationToken cancellationToken) => {
-                if (Executable(context, store, id, out var connection, out var refusal) is false) {
+            JobsOptions options, string id, QueryBody body, CancellationToken cancellationToken) => {
+                if (Executable(context, store, options, id, out var connection, out var refusal) is false) {
                     return refusal;
                 }
                 var sql = (body?.Sql ?? string.Empty).Trim();
@@ -89,7 +92,7 @@ public static class ConnectionsApi {
                     return Results.BadRequest(new { error = "There is nothing to run." });
                 }
                 var user = context.CurrentUser();
-                var leastPrivilege = LeastPrivilege(context, connection);
+                var leastPrivilege = LeastPrivilege(context, options, connection);
                 // The client names the query so it can cancel it, and a client-chosen id
                 // is fine because cancelling checks who started it, not who knows the id.
                 var queryId = Trimmed(body.QueryId) ?? Guid.NewGuid().ToString("N");
@@ -126,8 +129,9 @@ public static class ConnectionsApi {
             });
 
         api.MapPost("/{id}/cancel", (
-            HttpContext context, ConnectionStore store, QueryRunner runner, string id, CancelBody body) => {
-                if (Executable(context, store, id, out _, out var refusal) is false) {
+            HttpContext context, ConnectionStore store, QueryRunner runner, JobsOptions options,
+            string id, CancelBody body) => {
+                if (Executable(context, store, options, id, out _, out var refusal) is false) {
                     return refusal;
                 }
                 return Results.Ok(new { cancelled = runner.Cancel(body?.QueryId, context.CurrentUser().Id) });
@@ -139,9 +143,9 @@ public static class ConnectionsApi {
         // rather than a GET: a prompt-every-session connection carries its password in
         // the body, and a password in a query string is a password in the access log.
         api.MapPost("/{id}/metadata", async (
-            HttpContext context, ConnectionStore store, QueryRunner runner, string id,
-            MetadataBody body, CancellationToken cancellationToken) => {
-                if (Executable(context, store, id, out var connection, out var refusal) is false) {
+            HttpContext context, ConnectionStore store, QueryRunner runner, JobsOptions options,
+            string id, MetadataBody body, CancellationToken cancellationToken) => {
+                if (Executable(context, store, options, id, out var connection, out var refusal) is false) {
                     return refusal;
                 }
                 if (!SqlServerMetadata.Supports(connection.Type)) {
@@ -153,7 +157,7 @@ public static class ConnectionsApi {
                         reason = $"{connection.Type} connections cannot be browsed from here.",
                     });
                 }
-                var leastPrivilege = LeastPrivilege(context, connection);
+                var leastPrivilege = LeastPrivilege(context, options, connection);
                 var level = (body?.Level ?? "databases").ToLowerInvariant();
                 var (payload, error) = await runner.BrowseAsync<object>(
                     connection, leastPrivilege, body?.Password,
@@ -177,6 +181,19 @@ public static class ConnectionsApi {
                 return error == null
                     ? Results.Ok(new { supported = true, payload })
                     : Results.Ok(new { supported = true, error });
+            });
+
+        // Disconnect is a real thing rather than a UI state: it drops the pooled
+        // sockets. The tree forgets what it had loaded at the same time, so "connected"
+        // and "we have its objects" stay the same fact.
+        api.MapPost("/{id}/disconnect", (
+            HttpContext context, ConnectionStore store, QueryRunner runner, JobsOptions options,
+            string id) => {
+                if (Executable(context, store, options, id, out var connection, out var refusal) is false) {
+                    return refusal;
+                }
+                runner.Disconnect(connection, LeastPrivilege(context, options, connection));
+                return Results.Ok(new { disconnected = connection.Id });
             });
 
         // Shared connections only — a private one is somebody's own credential
@@ -230,7 +247,8 @@ public static class ConnectionsApi {
     private static IReadOnlyList<ConnectionProviderDescriptor> Providers { get; } =
         new[] { SqlServerConnectionProvider.Descriptor };
 
-    private static IResult Save(HttpContext context, ConnectionStore store, string id, ConnectionBody body) {
+    private static IResult Save(
+        HttpContext context, ConnectionStore store, JobsOptions options, string id, ConnectionBody body) {
         if (context.CurrentUser() is not { } user) {
             return Unauthorized();
         }
@@ -277,7 +295,7 @@ public static class ConnectionsApi {
         };
         try {
             var saved = store.Save(entry, body.Password, body.ReadOnlyPassword);
-            return Results.Ok(ConnectionView.From(saved, store, context));
+            return Results.Ok(ConnectionView.From(saved, store, context, options));
         } catch (ConnectionException e) {
             return Results.BadRequest(new { error = e.Message });
         } catch (SecretNotFoundException e) {
@@ -311,7 +329,7 @@ public static class ConnectionsApi {
     /// check is three chances for one of them to be wrong.
     /// </summary>
     private static bool Executable(
-        HttpContext context, ConnectionStore store, string id,
+        HttpContext context, ConnectionStore store, JobsOptions options, string id,
         out StoredConnection connection, out IResult refusal) {
         connection = null;
         if (context.CurrentUser() is not { } user) {
@@ -323,8 +341,7 @@ public static class ConnectionsApi {
             refusal = NoSuchConnection(id);
             return false;
         }
-        if (connection.Scope == ConnectionScope.Shared && !context.IsAdmin()
-            && !store.HasSecret(connection.ReadOnlySecretRef)) {
+        if (Restricted(context, options, connection) && !store.HasSecret(connection.ReadOnlySecretRef)) {
             refusal = Results.Json(new {
                 error = "Read-only execution is not configured on this connection, so only a "
                     + "server admin can run against it.",
@@ -341,8 +358,18 @@ public static class ConnectionsApi {
     /// because reading the SQL to decide whether it writes loses to <c>EXEC</c>,
     /// <c>SELECT … INTO</c> and dynamic SQL.
     /// </summary>
-    private static bool LeastPrivilege(HttpContext context, StoredConnection connection) =>
-        connection.Scope == ConnectionScope.Shared && !context.IsAdmin();
+    private static bool LeastPrivilege(
+        HttpContext context, JobsOptions options, StoredConnection connection) =>
+        Restricted(context, options, connection);
+
+    /// <summary>
+    /// Whether this caller is held to the read-only rule on this connection: always
+    /// on a shared one, and on a private one too where the install has asked for it.
+    /// </summary>
+    private static bool Restricted(
+        HttpContext context, JobsOptions options, StoredConnection connection) =>
+        !context.IsAdmin()
+        && (connection.Scope == ConnectionScope.Shared || options.PrivateConnectionsReadOnly);
 
     private static IResult Unauthorized() =>
         Results.Json(new { error = "Sign in first." }, statusCode: 401);
@@ -460,12 +487,16 @@ public sealed class ConnectionView {
     public int RowCap { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public static ConnectionView From(StoredConnection c, ConnectionStore store, HttpContext context) {
+    public static ConnectionView From(
+        StoredConnection c, ConnectionStore store, HttpContext context, JobsOptions options) {
         var admin = context.IsAdmin();
         var mine = c.Scope == ConnectionScope.Private;
         var readOnlyConfigured = !string.IsNullOrEmpty(c.ReadOnlyUser) && store.HasSecret(c.ReadOnlySecretRef);
+        // The same rule the execution routes apply, asked here so the button agrees
+        // with the server rather than being disabled by a second opinion.
+        var restricted = !admin && (!mine || options.PrivateConnectionsReadOnly);
         var (canExecute, reason) =
-            mine || admin ? (true, (string)null)
+            !restricted ? (true, (string)null)
             : readOnlyConfigured ? (true, null)
             : (false, "Read-only execution is not configured on this connection, so only a "
                 + "server admin can run against it. An admin can add a least-privilege login.");
