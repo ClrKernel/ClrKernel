@@ -72,7 +72,14 @@ public sealed class ProjectRegistry {
     /// Registers a project and persists the whole list — including the implicit one,
     /// which would otherwise disappear the moment a second project is written over it.
     /// </summary>
-    public Project Register(Project project) {
+    /// <param name="createdRoot">
+    /// True when the folder was made rather than adopted. Returned rather than kept,
+    /// because a field on a singleton read after the lock is a field two
+    /// registrations can disagree about — and it exists only so the answer can
+    /// mention it, which is worth doing: a typo'd path silently becoming an empty
+    /// project is the failure this feature introduces.
+    /// </param>
+    public Project Register(Project project, out bool createdRoot) {
         lock (_writeLock) {
             var slug = string.IsNullOrWhiteSpace(project.Slug)
                 ? Project.SlugFor(project.Name)
@@ -84,6 +91,13 @@ public sealed class ProjectRegistry {
             registered.Slug = slug;
             registered.Name = string.IsNullOrWhiteSpace(project.Name) ? slug : project.Name.Trim();
             registered.Root = ValidRoot(project.Root, slug);
+
+            createdRoot = !Directory.Exists(registered.Root);
+            try {
+                Directory.CreateDirectory(registered.Root);
+            } catch (Exception e) when (e is IOException or UnauthorizedAccessException) {
+                throw new ProjectException($"Could not create {registered.Root}: {e.Message}");
+            }
 
             _projects = _projects.Append(registered).ToList();
             ProjectsFile.Write(_options.DataDir, _projects);
@@ -164,8 +178,18 @@ public sealed class ProjectRegistry {
         } catch (Exception e) when (e is ArgumentException or NotSupportedException) {
             throw new ProjectException($"'{root}' is not a usable path.");
         }
-        if (!Directory.Exists(full)) {
-            throw new ProjectException($"No folder at {full}. Create it first, or point at an existing one.");
+        if (File.Exists(full)) {
+            throw new ProjectException($"{full} is a file. A project needs a folder.");
+        }
+        // The data directory holds the database, settings.json and projects.json —
+        // server state, not project content. A project rooted inside it would put
+        // notebooks and run history in one tree and hand the notebook editor a path
+        // to the database.
+        var dataDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_options.DataDir));
+        if (Overlaps(full, dataDir)) {
+            throw new ProjectException(
+                $"{full} is inside the data directory. Projects hold notebooks; that holds the " +
+                "run history and the settings.");
         }
         foreach (var other in _projects) {
             var existing = Path.TrimEndingDirectorySeparator(other.Root);

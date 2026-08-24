@@ -88,8 +88,10 @@ public static class JobsApi {
                 return Results.BadRequest(new { error = "A project needs a name and a folder." });
             }
             try {
-                var created = projects.Register(write.ToProject());
-                return Results.Created($"/api/projects/{created.Slug}", ProjectView.From(created, projects));
+                var created = projects.Register(write.ToProject(), out var createdRoot);
+                return Results.Created(
+                    $"/api/projects/{created.Slug}",
+                    new { project = ProjectView.From(created, projects), createdRoot });
             } catch (ProjectRegistry.ProjectException e) {
                 return Results.BadRequest(new { error = e.Message });
             }

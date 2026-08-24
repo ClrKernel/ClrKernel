@@ -172,8 +172,9 @@ public class ApiTest {
             new { name = "Finance Close", root = finance });
         Assert.AreEqual(HttpStatusCode.Created, created.StatusCode,
             await created.Content.ReadAsStringAsync());
-        var view = await created.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.AreEqual("finance-close", view.GetProperty("slug").GetString());
+        var body = await created.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.AreEqual("finance-close", body.GetProperty("project").GetProperty("slug").GetString());
+        Assert.IsFalse(body.GetProperty("createdRoot").GetBoolean(), "this folder was already there");
 
         // Its jobs and notebooks are reachable under its own slug straight away.
         Assert.AreEqual(HttpStatusCode.OK,
@@ -202,6 +203,21 @@ public class ApiTest {
         Assert.AreEqual(HttpStatusCode.BadRequest,
             (await _client.DeleteAsync("/api/projects/default")).StatusCode,
             "the last project cannot be forgotten");
+    }
+
+    [TestMethod]
+    public async Task Registering_makes_the_folder_when_it_is_not_there_yet() {
+        var fresh = Path.Combine(_root, "brand", "new");
+        var created = await _client.PostAsJsonAsync("/api/projects",
+            new { name = "Brand New", root = fresh });
+
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode,
+            await created.Content.ReadAsStringAsync());
+        var body = await created.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.IsTrue(body.GetProperty("createdRoot").GetBoolean());
+        Assert.IsTrue(Directory.Exists(fresh));
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await _client.GetAsync("/api/projects/brand-new/notebooks")).StatusCode);
     }
 
     [TestMethod]

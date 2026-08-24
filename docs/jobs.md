@@ -349,7 +349,11 @@ is not cosmetic: it is what every run row written before projects existed alread
 says, so history keeps answering after the upgrade with nothing rewritten.
 
 Register more from **Settings → Projects** (Server Admins only): a name and an
-absolute path to a folder already on the server. If the project uses the workflow
+absolute path on the server. **The folder is created if it is not there yet** —
+registering a project is how you make one — and the answer says so, because a typo
+in the path would otherwise be an empty project that looks like a working one. It
+cannot be a file, and it cannot be inside the data directory: that holds the run
+history and the settings, not notebooks. If the project uses the workflow
 and its folder is not a workspace yet, the same page offers to make it one —
 the same thing `clrkernel-jobs git init` does, adopting whatever is already there.
 Registering by cloning a repo url is not there yet; put the clone on the server

@@ -357,8 +357,12 @@ export const api = {
   stats: (days = 7) => request<Stats>(`/stats?days=${days}`),
 
   projects: () => request<{ projects: Project[] }>('/projects'),
+  /** `createdRoot` says the folder was made rather than adopted. */
   registerProject: (write: ProjectWrite) =>
-    request<Project>('/projects', { method: 'POST', body: JSON.stringify(write) }),
+    request<{ project: Project; createdRoot: boolean }>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(write),
+    }),
   saveProject: (slug: string, write: ProjectWrite) =>
     request<Project>(`/projects/${encodeURIComponent(slug)}`, {
       method: 'PUT',

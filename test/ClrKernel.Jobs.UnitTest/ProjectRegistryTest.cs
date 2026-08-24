@@ -105,7 +105,7 @@ public class ProjectRegistryTest {
         Directory.CreateDirectory(finance);
         var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
 
-        var created = registry.Register(new Project { Name = "Finance Close", Root = finance });
+        var created = registry.Register(new Project { Name = "Finance Close", Root = finance }, out _);
 
         Assert.AreEqual("finance-close", created.Slug, "the slug comes from the name");
         // The implicit project exists only in memory until something is written.
@@ -123,32 +123,66 @@ public class ProjectRegistryTest {
         Directory.CreateDirectory(inside);
 
         // Both would find the same *.jobs.yaml, so the same job would be scheduled
-        // twice under two project names.
-        foreach (var root in new[] { Path.Combine(_dir, "notebooks"), inside, _dir }) {
+        // twice under two project names. Either direction counts: the registered
+        // project inside the new one is the same mistake as the other way round.
+        foreach (var root in new[] { Path.Combine(_dir, "notebooks"), inside }) {
             var e = Assert.ThrowsExactly<ProjectRegistry.ProjectException>(
-                () => registry.Register(new Project { Name = "Overlapping", Root = root }));
+                () => registry.Register(new Project { Name = "Overlapping", Root = root }, out _));
             StringAssert.Contains(e.Message, "overlaps");
         }
+
+        // A root above everything swallows the data directory as well, which is
+        // the more alarming half and the one the message names.
+        StringAssert.Contains(
+            Assert.ThrowsExactly<ProjectRegistry.ProjectException>(
+                () => registry.Register(new Project { Name = "Everything", Root = _dir }, out _))
+                .Message,
+            "data directory");
     }
 
     [TestMethod]
-    public void Registration_refuses_a_slug_that_is_taken_and_a_folder_that_is_not_there() {
+    public void Registration_refuses_a_taken_slug_and_makes_a_folder_that_is_not_there() {
         var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
         var finance = Path.Combine(_dir, "finance");
         Directory.CreateDirectory(finance);
 
         StringAssert.Contains(
             Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
-                new Project { Slug = "default", Name = "Clash", Root = finance })).Message,
+                new Project { Slug = "default", Name = "Clash", Root = finance }, out _)).Message,
             "already registered");
         StringAssert.Contains(
             Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
-                new Project { Name = "Missing", Root = Path.Combine(_dir, "nowhere") })).Message,
-            "No folder at");
+                new Project { Name = "Relative", Root = "notebooks" }, out _)).Message,
+            "absolute path");
+        // Registering a project is how you make one; being sent to the box to run
+        // mkdir first is not a workflow.
+        var missing = Path.Combine(_dir, "brand", "new");
+        Assert.AreEqual(missing, registry.Register(
+            new Project { Name = "Brand New", Root = missing }, out var createdRoot).Root);
+        Assert.IsTrue(createdRoot, "and it says it made it");
+        Assert.IsTrue(Directory.Exists(missing));
+
+        Assert.IsFalse(
+            registry.Register(new Project { Name = "Adopted", Root = finance }, out _) == null);
+    }
+
+    [TestMethod]
+    public void A_project_cannot_be_rooted_in_the_data_directory_or_on_a_file() {
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+        var file = Path.Combine(_dir, "notes.txt");
+        File.WriteAllText(file, "not a folder");
+
         StringAssert.Contains(
             Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
-                new Project { Name = "Relative", Root = "notebooks" })).Message,
-            "absolute path");
+                new Project { Name = "File", Root = file }, out _)).Message,
+            "is a file");
+        // The data directory holds the run history and the settings. A project
+        // rooted inside it would hand the notebook editor a path to the database.
+        StringAssert.Contains(
+            Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
+                new Project { Name = "Inside", Root = Path.Combine(_dir, "data", "nested") },
+                out _)).Message,
+            "data directory");
     }
 
     [TestMethod]
@@ -179,7 +213,7 @@ public class ProjectRegistryTest {
         Directory.CreateDirectory(finance);
         File.WriteAllText(Path.Combine(finance, "close.nb.md"), "```csharp\n1+1\n```\n");
         var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
-        registry.Register(new Project { Slug = "finance", Name = "Finance", Root = finance });
+        registry.Register(new Project { Slug = "finance", Name = "Finance", Root = finance }, out _);
 
         Assert.IsTrue(registry.Unregister("finance"));
         Assert.IsNull(registry.Find("finance"));

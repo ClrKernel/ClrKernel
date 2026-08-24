@@ -190,8 +190,8 @@ function Fields({
             spellCheck={false}
           />
           <span className="text-xs text-muted-subtle">
-            An absolute path that already exists. It cannot be changed later — the run history
-            describes what happened there.
+            An absolute path on the server. It is created if it is not there yet, and cannot be
+            changed later — the run history describes what happened there.
           </span>
         </label>
       )}
@@ -295,8 +295,10 @@ export function ProjectsSection() {
     setError(null);
     setBusy(true);
     try {
-      await work();
-      toast.success(done);
+      // A step may say something more specific than the caller could — whether it
+      // adopted a folder or made one, for instance.
+      const said = await work();
+      toast.success(typeof said === 'string' ? said : done);
       window.location.reload();
     } catch (e) {
       setError((e as Error).message);
@@ -442,9 +444,15 @@ export function ProjectsSection() {
               disabled={busy || !adding.name.trim() || !adding.root?.trim()}
               onClick={() =>
                 run(async () => {
+                  const { project: made, createdRoot } = await api.registerProject(adding);
                   // Land in the project you just registered: having to go and
                   // find it in the switcher afterwards is a small indignity.
-                  rememberProject((await api.registerProject(adding)).slug);
+                  rememberProject(made.slug);
+                  // Worth saying out loud — a typo in the path is otherwise an
+                  // empty project that looks like a working one.
+                  return createdRoot
+                    ? `${made.name} is registered. Created ${made.root}.`
+                    : `${made.name} is registered.`;
                 }, `${adding.name} is registered.`)
               }
             >
