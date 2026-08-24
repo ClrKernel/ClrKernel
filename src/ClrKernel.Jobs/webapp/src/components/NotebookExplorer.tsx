@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { api, type TreeNode } from '../api';
+import { api, projectSlug, type TreeNode } from '../api';
 import { usePolling } from './common';
 
 /** Flattened tree row — the render is a flat list so indentation is padding. */
@@ -149,7 +149,10 @@ export function NotebookExplorer({
                       next.has(row.key) ? next.delete(row.key) : next.add(row.key);
                       return next;
                     })
-                  : row.path && navigate(`/edit?path=${encodeURIComponent(row.path)}`)
+                  : row.path && navigate(
+                      `/edit?project=${encodeURIComponent(projectSlug())}`
+                        + `&path=${encodeURIComponent(row.path)}`,
+                    )
               }
               // The 2px left edge is a border on every row, transparent unless
               // selected: colouring it in place keeps the text from shifting

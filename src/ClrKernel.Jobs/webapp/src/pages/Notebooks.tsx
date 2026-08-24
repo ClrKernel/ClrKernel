@@ -72,7 +72,10 @@ function Node({
     );
   }
 
-  const href = `/edit?path=${encodeURIComponent(node.path)}`;
+  // The project rides in the query string for the same reason it rides in a job
+  // URL: a shared editor link has to open the notebook it was shared for.
+  const href =
+    `/edit?project=${encodeURIComponent(projectSlug())}&path=${encodeURIComponent(node.path)}`;
   return (
     <div className={row} style={indent}>
       <span aria-hidden="true" className="w-3 shrink-0" />

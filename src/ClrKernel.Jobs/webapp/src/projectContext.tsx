@@ -17,6 +17,14 @@ const ProjectContext = createContext<ProjectState>({
   select: () => undefined,
 });
 
+/**
+ * Writes the remembered selection without going through React. For the one case
+ * that reloads the page immediately afterwards, where an effect would never run.
+ */
+export function rememberProject(slug: string): void {
+  localStorage.setItem(STORAGE_KEY, slug);
+}
+
 export function useProjects(): ProjectState {
   return useContext(ProjectContext);
 }

@@ -13,7 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { api, type Project, type ProjectWrite, type RemoteMode } from '../api';
 import { ErrorBanner } from '../components/common';
-import { useProjects } from '../projectContext';
+import { rememberProject, useProjects } from '../projectContext';
 
 const REMOTE_MODES: { value: RemoteMode; label: string; hint: string }[] = [
   { value: 'Local', label: 'No remote', hint: 'This server holds the only copy.' },
@@ -303,7 +303,13 @@ export function ProjectsSection() {
             <Button
               size="sm"
               disabled={busy || !adding.name.trim() || !adding.root?.trim()}
-              onClick={() => run(() => api.registerProject(adding), `${adding.name} is registered.`)}
+              onClick={() =>
+                run(async () => {
+                  // Land in the project you just registered: having to go and
+                  // find it in the switcher afterwards is a small indignity.
+                  rememberProject((await api.registerProject(adding)).slug);
+                }, `${adding.name} is registered.`)
+              }
             >
               Register
             </Button>
