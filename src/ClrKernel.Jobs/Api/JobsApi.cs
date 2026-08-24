@@ -599,6 +599,42 @@ public static class JobsApi {
 
         // --- your branch, and getting it into test ---------------------------
 
+        // --- personal worktrees, for whoever has to tidy up -------------------
+
+        api.MapGet("/projects/{project}/worktrees", async (
+            ProjectRegistry projects, IAuthStore auth, string project) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.Ok(new { worktrees = Array.Empty<object>() });
+                }
+                var users = (await auth.ListUsersAsync()).ToDictionary(u => u.User.Id);
+                return Results.Ok(new {
+                    worktrees = scope.Git.UserWorktrees().Select(w => new {
+                        userId = w.UserId,
+                        owner = users.TryGetValue(w.UserId, out var user)
+                            ? user.User.DisplayName
+                            // The account is gone but the branch is still here, which
+                            // is exactly the case this page exists to clean up.
+                            : "(removed account)",
+                        w.LastCommit,
+                        w.Dirty,
+                        w.Merged,
+                    }),
+                });
+            }).RequiresProject(ProjectRole.ProjectAdmin);
+
+        api.MapDelete("/projects/{project}/worktrees/{userId:guid}", (
+            ProjectRegistry projects, string project, Guid userId, bool? force) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                var refusal = scope.Git.RemoveUserWorktree(userId, force ?? false);
+                // Deleting somebody's branch is a thing an admin may do; doing it
+                // to unfinished work they have not shared takes saying so twice.
+                return refusal == null
+                    ? Results.NoContent()
+                    : Results.Json(new { error = refusal, needsForce = true }, statusCode: 409);
+            }).RequiresProject(ProjectRole.ProjectAdmin);
+
         // What branches this project has, and who owns each. The switcher renders
         // this; everything but your own is read-only, and says so here rather than
         // leaving the client to work it out from a name.

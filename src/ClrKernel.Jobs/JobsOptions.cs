@@ -64,6 +64,13 @@ public sealed class JobsOptions {
     /// <summary>How long a signed-in browser stays signed in.</summary>
     public int SessionLifetimeDays { get; set; } = 14;
 
+    /// <summary>
+    /// How long a personal worktree may sit untouched before it is removed. Only
+    /// ever applies to one that is clean and fully in test, so what goes is a copy
+    /// of something that already exists. 0 turns the sweep off.
+    /// </summary>
+    public int WorktreeIdleDays { get; set; } = 30;
+
     public string ArtifactsDir => Path.Combine(DataDir, "artifacts");
     public string DefaultSqlitePath => Path.Combine(DataDir, "jobs.db");
 
@@ -180,6 +187,11 @@ public sealed class JobsOptions {
         options.SessionLifetimeDays = PositiveInt(Pick(
             "sessionLifetimeDays", "session-days", "CLRKERNEL_JOBS_SESSION_DAYS",
             Setting("sessionLifetimeDays"), null), 14);
+        var idleDays = Pick("worktreeIdleDays", "worktree-idle-days",
+            "CLRKERNEL_JOBS_WORKTREE_IDLE_DAYS", Setting("worktreeIdleDays"), null);
+        if (idleDays != null && int.TryParse(idleDays, out var idle) && idle >= 0) {
+            options.WorktreeIdleDays = idle;
+        }
         return options;
     }
 }

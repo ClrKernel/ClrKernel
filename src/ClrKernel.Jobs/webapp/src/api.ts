@@ -70,6 +70,16 @@ export interface BranchStanding {
   conflicts?: string[];
 }
 
+export interface Worktree {
+  userId: string;
+  owner: string;
+  lastCommit: string;
+  /** Saved but never pushed. */
+  dirty: boolean;
+  /** Everything on it is already in test, so removing it loses nothing. */
+  merged: boolean;
+}
+
 export interface ProjectMember {
   userId: string;
   displayName: string;
@@ -383,6 +393,16 @@ export const api = {
   /** Turns the project's folder into a test/prod workspace. Idempotent. */
   initProject: (slug: string) =>
     request<{ message: string }>(`/projects/${encodeURIComponent(slug)}/init`, { method: 'POST' }),
+
+  /** The personal worktrees in a project, for whoever has to tidy up. */
+  worktrees: (slug: string) =>
+    request<{ worktrees: Worktree[] }>(`/projects/${encodeURIComponent(slug)}/worktrees`),
+  /** Removes one. `force` is needed for a branch holding work test has not seen. */
+  removeWorktree: (slug: string, userId: string, force = false) =>
+    request<void>(
+      `/projects/${encodeURIComponent(slug)}/worktrees/${userId}?force=${force}`,
+      { method: 'DELETE' },
+    ),
 
   members: (slug: string) =>
     request<{ members: ProjectMember[]; candidates: { userId: string; displayName: string }[] }>(

@@ -446,6 +446,85 @@ public sealed class GitService {
         return HeadSha("prod");
     }
 
+    /// <summary>One personal worktree, as an admin deciding whether to prune sees it.</summary>
+    public sealed record UserWorktree(
+        Guid UserId, string Path, DateTime LastCommit, bool Dirty, bool Merged);
+
+    /// <summary>Every personal worktree in this workspace.</summary>
+    public IReadOnlyList<UserWorktree> UserWorktrees() {
+        if (!Directory.Exists(_workspace)) {
+            return Array.Empty<UserWorktree>();
+        }
+        var found = new List<UserWorktree>();
+        foreach (var directory in Directory.EnumerateDirectories(_workspace, "user-*")) {
+            if (!Guid.TryParse(System.IO.Path.GetFileName(directory)["user-".Length..], out var user)) {
+                continue;
+            }
+            found.Add(Describe(user, directory));
+        }
+        return found.OrderBy(w => w.LastCommit).ToList();
+    }
+
+    private UserWorktree Describe(Guid user, string directory) {
+        var branch = BranchForUser(user);
+        var stamp = TryRun(directory, "log", "-1", "--format=%ct", branch);
+        var seconds = long.TryParse(stamp.Stdout.Trim(), out var value) ? value : 0;
+        return new UserWorktree(
+            user,
+            directory,
+            DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime,
+            Dirty: TryRun(directory, "status", "--porcelain").Stdout.Trim().Length > 0,
+            // Everything on it is already in test, so removing it loses nothing.
+            Merged: TryRun(directory, "merge-base", "--is-ancestor", branch, TestBranch).Code == 0);
+    }
+
+    /// <summary>
+    /// Removes a personal worktree and its branch.
+    /// <para>
+    /// Refuses while there is uncommitted work or a commit test has not seen, unless
+    /// <paramref name="force"/> — that is somebody's unfinished work, and the person
+    /// deleting it is by definition not the person who wrote it. Returns the reason
+    /// when it declines, and null when it removed one.
+    /// </para>
+    /// </summary>
+    public string RemoveUserWorktree(Guid userId, bool force) {
+        return WithLock(() => {
+            var path = UserPath(userId.ToString("D"));
+            if (!Directory.Exists(path)) {
+                return "There is no worktree for that account here.";
+            }
+            var state = Describe(userId, path);
+            if (!force && (state.Dirty || !state.Merged)) {
+                return state.Dirty
+                    ? "That branch has work that was never saved to test."
+                    : "That branch has commits test has never seen.";
+            }
+            Run(BareRepoPath, "worktree", "remove", "--force", path);
+            Run(BareRepoPath, "branch", "-D", BranchForUser(userId));
+            _logger.LogInformation("Removed worktree {Path}.", path);
+            return null;
+        });
+    }
+
+    /// <summary>
+    /// Removes personal worktrees nobody has touched for a while — but only the ones
+    /// that are clean <em>and</em> fully in test, so what goes is always a copy of
+    /// something that already exists elsewhere. An idle branch with unpushed work
+    /// stays until a person decides about it.
+    /// </summary>
+    public IReadOnlyList<Guid> PruneIdleUserWorktrees(TimeSpan idle, DateTime now) {
+        var pruned = new List<Guid>();
+        foreach (var worktree in UserWorktrees()) {
+            if (worktree.Dirty || !worktree.Merged || now - worktree.LastCommit < idle) {
+                continue;
+            }
+            if (RemoveUserWorktree(worktree.UserId, force: false) == null) {
+                pruned.Add(worktree.UserId);
+            }
+        }
+        return pruned;
+    }
+
     // --- personal branch → test -----------------------------------------------
 
     /// <summary>Where one person's branch stands relative to test.</summary>

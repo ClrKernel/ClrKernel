@@ -366,6 +366,14 @@ link of its own carries its project in the URL — `/jobs/finance/test/nightly` 
 because two projects may each have a job called `nightly`, and a link that meant
 whichever one you had selected would mean two different jobs.
 
+A personal worktree that is **clean and fully in test** is removed after a month
+of nobody touching it — what goes is a copy of something that already exists, so
+nothing is lost. One holding unsaved work, or commits test has never seen, stays
+until a person decides about it: *Settings → Projects → Branches* lists them with
+what each is holding, and removing one of those asks twice. Set
+`worktreeIdleDays` (or `--worktree-idle-days`) to change the month, or to `0` to
+sweep nothing.
+
 The branch you are reading is the chip beside the file name in the breadcrumb, and
 it is a switcher: your own branch, then everybody else's under **Read-only**, then
 `test` and `prod`. Anyone in the project can look at what anyone else is working

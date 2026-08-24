@@ -123,8 +123,37 @@ public sealed class SchedulerService : BackgroundService {
         }
     }
 
+    private DateTime _lastSweep = DateTime.MinValue;
+
+    /// <summary>
+    /// Daily housekeeping, from the loop that is already ticking rather than a
+    /// service of its own: personal worktrees nobody has touched in a month, and
+    /// only the ones holding nothing test does not already have.
+    /// </summary>
+    private void SweepWorktrees(DateTime now) {
+        if (_options.WorktreeIdleDays <= 0 || now - _lastSweep < TimeSpan.FromDays(1)) {
+            return;
+        }
+        _lastSweep = now;
+        foreach (var project in _projects.Projects) {
+            if (_projects.GitFor(project) is not { } git) {
+                continue;
+            }
+            try {
+                foreach (var user in git.PruneIdleUserWorktrees(
+                             TimeSpan.FromDays(_options.WorktreeIdleDays), now)) {
+                    _logger.LogInformation(
+                        "Pruned idle worktree for {User} in {Project}.", user, project.Slug);
+                }
+            } catch (GitException e) {
+                _logger.LogWarning("Could not sweep {Project}: {Error}", project.Slug, e.Message);
+            }
+        }
+    }
+
     /// <summary>One pass over the catalog for the (from, to] window.</summary>
     internal async Task TickAsync(DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken) {
+        SweepWorktrees(toUtc);
         var catalog = _projects.LoadAll();
         foreach (var error in catalog.Errors) {
             _logger.LogWarning("Catalog: {Error}", error);

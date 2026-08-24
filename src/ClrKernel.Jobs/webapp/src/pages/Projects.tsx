@@ -19,6 +19,7 @@ import {
   type RemoteMode,
 } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
+import { timeAgo } from '../ipynb';
 import { rememberProject, useProjects } from '../projectContext';
 import { useIsServerAdmin } from '../sessionContext';
 
@@ -260,6 +261,77 @@ function Fields({
   );
 }
 
+/**
+ * The personal worktrees in a project, and the way to be rid of one.
+ *
+ * A worktree that is clean and fully in test is swept automatically after a month;
+ * these are the ones that are not, so removing one means deciding about somebody
+ * else's unfinished work. It says which kind it is, and asks twice for the kind
+ * that matters.
+ */
+function Worktrees({ project }: { project: Project }) {
+  const { data, error, reload } = usePolling(() => api.worktrees(project.slug), null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function remove(userId: string, owner: string, force: boolean) {
+    setProblem(null);
+    try {
+      await api.removeWorktree(project.slug, userId, force);
+      reload();
+    } catch (e) {
+      const message = (e as Error).message;
+      if (!force && confirm(`${message}\n\nRemove ${owner}'s branch anyway? It cannot be undone.`)) {
+        await remove(userId, owner, true);
+        return;
+      }
+      setProblem(message);
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      <h3 className="mb-2 text-base font-semibold">Branches in {project.name}</h3>
+      <ErrorBanner error={problem ?? error} />
+      <div className="table-box">
+        <table className="table">
+          <tbody>
+            {(data?.worktrees ?? []).map((w) => (
+              <tr key={w.userId}>
+                <td>{w.owner}</td>
+                <td className="text-muted-foreground">
+                  {w.dirty
+                    ? 'unsaved work'
+                    : w.merged
+                      ? 'all pushed to test'
+                      : 'commits test has not seen'}
+                </td>
+                <td className="text-muted-subtle">{timeAgo(w.lastCommit)}</td>
+                <td className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove ${w.owner}'s branch`}
+                    onClick={() => remove(w.userId, w.owner, false)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {data?.worktrees.length === 0 && (
+              <tr>
+                <td colSpan={4} className="text-muted-foreground">
+                  Nobody has edited anything here yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function writeOf(project: Project): ProjectWrite {
   return {
     name: project.name,
@@ -284,6 +356,7 @@ export function ProjectsSection() {
   // else on this page a project's own admins can do.
   const isServerAdmin = useIsServerAdmin();
   const [members, setMembers] = useState<string | null>(null);
+  const [worktrees, setWorktrees] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<ProjectWrite | null>(null);
@@ -378,6 +451,13 @@ export function ProjectsSection() {
                   <Button
                     variant="ghost"
                     size="xs"
+                    onClick={() => setWorktrees(worktrees === project.slug ? null : project.slug)}
+                  >
+                    Branches
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
                     onClick={() => setEditing({ slug: project.slug, write: writeOf(project) })}
                   >
                     Configure
@@ -407,6 +487,10 @@ export function ProjectsSection() {
 
       {members != null && projects.some((p) => p.slug === members) && (
         <Members project={projects.find((p) => p.slug === members)!} />
+      )}
+
+      {worktrees != null && projects.some((p) => p.slug === worktrees) && (
+        <Worktrees project={projects.find((p) => p.slug === worktrees)!} />
       )}
 
       {editing && (

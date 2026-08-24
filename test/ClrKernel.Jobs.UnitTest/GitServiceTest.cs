@@ -162,6 +162,59 @@ public class GitServiceTest {
     }
 
     [TestMethod]
+    public void A_worktree_holding_unshared_work_is_not_pruned() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_ada, "unsaved.nb.md", "in progress\n");
+        WriteUser(_grace, "committed.nb.md", "not pushed\n");
+        _git.CommitAs(GitService.BranchForUser(_grace), "wip", "Grace", "g@users.local");
+
+        var later = DateTime.UtcNow.AddDays(400);
+        CollectionAssert.AreEqual(
+            Array.Empty<Guid>(), _git.PruneIdleUserWorktrees(TimeSpan.FromDays(30), later).ToArray(),
+            "idle is not the same as finished");
+        Assert.IsTrue(_git.HasUserWorktree(_ada));
+        Assert.IsTrue(_git.HasUserWorktree(_grace));
+
+        StringAssert.Contains(_git.RemoveUserWorktree(_ada, force: false), "never saved to test");
+        StringAssert.Contains(_git.RemoveUserWorktree(_grace, force: false), "test has never seen");
+    }
+
+    [TestMethod]
+    public void A_worktree_test_already_has_is_pruned_once_it_goes_quiet() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        WriteUser(_ada, "done.nb.md", "shipped\n");
+        Assert.IsTrue(_git.PushToTest(_ada, "done", "Ada", "a@users.local").Pushed);
+
+        // Nothing on it that test does not have, so removing it loses nothing.
+        Assert.AreEqual(0, _git.PruneIdleUserWorktrees(TimeSpan.FromDays(30), DateTime.UtcNow).Count,
+            "and not while it is still recent");
+        var pruned = _git.PruneIdleUserWorktrees(TimeSpan.FromDays(30), DateTime.UtcNow.AddDays(31));
+
+        CollectionAssert.AreEqual(new[] { _ada }, pruned.ToArray());
+        Assert.IsFalse(_git.HasUserWorktree(_ada));
+        Assert.IsTrue(File.Exists(Path.Combine(_git.TestPath, "done.nb.md")), "the work stays in test");
+        StringAssert.Contains(_git.RemoveUserWorktree(_grace, force: true), "no worktree",
+            "removing one that was never there says so rather than throwing");
+    }
+
+    [TestMethod]
+    public void Forcing_removes_a_worktree_that_would_otherwise_be_kept() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        WriteUser(_ada, "unsaved.nb.md", "in progress\n");
+
+        Assert.IsNull(_git.RemoveUserWorktree(_ada, force: true));
+        Assert.IsFalse(_git.HasUserWorktree(_ada));
+        // And the branch with it, so re-editing starts from test rather than from
+        // whatever was abandoned.
+        _git.EnsureUserWorktree(_ada);
+        Assert.AreEqual(_git.HeadSha("test"), _git.HeadSha(GitService.BranchForUser(_ada)));
+    }
+
+    [TestMethod]
     public void MigrateLegacyLayout_renames_a_0_9_workspace_in_place() {
         _git.Init();
         WriteTest("etl.nb.md", "# etl\n");
