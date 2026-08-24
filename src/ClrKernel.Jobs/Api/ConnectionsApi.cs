@@ -133,6 +133,52 @@ public static class ConnectionsApi {
                 return Results.Ok(new { cancelled = runner.Cancel(body?.QueryId, context.CurrentUser().Id) });
             });
 
+        // --- the object tree ------------------------------------------------
+
+        // One route with a level rather than four near-identical ones, and a POST
+        // rather than a GET: a prompt-every-session connection carries its password in
+        // the body, and a password in a query string is a password in the access log.
+        api.MapPost("/{id}/metadata", async (
+            HttpContext context, ConnectionStore store, QueryRunner runner, string id,
+            MetadataBody body, CancellationToken cancellationToken) => {
+                if (Executable(context, store, id, out var connection, out var refusal) is false) {
+                    return refusal;
+                }
+                if (!SqlServerMetadata.Supports(connection.Type)) {
+                    // Degrade rather than error: a provider this process cannot open is
+                    // still a connection worth having in the list, and the tree shows it as
+                    // a leaf instead of a folder that opens onto nothing.
+                    return Results.Ok(new {
+                        supported = false,
+                        reason = $"{connection.Type} connections cannot be browsed from here.",
+                    });
+                }
+                var leastPrivilege = LeastPrivilege(context, connection);
+                var level = (body?.Level ?? "databases").ToLowerInvariant();
+                var (payload, error) = await runner.BrowseAsync<object>(
+                    connection, leastPrivilege, body?.Password,
+                    async (live, token) => level switch {
+                        "databases" => new { nodes = await SqlServerMetadata.DatabasesAsync(live, token) },
+                        "schemas" => new {
+                            nodes = await SqlServerMetadata.SchemasAsync(live, body.Database, token),
+                        },
+                        "objects" => new {
+                            nodes = await SqlServerMetadata.ObjectsAsync(live, body.Database, body.Schema, token),
+                        },
+                        "detail" => (object)await SqlServerMetadata.DetailAsync(
+                            live, body.Database, body.Schema, body.Object, token),
+                        "script" => new {
+                            script = await SqlServerMetadata.ScriptAsync(
+                                live, body.Database, body.Schema, body.Object, body.Kind, token),
+                        },
+                        _ => throw new ConnectionException($"No metadata level '{level}'."),
+                    },
+                    cancellationToken);
+                return error == null
+                    ? Results.Ok(new { supported = true, payload })
+                    : Results.Ok(new { supported = true, error });
+            });
+
         // Shared connections only — a private one is somebody's own credential
         // against a server they could reach with SSMS anyway, and logging it would be
         // surveillance rather than audit.
@@ -343,6 +389,22 @@ public sealed class QueryBody {
 
 public sealed class CancelBody {
     public string QueryId { get; set; }
+}
+
+/// <summary>Which level of the object tree is being opened, and where.</summary>
+public sealed class MetadataBody {
+    /// <summary>databases | schemas | objects | detail | script.</summary>
+    public string Level { get; set; }
+
+    public string Database { get; set; }
+    public string Schema { get; set; }
+    public string Object { get; set; }
+
+    /// <summary>Only for <c>script</c>: a table has no stored definition and one is
+    /// generated, everything else has one on the server.</summary>
+    public string Kind { get; set; }
+
+    public string Password { get; set; }
 }
 
 /// <summary>What a create or update sends. Passwords come in and are never sent back.</summary>

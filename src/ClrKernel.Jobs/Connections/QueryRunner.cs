@@ -116,6 +116,25 @@ public sealed class QueryRunner {
     }
 
     /// <summary>
+    /// Opens a connection, reads something off it, and closes it — the object tree's
+    /// path. Errors come back as a message rather than an exception for the same
+    /// reason a failing query does: a database that refuses is an answer the tree has
+    /// to show, not a fault of this server.
+    /// </summary>
+    public async Task<(T Value, string Error)> BrowseAsync<T>(
+        StoredConnection connection, bool leastPrivilege, string password,
+        Func<SqlConnection, CancellationToken, Task<T>> read, CancellationToken cancellationToken) {
+        try {
+            using var live = await OpenAsync(connection, leastPrivilege, password, cancellationToken)
+                .ConfigureAwait(false);
+            return (await read(live, cancellationToken).ConfigureAwait(false), null);
+        } catch (Exception e) {
+            _logger?.LogDebug("Browsing '{Connection}' failed: {Error}", connection.Name, e.Message);
+            return (default, e.Message);
+        }
+    }
+
+    /// <summary>
     /// Runs <paramref name="sql"/> and returns every result set it produced.
     /// <paramref name="queryId"/> is what <see cref="Cancel"/> names; it is registered
     /// for exactly as long as the command is in flight.
