@@ -53,10 +53,10 @@ describe('breadcrumbFor', () => {
     expect(breadcrumbFor('/jobs/default/test/nightly%20run')[1].label).toBe('nightly run');
   });
 
-  it('takes the notebook editor’s subject from ?path=, and it is always your own branch', () => {
+  it('takes the notebook editor’s subject from ?path=, and its badge is the branch switcher', () => {
     expect(breadcrumbFor('/edit', '?path=demo.nb.md')).toEqual([
       { label: 'Notebooks', to: '/notebooks' },
-      { label: 'demo.nb.md', badge: 'mine' },
+      { label: 'demo.nb.md', badge: 'branch' },
     ]);
   });
 

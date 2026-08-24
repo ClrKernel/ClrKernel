@@ -24,7 +24,7 @@ import {
   type LayoutPrefs,
 } from '../prefs';
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
-import { useCanWrite } from '../sessionContext';
+import { ReadOnlyContext, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
 import { neighbourCell } from '../toc';
 import {
@@ -60,6 +60,10 @@ export function Editor() {
   const [search] = useSearchParams();
   const canWrite = useCanWrite();
   const path = search.get('path') ?? '';
+  // Which branch you are looking at. Yours unless the link says otherwise —
+  // somebody else's is readable, and read-only for everybody including admins.
+  const branch = search.get('branch') ?? 'mine';
+  const readOnlyBranch = branch !== 'mine';
   const isNotebook = /\.(nb\.)?md$/i.test(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
@@ -150,7 +154,7 @@ export function Editor() {
   useEffect(() => {
     setError(null);
     api
-      .notebookContent('mine', path)
+      .notebookContent(branch, path)
       .then((text) => {
         setSource(text);
         setSavedSource(text);
@@ -158,7 +162,7 @@ export function Editor() {
       .catch(() => setError(`Could not load ${path}.`));
     if (isNotebook) {
       api
-        .notebookCells('mine', path)
+        .notebookCells(branch, path)
         .then((result) => {
           setCells(withIds(result.cells));
           setSaved(result.cells);
@@ -166,7 +170,9 @@ export function Editor() {
         })
         .catch((e) => setError((e as Error).message));
     }
-  }, [path, isNotebook]);
+    // The branch is part of what is being opened: switching to somebody else's
+    // is opening a different file that happens to have the same name.
+  }, [path, branch, isNotebook]);
 
   // Mode and layout are remembered, but nothing here ever reaches the notebook
   // file — how you were looking at it is not part of what it says.
@@ -292,12 +298,12 @@ export function Editor() {
         : `Conflicts left in ${result.conflicts.join(', ')} — resolve the markers, save, then push.`);
       // The merge changed files under the editor; re-read rather than keep a
       // buffer that no longer matches what is on disk.
-      const text = await api.notebookContent('mine', path);
+      const text = await api.notebookContent(branch, path);
       setSource(text);
       setSavedSource(text);
       setReloads((n) => n + 1);
       if (isNotebook) {
-        const reloaded = await api.notebookCells('mine', path);
+        const reloaded = await api.notebookCells(branch, path);
         setCells(keepIds(reloaded.cells, []));
         setSaved(reloaded.cells);
       }
@@ -471,8 +477,11 @@ export function Editor() {
   const fills = focusing || tab === 'source' || tab === 'diff';
 
   return (
-    // The editor is the one page with its own sidebar: file tree on the left,
-    // toolbar and work area on the right.
+    // Somebody else's branch reads exactly like your own and changes in none of
+    // the same ways: one flag at the top rather than a `disabled` on every control.
+    <ReadOnlyContext.Provider value={readOnlyBranch}>
+    {/* The editor is the one page with its own sidebar: file tree on the left,
+        toolbar and work area on the right. */}
     <div className="flex min-h-0 flex-1 overflow-hidden" ref={shell}>
       <NotebookExplorer
         path={path}
@@ -707,6 +716,7 @@ export function Editor() {
       </div>
       </div>
     </div>
+    </ReadOnlyContext.Provider>
   );
 }
 

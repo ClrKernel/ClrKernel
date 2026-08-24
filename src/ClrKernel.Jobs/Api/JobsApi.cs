@@ -261,8 +261,8 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (EditableTarget(scope, branch, path) is not { } target) {
-                    return TestWriteError(scope, branch, path);
+                if (EditableTarget(context, scope, branch, path) is not { } target) {
+                    return TestWriteError(context, scope, branch, path);
                 }
                 if (context.Request.ContentLength is > 2_000_000) {
                     return Results.BadRequest(new { error = "File too large (2 MB limit)." });
@@ -310,8 +310,8 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (EditableTarget(scope, branch, path) is not { } target) {
-                    return TestWriteError(scope, branch, path);
+                if (EditableTarget(context, scope, branch, path) is not { } target) {
+                    return TestWriteError(context, scope, branch, path);
                 }
                 if (!target.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
                     !target.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
@@ -350,7 +350,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
@@ -371,7 +371,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
@@ -385,7 +385,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 CellWrite request;
@@ -427,7 +427,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 SyncWrite request;
@@ -470,7 +470,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 LanguageRequest request;
@@ -515,7 +515,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 var resolved = NotebookTree.SafeResolve(scope.Catalog.RootFor(GitService.TestBranch), path);
@@ -548,7 +548,7 @@ public static class JobsApi {
                     return NoProject(project);
                 }
                 branch = scope.BranchFor(context, branch);
-                if (DenyExecution(scope, branch, path) is { } denial) {
+                if (DenyExecution(context, scope, branch, path) is { } denial) {
                     return denial;
                 }
                 if (string.IsNullOrWhiteSpace(languageId)) {
@@ -598,6 +598,51 @@ public static class JobsApi {
             }).RequiresProject(ProjectRole.ProjectAdmin);
 
         // --- your branch, and getting it into test ---------------------------
+
+        // What branches this project has, and who owns each. The switcher renders
+        // this; everything but your own is read-only, and says so here rather than
+        // leaving the client to work it out from a name.
+        api.MapGet("/projects/{project}/branches", async (
+            HttpContext context, ProjectRegistry projects, IAuthStore auth, string project) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                var me = context.CurrentUser();
+                var branches = new List<object>();
+                if (scope.Git != null) {
+                    if (me != null) {
+                        branches.Add(new {
+                            id = _mineBranch,
+                            label = "My branch",
+                            owner = me.DisplayName,
+                            mine = true,
+                            writable = true,
+                        });
+                    }
+                    foreach (var user in (await auth.ListUsersAsync())
+                                 .Where(u => me == null || u.User.Id != me.Id)
+                                 .Where(u => scope.Git.HasUserWorktree(u.User.Id))
+                                 .OrderBy(u => u.User.DisplayName, StringComparer.OrdinalIgnoreCase)) {
+                        branches.Add(new {
+                            id = _someoneBranch + user.User.Id.ToString("D"),
+                            label = user.User.DisplayName,
+                            owner = user.User.DisplayName,
+                            mine = false,
+                            writable = false,
+                        });
+                    }
+                }
+                foreach (var environment in scope.Catalog.Environments) {
+                    branches.Add(new {
+                        id = environment,
+                        label = environment,
+                        owner = (string)null,
+                        mine = false,
+                        writable = false,
+                    });
+                }
+                return Results.Ok(new { branches });
+            }).RequiresProject(ProjectRole.ProjectViewer);
 
         api.MapGet("/projects/{project}/branch", (
             HttpContext context, ProjectRegistry projects, string project) => {
@@ -697,7 +742,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
-                return Upsert(scope, scope.BranchFor(context, branch), null, write);
+                return Upsert(context, scope, scope.BranchFor(context, branch), null, write);
             }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPut("/jobs/{name}", (
@@ -706,7 +751,7 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
-                return Upsert(scope, scope.BranchFor(context, branch), name, write);
+                return Upsert(context, scope, scope.BranchFor(context, branch), name, write);
             }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapDelete("/jobs/{name}", (
@@ -974,19 +1019,46 @@ public static class JobsApi {
         /// </para>
         /// </summary>
         public string BranchFor(HttpContext context, string branch) {
-            if (branch != _mineBranch) {
+            if (Git == null) {
                 return branch;
             }
-            if (context.CurrentUser() is not { } user || Git == null) {
-                return null;
+            if (branch == _mineBranch) {
+                if (context.CurrentUser() is not { } user) {
+                    return null;
+                }
+                Git.EnsureUserWorktree(user.Id);
+                return GitService.BranchForUser(user.Id);
             }
-            Git.EnsureUserWorktree(user.Id);
-            return GitService.BranchForUser(user.Id);
+            // Somebody else's, named as `user-<id>` because a route segment cannot
+            // hold the slash the branch has. Never created here: a worktree comes
+            // into being when its owner first edits, and only then.
+            if (branch.StartsWith(_someoneBranch, StringComparison.Ordinal)
+                && Guid.TryParse(branch[_someoneBranch.Length..], out var owner)) {
+                return Git.HasUserWorktree(owner) ? GitService.BranchForUser(owner) : null;
+            }
+            return branch;
         }
+
+        /// <summary>
+        /// Whether the caller may write here. Their own branch, and nothing else.
+        /// <para>
+        /// It used to be enough that the branch was <em>a</em> personal one, because
+        /// <c>mine</c> was the only way to name one. Reading somebody else's ended
+        /// that, so the ownership rule is a check again — and it is the one rule
+        /// nobody overrides: a Project Admin can delete a stale branch, never write
+        /// into it.
+        /// </para>
+        /// </summary>
+        public bool OwnedBy(HttpContext context, string branch) =>
+            context.CurrentUser() is { } user
+            && branch == GitService.BranchForUser(user.Id);
     }
 
     /// <summary>What a route calls the caller's own branch.</summary>
     private const string _mineBranch = "mine";
+
+    /// <summary>And what it calls somebody else's, which is read-only to everyone.</summary>
+    private const string _someoneBranch = "user-";
 
     /// <summary>
     /// A branch this project actually has: its environments, or the caller's own.
@@ -1026,12 +1098,13 @@ public static class JobsApi {
     /// worktree, or the file is not one we edit. <see cref="TestWriteError"/> says
     /// which, so the two shapes of write (raw text, cells) refuse identically.
     /// </summary>
-    private static string EditableTarget(Scope scope, string branch, string path) {
-        // A personal branch, and nothing else. test and prod are runnable but never
-        // writable, by anybody: this is the server half of that, and it is a check on
-        // the shape of the branch rather than on the caller's role, so no role can
-        // ever satisfy it for test.
-        if (!scope.Catalog.GitLayout || scope.Git == null || !GitService.IsUserBranch(branch)) {
+    private static string EditableTarget(
+        HttpContext context, Scope scope, string branch, string path) {
+        // Your own branch, and nothing else. test and prod are runnable but never
+        // writable by anybody, and neither is anyone else's branch — this is a check
+        // on which branch it is rather than on the caller's role, so no role can
+        // satisfy it.
+        if (!scope.Catalog.GitLayout || scope.Git == null || !scope.OwnedBy(context, branch)) {
             return null;
         }
         // Rooted at that worktree: the workspace root would resolve prod/… too.
@@ -1044,15 +1117,18 @@ public static class JobsApi {
             : null;
     }
 
-    private static IResult TestWriteError(Scope scope, string branch, string path) {
+    private static IResult TestWriteError(
+        HttpContext context, Scope scope, string branch, string path) {
         if (!scope.Catalog.GitLayout || scope.Git == null) {
             return Results.BadRequest(new {
                 error = "Editing needs the git workflow — run `clrkernel-jobs git init`.",
             });
         }
-        if (!GitService.IsUserBranch(branch)) {
+        if (!scope.OwnedBy(context, branch)) {
             return Results.BadRequest(new {
-                error = "test and prod are read-only. Edit on your own branch and push to test.",
+                error = GitService.IsUserBranch(branch)
+                    ? "That is somebody else's branch. Nobody writes to another person's work."
+                    : "test and prod are read-only. Edit on your own branch and push to test.",
             });
         }
         return NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null
@@ -1078,7 +1154,7 @@ public static class JobsApi {
     /// Admin. The check moved; it was not dropped.
     /// </para>
     /// </summary>
-    private static IResult DenyExecution(Scope scope, string branch, string path) {
+    private static IResult DenyExecution(HttpContext context, Scope scope, string branch, string path) {
         if (!scope.Catalog.GitLayout) {
             return Results.BadRequest(new {
                 error = "Running cells needs the git workflow — run `clrkernel-jobs git init`.",
@@ -1086,10 +1162,12 @@ public static class JobsApi {
         }
         // Your own branch only, for now: running in test and prod is a separate
         // feature with guard rails of its own — a concurrency lock against the
-        // scheduler, a disposable session, and an audit row per run.
-        if (!GitService.IsUserBranch(branch)) {
+        // scheduler, a disposable session, and an audit row per run. Running in
+        // somebody else's is not a feature at all; the kernel would be writing into
+        // their worktree.
+        if (!scope.OwnedBy(context, branch)) {
             return Results.BadRequest(new {
-                error = "Cells run on your own branch. Copy this notebook there to work on it.",
+                error = "Cells run on your own branch. Open this notebook there to work on it.",
             });
         }
         if (NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null) {
@@ -1207,11 +1285,14 @@ public static class JobsApi {
     /// The yaml is a file in your worktree, and it reaches what runs by being
     /// pushed to test.
     /// </summary>
-    private static IResult Upsert(Scope scope, string branch, string existingName, JobWrite write) {
+    private static IResult Upsert(
+        HttpContext context, Scope scope, string branch, string existingName, JobWrite write) {
         var git = scope.Git;
-        if (scope.Catalog.GitLayout && !GitService.IsUserBranch(branch)) {
+        if (scope.Catalog.GitLayout && !scope.OwnedBy(context, branch)) {
             return Results.BadRequest(new {
-                error = "test and prod are read-only. Edit on your own branch and push to test.",
+                error = GitService.IsUserBranch(branch)
+                    ? "That is somebody else's branch."
+                    : "test and prod are read-only. Edit on your own branch and push to test.",
             });
         }
         var catalog = scope.CatalogFor(branch);

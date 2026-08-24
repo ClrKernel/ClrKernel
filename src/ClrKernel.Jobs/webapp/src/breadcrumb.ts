@@ -88,11 +88,12 @@ export function breadcrumbFor(pathname: string, search = ''): Crumb[] {
 
     case 'edit': {
       const path = params.get('path');
-      // Editing is always your own branch — test and prod are pushed and promoted
-      // to, never edited.
+      // The badge is a switcher here, not a label: which branch you are reading
+      // is a place you can move to. The top bar renders it; this only says where
+      // it goes.
       return [
         { label: 'Notebooks', to: '/notebooks' },
-        leaf(path ?? 'Untitled', 'mine'),
+        leaf(path ?? 'Untitled', 'branch'),
       ];
     }
 

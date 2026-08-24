@@ -13,6 +13,16 @@ import { useProjects } from './projectContext';
  */
 export const SessionContext = createContext<SessionState | null>(null);
 
+/**
+ * Set where the thing on screen is not yours to change — browsing somebody else's
+ * branch, or looking at test.
+ *
+ * Layered onto the role rather than replacing it, so a page does not have to ask
+ * two questions: `useCanWrite()` already means "may I change what I am looking
+ * at", and this is the other half of that sentence.
+ */
+export const ReadOnlyContext = createContext(false);
+
 export function useSession(): SessionState | null {
   return useContext(SessionContext);
 }
@@ -31,7 +41,8 @@ function atLeast(role: ProjectRole | null | undefined, minimum: ProjectRole): bo
  * route — this only decides which controls are worth drawing.
  */
 export function useCanWrite(): boolean {
-  return atLeast(useProjectRole(), 'ProjectMember');
+  const readOnly = useContext(ReadOnlyContext);
+  return !readOnly && atLeast(useProjectRole(), 'ProjectMember');
 }
 
 /** May configure this project, manage its members, and promote to production. */

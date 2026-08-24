@@ -51,6 +51,15 @@ export interface Project {
   role: ProjectRole;
 }
 
+export interface BranchSummary {
+  /** What a route calls it: `mine`, `user-<id>`, `test`, `prod`. */
+  id: string;
+  label: string;
+  owner: string | null;
+  mine: boolean;
+  writable: boolean;
+}
+
 export interface BranchStanding {
   hasBranch: boolean;
   branch?: string;
@@ -506,6 +515,9 @@ export const api = {
       `${scope('test')}/notebooks/promote?path=${encodeURIComponent(path)}`,
       { method: 'POST' },
     ),
+
+  /** Every branch of this project, with who owns each and which you may write to. */
+  branches: () => request<{ branches: BranchSummary[] }>(`${project()}/branches`),
 
   /** Where your own branch stands against test: unsaved work, and either drift. */
   branchStanding: () =>

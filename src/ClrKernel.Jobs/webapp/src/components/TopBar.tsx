@@ -5,10 +5,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { api, type BranchSummary } from '../api';
 import { breadcrumbFor } from '../breadcrumb';
+import { usePolling } from './common';
 import { useProjects } from '../projectContext';
 import { showsSearch, withQuery } from '../search';
 import type { AccentName } from '../theme/palette';
@@ -65,6 +68,65 @@ function ProjectSwitcher() {
 }
 
 /**
+ * Which branch the open notebook is being read from.
+ *
+ * Beside the file name rather than in the page toolbar: the toolbar is what you
+ * can *do* here, and which branch you are on is part of what you are looking at.
+ * Everything but your own is read-only, which the list says rather than leaving
+ * you to infer it from a name.
+ */
+function BranchSwitcher({ current }: { current: string }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { data } = usePolling(() => api.branches(), null);
+  const branches: BranchSummary[] = data?.branches ?? [];
+  const here = branches.find((b) => b.id === current);
+
+  function open(branch: BranchSummary) {
+    const params = new URLSearchParams(location.search);
+    params.set('branch', branch.id);
+    navigate({ pathname: location.pathname, search: params.toString() });
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Branch: ${here?.label ?? current}`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-surface-panel px-2 py-px text-xs font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {here?.mine ? 'mine' : here?.label ?? current}
+          <ChevronDown className="size-3" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {branches.filter((b) => b.mine).map((b) => (
+          <DropdownMenuItem key={b.id} onSelect={() => open(b)}>
+            <span className="w-3 shrink-0" aria-hidden="true">{b.id === current ? '✓' : ''}</span>
+            {b.label}
+          </DropdownMenuItem>
+        ))}
+        {branches.some((b) => !b.mine) && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs font-normal text-muted-subtle">
+              Read-only
+            </DropdownMenuLabel>
+          </>
+        )}
+        {branches.filter((b) => !b.mine).map((b) => (
+          <DropdownMenuItem key={b.id} onSelect={() => open(b)}>
+            <span className="w-3 shrink-0" aria-hidden="true">{b.id === current ? '✓' : ''}</span>
+            {b.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
  * A context strip, not a toolbar. It says where you are and lets you filter
  * what is in front of you; the page says what you can do there. Nothing else
  * earns a place here — which is why the API key field lives in Settings, where
@@ -115,7 +177,13 @@ export function TopBar({
                 {crumb.label}
               </span>
             )}
-            {crumb.badge && <EnvBadge env={crumb.badge} />}
+            {/* On the editor the badge is the branch, and the branch is a place
+                you can move to — so it is the switcher rather than a label. */}
+            {crumb.badge === 'branch' ? (
+              <BranchSwitcher current={new URLSearchParams(location.search).get('branch') ?? 'mine'} />
+            ) : (
+              crumb.badge && <EnvBadge env={crumb.badge} />
+            )}
           </Fragment>
         ))}
       </nav>

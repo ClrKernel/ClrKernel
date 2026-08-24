@@ -366,6 +366,12 @@ link of its own carries its project in the URL — `/jobs/finance/test/nightly` 
 because two projects may each have a job called `nightly`, and a link that meant
 whichever one you had selected would mean two different jobs.
 
+The branch you are reading is the chip beside the file name in the breadcrumb, and
+it is a switcher: your own branch, then everybody else's under **Read-only**, then
+`test` and `prod`. Anyone in the project can look at what anyone else is working
+on. Nobody — Server Admin included — can write to it, or run a kernel in it. An
+admin may delete a stale branch; that is a different thing from writing into one.
+
 A job is a file like any other, so it is written on your branch too: creating or
 changing one from the Jobs page edits your copy, and it starts running when it is
 pushed to test. A job open in `test` or `prod` is read-only there and offers

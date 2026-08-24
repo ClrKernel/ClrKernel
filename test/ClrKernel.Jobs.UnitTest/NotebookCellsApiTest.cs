@@ -203,6 +203,68 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task Another_person_s_branch_can_be_read_and_never_written() {
+        using var other = new HttpClient { BaseAddress = _client.BaseAddress };
+        var them = await TestAuth.SignInAsync(_app, other, UserRole.ServerAdmin, "Grace Hopper");
+        await other.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=hers.nb.md",
+            new StringContent("hers\n"));
+
+        var theirs = $"user-{them.Id:D}";
+        var read = await _client.GetAsync(
+            $"/api/projects/default/branches/{theirs}/notebooks/content?path=hers.nb.md");
+        Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+        Assert.AreEqual("hers\n", await read.Content.ReadAsStringAsync(),
+            "anyone in the project may look at what anyone else is working on");
+
+        // The caller here is a Server Admin — the most authority this server has —
+        // and it makes no difference. An admin may delete a stale branch; nobody
+        // writes into one.
+        var write = await _client.PutAsync(
+            $"/api/projects/default/branches/{theirs}/notebooks/content?path=hers.nb.md",
+            new StringContent("mine now\n"));
+        Assert.AreEqual(HttpStatusCode.BadRequest, write.StatusCode);
+        StringAssert.Contains(await write.Content.ReadAsStringAsync(), "somebody else's branch");
+        Assert.AreEqual("hers\n", await (await _client.GetAsync(
+            $"/api/projects/default/branches/{theirs}/notebooks/content?path=hers.nb.md"))
+            .Content.ReadAsStringAsync());
+
+        var ran = await _client.PostAsJsonAsync(
+            $"/api/projects/default/branches/{theirs}/notebooks/session?path=hers.nb.md",
+            new { });
+        Assert.AreEqual(HttpStatusCode.BadRequest, ran.StatusCode, "nor runs a kernel in one");
+
+        // Someone with no worktree yet has no branch to browse.
+        Assert.AreEqual(HttpStatusCode.NotFound, (await _client.GetAsync(
+            $"/api/projects/default/branches/user-{Guid.NewGuid():D}/notebooks/content?path=hers.nb.md"))
+            .StatusCode);
+    }
+
+    [TestMethod]
+    public async Task The_branch_list_names_who_owns_what() {
+        using var other = new HttpClient { BaseAddress = _client.BaseAddress };
+        var them = await TestAuth.SignInAsync(_app, other, UserRole.ServerAdmin, "Grace Hopper");
+        await other.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=hers.nb.md",
+            new StringContent("hers\n"));
+
+        var listed = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/projects/default/branches", _json);
+        var branches = listed.GetProperty("branches").EnumerateArray()
+            .Select(b => (
+                Id: b.GetProperty("id").GetString(),
+                Writable: b.GetProperty("writable").GetBoolean()))
+            .ToList();
+
+        CollectionAssert.AreEqual(
+            new[] { "mine", $"user-{them.Id:D}", "test", "prod" },
+            branches.Select(b => b.Id).ToArray(),
+            "yours first, then other people's, then what runs");
+        Assert.AreEqual(1, branches.Count(b => b.Writable), "exactly one branch you may write to");
+        Assert.IsTrue(branches[0].Writable);
+    }
+
+    [TestMethod]
     public async Task Two_people_editing_the_same_notebook_do_not_see_each_other() {
         using var other = new HttpClient { BaseAddress = _client.BaseAddress };
         var them = await TestAuth.SignInAsync(_app, other, UserRole.ServerAdmin, "Grace Hopper");
