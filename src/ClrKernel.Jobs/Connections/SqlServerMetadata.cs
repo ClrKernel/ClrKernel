@@ -115,8 +115,13 @@ public static class SqlServerMetadata {
                   JOIN sys.schemas s ON s.schema_id = o.schema_id
                   WHERE s.name = @schema AND o.name = @object
                   UNION ALL
-                  SELECT fk.name + ' -> ' + OBJECT_SCHEMA_NAME(fk.referenced_object_id)
-                         + '.' + OBJECT_NAME(fk.referenced_object_id)
+                  -- ISNULL around the referenced names: a login that cannot see the
+                  -- other end of a foreign key gets NULL from OBJECT_NAME, and NULL
+                  -- concatenation makes the whole expression NULL — which used to
+                  -- throw rather than show the table.
+                  SELECT fk.name + ' -> '
+                         + ISNULL(OBJECT_SCHEMA_NAME(fk.referenced_object_id), '?')
+                         + '.' + ISNULL(OBJECT_NAME(fk.referenced_object_id), '?')
                   FROM sys.foreign_keys fk
                   JOIN sys.objects o ON o.object_id = fk.parent_object_id
                   JOIN sys.schemas s ON s.schema_id = o.schema_id
@@ -214,7 +219,11 @@ public static class SqlServerMetadata {
         var values = new List<string>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
-            values.Add(reader.GetString(0));
+            // Belt and braces with the ISNULLs above: a name this login cannot resolve
+            // is a row worth skipping, never a thrown tree.
+            if (!reader.IsDBNull(0)) {
+                values.Add(reader.GetString(0));
+            }
         }
         return values;
     }
@@ -225,7 +234,9 @@ public static class SqlServerMetadata {
         var nodes = new List<MetadataNode>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
-            nodes.Add(new MetadataNode { Name = reader.GetString(0), Kind = kind });
+            if (!reader.IsDBNull(0)) {
+                nodes.Add(new MetadataNode { Name = reader.GetString(0), Kind = kind });
+            }
         }
         return nodes;
     }

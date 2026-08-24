@@ -1219,11 +1219,19 @@
   white-space: nowrap;
 }
 
+/* The height is stated rather than derived, and the line height matches it. The
+   grid virtualizes on a fixed ROW_HEIGHT, and an explicit height on a `tr` is a
+   minimum rather than a clamp — so a row that came out half a pixel taller than
+   the constant would let the window drift against scrollTop and rows would skip
+   as you scrolled. Padding-derived heights are how that happens. */
 .result-grid-scroll td {
   overflow: hidden;
+  box-sizing: border-box;
   max-width: 380px;
-  padding: 3px 8px;
+  height: 26px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--color-border-subtle);
+  line-height: 25px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

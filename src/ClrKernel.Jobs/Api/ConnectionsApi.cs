@@ -28,11 +28,15 @@ public static class ConnectionsApi {
         // The settings schema the one generic form renders — same descriptor shape
         // the notebook connection wizard already renders, so a provider describes
         // itself once and both surfaces follow.
-        api.MapGet("/providers", (HttpContext context, ConnectionStore store) =>
+        api.MapGet("/providers", (HttpContext context, ConnectionStore store, JobsOptions options) =>
             context.CurrentUser() == null
                 ? Unauthorized()
                 : Results.Ok(new {
                     providers = Providers.Select(ProviderView.From),
+                    // The form needs this to know whether a *private* connection also
+                    // needs a least-privilege login to be runnable — otherwise it
+                    // renders no field for one and the connection can never run.
+                    privateConnectionsReadOnly = options.PrivateConnectionsReadOnly,
                     // The form asks for a password only where one can be kept.
                     canPersistSecrets = store.CanPersistSecrets,
                     secretHelp = store.CanPersistSecrets
@@ -343,8 +347,11 @@ public static class ConnectionsApi {
         }
         if (Restricted(context, options, connection) && !store.HasSecret(connection.ReadOnlySecretRef)) {
             refusal = Results.Json(new {
-                error = "Read-only execution is not configured on this connection, so only a "
-                    + "server admin can run against it.",
+                error = connection.Scope == ConnectionScope.Private
+                    ? "This server requires a read-only login on every connection. Add one to this "
+                        + "connection to run against it."
+                    : "Read-only execution is not configured on this connection, so only a "
+                        + "server admin can run against it.",
             }, statusCode: 403);
             return false;
         }
@@ -498,8 +505,11 @@ public sealed class ConnectionView {
         var (canExecute, reason) =
             !restricted ? (true, (string)null)
             : readOnlyConfigured ? (true, null)
-            : (false, "Read-only execution is not configured on this connection, so only a "
-                + "server admin can run against it. An admin can add a least-privilege login.");
+            : mine
+                ? (false, "This server requires a read-only login on every connection. "
+                    + "Add one to this connection to run against it.")
+                : (false, "Read-only execution is not configured on this connection, so only a "
+                    + "server admin can run against it. An admin can add a least-privilege login.");
         return new ConnectionView {
             Id = c.Id,
             Name = c.Name,

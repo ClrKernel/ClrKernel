@@ -38,6 +38,7 @@ export function ConnectionForm({
   const [providers, setProviders] = useState<ApiConnectionProvider[] | null>(null);
   const [canPersist, setCanPersist] = useState(true);
   const [secretHelp, setSecretHelp] = useState<string | null>(null);
+  const [privateReadOnly, setPrivateReadOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -53,6 +54,7 @@ export function ConnectionForm({
   const [prompt, setPrompt] = useState(connection?.promptForPassword ?? false);
   const [readOnlyUser, setReadOnlyUser] = useState(connection?.readOnlyUser ?? '');
   const [readOnlyPassword, setReadOnlyPassword] = useState('');
+  const [readOnlySecretRef, setReadOnlySecretRef] = useState('');
   const [timeoutSeconds, setTimeout] = useState(String(connection?.timeoutSeconds ?? 30));
   const [rowCap, setRowCap] = useState(String(connection?.rowCap ?? 10000));
 
@@ -62,6 +64,7 @@ export function ConnectionForm({
         setProviders(reply.providers);
         setCanPersist(reply.canPersistSecrets);
         setSecretHelp(reply.secretHelp);
+        setPrivateReadOnly(reply.privateConnectionsReadOnly);
         setType((current) => current || reply.providers[0]?.type || '');
       })
       .catch((e) => setError((e as Error).message));
@@ -100,6 +103,9 @@ export function ConnectionForm({
       }
       if (readOnlyPassword) {
         body.readOnlyPassword = readOnlyPassword;
+      }
+      if (!canPersist && readOnlySecretRef) {
+        body.readOnlySecretRef = readOnlySecretRef;
       }
       onSaved(await api.saveConnection(connection?.id ?? null, body));
     } catch (e) {
@@ -247,13 +253,20 @@ export function ConnectionForm({
           )}
         </div>
 
-        {scope === 'shared' && (
+        {/* Shared connections always need one; private ones do too when the install
+            has asked for it. Rendering this only for shared meant that on such an
+            install a private connection had no field anywhere to make it runnable. */}
+        {(scope === 'shared' || privateReadOnly) && (
           <>
             <h3>Read-only login</h3>
             <p className="text-base text-muted-foreground">
-              Everyone below a server admin runs as this login. Without it they cannot run
-              against this connection at all — which is honest: no amount of reading the SQL
-              makes a writable login read-only, so the second credential is the boundary.
+              {scope === 'shared'
+                ? 'Everyone below a server admin runs as this login. Without it they cannot run '
+                  + 'against this connection at all — which is honest: no amount of reading the '
+                  + 'SQL makes a writable login read-only, so the second credential is the '
+                  + 'boundary.'
+                : 'This server requires a read-only login on every connection, private ones '
+                  + 'included. Without one this connection cannot be run at all.'}
             </p>
             <div className="wizard-fields">
               <label className="form-field">
@@ -273,6 +286,17 @@ export function ConnectionForm({
                     onChange={(e) => setReadOnlyPassword(e.target.value)}
                     placeholder={connection?.readOnlySecretConfigured
                       ? 'leave blank to keep the stored one' : ''} />
+                </label>
+              )}
+              {/* The same escape hatch the primary credential has. Without it, a
+                  server with no OS credential store could never make any shared
+                  connection runnable by a non-admin. */}
+              {readOnlyUser && !canPersist && (
+                <label className="form-field">
+                  <span>Secret name</span>
+                  <input value={readOnlySecretRef}
+                    onChange={(e) => setReadOnlySecretRef(e.target.value)}
+                    placeholder="the name of a secret, not the password" />
                 </label>
               )}
             </div>

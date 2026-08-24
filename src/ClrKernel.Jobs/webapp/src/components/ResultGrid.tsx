@@ -6,8 +6,16 @@ import { clipboardText, csvText, sortedOrder } from '../resultGrid';
 /** How many rows are in the DOM at once. Everything else is padding. */
 const WINDOW = 80;
 
-/** Row height in px. Fixed, because a virtualized list has to know where a row is
- *  without measuring it — and a results grid has no reason to have ragged rows. */
+/**
+ * Row height in px. Fixed, because a virtualized list has to know where a row is
+ * without measuring it — and a results grid has no reason to have ragged rows.
+ *
+ * `.result-grid-scroll td` in styles.css states the same number and derives its
+ * line height from it rather than from padding. The two have to agree: an explicit
+ * height on a row is a minimum, not a clamp, so a row that renders a fraction
+ * taller than this makes the window drift against scrollTop and rows skip as you
+ * scroll.
+ */
 const ROW_HEIGHT = 26;
 
 type Sort = { column: number; direction: 1 | -1 } | null;
@@ -47,11 +55,12 @@ export function ResultGrid({ set }: { set: ApiResultSet }) {
   return (
     <div className="result-grid">
       <div className="result-grid-toolbar">
+        {/* No total when it was capped. Knowing one costs a second query, and
+            "first N" is what was actually measured. */}
         <span className="text-sm text-muted-subtle">
+          {set.truncated ? 'first ' : ''}
           {set.rows.length.toLocaleString()} row{set.rows.length === 1 ? '' : 's'}
-          {/* No total. Knowing one costs a second query, and "first N" is what
-              was actually measured. */}
-          {set.truncated ? ` (showing the first ${set.rows.length.toLocaleString()})` : ''}
+          {set.truncated ? ' — the cap stopped it there' : ''}
         </span>
         <span className="spacer" />
         <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
@@ -82,7 +91,11 @@ export function ResultGrid({ set }: { set: ApiResultSet }) {
           <tbody>
             {/* The rows above and below the window exist as height, so the
                 scrollbar is the size it would be if they were all rendered. */}
-            {first > 0 && <tr style={{ height: first * ROW_HEIGHT }} aria-hidden="true"><td /></tr>}
+            {first > 0 && (
+              <tr style={{ height: first * ROW_HEIGHT }} aria-hidden="true">
+                <td colSpan={set.columns.length + 1} />
+              </tr>
+            )}
             {visible.map((row, i) => (
               <tr key={row} style={{ height: ROW_HEIGHT }}>
                 <td className="result-grid-gutter">{first + i + 1}</td>
@@ -95,7 +108,7 @@ export function ResultGrid({ set }: { set: ApiResultSet }) {
             ))}
             {first + WINDOW < order.length && (
               <tr style={{ height: (order.length - first - WINDOW) * ROW_HEIGHT }} aria-hidden="true">
-                <td />
+                <td colSpan={set.columns.length + 1} />
               </tr>
             )}
           </tbody>

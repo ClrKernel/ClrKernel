@@ -606,6 +606,9 @@ export const api = {
       providers: ApiConnectionProvider[];
       canPersistSecrets: boolean;
       secretHelp: string | null;
+      /** When on, a private connection needs a least-privilege login too — so the
+       *  form has to offer one, or it can never be made runnable. */
+      privateConnectionsReadOnly: boolean;
     }>('/connections/providers'),
   saveConnection: (id: string | null, body: ApiConnectionSave) =>
     request<ApiConnection>(id == null ? '/connections' : `/connections/${encodeURIComponent(id)}`, {
@@ -698,6 +701,7 @@ export interface ApiConnectionSave {
   promptForPassword?: boolean;
   readOnlyUser?: string;
   readOnlyPassword?: string;
+  readOnlySecretRef?: string;
   timeoutSeconds?: number;
   rowCap?: number;
 }
