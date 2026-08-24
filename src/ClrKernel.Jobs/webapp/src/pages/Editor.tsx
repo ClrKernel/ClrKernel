@@ -126,7 +126,10 @@ export function Editor() {
   // that is doing nothing is pure noise. TryStartRun takes its slot before the
   // 202 comes back, so the first poll after a run always sees it as running.
   const { data: session, error: sessionError, reload: reloadSession } = usePolling(
-    () => api.sessionStatus(path),
+    // Only where a kernel is a thing that may exist. Somebody else's branch has no
+    // session anybody may ask about, and asking is a refusal in the console and a
+    // notice on the page telling a reader off for reading.
+    () => (allows.run ? api.sessionStatus(path) : Promise.resolve(null)),
     pollFast ? 400 : null,
     // The branch is part of which kernel this is: test and prod each get their
     // own, so switching branches has to ask again rather than keep showing the
@@ -160,6 +163,11 @@ export function Editor() {
   // transient failure after a good answer is not that.
   // Viewers never start a kernel: `canRun` is what every run control keys off,
   // and the server refuses the routes regardless.
+  //
+  // `canWrite` here is the *role*, not the branch: this component renders the
+  // BranchAllows provider, so its own hook call reads the value from outside it.
+  // Which branch may run is `allows.run`, and the controls themselves ask
+  // useCanRun() from inside.
   const canRun = canWrite && isNotebook && !(sessionError != null && session == null);
   const running = (session?.running ?? false) || pollFast;
   const runState = mergeStatus(cells ?? [], session, ranSource.current);
@@ -251,16 +259,16 @@ export function Editor() {
   // reason to want completion is that you have not run anything yet. Failures are
   // not reported here: the status poll below is what tells the user, once.
   useEffect(() => {
-    if (isNotebook) {
+    if (isNotebook && allows.run) {
       api.startSession(path).catch(() => undefined);
     }
-  }, [path, branch, isNotebook]);
+  }, [path, branch, isNotebook, allows.run]);
 
   // What the editor has open, told to the kernel on a debounce. Language features
   // answer about documents the server holds, so this is what makes them work at all
   // — and it is authoritative, so a deleted cell stops contributing its symbols.
   useEffect(() => {
-    if (!isNotebook || cells == null || !canRun) {
+    if (!isNotebook || cells == null || !canRun || !allows.run) {
       return;
     }
     let followUp: ReturnType<typeof setTimeout> | undefined;
@@ -284,7 +292,7 @@ export function Editor() {
         clearTimeout(followUp);
       }
     };
-  }, [path, branch, isNotebook, cells, canRun, reloadSession]);
+  }, [path, branch, isNotebook, cells, canRun, allows.run, reloadSession]);
 
   /**
    * Asks once before anything runs against production, naming what it is about to

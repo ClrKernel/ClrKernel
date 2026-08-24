@@ -71,6 +71,12 @@ export interface Project {
   role: ProjectRole;
 }
 
+export interface BranchTree {
+  name: string;
+  label: string;
+  tree: TreeNode | null;
+}
+
 export interface CronPreview {
   valid: boolean;
   /** Why it was refused, from Cronos, or null. */
@@ -483,8 +489,13 @@ export const api = {
   cronPreview: (expression: string) =>
     request<CronPreview>(`/cron/preview?expression=${encodeURIComponent(expression)}`),
 
+  /**
+   * Every branch's file tree. `name` is what a route calls it, `label` is what a
+   * person reads — they differ for the branches that belong to somebody, because
+   * `user-<id>` is not a thing to show anyone.
+   */
   notebooks: () =>
-    request<{ environments: { name: string; tree: TreeNode | null }[] }>(`${project()}/notebooks`),
+    request<{ environments: BranchTree[] }>(`${project()}/notebooks`),
 
   notebookContent: (env: string, path: string) =>
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)

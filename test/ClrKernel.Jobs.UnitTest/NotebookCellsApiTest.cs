@@ -561,6 +561,43 @@ public class NotebookCellsApiTest {
         Assert.IsFalse(_git.HasUserWorktree(reader.Id));
     }
 
+    /// <summary>
+    /// Everybody else's branch is in the file list too, named after the person.
+    /// <para>
+    /// The branch switcher has always offered them; this list never did, so the one
+    /// page for browsing files was the one place another person's work was
+    /// invisible — including to a Server Admin, which is what it looks like when a
+    /// permission is missing rather than a feature.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task The_file_list_carries_everybody_elses_branch_by_name() {
+        using var hers = new HttpClient { BaseAddress = _client.BaseAddress };
+        var grace = await TestAuth.SignInAsync(_app, hers, UserRole.ServerAdmin, "Grace Hopper");
+        // A write, because a read never makes a branch: hers has to exist before
+        // anyone can be shown it.
+        Assert.AreEqual(HttpStatusCode.OK, (await hers.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=hopper.nb.md",
+            new StringContent("```csharp\nvar x = 1;\n```\n"))).StatusCode);
+
+        var payload = await _client.GetFromJsonAsync<JsonElement>("/api/projects/default/notebooks");
+        var theirs = payload.GetProperty("environments").EnumerateArray()
+            .Single(e => e.GetProperty("name").GetString() == $"user-{grace.Id:D}");
+
+        Assert.AreEqual("Grace Hopper", theirs.GetProperty("label").GetString(),
+            "named after the person; user-<guid> is not a thing to show anyone");
+        var files = theirs.GetProperty("tree").GetProperty("children").EnumerateArray()
+            .Select(c => c.GetProperty("name").GetString()).ToArray();
+        CollectionAssert.Contains(files, "hopper.nb.md",
+            "her branch, with the file she is working on: " + string.Join(", ", files));
+
+        // And it stays hers. Reading it is allowed for everyone; writing it is
+        // allowed for nobody, Server Admin included.
+        Assert.AreEqual(HttpStatusCode.BadRequest, (await _client.PutAsync(
+            $"/api/projects/default/branches/user-{grace.Id:D}/notebooks/content?path=hopper.nb.md",
+            new StringContent("mine now"))).StatusCode);
+    }
+
     private static string[] EnvironmentsOf(JsonElement payload) =>
         payload.GetProperty("environments").EnumerateArray()
             .Select(e => e.GetProperty("name").GetString()).ToArray();

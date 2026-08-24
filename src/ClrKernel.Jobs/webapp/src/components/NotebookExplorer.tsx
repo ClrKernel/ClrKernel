@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -12,7 +11,7 @@ import { api, projectSlug, type TreeNode } from '../api';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
 import { useIsProjectMember } from '../sessionContext';
-import { usePolling } from './common';
+import { BranchOptions, usePolling } from './common';
 
 /** The editor link for one file on one branch. */
 function editHref(path: string, branch: string): string {
@@ -161,19 +160,11 @@ export function NotebookExplorer({
             saveBranch(projectSlug(), branch);
           }}
         >
-          <SelectTrigger
-            size="sm"
-            className="min-w-0 flex-1 bg-card font-mono text-xs"
-            aria-label="Environment"
-          >
+          <SelectTrigger size="sm" className="min-w-0 flex-1 bg-card text-xs" aria-label="Branch">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {environments.map((environment) => (
-              <SelectItem key={environment.name} value={environment.name} className="font-mono">
-                {environment.name}
-              </SelectItem>
-            ))}
+            <BranchOptions branches={environments} />
           </SelectContent>
         </Select>
         {mayCreate && (

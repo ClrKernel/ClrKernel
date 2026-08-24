@@ -201,14 +201,18 @@ public static class JobsApi {
         // --- notebooks ------------------------------------------------------
 
         api.MapGet("/projects/{project}/notebooks", async (
-            HttpContext context, ProjectRegistry projects, string project) => {
+            HttpContext context, ProjectRegistry projects, IAuthStore auth, string project) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
                 var catalog = scope.Catalog;
                 var result = catalog.Load();
+                // `label` is what a person reads and `name` is what a route says.
+                // They differ for the branches that belong to somebody: `user-<id>`
+                // is not a thing to show anyone.
                 var trees = catalog.Environments.Select(env => new {
                     name = env,
+                    label = env,
                     tree = Directory.Exists(catalog.RootFor(env))
                         ? NotebookTree.Build(catalog.RootFor(env), result, scope.Project.Slug, env)
                         : null,
@@ -225,16 +229,48 @@ public static class JobsApi {
                 // checkout: they can never write to one.
                 if (scope.Git != null
                     && await context.ProjectRoleAsync(scope.Project.Slug) >= ProjectRole.ProjectMember
-                    && scope.BranchFor(context, _mineBranch) is { } mine) {
+                    && context.CurrentUser() is { } me) {
+                    // The one read that makes a branch, and it makes it here rather
+                    // than in BranchFor: this is the page you open in order to have
+                    // one, so it is the read that means you are about to work.
+                    var mine = scope.Git.EnsureUserWorktree(me.Id);
                     // Annotated with this branch's jobs, which is none: the catalog
                     // scans environments, and a personal branch is not one. Leaving
                     // the environment out would annotate with every job on the
                     // server instead, which is a label that is simply untrue.
                     trees.Insert(0, new {
                         name = _mineBranch,
-                        tree = NotebookTree.Build(
-                            scope.Git.PathFor(mine), result, scope.Project.Slug, _mineBranch),
+                        label = "My branch",
+                        tree = NotebookTree.Build(mine, result, scope.Project.Slug, _mineBranch),
                     });
+                }
+
+                // Then everybody else's, which the branch switcher has always
+                // offered and this list never did — so the one page for browsing
+                // files was the one place another person's work was invisible.
+                // Readable by anyone who may see the project, writable by nobody:
+                // that rule is enforced on every write route, not here.
+                //
+                // ponytail: a tree built per person per request. Fine for a team;
+                // key a cache on each worktree's HEAD if a big one ever drags.
+                if (scope.Git != null) {
+                    var caller = context.CurrentUser();
+                    foreach (var user in (await auth.ListUsersAsync())
+                                 .Where(u => caller == null || u.User.Id != caller.Id)
+                                 .Where(u => scope.Git.HasUserWorktree(u.User.Id))
+                                 .OrderBy(u => u.User.DisplayName, StringComparer.OrdinalIgnoreCase)) {
+                        var theirs = GitService.BranchForUser(user.User.Id);
+                        var named = _someoneBranch + user.User.Id.ToString("D");
+                        trees.Add(new {
+                            name = named,
+                            label = user.User.DisplayName,
+                            // Annotated with this branch's jobs, which is none —
+                            // the same reason a personal branch carries no labels
+                            // when it is your own.
+                            tree = NotebookTree.Build(
+                                scope.Git.PathFor(theirs), result, scope.Project.Slug, named),
+                        });
+                    }
                 }
                 return Results.Ok(new { environments = trees });
             }).RequiresProject(ProjectRole.ProjectViewer);
@@ -1168,9 +1204,18 @@ public static class JobsApi {
         /// "nobody edits another user's branch" is a property of the route table
         /// rather than a check somebody has to remember to write.
         /// <para>
-        /// Resolving it creates the worktree if this is their first edit here. Lazy
-        /// because most people never touch most projects, and an empty checkout per
-        /// person per project is a lot of disk to keep against that.
+        /// Resolving it creates the worktree if this is their first edit here — but
+        /// only for a request that is about to write. A read of a branch that is not
+        /// there answers "no such file", which is true; making a checkout for
+        /// somebody who is only looking means a viewer, who may never write
+        /// anywhere, accumulates an empty branch in every project they open. Every
+        /// route in a project that is not a GET needs Project Member or better, so
+        /// "a viewer has no branch" is a property of this line and the route table
+        /// together.
+        /// </para>
+        /// <para>
+        /// Lazy at all because most people never touch most projects, and an empty
+        /// checkout per person per project is a lot of disk to keep against that.
         /// </para>
         /// </summary>
         public string BranchFor(HttpContext context, string branch) {
@@ -1181,7 +1226,9 @@ public static class JobsApi {
                 if (context.CurrentUser() is not { } user) {
                     return null;
                 }
-                Git.EnsureUserWorktree(user.Id);
+                if (!HttpMethods.IsGet(context.Request.Method)) {
+                    Git.EnsureUserWorktree(user.Id);
+                }
                 return GitService.BranchForUser(user.Id);
             }
             // Somebody else's, named as `user-<id>` because a route segment cannot

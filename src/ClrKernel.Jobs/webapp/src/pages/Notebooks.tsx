@@ -5,13 +5,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { api, projectSlug, type TreeNode } from '../api';
-import { ErrorBanner, PageHeader, usePolling } from '../components/common';
+import { BranchOptions, ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { loadBranch, saveBranch } from '../prefs';
 import { useIsProjectMember } from '../sessionContext';
@@ -212,15 +211,11 @@ export function Notebooks() {
           <div className="mb-3 flex items-center gap-2">
             <GitBranch className="size-[15px] shrink-0 text-muted-subtle" aria-hidden="true" />
             <Select value={env} onValueChange={pick}>
-              <SelectTrigger className="font-mono" aria-label="Environment">
+              <SelectTrigger aria-label="Branch">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {environments.map((environment) => (
-                  <SelectItem key={environment.name} value={environment.name} className="font-mono">
-                    {environment.name}
-                  </SelectItem>
-                ))}
+                <BranchOptions branches={environments} />
               </SelectContent>
             </Select>
             {env !== 'mine' && (

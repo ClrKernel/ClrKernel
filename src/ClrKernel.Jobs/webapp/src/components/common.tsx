@@ -2,7 +2,52 @@ import { CircleAlert } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import type { CellStatus, RunStatus } from '../api';
+import { SelectGroup, SelectItem, SelectLabel, SelectSeparator } from '@/components/ui/select';
+import type { BranchTree, CellStatus, RunStatus } from '../api';
+
+/** A branch that belongs to a person rather than to the project. */
+export function isPersonalBranch(name: string): boolean {
+  return name.startsWith('user-');
+}
+
+/**
+ * The branch list inside a Select: your own and the two that run, then everybody
+ * else's under a heading that says what they are.
+ *
+ * Reading another person's branch is allowed and writing to it is not — for
+ * everyone, admins included — so the grouping is the whole explanation and the
+ * page needs none.
+ */
+export function BranchOptions({ branches }: { branches: BranchTree[] }) {
+  const ours = branches.filter((b) => !isPersonalBranch(b.name));
+  const theirs = branches.filter((b) => isPersonalBranch(b.name));
+  return (
+    <>
+      <SelectGroup>
+        {ours.map((branch) => (
+          <SelectItem key={branch.name} value={branch.name}>
+            {branch.label}
+          </SelectItem>
+        ))}
+      </SelectGroup>
+      {/* A group, not a bare heading: Radix throws outright if a SelectLabel has
+          no SelectGroup around it, which takes the whole app down — and only once
+          somebody else has a branch, so it would never show up on a server with
+          one person on it. */}
+      {theirs.length > 0 && (
+        <SelectGroup>
+          <SelectSeparator />
+          <SelectLabel className="text-xs font-normal text-muted-subtle">Read-only</SelectLabel>
+          {theirs.map((branch) => (
+            <SelectItem key={branch.name} value={branch.name}>
+              {branch.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      )}
+    </>
+  );
+}
 
 /** Which `--status-*` token a run or cell state paints with. */
 const STATUS_TOKEN: Record<string, string> = {

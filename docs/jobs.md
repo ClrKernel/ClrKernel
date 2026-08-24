@@ -406,9 +406,13 @@ sweep nothing.
 
 The branch you are reading is the chip beside the file name in the breadcrumb, and
 it is a switcher: your own branch, then everybody else's under **Read-only**, then
-`test` and `prod`. Anyone in the project can look at what anyone else is working
-on. Nobody — Server Admin included — can write to it, or run a kernel in it. An
-admin may delete a stale branch; that is a different thing from writing into one.
+`test` and `prod`. The **Notebooks** page and the editor's explorer offer the same
+list, so somebody else's work is browsable and not only openable by a link you were
+sent. Branches are listed by the person's name, never by the id in the path.
+
+Anyone in the project can look at what anyone else is working on. Nobody — Server
+Admin included — can write to it, or run a kernel in it. An admin may delete a
+stale branch; that is a different thing from writing into one.
 
 A job is a file like any other, so it is written on your branch too: creating or
 changing one from the Jobs page edits your copy, and it starts running when it is
@@ -469,10 +473,12 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 
 Nobody edits `test` or `prod` — notebooks or `*.jobs.yaml` alike. Each person gets a **branch and worktree of their
 own** — `user/<account id>`, checked out at `user-<id>/` beside `test/` and `prod/`
-— created the first time they open that project's file list. Viewers never get
-one: they can never write to it, and most people never touch most projects, so
-keeping an empty checkout per person per project against that possibility is not
-worth the disk.
+— created the first time they open that project's file list. Nothing else makes
+one: a request that only reads a branch that is not there is answered "no such
+file", which is true. Since every route inside a project that is not a `GET` needs
+Project Member or better, a viewer never has a branch anywhere — and most people
+never touch most projects, so keeping an empty checkout per person per project
+against that possibility is not worth the disk.
 
 Which branch you are browsing is remembered per project, so nobody re-picks it on
 every visit; the editor is the exception, where `/edit?path=…` with no branch means
