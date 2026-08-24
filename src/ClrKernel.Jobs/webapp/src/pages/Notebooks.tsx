@@ -114,16 +114,16 @@ export function Notebooks() {
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   const [env, setEnv] = useState<string>('');
   // The list arrives after first paint, so the initial selection is set once it
-  // does — dev if it exists, because dev is the one you can edit.
+  // does — test if it exists, because test is the one you can edit.
   useEffect(() => {
     if (!env && environments.length > 0) {
-      setEnv(environments.find((e) => e.name === 'dev')?.name ?? environments[0].name);
+      setEnv(environments.find((e) => e.name === 'test')?.name ?? environments[0].name);
     }
   }, [environments.length]);
 
   const selected = environments.find((e) => e.name === env);
   // Editing needs both the git workflow and a role that may write.
-  const editable = env === 'dev' && (health?.gitEnabled ?? false) && canWrite;
+  const editable = env === 'test' && (health?.gitEnabled ?? false) && canWrite;
 
   return (
     <div>
@@ -143,14 +143,14 @@ export function Notebooks() {
           <AlertTitle>Editing needs the git workflow</AlertTitle>
           <AlertDescription>
             <p>
-              Editing notebooks in the browser needs the dev→prod git workflow, so every save is a
+              Editing notebooks in the browser needs the test→prod git workflow, so every save is a
               commit. Enable it once (stop the server first):
             </p>
             <pre className="my-2 overflow-x-auto rounded-lg bg-muted px-2 py-1.5 font-mono text-code text-foreground">
               clrkernel-jobs git init --notebooks &lt;your notebooks folder&gt;
             </pre>
             <p>
-              Then restart — dev notebooks get an <strong>Edit</strong> button, and changes promote
+              Then restart — test notebooks get an <strong>Edit</strong> button, and changes promote
               to production after a green run.
             </p>
           </AlertDescription>

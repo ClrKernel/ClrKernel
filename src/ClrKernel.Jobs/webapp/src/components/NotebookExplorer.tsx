@@ -76,7 +76,7 @@ export function NotebookExplorer({
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   useEffect(() => {
     if (!env && environments.length > 0) {
-      setEnv(environments.find((e) => e.name === 'dev')?.name ?? environments[0].name);
+      setEnv(environments.find((e) => e.name === 'test')?.name ?? environments[0].name);
     }
   }, [environments.length]);
 

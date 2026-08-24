@@ -38,6 +38,43 @@ public sealed class FileRunStore : IRunStore {
         Directory.CreateDirectory(_root);
     }
 
+    /// <summary>
+    /// The file-store half of the 0.10 <c>dev</c> → <c>test</c> rename — the same
+    /// migration the relational stores get as SQL. Runs live under
+    /// <c>artifacts/&lt;environment&gt;/…</c> *and* name their environment inside
+    /// run.json, so both have to move or a promotion gate stops finding its evidence.
+    /// </summary>
+    internal void MigrateLegacyEnvironment() {
+        var legacy = Path.Combine(_root, GitService.LegacyTestBranch);
+        var target = Path.Combine(_root, GitService.TestBranch);
+        if (!Directory.Exists(legacy) || Directory.Exists(target)) {
+            return;
+        }
+        Directory.Move(legacy, target);
+
+        // The fan-in clock is keyed "<environment>/<job>" in one shared file.
+        var triggers = ReadTriggers();
+        var prefix = GitService.LegacyTestBranch + "/";
+        var moved = triggers.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+        foreach (var key in moved) {
+            triggers[GitService.TestBranch + "/" + key[prefix.Length..]] = triggers[key];
+            triggers.Remove(key);
+        }
+        if (moved.Count > 0) {
+            File.WriteAllText(_triggersPath, JsonSerializer.Serialize(triggers, _json));
+        }
+
+        foreach (var path in Directory.EnumerateFiles(target, "run.json", SearchOption.AllDirectories)) {
+            var record = Read(path);
+            if (record?.Run == null
+                || !string.Equals(record.Run.Environment, GitService.LegacyTestBranch, StringComparison.Ordinal)) {
+                continue;
+            }
+            record.Run.Environment = GitService.TestBranch;
+            File.WriteAllText(path, JsonSerializer.Serialize(record, _json));
+        }
+    }
+
     /// <summary>A run plus its cells — the shape of one run.json.</summary>
     private sealed class RunRecord {
         public Run Run { get; set; }

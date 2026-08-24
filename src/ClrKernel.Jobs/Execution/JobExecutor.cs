@@ -62,7 +62,7 @@ public sealed class JobExecutor {
         // Promotion evidence, captured BEFORE the notebook is parsed: a save that
         // lands between capture and parse must invalidate, not sneak in.
         run.HadOverrides = hadOverrides;
-        if (_git != null && job.Environment is "dev" or "prod") {
+        if (_git != null && job.Environment is GitService.TestBranch or "prod") {
             try {
                 run.CommitSha = _git.HeadSha(job.Environment);
                 var relativeYaml = Path.GetRelativePath(

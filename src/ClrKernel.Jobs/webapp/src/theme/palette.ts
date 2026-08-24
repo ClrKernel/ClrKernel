@@ -72,7 +72,7 @@ export const STATUS = {
  * accent the user picked — the same rule the ANSI palette follows.
  */
 export const ENV = {
-  dev: { fg: '#b45309', bg: '#fdf3e3', border: '#f0dcbb' },
+  test: { fg: '#b45309', bg: '#fdf3e3', border: '#f0dcbb' },
   prod: { fg: '#0e6e43', bg: '#e9f3ec', border: '#cfe4d6' },
 } as const;
 

@@ -139,7 +139,7 @@ function explainSaving(): void {
     'info',
     'Every save is a commit',
     <p className="mt-1">
-      Saving commits to the dev branch. Cells you run here execute in a warm kernel that is
+      Saving commits to the test branch. Cells you run here execute in a warm kernel that is
       dropped after 30 idle minutes; those runs never appear in run history and never count
       towards promotion. Run the notebook’s jobs from the Jobs page — promotion unlocks when
       every job on this notebook has a clean green run of exactly this content.

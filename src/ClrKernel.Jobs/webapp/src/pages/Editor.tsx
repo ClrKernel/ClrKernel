@@ -49,9 +49,9 @@ type Tab = 'notebook' | 'source' | 'diff';
 
 
 /**
- * The dev notebook editor: cells with syntax highlighting and a language picker,
+ * The test notebook editor: cells with syntax highlighting and a language picker,
  * a raw-source escape hatch, and the diff that shows what promotion would ship.
- * Every save is a commit on the dev branch — and a save that changes nothing is
+ * Every save is a commit on the test branch — and a save that changes nothing is
  * skipped, because a needless commit invalidates the notebook's promotion
  * evidence.
  */
@@ -124,7 +124,7 @@ export function Editor() {
     }
   }, [session?.started, session?.completionTriggers, session?.signatureTriggers]);
 
-  // Execution is gated server-side (git workflow, dev only, and a key required
+  // Execution is gated server-side (git workflow, test only, and a key required
   // off localhost). A rejected status call is how the editor finds out — but a
   // transient failure after a good answer is not that.
   // Viewers never start a kernel: `canRun` is what every run control keys off,
@@ -140,7 +140,7 @@ export function Editor() {
   useEffect(() => {
     setError(null);
     api
-      .notebookContent('dev', path)
+      .notebookContent('test', path)
       .then((text) => {
         setSource(text);
         setSavedSource(text);
@@ -148,7 +148,7 @@ export function Editor() {
       .catch(() => setError(`Could not load ${path}.`));
     if (isNotebook) {
       api
-        .notebookCells('dev', path)
+        .notebookCells('test', path)
         .then((result) => {
           setCells(withIds(result.cells));
           setSaved(result.cells);
@@ -267,11 +267,11 @@ export function Editor() {
         : await api.saveNotebookCells(path, toApiCells(cells ?? []));
       setNotice(`Saved and committed (${result.commitSha.slice(0, 8)}).`);
       // Re-read: the server is the authority on how cells serialize.
-      const text = await api.notebookContent('dev', path);
+      const text = await api.notebookContent('test', path);
       setSource(text);
       setSavedSource(text);
       if (isNotebook) {
-        const reloaded = await api.notebookCells('dev', path);
+        const reloaded = await api.notebookCells('test', path);
         // Keep the ids the cells were run under: saving should not clear the
         // outputs you just produced.
         setCells((current) => keepIds(reloaded.cells, current ?? []));
@@ -344,7 +344,7 @@ export function Editor() {
 
   /**
    * Both sides come from the content GET, which reads any environment — only
-   * writing is dev-only. A 404 on prod means the file exists solely on dev, so
+   * writing is test-only. A 404 on prod means the file exists solely on test, so
    * the original side is empty and the whole thing reads as added.
    */
   async function showDiff() {
@@ -602,12 +602,12 @@ export function Editor() {
             <p className="text-base text-muted-foreground">Loading…</p>
           ) : prod === savedSource ? (
             <p className="text-base text-muted-foreground">
-              No differences — dev and production are identical for this file.
+              No differences — test and production are identical for this file.
             </p>
           ) : (
             <>
               <p className="mb-2 max-w-[78ch] shrink-0 text-base text-muted-foreground">
-                Production (left) vs dev (right)
+                Production (left) vs test (right)
                 {prod === '' && ' — this file does not exist in production yet'}
                 {dirty &&
                   '. Unsaved edits are not shown: this compares what is committed on each branch.'}

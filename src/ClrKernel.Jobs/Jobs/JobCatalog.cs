@@ -10,7 +10,7 @@ public sealed class CatalogResult {
     public IReadOnlyList<JobDefinition> Jobs { get; init; } = new List<JobDefinition>();
     /// <summary>Human-readable problems, each prefixed with the file it came from.</summary>
     public IReadOnlyList<string> Errors { get; init; } = new List<string>();
-    /// <summary>The environments this catalog covers ("default", or "dev"+"prod").</summary>
+    /// <summary>The environments this catalog covers ("default", or "test"+"prod").</summary>
     public IReadOnlyList<string> Environments { get; init; } = new[] { "default" };
 
     public JobDefinition Find(string environment, string name) =>
@@ -26,10 +26,10 @@ public sealed class CatalogResult {
 /// Scans for <c>*.jobs.yaml</c> files, flattens them into <see cref="JobDefinition"/>s,
 /// and validates each environment's set: unique names, notebooks exist, dependencies
 /// resolve, no cycles. Names are unique <em>per environment</em> — a job existing in
-/// both dev and prod is the normal promoted state, not a duplicate.
+/// both test and prod is the normal promoted state, not a duplicate.
 /// <para>
 /// Without git there is one root and one environment ("default"). With the git
-/// workflow, dev/ and prod/ worktrees are scanned as separate environments and the
+/// workflow, test/ and prod/ worktrees are scanned as separate environments and the
 /// bare repo is excluded. Parse results are cached per file by last-write time, so
 /// rescanning every scheduler tick / API request is cheap.
 /// </para>
@@ -43,7 +43,7 @@ public sealed class JobCatalog {
 
     private readonly GitService _git;
 
-    /// <param name="gitLayout">Scan &lt;root&gt;/dev and &lt;root&gt;/prod as environments.</param>
+    /// <param name="gitLayout">Scan &lt;root&gt;/test and &lt;root&gt;/prod as environments.</param>
     /// <param name="git">When present, scans run inside the git lock so a tick can
     /// never observe a promotion half-applied to the prod worktree.</param>
     public JobCatalog(string notebooksRoot, bool gitLayout = false, GitService git = null) {
@@ -60,7 +60,7 @@ public sealed class JobCatalog {
         _gitLayout ? Path.Combine(_notebooksRoot, environment) : _notebooksRoot;
 
     public IReadOnlyList<string> Environments =>
-        _gitLayout ? new[] { "dev", "prod" } : new[] { "default" };
+        _gitLayout ? new[] { GitService.TestBranch, "prod" } : new[] { "default" };
 
     /// <summary>Rescans every environment and returns the current jobs and problems.</summary>
     public CatalogResult Load() {

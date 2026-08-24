@@ -117,7 +117,7 @@ describe('definitionTarget', () => {
     // The path in a cell URI is the kernel's absolute path to the notebook, which
     // the browser never learns. It does not need to: a session only answers about
     // its own notebook, so the fragment alone identifies the cell.
-    expect(definitionTarget('vscode-notebook-cell:/srv/notebooks/dev/etl.nb.md#c3'))
+    expect(definitionTarget('vscode-notebook-cell:/srv/notebooks/test/etl.nb.md#c3'))
       .toEqual({ kind: 'cell', cellId: 'c3' });
     expect(definitionTarget('vscode-notebook-cell:/C:/work/etl.nb.md#c11'))
       .toEqual({ kind: 'cell', cellId: 'c11' });

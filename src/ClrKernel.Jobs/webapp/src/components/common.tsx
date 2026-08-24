@@ -42,7 +42,7 @@ export function StatusBadge({ status }: { status: RunStatus | CellStatus | strin
 }
 
 /**
- * The environment chip: a tinted pill, `dev` amber and `prod` green.
+ * The environment chip: a tinted pill, `test` amber and `prod` green.
  *
  * Semantic rather than accent-derived on purpose — production is production
  * whichever accent the user picked, the same rule the ANSI palette follows.
@@ -50,7 +50,7 @@ export function StatusBadge({ status }: { status: RunStatus | CellStatus | strin
  * neutral outline, so a custom env name still renders as a chip.
  */
 const ENV_CHIP: Record<string, string> = {
-  dev: 'bg-env-dev-bg text-env-dev border-env-dev-border',
+  test: 'bg-env-test-bg text-env-test border-env-test-border',
   prod: 'bg-env-prod-bg text-env-prod border-env-prod-border',
 };
 

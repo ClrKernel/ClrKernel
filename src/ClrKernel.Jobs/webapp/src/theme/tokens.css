@@ -48,9 +48,9 @@
 
   /* Environment chips. Semantic, never accent-derived: prod is green because
      production is production, whichever accent is in force. */
-  --env-dev: #b45309;
-  --env-dev-bg: #fdf3e3;
-  --env-dev-border: #f0dcbb;
+  --env-test: #b45309;
+  --env-test-bg: #fdf3e3;
+  --env-test-border: #f0dcbb;
   --env-prod: #0e6e43;
   --env-prod-bg: #e9f3ec;
   --env-prod-border: #cfe4d6;
@@ -169,9 +169,9 @@
   --color-status-error: var(--status-error);
   --color-status-warning: var(--status-warning);
   --color-status-success: var(--status-success);
-  --color-env-dev: var(--env-dev);
-  --color-env-dev-bg: var(--env-dev-bg);
-  --color-env-dev-border: var(--env-dev-border);
+  --color-env-test: var(--env-test);
+  --color-env-test-bg: var(--env-test-bg);
+  --color-env-test-border: var(--env-test-border);
   --color-env-prod: var(--env-prod);
   --color-env-prod-bg: var(--env-prod-bg);
   --color-env-prod-border: var(--env-prod-border);

@@ -29,7 +29,11 @@ public static class RunStoreFactory {
     public static IRunStore Create(JobsOptions options, bool waitForDatabase = false, Action<string> log = null) {
         var kind = (options.Store ?? "sqlite").ToLowerInvariant();
         if (kind == "files") {
-            return new FileRunStore(options);
+            var files = new FileRunStore(options);
+            // The relational stores get this as a migration; this is the same
+            // rename, applied where there is no schema to version.
+            files.MigrateLegacyEnvironment();
+            return files;
         }
 
         var store = new EfRunStore(ContextFactoryFor(kind, options));

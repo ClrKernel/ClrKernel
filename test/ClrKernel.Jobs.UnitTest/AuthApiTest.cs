@@ -75,15 +75,15 @@ public class AuthApiTest {
         yield return ("PUT", "/api/envs/default/notebooks/content?path=etl/nightly.nb.md", "x");
         yield return ("PUT", "/api/envs/default/notebooks/cells?path=etl/nightly.nb.md",
             new { cells = Array.Empty<object>() });
-        yield return ("POST", "/api/envs/dev/notebooks/session?path=etl/nightly.nb.md", null);
-        yield return ("DELETE", "/api/envs/dev/notebooks/session?path=etl/nightly.nb.md", null);
-        yield return ("POST", "/api/envs/dev/notebooks/run?path=etl/nightly.nb.md",
+        yield return ("POST", "/api/envs/test/notebooks/session?path=etl/nightly.nb.md", null);
+        yield return ("DELETE", "/api/envs/test/notebooks/session?path=etl/nightly.nb.md", null);
+        yield return ("POST", "/api/envs/test/notebooks/run?path=etl/nightly.nb.md",
             new { cells = Array.Empty<object>() });
-        yield return ("POST", "/api/envs/dev/notebooks/sync?path=etl/nightly.nb.md",
+        yield return ("POST", "/api/envs/test/notebooks/sync?path=etl/nightly.nb.md",
             new { cells = Array.Empty<object>() });
-        yield return ("POST", "/api/envs/dev/notebooks/language?path=etl/nightly.nb.md",
+        yield return ("POST", "/api/envs/test/notebooks/language?path=etl/nightly.nb.md",
             new { kind = "completion", cellId = "c0", line = 0, character = 0 });
-        yield return ("POST", "/api/envs/dev/notebooks/promote?path=etl/nightly.nb.md", null);
+        yield return ("POST", "/api/envs/test/notebooks/promote?path=etl/nightly.nb.md", null);
         yield return ("POST", "/api/envs/default/jobs", new { name = "x", notebook = "etl/nightly.nb.md" });
         yield return ("PUT", "/api/envs/default/jobs/x", new { name = "x", notebook = "etl/nightly.nb.md" });
         yield return ("DELETE", "/api/envs/default/jobs/x", null);

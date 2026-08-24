@@ -15,8 +15,8 @@ public sealed class GitException : Exception {
 }
 
 /// <summary>
-/// The git layer behind dev→prod promotion: a bare repo at
-/// <c>&lt;workspace&gt;/.repo.git</c> with two worktrees — <c>dev</c> (branch dev,
+/// The git layer behind test→prod promotion: a bare repo at
+/// <c>&lt;workspace&gt;/.repo.git</c> with two worktrees — <c>test</c> (branch test,
 /// where editing happens) and <c>prod</c> (branch main, what the scheduler runs).
 /// <para>
 /// Shells out to the git CLI, hardened for a server: no ambient config is trusted
@@ -28,7 +28,9 @@ public sealed class GitException : Exception {
 /// </para>
 /// </summary>
 public sealed class GitService {
-    public const string DevBranch = "dev";
+    public const string TestBranch = "test";
+    /// <summary>What <see cref="TestBranch"/> was called before 0.10. Migrated on Init.</summary>
+    internal const string LegacyTestBranch = "dev";
     public const string ProdBranch = "main";
 
     private readonly string _workspace;
@@ -49,15 +51,17 @@ public sealed class GitService {
 
     public string Workspace => _workspace;
     public string BareRepoPath => Path.Combine(_workspace, ".repo.git");
-    public string DevPath => Path.Combine(_workspace, DevBranch);
+    public string TestPath => Path.Combine(_workspace, TestBranch);
     public string ProdPath => Path.Combine(_workspace, "prod");
 
     /// <summary>True when the bare repo and both worktrees exist.</summary>
     public bool LayoutExists =>
-        Directory.Exists(BareRepoPath) && Directory.Exists(DevPath) && Directory.Exists(ProdPath);
+        Directory.Exists(BareRepoPath) && Directory.Exists(TestPath) && Directory.Exists(ProdPath);
 
     public string PathFor(string environment) =>
-        environment == "prod" ? ProdPath : DevPath;
+        environment == "prod" ? ProdPath : TestPath;
+
+    private string LegacyTestPath => Path.Combine(_workspace, LegacyTestBranch);
 
     // --- the critical section -------------------------------------------------
 
@@ -132,7 +136,7 @@ public sealed class GitService {
             process.Start();
         } catch (Exception e) {
             throw new GitException(
-                "git is not installed or not on PATH — the dev/prod workflow needs it. " + e.Message);
+                "git is not installed or not on PATH — the test/prod workflow needs it. " + e.Message);
         }
         process.StandardInput.Close();
         process.BeginOutputReadLine();
@@ -161,7 +165,7 @@ public sealed class GitService {
 
     /// <summary>
     /// Creates the workspace layout. Existing loose files in the workspace are
-    /// adopted into dev and promoted to main so an existing notebooks folder keeps
+    /// adopted into test and promoted to main so an existing notebooks folder keeps
     /// working. Idempotent: an intact layout is left alone; a half-formed one gets
     /// instructions rather than guesses.
     /// </summary>
@@ -171,9 +175,9 @@ public sealed class GitService {
                 Repair();
                 return "workspace already initialized";
             }
-            if (Directory.Exists(BareRepoPath) || Directory.Exists(DevPath) || Directory.Exists(ProdPath)) {
+            if (Directory.Exists(BareRepoPath) || Directory.Exists(TestPath) || Directory.Exists(ProdPath)) {
                 throw new GitException(
-                    $"The workspace at {_workspace} is half-initialized (some of .repo.git/dev/prod " +
+                    $"The workspace at {_workspace} is half-initialized (some of .repo.git/test/prod " +
                     "exist). Move or remove them, then run `clrkernel-jobs git init` again.");
             }
 
@@ -186,39 +190,86 @@ public sealed class GitService {
             var emptyTree = Run(BareRepoPath, "mktree").Trim();          // no stdin = empty tree
             var initial = Run(BareRepoPath, "commit-tree", emptyTree, "-m", "initial").Trim();
             Run(BareRepoPath, "update-ref", $"refs/heads/{ProdBranch}", initial);
-            Run(BareRepoPath, "branch", DevBranch, ProdBranch);
-            Run(BareRepoPath, "worktree", "add", DevPath, DevBranch);
+            Run(BareRepoPath, "branch", TestBranch, ProdBranch);
+            Run(BareRepoPath, "worktree", "add", TestPath, TestBranch);
             Run(BareRepoPath, "worktree", "add", ProdPath, ProdBranch);
 
-            // Adopt loose files: they move into dev, and main fast-forwards so prod
-            // starts equal to dev (everything existing is implicitly approved).
+            // Adopt loose files: they move into test, and main fast-forwards so prod
+            // starts equal to test (everything existing is implicitly approved).
             var adopted = 0;
             foreach (var entry in Directory.EnumerateFileSystemEntries(_workspace)) {
                 var name = Path.GetFileName(entry);
-                if (name is ".repo.git" or "dev" or "prod" || name.StartsWith('.')
+                if (name is ".repo.git" or TestBranch or "prod" || name.StartsWith('.')
                     || name is NotificationChannels.FileName or "settings.json") {
                     continue;
                 }
-                var target = Path.Combine(DevPath, name);
+                var target = Path.Combine(TestPath, name);
                 Directory.Move(entry, target); // moves files too
                 adopted++;
             }
             if (adopted > 0) {
-                Run(DevPath, "add", "-A");
-                Run(DevPath, "commit", "-m", "adopt existing notebooks");
-                Run(ProdPath, "merge", "--ff-only", DevBranch);
+                Run(TestPath, "add", "-A");
+                Run(TestPath, "commit", "-m", "adopt existing notebooks");
+                Run(ProdPath, "merge", "--ff-only", TestBranch);
             }
             _logger.LogInformation("Initialized git workspace at {Workspace} ({Adopted} adopted).",
                 _workspace, adopted);
             return adopted > 0
-                ? $"initialized; adopted {adopted} existing item(s) into dev and promoted them"
+                ? $"initialized; adopted {adopted} existing item(s) into test and promoted them"
                 : "initialized";
+        });
+    }
+
+    /// <summary>
+    /// Renames the pre-0.10 <c>dev</c> worktree and branch to <c>test</c>. Both are
+    /// renames in place — no history is rewritten and nothing is copied — so the
+    /// only unsafe case is a workspace that already has both names, which is left
+    /// alone with a warning rather than merged. Returns true when it changed something.
+    /// <para>
+    /// A remote's <c>dev</c> branch is deliberately <em>not</em> touched: deleting a
+    /// branch on a shared remote is not this process's call to make. The new branch
+    /// is pushed alongside it and the stale one is reported.
+    /// </para>
+    /// </summary>
+    public bool MigrateLegacyLayout() {
+        return WithLock(() => {
+            if (!Directory.Exists(BareRepoPath)) {
+                return false;
+            }
+            var hasLegacyBranch = TryRun(
+                BareRepoPath, "show-ref", "--verify", "--quiet", $"refs/heads/{LegacyTestBranch}").Code == 0;
+            var hasTestBranch = TryRun(
+                BareRepoPath, "show-ref", "--verify", "--quiet", $"refs/heads/{TestBranch}").Code == 0;
+            if (Directory.Exists(LegacyTestPath) && Directory.Exists(TestPath)) {
+                _logger.LogWarning(
+                    "Workspace {Workspace} has both a dev/ and a test/ worktree. Leaving both alone — " +
+                    "test/ is the live one; move dev/ aside once you are sure nothing in it is unsaved.",
+                    _workspace);
+                return false;
+            }
+
+            var changed = false;
+            if (hasLegacyBranch && !hasTestBranch) {
+                // Renames the branch even where the worktree has it checked out: git
+                // rewrites that worktree's HEAD as part of the rename.
+                Run(BareRepoPath, "branch", "-m", LegacyTestBranch, TestBranch);
+                changed = true;
+            }
+            if (Directory.Exists(LegacyTestPath) && !Directory.Exists(TestPath)) {
+                Run(BareRepoPath, "worktree", "move", LegacyTestPath, TestPath);
+                changed = true;
+            }
+            if (changed) {
+                _logger.LogInformation(
+                    "Renamed the dev branch and worktree to test in {Workspace}.", _workspace);
+            }
+            return changed;
         });
     }
 
     /// <summary>Fixes worktree gitdir pointers after the workspace moved (volumes do).</summary>
     public void Repair() {
-        Run(BareRepoPath, "worktree", "repair", DevPath, ProdPath);
+        Run(BareRepoPath, "worktree", "repair", TestPath, ProdPath);
     }
 
     // --- queries (callers may hold the lock; these take it for one-off use) ------
@@ -243,21 +294,21 @@ public sealed class GitService {
             args.Add("--");
             args.AddRange(paths);
         }
-        return TryRun(DevPath, args.ToArray()).Code == 0;
+        return TryRun(TestPath, args.ToArray()).Code == 0;
     }
 
-    /// <summary>Unified diff of a path between prod (main) and dev.</summary>
+    /// <summary>Unified diff of a path between prod (main) and test.</summary>
     public string UnifiedDiff(string path) =>
-        Run(DevPath, "diff", ProdBranch, DevBranch, "--", path);
+        Run(TestPath, "diff", ProdBranch, TestBranch, "--", path);
 
-    /// <summary>name-status lines (A/M/D\tpath) between prod and dev for the paths.</summary>
+    /// <summary>name-status lines (A/M/D\tpath) between prod and test for the paths.</summary>
     public IReadOnlyList<(char Status, string Path)> NameStatus(params string[] paths) {
-        var args = new List<string> { "diff", "--name-status", ProdBranch, DevBranch };
+        var args = new List<string> { "diff", "--name-status", ProdBranch, TestBranch };
         if (paths.Length > 0) {
             args.Add("--");
             args.AddRange(paths);
         }
-        return Run(DevPath, args.ToArray())
+        return Run(TestPath, args.ToArray())
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Split('\t'))
             .Where(parts => parts.Length >= 2)
@@ -283,9 +334,9 @@ public sealed class GitService {
         Run(worktree, "commit", "-m", message);
     }
 
-    /// <summary>Copies a path's dev content into the prod worktree (stages it).</summary>
+    /// <summary>Copies a path's test content into the prod worktree (stages it).</summary>
     public void CheckoutIntoProd(string path) =>
-        Run(ProdPath, "checkout", DevBranch, "--", path);
+        Run(ProdPath, "checkout", TestBranch, "--", path);
 
     /// <summary>Removes a path from prod (stages the deletion).</summary>
     public void RemoveFromProd(string path) =>
@@ -310,7 +361,7 @@ public sealed class GitService {
         if (string.IsNullOrWhiteSpace(remote)) {
             return;
         }
-        var result = TryRun(BareRepoPath, "push", remote, $"{DevBranch}:{DevBranch}", $"{ProdBranch}:{ProdBranch}");
+        var result = TryRun(BareRepoPath, "push", remote, $"{TestBranch}:{TestBranch}", $"{ProdBranch}:{ProdBranch}");
         LastPush = (DateTime.UtcNow, result.Code == 0,
             result.Code == 0 ? null : Truncate(result.Stderr.Trim(), 300));
         if (result.Code != 0) {

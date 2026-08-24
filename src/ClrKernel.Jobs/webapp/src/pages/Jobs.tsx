@@ -30,8 +30,8 @@ export function Jobs() {
     matchesQuery(query, job.name, job.environment, job.notebook, job.cron, ...job.dependsOn),
   );
   const problems = data?.errors ?? [];
-  // New jobs are created in dev when the git workflow is on; prod is promote-only.
-  const editableEnv = health?.gitEnabled ? 'dev' : 'default';
+  // New jobs are created in test when the git workflow is on; prod is promote-only.
+  const editableEnv = health?.gitEnabled ? 'test' : 'default';
 
   return (
     <div>

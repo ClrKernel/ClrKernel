@@ -75,13 +75,13 @@ public static class JobsApi {
         api.MapPut("/envs/{env}/notebooks/content", async (
             HttpContext context, JobCatalog catalog, string env, string path) => {
                 if (EditableTarget(context, catalog, env, path) is not { } target) {
-                    return DevWriteError(context, catalog, env, path);
+                    return TestWriteError(context, catalog, env, path);
                 }
                 if (context.Request.ContentLength is > 2_000_000) {
                     return Results.BadRequest(new { error = "File too large (2 MB limit)." });
                 }
                 using var reader = new StreamReader(context.Request.Body);
-                return SaveToDev(context, target, path, await reader.ReadToEndAsync());
+                return SaveToTest(context, target, path, await reader.ReadToEndAsync());
             }).AdminOnly();
 
         // The notebook as editable cells, with the languages the kernel can run —
@@ -114,7 +114,7 @@ public static class JobsApi {
         api.MapPut("/envs/{env}/notebooks/cells", async (
             HttpContext context, JobCatalog catalog, KernelLanguages kernelLanguages, string env, string path) => {
                 if (EditableTarget(context, catalog, env, path) is not { } target) {
-                    return DevWriteError(context, catalog, env, path);
+                    return TestWriteError(context, catalog, env, path);
                 }
                 if (!target.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
                     !target.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
@@ -133,7 +133,7 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
                 }
                 var languages = await kernelLanguages.GetAsync();
-                return SaveToDev(context, target, path, NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
+                return SaveToTest(context, target, path, NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
             }).AdminOnly();
 
         // --- interactive sessions -------------------------------------------
@@ -149,7 +149,7 @@ public static class JobsApi {
                 if (DenyExecution(context, catalog, options, env, path) is { } denial) {
                     return denial;
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 try {
                     // The session seeds kernelLanguages itself, on start and again
                     // whenever #r adds one — one place, so the two cannot drift.
@@ -166,7 +166,7 @@ public static class JobsApi {
                 if (DenyExecution(context, catalog, options, env, path) is { } denial) {
                     return denial;
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 return Results.Ok(new { restarted = sessions.Restart(resolved) });
             }).AdminOnly();
 
@@ -185,7 +185,7 @@ public static class JobsApi {
                 if (request?.Cells is not { Count: > 0 }) {
                     return Results.BadRequest(new { error = "Body must be { cells: [...] } with at least one cell." });
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 NotebookSession session;
                 try {
                     session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
@@ -226,7 +226,7 @@ public static class JobsApi {
                 if (request.Cells.Count > 1000) {
                     return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 var session = sessions.Find(resolved);
                 if (session == null) {
                     return Results.Ok(new { started = false, sent = 0 });
@@ -265,7 +265,7 @@ public static class JobsApi {
                 if (string.IsNullOrEmpty(request.CellId)) {
                     return Results.BadRequest(new { error = "cellId is required." });
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 var session = sessions.Find(resolved);
                 if (session == null) {
                     // Same reasoning as sync: typing must not spawn kernels. The
@@ -294,7 +294,7 @@ public static class JobsApi {
                 if (DenyExecution(context, catalog, options, env, path) is { } denial) {
                     return denial;
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 // A scheduled run of this notebook may be in flight in its own kernel;
                 // the editor says so rather than leaving the file changing unexplained.
                 // Checked before the session lookup, because the warning is most useful
@@ -325,7 +325,7 @@ public static class JobsApi {
                 if (string.IsNullOrWhiteSpace(languageId)) {
                     return Results.BadRequest(new { error = "languageId is required." });
                 }
-                var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+                var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
                 try {
                     var session = await sessions.GetOrStartAsync(resolved, context.RequestAborted);
                     var reply = await session.DescribeConnectionsAsync(languageId, context.RequestAborted);
@@ -335,26 +335,26 @@ public static class JobsApi {
                 }
             }).AdminOnly();
 
-        api.MapGet("/envs/dev/notebooks/promotion", async (
+        api.MapGet("/envs/test/notebooks/promotion", async (
             HttpContext context, JobCatalog catalog, IRunStore store, string path) => {
                 var git = GitOf(context);
                 if (git == null || !catalog.GitLayout) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
-                if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
-                    return Results.BadRequest(new { error = "Path is outside the dev area." });
+                if (NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path) == null) {
+                    return Results.BadRequest(new { error = "Path is outside the test area." });
                 }
                 return Results.Ok(await Promotion.CheckAsync(catalog, git, store, path));
             });
 
-        api.MapPost("/envs/dev/notebooks/promote", async (
+        api.MapPost("/envs/test/notebooks/promote", async (
             HttpContext context, JobCatalog catalog, IRunStore store, JobsOptions options, string path) => {
                 var git = GitOf(context);
                 if (git == null || !catalog.GitLayout) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
-                if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
-                    return Results.BadRequest(new { error = "Path is outside the dev area." });
+                if (NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path) == null) {
+                    return Results.BadRequest(new { error = "Path is outside the test area." });
                 }
                 // Re-check inside the request: the button may be stale.
                 var eligibility = await Promotion.CheckAsync(catalog, git, store, path);
@@ -371,8 +371,8 @@ public static class JobsApi {
             if (git == null || !catalog.GitLayout) {
                 return Results.BadRequest(new { error = "The git workflow is not enabled." });
             }
-            if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
-                return Results.BadRequest(new { error = "Path is outside the dev area." });
+            if (NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path) == null) {
+                return Results.BadRequest(new { error = "Path is outside the test area." });
             }
             return Results.Text(git.UnifiedDiff(path), "text/plain");
         });
@@ -402,8 +402,8 @@ public static class JobsApi {
             if (job == null) {
                 return Results.NotFound(new { error = $"No job named '{name}'." });
             }
-            if (catalog.GitLayout && env != "dev") {
-                return Results.BadRequest(new { error = "prod is read-only — delete in dev and promote." });
+            if (catalog.GitLayout && env != GitService.TestBranch) {
+                return Results.BadRequest(new { error = "prod is read-only — delete in test and promote." });
             }
             var git = GitOf(context);
             void Mutate() {
@@ -415,7 +415,7 @@ public static class JobsApi {
                 } else {
                     JobsFile.Write(job.SourceFile, file, catalog.RootFor(env));
                 }
-                git?.Commit("dev", $"delete job {name} via web UI", job.SourceFileRelative);
+                git?.Commit(GitService.TestBranch, $"delete job {name} via web UI", job.SourceFileRelative);
             }
             if (git != null && catalog.GitLayout) {
                 git.WithLock(Mutate);
@@ -581,17 +581,17 @@ public static class JobsApi {
         context.RequestServices.GetService(typeof(GitService)) as GitService;
 
     /// <summary>
-    /// The absolute path a dev write may target, or null when it may not — the git
-    /// workflow is off, the environment is not dev, the path escapes the dev
-    /// worktree, or the file is not one we edit. <see cref="DevWriteError"/> says
+    /// The absolute path a test write may target, or null when it may not — the git
+    /// workflow is off, the environment is not test, the path escapes the test
+    /// worktree, or the file is not one we edit. <see cref="TestWriteError"/> says
     /// which, so the two shapes of write (raw text, cells) refuse identically.
     /// </summary>
     private static string EditableTarget(HttpContext context, JobCatalog catalog, string env, string path) {
-        if (!catalog.GitLayout || env != "dev" || GitOf(context) == null) {
+        if (!catalog.GitLayout || env != GitService.TestBranch || GitOf(context) == null) {
             return null;
         }
-        // Rooted at the dev worktree: the workspace root would resolve prod/… too.
-        var resolved = NotebookTree.SafeResolve(catalog.RootFor("dev"), path);
+        // Rooted at the test worktree: the workspace root would resolve prod/… too.
+        var resolved = NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path);
         if (resolved == null) {
             return null;
         }
@@ -600,17 +600,17 @@ public static class JobsApi {
             : null;
     }
 
-    private static IResult DevWriteError(HttpContext context, JobCatalog catalog, string env, string path) {
+    private static IResult TestWriteError(HttpContext context, JobCatalog catalog, string env, string path) {
         if (!catalog.GitLayout || GitOf(context) == null) {
             return Results.BadRequest(new {
                 error = "Editing needs the git workflow — run `clrkernel-jobs git init`.",
             });
         }
-        if (env != "dev") {
-            return Results.BadRequest(new { error = "prod is read-only — edit in dev and promote." });
+        if (env != GitService.TestBranch) {
+            return Results.BadRequest(new { error = "prod is read-only — edit in test and promote." });
         }
-        return NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null
-            ? Results.BadRequest(new { error = "Path is outside the dev area." })
+        return NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path) == null
+            ? Results.BadRequest(new { error = "Path is outside the test area." })
             : Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
     }
 
@@ -619,8 +619,8 @@ public static class JobsApi {
     /// cell is the one place the tool runs code straight from a request body, so
     /// the decision lives in exactly one function.
     /// <para>
-    /// The gate: the git workflow must be on, the environment must be dev (prod is
-    /// read-only and is not a scratchpad), the path must resolve inside the dev
+    /// The gate: the git workflow must be on, the environment must be test (prod is
+    /// read-only and is not a scratchpad), the path must resolve inside the test
     /// worktree.
     /// </para>
     /// <para>
@@ -639,11 +639,11 @@ public static class JobsApi {
                 error = "Running cells needs the git workflow — run `clrkernel-jobs git init`.",
             });
         }
-        if (env != "dev") {
-            return Results.BadRequest(new { error = "Cells run in dev only — prod is read-only." });
+        if (env != GitService.TestBranch) {
+            return Results.BadRequest(new { error = "Cells run in test only — prod is read-only." });
         }
-        if (NotebookTree.SafeResolve(catalog.RootFor("dev"), path) == null) {
-            return Results.BadRequest(new { error = "Path is outside the dev area." });
+        if (NotebookTree.SafeResolve(catalog.RootFor(GitService.TestBranch), path) == null) {
+            return Results.BadRequest(new { error = "Path is outside the test area." });
         }
         return null;
     }
@@ -669,14 +669,14 @@ public static class JobsApi {
 
     /// <summary>The one committing writer: the file lands and is committed inside a
     /// single git-lock hold, so racing saves cannot commit each other's bytes.</summary>
-    private static IResult SaveToDev(HttpContext context, string resolved, string path, string content) {
+    private static IResult SaveToTest(HttpContext context, string resolved, string path, string content) {
         var git = GitOf(context);
         git.WithLock(() => {
             Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
             File.WriteAllText(resolved, content);
-            git.Commit("dev", $"edit {path} via web UI", path);
+            git.Commit(GitService.TestBranch, $"edit {path} via web UI", path);
         });
-        return Results.Ok(new { saved = true, commitSha = git.HeadSha("dev") });
+        return Results.Ok(new { saved = true, commitSha = git.HeadSha(GitService.TestBranch) });
     }
 
     private static async Task<IResult> ServeRunFile(
@@ -699,9 +699,9 @@ public static class JobsApi {
         if (!catalog.Environments.Contains(env)) {
             return Results.NotFound(new { error = $"No environment '{env}'." });
         }
-        if (catalog.GitLayout && env != "dev") {
+        if (catalog.GitLayout && env != GitService.TestBranch) {
             return Results.BadRequest(new {
-                error = "prod is read-only — edit in dev and promote.",
+                error = "prod is read-only — edit in test and promote.",
             });
         }
         if (string.IsNullOrWhiteSpace(write?.Name)) {
@@ -769,7 +769,7 @@ public static class JobsApi {
                 var relative = Path.GetRelativePath(catalog.RootFor(env), targetFile).Replace('\\', '/');
                 git.WithLock(() => {
                     JobsFile.Write(targetFile, file, catalog.RootFor(env));
-                    git.Commit("dev", $"edit job {write.Name} via web UI", relative);
+                    git.Commit(GitService.TestBranch, $"edit job {write.Name} via web UI", relative);
                 });
             } else {
                 JobsFile.Write(targetFile, file, catalog.RootFor(env));

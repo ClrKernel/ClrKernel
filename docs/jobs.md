@@ -68,7 +68,7 @@ overridden by the job's values. Types are inferred — `5` is an `int`, `0.5` a
 ```csharp
 // parameters
 var region = "us";     // overridden per job
-var env = "dev";
+var env = "test";
 ```
 
 ## Run one now
@@ -104,7 +104,7 @@ clrkernel-jobs serve --notebooks ./notebooks
 
 Opens <http://localhost:5000> with a dashboard (recent runs and success rate), the
 job list and editor, a notebook tree, and a run view showing live cell-by-cell
-progress, the rendered notebook, and the log. With the git workflow on, dev notebooks
+progress, the rendered notebook, and the log. With the git workflow on, test notebooks
 also get a cell editor that runs cells against a live kernel — see
 [The notebook editor](#the-notebook-editor).
 
@@ -217,7 +217,7 @@ and `/cancel`, `runs` with per-cell progress, `runs/{id}/artifact` and `/log`,
 `stats`, and `channels` (GET/PUT, plus `channels/{name}/test`).
 
 With the git workflow on, `envs/{env}/notebooks/` adds `content` (GET any
-environment, PUT dev only), `cells` (the same file parsed into cells, and written back
+environment, PUT test only), `cells` (the same file parsed into cells, and written back
 from them — the browser never needs its own copy of the `.nb.md` format), `promotion`
 and `promote`, plus the editor's session endpoints: `session` (POST to start, DELETE
 to restart), `run`, and `session/status`. `git/diff` returns a unified diff for one
@@ -257,7 +257,7 @@ Two roles, server-wide:
 
 The viewer boundary is enforced on every route, not by hiding buttons: running a cell
 is arbitrary code execution on the machine hosting the server, so calling
-`/api/envs/dev/notebooks/run` directly as a viewer returns 403. A viewer's editor is
+`/api/envs/test/notebooks/run` directly as a viewer returns 403. A viewer's editor is
 read-only, and Focus Mode still works — it is a reading layout too.
 
 ### Before anyone else signs in: set the domain
@@ -299,7 +299,7 @@ worse already, so this is not a new exposure.
 interactive by definition; if you need a script to drive `/api`, that needs per-user
 API tokens, which do not exist yet.
 
-## Dev → prod with git
+## Test → prod with git
 
 Opt in with one command on your notebooks folder (stop `serve` first):
 
@@ -308,27 +308,33 @@ clrkernel-jobs git init --notebooks ./notebooks
 ```
 
 The folder becomes a **workspace**: a bare repo at `.repo.git` and two folders backed
-by branches — `dev/` (branch `dev`, where you edit) and `prod/` (branch `main`, what
-the scheduler runs). Existing notebooks are adopted into dev and promoted, so
+by branches — `test/` (branch `test`, where you edit) and `prod/` (branch `main`, what
+the scheduler runs). Existing notebooks are adopted into test and promoted, so
 everything keeps working. `gitEnabled: true` is written to settings.json.
+
+> **Upgrading from 0.9**, where the editable branch was called `dev`: the first start
+> renames the branch and the worktree in place and rewrites the run history to match.
+> Nothing is copied and no commits move. A configured remote keeps its old `dev`
+> branch — delete it there yourself when you are ready; a shared remote is not this
+> process's to prune.
 
 The loop:
 
-1. **Edit** in the web UI (dev notebooks get an *edit* link in the tree — see
+1. **Edit** in the web UI (test notebooks get an *edit* link in the tree — see
    [The notebook editor](#the-notebook-editor), where you can also run cells against a
-   warm kernel) or in your own editor inside `dev/`. Every UI save is a commit on the
-   dev branch.
-2. **Run** the notebook's jobs in dev — manually or via the API. Dev jobs never run
-   on a schedule; cron and chaining fire only in prod. Each run records the dev
+   warm kernel) or in your own editor inside `test/`. Every UI save is a commit on the
+   test branch.
+2. **Run** the notebook's jobs in test — manually or via the API. Test jobs never run
+   on a schedule; cron and chaining fire only in prod. Each run records the test
    commit it executed and whether the tree was dirty.
 3. **Promote** from the editor page. The button unlocks only when *every* enabled
-   job on the notebook has a latest dev run that succeeded, as written (no ad-hoc
+   job on the notebook has a latest test run that succeeded, as written (no ad-hoc
    parameter overrides, no uncommitted content), with the files unchanged since that
    run — and only if the promotion would leave prod's dependency graph valid.
    Blocked promotions list every reason. Promotion is one commit on `main` naming
    the evidence runs; the prod scheduler picks it up on its next tick.
 
-Deleting a notebook in dev is promotable the same way (it removes the files and the
+Deleting a notebook in test is promotable the same way (it removes the files and the
 jobs from prod). Promotion carries the notebook **and** its jobs files as a unit —
 sibling jobs share the notebook, so nothing smaller would be honest.
 
@@ -340,7 +346,7 @@ stores none.
 
 Notes: `notifications.yaml` and `settings.json` stay at the workspace root,
 unversioned — they are runtime config. Environments are part of run history keys, so
-dev and prod runs of the same job never mix. In Docker, mount `/notebooks` writable
+test and prod runs of the same job never mix. In Docker, mount `/notebooks` writable
 (owned by uid 1654) when git is enabled; worktree paths are repaired automatically
 when the volume is mounted at a different path.
 
@@ -369,7 +375,7 @@ cannot be removed.
 
 ## The notebook editor
 
-Dev notebooks get an **edit** link in the tree, and the editor carries a file explorer
+Test notebooks get an **edit** link in the tree, and the editor carries a file explorer
 of its own down the left: the notebook tree for one environment, with the file you have
 open highlighted. Drag its right edge to resize it, or collapse it to a thin strip and
 click that strip to bring it back — the width and the collapsed state are remembered
@@ -390,7 +396,7 @@ hidden on Source and Diff; saving and promoting are about the document and stay
 everywhere.
 
 Two ⓘ buttons sit in that row. One beside **Save** explains what saving does — every
-save is a commit on the dev branch, and cells you run here never count towards
+save is a commit on the test branch, and cells you run here never count towards
 promotion. The other appears beside **Promote to production** when promotion is
 blocked, and gives the reasons: usually a job on this notebook that has not had a green
 run yet. Either opens a notice in the corner that fades on its own or closes on
@@ -453,11 +459,11 @@ requires a real green run of every job on the notebook, launched from the Jobs p
 the API. This is a property of the code — the session has no access to the run store —
 not a rule someone has to remember.
 
-Saving is a commit on dev, so a save that changes nothing is skipped: a needless commit
+Saving is a commit on test, so a save that changes nothing is skipped: a needless commit
 would invalidate the "unchanged since that run" half of the promotion check.
 
 Execution is refused unless you are a Server Admin, the git workflow is on, the file is
-in `dev/`, and the path resolves inside the dev worktree. Reading and diffing still
+in `test/`, and the path resolves inside the test worktree. Reading and diffing still
 work for everyone; only running and saving are gated.
 
 ## Docker

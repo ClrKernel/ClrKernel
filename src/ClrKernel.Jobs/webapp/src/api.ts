@@ -9,7 +9,7 @@ export type CellStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Skipp
 export type RunTrigger = 'Manual' | 'Schedule' | 'Dependency' | 'Retry';
 
 export interface Job {
-  /** dev | prod, or "default" when the git workflow is off. */
+  /** test | prod, or "default" when the git workflow is off. */
   environment: string;
   name: string;
   notebook: string;
@@ -318,7 +318,7 @@ export const api = {
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
   saveNotebookContent: (path: string, content: string) =>
     request<{ saved: boolean; commitSha: string }>(
-      `/envs/dev/notebooks/content?path=${encodeURIComponent(path)}`,
+      `/envs/test/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
     ),
   // The UI diffs by fetching both environments' content into Monaco. GET
@@ -331,33 +331,33 @@ export const api = {
     ),
   saveNotebookCells: (path: string, cells: ApiCell[]) =>
     request<{ saved: boolean; commitSha: string }>(
-      `/envs/dev/notebooks/cells?path=${encodeURIComponent(path)}`,
+      `/envs/test/notebooks/cells?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: JSON.stringify({ cells }) },
     ),
   // Interactive execution against the notebook's warm kernel. None of this
   // writes to the run store: an interactive run never appears in run history
   // and can never become the green evidence promotion requires.
   runCells: (path: string, cells: ApiCell[]) =>
-    request<{ running: string[] }>(`/envs/dev/notebooks/run?path=${encodeURIComponent(path)}`, {
+    request<{ running: string[] }>(`/envs/test/notebooks/run?path=${encodeURIComponent(path)}`, {
       method: 'POST',
       body: JSON.stringify({ cells }),
     }),
   /** The connection wizard's schema, from the notebook's own kernel. */
   connectionProviders: (path: string, languageId: string) =>
     request<{ providers: ApiConnectionProvider[] }>(
-      `/envs/dev/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
+      `/envs/test/notebooks/connections?path=${encodeURIComponent(path)}&languageId=${encodeURIComponent(languageId)}`,
     ),
   /** Starts (or touches) the notebook's kernel. Opening the editor does this, so
    *  language features work on the first keystroke rather than the first run. */
   startSession: (path: string) =>
-    request<ApiSession>(`/envs/dev/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<ApiSession>(`/envs/test/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'POST',
     }),
   /** Tells the kernel which cells are open, so completion and hover have documents
    *  to answer about. Authoritative: cells left out are closed. */
   syncCells: (path: string, cells: ApiSyncCell[]) =>
     request<{ started: boolean; sent: number }>(
-      `/envs/dev/notebooks/sync?path=${encodeURIComponent(path)}`,
+      `/envs/test/notebooks/sync?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify({ cells }) },
     ),
   /** One language question about one cell. Returns null when the notebook has no
@@ -365,15 +365,15 @@ export const api = {
    *  cannot answer is silent, never an error. */
   languageRequest: <T>(path: string, body: ApiLanguageRequest) =>
     request<{ started: boolean; result: T | null }>(
-      `/envs/dev/notebooks/language?path=${encodeURIComponent(path)}`,
+      `/envs/test/notebooks/language?path=${encodeURIComponent(path)}`,
       { method: 'POST', body: JSON.stringify(body) },
     ).then((r) => r.result),
   sessionStatus: (path: string) =>
-    request<ApiSession>(`/envs/dev/notebooks/session/status?path=${encodeURIComponent(path)}`),
+    request<ApiSession>(`/envs/test/notebooks/session/status?path=${encodeURIComponent(path)}`),
   /** Kills the kernel. Also the only interrupt there is — no RPC surface can
    *  cancel a cell that is already running. */
   restartSession: (path: string) =>
-    request<{ restarted: boolean }>(`/envs/dev/notebooks/session?path=${encodeURIComponent(path)}`, {
+    request<{ restarted: boolean }>(`/envs/test/notebooks/session?path=${encodeURIComponent(path)}`, {
       method: 'DELETE',
     }),
 
@@ -383,10 +383,10 @@ export const api = {
       reasons: string[];
       paths: string[];
       isDeletion: boolean;
-    }>(`/envs/dev/notebooks/promotion?path=${encodeURIComponent(path)}`),
+    }>(`/envs/test/notebooks/promotion?path=${encodeURIComponent(path)}`),
   promote: (path: string) =>
     request<{ promoted: boolean; commitSha: string }>(
-      `/envs/dev/notebooks/promote?path=${encodeURIComponent(path)}`,
+      `/envs/test/notebooks/promote?path=${encodeURIComponent(path)}`,
       { method: 'POST' },
     ),
 

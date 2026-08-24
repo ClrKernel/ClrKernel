@@ -9,7 +9,7 @@ namespace ClrKernel.Jobs.UnitTest;
 
 /// <summary>
 /// The promotion eligibility matrix and apply path, against a real git workspace and
-/// store — this is the trust gate between "ran in dev" and "runs in prod on a
+/// store — this is the trust gate between "ran in test" and "runs in prod on a
 /// schedule", so every hole the design review found gets a test.
 /// </summary>
 [TestClass]
@@ -38,10 +38,10 @@ public class PromotionTest {
 
     private void CommitDev(string relative, string content, string message = "edit") {
         _git.WithLock(() => {
-            var path = Path.Combine(_git.DevPath, relative);
+            var path = Path.Combine(_git.TestPath, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, content);
-            _git.Commit("dev", message, relative);
+            _git.Commit("test", message, relative);
         });
     }
 
@@ -56,7 +56,7 @@ public class PromotionTest {
         bool dirty = false, bool overrides = false, string sha = null) {
         return await _store.CreateRunAsync(new Run {
             Id = Guid.NewGuid(),
-            Environment = "dev",
+            Environment = "test",
             JobName = job,
             NotebookPath = "etl.nb.md",
             Status = status,
@@ -64,7 +64,7 @@ public class PromotionTest {
             CreatedAt = DateTime.UtcNow,
             StartedAt = DateTime.UtcNow,
             FinishedAt = DateTime.UtcNow,
-            CommitSha = sha ?? _git.HeadSha("dev"),
+            CommitSha = sha ?? _git.HeadSha("test"),
             WasDirty = dirty,
             HadOverrides = overrides,
         });
@@ -153,11 +153,11 @@ public class PromotionTest {
         Promotion.Apply(_git, await CheckAsync(), "etl.nb.md");
         Assert.IsNotNull(_catalog.Load().Find("prod", "etl"));
 
-        // Delete in dev, commit; the promotion carries the removal.
+        // Delete in test, commit; the promotion carries the removal.
         _git.WithLock(() => {
-            File.Delete(Path.Combine(_git.DevPath, "etl.nb.md"));
-            File.Delete(Path.Combine(_git.DevPath, "etl.jobs.yaml"));
-            _git.Commit("dev", "remove etl", "etl.nb.md", "etl.jobs.yaml");
+            File.Delete(Path.Combine(_git.TestPath, "etl.nb.md"));
+            File.Delete(Path.Combine(_git.TestPath, "etl.jobs.yaml"));
+            _git.Commit("test", "remove etl", "etl.nb.md", "etl.jobs.yaml");
         });
 
         var eligibility = await CheckAsync();
@@ -177,7 +177,7 @@ public class PromotionTest {
         // Only one of the two siblings has a green run.
         await _store.CreateRunAsync(new Run {
             Id = Guid.NewGuid(),
-            Environment = "dev",
+            Environment = "test",
             JobName = "us",
             NotebookPath = "multi.nb.md",
             Status = RunStatus.Succeeded,
@@ -185,7 +185,7 @@ public class PromotionTest {
             CreatedAt = DateTime.UtcNow,
             StartedAt = DateTime.UtcNow,
             FinishedAt = DateTime.UtcNow,
-            CommitSha = _git.HeadSha("dev"),
+            CommitSha = _git.HeadSha("test"),
         });
 
         var result = await Promotion.CheckAsync(_catalog, _git, _store, "multi.nb.md");
@@ -202,7 +202,7 @@ public class PromotionTest {
         var before = await CheckAsync();
         Assert.IsFalse(before.Eligible);
 
-        var session = new NotebookSession("s", Path.Combine(_git.DevPath, "etl.nb.md"), "/nonexistent/clrkernel");
+        var session = new NotebookSession("s", Path.Combine(_git.TestPath, "etl.nb.md"), "/nonexistent/clrkernel");
         session.TryStartRun(
             new[] { ClrKernel.Core.Runner.MarkdownCell.Code("csharp", "1+1") }, new[] { "c0" }, out var completion);
         await completion;
@@ -212,7 +212,7 @@ public class PromotionTest {
         Assert.AreEqual(before.Eligible, after.Eligible);
         CollectionAssert.AreEqual(before.Reasons.ToList(), after.Reasons.ToList(),
             "an interactive run must be invisible to the promotion gate");
-        Assert.AreEqual(0, (await _store.QueryRunsAsync(new RunQuery { Environment = "dev" })).Count,
+        Assert.AreEqual(0, (await _store.QueryRunsAsync(new RunQuery { Environment = "test" })).Count,
             "and must leave no run history at all");
     }
 }

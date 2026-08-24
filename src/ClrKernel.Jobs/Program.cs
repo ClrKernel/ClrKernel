@@ -28,11 +28,11 @@ public static class Program {
           serve           Run the scheduler: cron jobs fire on time, dependent jobs
                           fire when everything they need has freshly succeeded.
           run <job>       Run one job now and print per-cell progress.
-                          With the git workflow: --env dev (default) or prod.
+                          With the git workflow: --env test (default) or prod.
           list            List the jobs found under the notebooks root.
           validate        Parse and validate every *.jobs.yaml; exit 1 on problems.
-          git init        Turn the notebooks root into a dev/prod git workspace
-                          (adopts existing notebooks into dev and promotes them).
+          git init        Turn the notebooks root into a test/prod git workspace
+                          (adopts existing notebooks into test and promotes them).
 
         Options:
           --notebooks <dir>          Notebooks root (default: current directory,
@@ -52,9 +52,9 @@ public static class Program {
           --origins <url;url>        serve: origins the browser may present
                                      (or CLRKERNEL_JOBS_ORIGINS). Default: --urls.
           --max-parallelism <n>      serve: concurrent runs (default 4).
-          --git <true|false>         Enable the dev/prod git workflow
+          --git <true|false>         Enable the test/prod git workflow
                                      (or CLRKERNEL_JOBS_GIT).
-          --env <dev|prod>           run: which environment (default dev).
+          --env <test|prod>          run: which environment (default test).
           -h, --help                 Show this help.
 
         Commands: serve, run, list, validate, git init, new-admin-invite.
@@ -117,8 +117,17 @@ public static class Program {
         }
 
         var git = options.GitEnabled ? GitFor(options) : null;
-        if (git is { LayoutExists: true }) {
-            git.Repair(); // worktree gitdir pointers are absolute; volumes move
+        if (git != null) {
+            // Before LayoutExists is consulted: a 0.9 workspace has dev/ where
+            // test/ belongs, so the layout only looks intact once this has run.
+            if (git.MigrateLegacyLayout()) {
+                Console.Error.WriteLine(
+                    $"{options.NotebooksRoot}: renamed the dev branch and worktree to test. " +
+                    "A configured remote keeps its old dev branch — delete it there when you are ready.");
+            }
+            if (git.LayoutExists) {
+                git.Repair(); // worktree gitdir pointers are absolute; volumes move
+            }
         }
         var catalog = new JobCatalog(options.NotebooksRoot, options.GitEnabled, git);
         switch (command) {
@@ -188,7 +197,7 @@ public static class Program {
             Console.WriteLine($"{options.NotebooksRoot}: {message}");
             if (!options.GitEnabled) {
                 // Initializing implies wanting the workflow: persist the flag so
-                // serve/list/run pick up the dev/prod layout without extra flags.
+                // serve/list/run pick up the test/prod layout without extra flags.
                 var registry = new SettingsRegistry(options);
                 registry.Add(new SettingsSection {
                     Key = "git",
@@ -308,8 +317,8 @@ public static class Program {
             // routes to /settings/git.
             Title = "Git",
             Description = options.GitEnabled
-                ? "Dev→prod promotion is on: edits commit to the dev branch, approvals merge to main."
-                : "Off. Run `clrkernel-jobs git init` on the notebooks root to enable dev→prod promotion.",
+                ? "Test→prod promotion is on: edits commit to the test branch, approvals merge to main."
+                : "Off. Run `clrkernel-jobs git init` on the notebooks root to enable test→prod promotion.",
             Fields = {
                 new SettingField {
                     Name = "gitEnabled", Label = "Enabled", Type = "bool",
@@ -333,7 +342,7 @@ public static class Program {
                     Value = options.GitPushRemote ?? "",
                     Source = options.SourceOf("gitPushRemote"),
                     WebWritable = true, RestartRequired = true,
-                    Help = "Remote url/name to push dev and main to after commits. " +
+                    Help = "Remote url/name to push test and main to after commits. " +
                         "Credentials come from the environment (ssh agent, token in the url) — never stored.",
                 },
             },
@@ -413,7 +422,7 @@ public static class Program {
 
     private static async Task<int> RunAsync(JobCatalog catalog, JobsOptions options, string jobName) {
         var environment = catalog.GitLayout
-            ? (options.RunEnvironment ?? "dev")
+            ? (options.RunEnvironment ?? GitService.TestBranch)
             : "default";
         var result = catalog.Load();
         var job = result.Find(environment, jobName);
