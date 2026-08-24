@@ -62,6 +62,18 @@ public sealed class SecretStore {
     /// <summary>True when at least one provider can persist secrets.</summary>
     public bool CanStore => _providers.Any(p => p.CanStore);
 
+    /// <summary>
+    /// True when a secret written now would survive a restart.
+    /// <para>
+    /// Narrower than <see cref="CanStore"/>, and the one to ask before telling
+    /// somebody their password was saved: the default chain's first provider is an
+    /// in-memory cache, which can always store, so <see cref="CanStore"/> is true even
+    /// on a machine with no credential store at all. <see cref="Store"/> would then
+    /// write to the cache and the value would be gone on the next start.
+    /// </para>
+    /// </summary>
+    public bool CanPersist => _providers.Any(p => p.CanStore && !ReferenceEquals(p, _cache));
+
     public bool TryResolve(string key, out string secret) {
         foreach (var provider in _providers) {
             if (provider.TryGet(key, out secret) && secret != null) {

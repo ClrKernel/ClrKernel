@@ -274,7 +274,8 @@ public static class Program {
 
     /// <summary>The scheduler + API host. Shared with the integration tests.</summary>
     internal static WebApplication BuildApp(
-        JobsOptions options, ProjectRegistry projects, IRunStore store, IAuthStore authStore = null) {
+        JobsOptions options, ProjectRegistry projects, IRunStore store, IAuthStore authStore = null,
+        Core.Secrets.SecretStore secrets = null) {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
@@ -351,6 +352,11 @@ public static class Program {
         // Warm kernels for the web editor: one per notebook, evicted when idle.
         builder.Services.AddSingleton<NotebookSessionManager>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<NotebookSessionManager>());
+        // Saved connections: server-wide, not per project, so it hangs off the data
+        // directory like the project registry rather than off any workspace.
+        builder.Services.AddSingleton(provider => new ConnectionStore(
+            options, secrets ?? new Core.Secrets.SecretStore(),
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionStore>()));
         builder.Services.AddSingleton<SchedulerService>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 
@@ -360,6 +366,7 @@ public static class Program {
         app.UseMiddleware<AuthenticationMiddleware>();
         app.MapAuthApi();
         app.MapJobsApi();
+        app.MapConnectionsApi();
 
         // The SPA, when it has been built (webapp/ -> wwwroot/). Absent in a
         // source build that skipped npm, and the API still works without it.

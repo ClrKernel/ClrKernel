@@ -1,0 +1,323 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ClrKernel.Core.Primitives;
+using ClrKernel.Core.Secrets;
+using ClrKernel.Database.Provider.SqlServer;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+namespace ClrKernel.Jobs;
+
+/// <summary>
+/// Saved connections: the list, the form's schema, and CRUD.
+/// <para>
+/// Not under <c>/api/projects/{project}</c>, because connections are not
+/// project-scoped — one server, one list, shared entries and each person's own.
+/// The scoping rules are the whole authorization model here: shared is
+/// Server-Admin-managed and world-readable, private is invisible to everybody but
+/// its owner, and no route lets one turn into the other by accident.
+/// </para>
+/// </summary>
+public static class ConnectionsApi {
+    public static void MapConnectionsApi(this IEndpointRouteBuilder app) {
+        var api = app.MapGroup("/api/connections");
+
+        // The settings schema the one generic form renders — same descriptor shape
+        // the notebook connection wizard already renders, so a provider describes
+        // itself once and both surfaces follow.
+        api.MapGet("/providers", (HttpContext context, ConnectionStore store) =>
+            context.CurrentUser() == null
+                ? Unauthorized()
+                : Results.Ok(new {
+                    providers = Providers.Select(ProviderView.From),
+                    // The form asks for a password only where one can be kept.
+                    canPersistSecrets = store.CanPersistSecrets,
+                    secretHelp = store.CanPersistSecrets
+                        ? null
+                        : "This server has no OS credential store, so passwords cannot be saved here. "
+                            + "Give the name of a secret and set the matching CLRKERNEL_SECRET_* variable.",
+                }));
+
+        api.MapGet("/", (HttpContext context, ConnectionStore store) => {
+            if (context.CurrentUser() is not { } user) {
+                return Unauthorized();
+            }
+            return Results.Ok(new {
+                connections = store.VisibleTo(user).Select(c => ConnectionView.From(c, store, context)),
+            });
+        });
+
+        api.MapGet("/{id}", (HttpContext context, ConnectionStore store, string id) => {
+            if (context.CurrentUser() is not { } user) {
+                return Unauthorized();
+            }
+            return store.Find(id, user) is { } found
+                ? Results.Ok(ConnectionView.From(found, store, context))
+                : NoSuchConnection(id);
+        });
+
+        api.MapPost("/", (HttpContext context, ConnectionStore store, ConnectionBody body) =>
+            Save(context, store, id: null, body));
+
+        api.MapPut("/{id}", (HttpContext context, ConnectionStore store, string id, ConnectionBody body) =>
+            Save(context, store, id, body));
+
+        api.MapDelete("/{id}", (HttpContext context, ConnectionStore store, string id) => {
+            if (context.CurrentUser() is not { } user) {
+                return Unauthorized();
+            }
+            var found = store.Find(id, user);
+            if (found == null) {
+                return NoSuchConnection(id);
+            }
+            if (Refusal(context, found.Scope, found.OwnerId) is { } refusal) {
+                return refusal;
+            }
+            store.Remove(found.Id);
+            return Results.Ok(new { removed = found.Id });
+        });
+    }
+
+    /// <summary>
+    /// The connection types the form offers.
+    /// <para>
+    /// ponytail: the one provider this process can actually open. The others
+    /// (Oracle, ODBC, JDBC, Fabric) describe themselves only inside a kernel
+    /// session — they are loaded there by <c>#r</c> — so listing them needs the
+    /// <c>describeConnections</c> probe <see cref="KernelLanguages"/> already has the
+    /// shape for. Add it when phase 2 lets a notebook reference a saved connection
+    /// this process cannot itself query.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<ConnectionProviderDescriptor> Providers { get; } =
+        new[] { SqlServerConnectionProvider.Descriptor };
+
+    private static IResult Save(HttpContext context, ConnectionStore store, string id, ConnectionBody body) {
+        if (context.CurrentUser() is not { } user) {
+            return Unauthorized();
+        }
+        if (body == null) {
+            return Results.BadRequest(new { error = "A connection body is required." });
+        }
+        var existing = id == null ? null : store.Find(id, user);
+        if (id != null && existing == null) {
+            return NoSuchConnection(id);
+        }
+
+        var scope = existing?.Scope ?? ParseScope(body.Scope);
+        // Which list an entry lives in is fixed when it is created. Moving a private
+        // connection into the shared list would publish somebody's credential to the
+        // whole server on a dropdown change; moving one out would silently break every
+        // notebook naming it.
+        if (existing != null && body.Scope != null && ParseScope(body.Scope) != existing.Scope) {
+            return Results.BadRequest(new {
+                error = "A connection cannot change between shared and private. Create a new one.",
+            });
+        }
+        var owner = existing?.OwnerId ?? (scope == ConnectionScope.Private ? user.Id : (Guid?)null);
+        if (Refusal(context, scope, owner) is { } refusal) {
+            return refusal;
+        }
+        if (!Providers.Any(p => string.Equals(p.Type, body.Type, StringComparison.OrdinalIgnoreCase))) {
+            return Results.BadRequest(new { error = $"No connection type '{body.Type}'." });
+        }
+
+        var entry = new StoredConnection {
+            Id = existing?.Id,
+            Name = body.Name,
+            Scope = scope,
+            OwnerId = owner,
+            Type = body.Type,
+            Settings = Clean(body.Settings),
+            SecretRef = Trimmed(body.SecretRef) ?? existing?.SecretRef,
+            PromptForPassword = body.PromptForPassword ?? existing?.PromptForPassword ?? false,
+            ReadOnlyUser = Trimmed(body.ReadOnlyUser),
+            ReadOnlySecretRef = Trimmed(body.ReadOnlySecretRef) ?? existing?.ReadOnlySecretRef,
+            TimeoutSeconds = body.TimeoutSeconds ?? existing?.TimeoutSeconds ?? 30,
+            RowCap = body.RowCap ?? existing?.RowCap ?? 10_000,
+            CreatedBy = existing?.CreatedBy ?? user.Id,
+        };
+        try {
+            var saved = store.Save(entry, body.Password, body.ReadOnlyPassword);
+            return Results.Ok(ConnectionView.From(saved, store, context));
+        } catch (ConnectionException e) {
+            return Results.BadRequest(new { error = e.Message });
+        } catch (SecretNotFoundException e) {
+            return Results.BadRequest(new { error = e.Message });
+        }
+    }
+
+    /// <summary>
+    /// Who may write this connection: a Server Admin for anything shared, and only
+    /// you for your own. One function, because "who owns this" is asked by create,
+    /// update and delete, and three copies is three chances to differ.
+    /// </summary>
+    private static IResult Refusal(HttpContext context, ConnectionScope scope, Guid? owner) {
+        if (scope == ConnectionScope.Shared) {
+            return context.IsAdmin()
+                ? null
+                : Results.Json(new { error = "Only a server admin manages shared connections." },
+                    statusCode: 403);
+        }
+        return owner == context.CurrentUser()?.Id
+            ? null
+            // Unreachable through Find, which already hides other people's — but the
+            // check is here rather than assumed, because that is one route away from
+            // being wrong.
+            : Results.Json(new { error = "That is not your connection." }, statusCode: 403);
+    }
+
+    private static IResult Unauthorized() =>
+        Results.Json(new { error = "Sign in first." }, statusCode: 401);
+
+    private static IResult NoSuchConnection(string id) =>
+        Results.NotFound(new { error = $"No connection '{id}'." });
+
+    private static ConnectionScope ParseScope(string scope) =>
+        string.Equals(scope, "shared", StringComparison.OrdinalIgnoreCase)
+            ? ConnectionScope.Shared
+            : ConnectionScope.Private;
+
+    private static string Trimmed(string value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>Drops blank settings so an untouched optional field is absent rather
+    /// than an empty string the provider would treat as a value.</summary>
+    private static Dictionary<string, string> Clean(Dictionary<string, string> settings) {
+        var cleaned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in settings ?? new Dictionary<string, string>()) {
+            if (!string.IsNullOrWhiteSpace(pair.Value)) {
+                cleaned[pair.Key] = pair.Value.Trim();
+            }
+        }
+        return cleaned;
+    }
+}
+
+/// <summary>What a create or update sends. Passwords come in and are never sent back.</summary>
+public sealed class ConnectionBody {
+    public string Name { get; set; }
+    public string Scope { get; set; }
+    public string Type { get; set; }
+    public Dictionary<string, string> Settings { get; set; }
+
+    /// <summary>Stored in the OS credential store under <see cref="SecretRef"/>, then
+    /// discarded. Never persisted in any file and never echoed.</summary>
+    public string Password { get; set; }
+
+    /// <summary>An existing credential-store key to use instead of saving a password —
+    /// the only option where the server has no writable store.</summary>
+    public string SecretRef { get; set; }
+
+    public bool? PromptForPassword { get; set; }
+    public string ReadOnlyUser { get; set; }
+    public string ReadOnlyPassword { get; set; }
+    public string ReadOnlySecretRef { get; set; }
+    public int? TimeoutSeconds { get; set; }
+    public int? RowCap { get; set; }
+}
+
+/// <summary>A connection as the browser sees it: settings yes, secrets never.</summary>
+public sealed class ConnectionView {
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public string Scope { get; set; }
+    public string Type { get; set; }
+    public Dictionary<string, string> Settings { get; set; }
+
+    /// <summary>Whether a password exists — the only thing said about one.</summary>
+    public bool SecretConfigured { get; set; }
+
+    public string SecretRef { get; set; }
+    public bool PromptForPassword { get; set; }
+    public string ReadOnlyUser { get; set; }
+    public bool ReadOnlySecretConfigured { get; set; }
+
+    /// <summary>
+    /// Whether this caller may execute against it. False with a reason rather than
+    /// an Execute button that fails: a shared connection with no least-privilege
+    /// login configured refuses everyone below Server Admin, because the app cannot
+    /// make a writable login read-only by inspecting the SQL sent through it.
+    /// </summary>
+    public bool CanExecute { get; set; }
+
+    public string CanExecuteReason { get; set; }
+    public bool CanEdit { get; set; }
+    public int TimeoutSeconds { get; set; }
+    public int RowCap { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    public static ConnectionView From(StoredConnection c, ConnectionStore store, HttpContext context) {
+        var admin = context.IsAdmin();
+        var mine = c.Scope == ConnectionScope.Private;
+        var readOnlyConfigured = !string.IsNullOrEmpty(c.ReadOnlyUser) && store.HasSecret(c.ReadOnlySecretRef);
+        var (canExecute, reason) =
+            mine || admin ? (true, (string)null)
+            : readOnlyConfigured ? (true, null)
+            : (false, "Read-only execution is not configured on this connection, so only a "
+                + "server admin can run against it. An admin can add a least-privilege login.");
+        return new ConnectionView {
+            Id = c.Id,
+            Name = c.Name,
+            Scope = c.Scope.ToString().ToLowerInvariant(),
+            Type = c.Type,
+            Settings = new Dictionary<string, string>(c.Settings, StringComparer.OrdinalIgnoreCase),
+            SecretConfigured = store.HasSecret(c.SecretRef),
+            SecretRef = c.SecretRef,
+            PromptForPassword = c.PromptForPassword,
+            ReadOnlyUser = c.ReadOnlyUser,
+            ReadOnlySecretConfigured = readOnlyConfigured,
+            CanExecute = canExecute,
+            CanExecuteReason = reason,
+            CanEdit = mine || admin,
+            TimeoutSeconds = c.TimeoutSeconds,
+            RowCap = c.RowCap,
+            UpdatedAt = c.UpdatedAt,
+        };
+    }
+}
+
+/// <summary>A provider descriptor flattened for the form. Mirrors the payload the
+/// notebook connection wizard already consumes, minus the directive half — nothing
+/// here composes a cell.</summary>
+public sealed class ProviderView {
+    public string Type { get; set; }
+    public string DisplayName { get; set; }
+    public string Description { get; set; }
+    public IReadOnlyList<SettingView> Settings { get; set; }
+
+    public static ProviderView From(ConnectionProviderDescriptor d) => new() {
+        Type = d.Type,
+        DisplayName = d.DisplayName,
+        Description = d.Description,
+        Settings = d.Settings.Where(s => !s.RuntimeOnly).Select(SettingView.From).ToList(),
+    };
+}
+
+public sealed class SettingView {
+    public string Name { get; set; }
+    public string DisplayName { get; set; }
+    public string Kind { get; set; }
+    public bool Required { get; set; }
+    public string OneOfGroup { get; set; }
+    public IReadOnlyList<string> EnumValues { get; set; }
+    public IReadOnlyList<string> CredentialValues { get; set; }
+    public IReadOnlyList<string> Requires { get; set; }
+    public string Default { get; set; }
+    public string Description { get; set; }
+
+    public static SettingView From(ConnectionSetting s) => new() {
+        Name = s.Name,
+        DisplayName = s.DisplayName,
+        Kind = s.Kind.ToString(),
+        Required = s.Required,
+        OneOfGroup = s.OneOfGroup,
+        EnumValues = s.EnumValues,
+        CredentialValues = s.CredentialValues,
+        Requires = s.Requires,
+        Default = s.Default,
+        Description = s.Description,
+    };
+}

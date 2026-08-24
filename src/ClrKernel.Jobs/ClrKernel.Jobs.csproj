@@ -52,6 +52,14 @@
     <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
     <!-- Secret *references* for SMTP/webhook credentials — never the secrets. -->
     <ProjectReference Include="../ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
+    <!-- The Connections area opens database connections in *this* process rather than
+         through a kernel, which is the one place that boundary is crossed and is
+         deliberate: cancelling a running query, pooling and a row cap are all
+         in-process concerns, and no kernel RPC surface can interrupt a running cell.
+         See docs/Connections-area-spec.md §2. The cost is that the #r-only providers
+         (Oracle, ODBC, JDBC) can be saved but not queried from that area. -->
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.SqlServer/ClrKernel.Database.Provider.SqlServer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
