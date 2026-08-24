@@ -1,4 +1,4 @@
-import { pathFromSplat } from './routes';
+import { pathFromSplat, viewOf } from './routes';
 
 /**
  * Where you are, as the top bar says it.
@@ -77,10 +77,10 @@ export function breadcrumbFor(pathname: string): Crumb[] {
         return [leaf('Files')];
       }
       const to = `/files/${segments[1]}`;
-      // /files/:project/edit/:branch/*path. The badge is a switcher here rather
+      // /files/:project/<view>/:branch/*path. The badge is a switcher here rather
       // than a label: which branch you are reading is a place you can move to.
       // This only says where it goes; the top bar renders it.
-      if (segments[2] === 'edit') {
+      if (viewOf(pathname) != null) {
         return [
           { label: 'Files', to },
           leaf(pathFromSplat(segments.slice(4).join('/')) || 'Untitled', 'branch'),

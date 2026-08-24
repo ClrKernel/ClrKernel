@@ -15,7 +15,7 @@ import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
 import { ProjectProvider, ProjectScope, useProjects } from './projectContext';
-import { filesPath, isEditorPath, jobsPath, legacyEditPath } from './routes';
+import { NOTEBOOK_VIEWS, filesPath, isEditorPath, jobsPath, legacyEditPath } from './routes';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -157,13 +157,20 @@ export function App() {
               <Route path="/files" element={<LastProject section="files" />} />
               <Route path="/files/:project" element={<ProjectScope><Files /></ProjectScope>} />
               {/* The path goes last because it is the only variable-length part:
-                  `edit` is a literal and the branch is exactly one segment, so
+                  the view and the branch are one segment each, so
                   `reports/monthly.nb.md` can stay readable rather than becoming
-                  one escaped blob. */}
-              <Route
-                path="/files/:project/edit/:branch/*"
-                element={<ProjectScope><Editor /></ProjectScope>}
-              />
+                  one escaped blob.
+
+                  One route per view rather than a `:view` parameter: the three
+                  are a closed set, and a typo'd fourth should be Not found
+                  rather than the editor shell rendering nothing. */}
+              {NOTEBOOK_VIEWS.map((view) => (
+                <Route
+                  key={view}
+                  path={`/files/:project/${view}/:branch/*`}
+                  element={<ProjectScope><Editor /></ProjectScope>}
+                />
+              ))}
 
               <Route path="/channels" element={<Channels />} />
               {/* Settings is tabbed by route: /settings redirects to the first

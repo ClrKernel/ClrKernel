@@ -353,7 +353,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
     >
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
         <TabsList variant="line">
-          {props.isNotebook && <TabsTrigger value="notebook">Notebook</TabsTrigger>}
+          {props.isNotebook && <TabsTrigger value="edit">Notebook</TabsTrigger>}
           <TabsTrigger value="source">Source</TabsTrigger>
           <TabsTrigger value="diff">Diff vs production</TabsTrigger>
         </TabsList>

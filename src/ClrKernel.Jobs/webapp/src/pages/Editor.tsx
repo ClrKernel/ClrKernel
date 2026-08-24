@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api, projectSlug, setBranch, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
@@ -26,7 +26,7 @@ import {
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
 import { BranchAllows, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
-import { editPath, pathFromSplat } from '../routes';
+import { editPath, pathFromSplat, viewOf, type NotebookView } from '../routes';
 import { neighbourCell } from '../toc';
 import {
   cellsToRun,
@@ -47,7 +47,7 @@ import {
   type EditorCell,
 } from '../notebook';
 
-type Tab = 'notebook' | 'source' | 'diff';
+
 
 
 /**
@@ -62,6 +62,7 @@ export function Editor() {
   // the only part that can be any number of segments deep.
   const params = useParams<{ project: string; branch: string; '*': string }>();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const canWrite = useCanWrite();
   const path = pathFromSplat(params['*']);
   // Which branch you are looking at.
@@ -92,7 +93,20 @@ export function Editor() {
   const [reloads, setReloads] = useState(0);
   /** Production's copy of this file: null while loading, '' when it has none. */
   const [prod, setProd] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>(isNotebook ? 'notebook' : 'source');
+  // Which reading of the file you asked for. In the URL rather than in state, so
+  // it survives a reload, a bookmark and the back button — and so switching is a
+  // navigation, which is what makes re-reading the file on the way in the
+  // obvious thing to do rather than an extra mechanism.
+  //
+  // Only a `.nb.md` parses into cells, so `edit` on anything else is a view that
+  // cannot render; the URL is corrected to match what is actually shown.
+  const asked = viewOf(pathname) ?? 'edit';
+  const tab: NotebookView = !isNotebook && asked === 'edit' ? 'source' : asked;
+  useEffect(() => {
+    if (tab !== asked) {
+      navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
+    }
+  }, [tab, asked, branch, path, navigate]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -175,32 +189,64 @@ export function Editor() {
   const running = (session?.running ?? false) || pollFast;
   const runState = mergeStatus(cells ?? [], session, ranSource.current);
 
-  const dirty = tab === 'source' || !isNotebook
+  // Source is the buffer on the Source tab and on anything that is not a
+  // notebook; everywhere else the cells are.
+  const editingText = tab === 'source' || !isNotebook;
+  const dirty = editingText
     ? source != null && source !== savedSource
     : cells != null && isDirty(cells, saved);
 
+  /**
+   * Reads the file for the view you are on — and re-reads it every time you
+   * switch to one.
+   *
+   * The cells and the text are the same file read two ways, and each goes stale
+   * the moment you edit through the other. It used to read both once, on open,
+   * so switching showed you the file as it was when you arrived: the visible
+   * half of that was a stale Source tab, and the other half was autosave
+   * writing the load-time cells back over text you had typed since. Reading on
+   * the way in is what makes the two agree, and switching is a navigation now,
+   * so there is a moment to do it in.
+   *
+   * The branch and the path are in here for the same reason: opening somebody
+   * else's branch is opening a different file that happens to share a name.
+   */
   useEffect(() => {
+    let live = true;
     setError(null);
-    api
-      .notebookContent(branch, path)
-      .then((text) => {
-        setSource(text);
-        setSavedSource(text);
-      })
-      .catch(() => setError(`Could not load ${path}.`));
-    if (isNotebook) {
+    if (tab === 'edit') {
       api
         .notebookCells(branch, path)
         .then((result) => {
+          if (!live) {
+            return;
+          }
           setCells(withIds(result.cells));
           setSaved(result.cells);
           setLanguages(result.languages ?? []);
+          setReloads((n) => n + 1);
         })
-        .catch((e) => setError((e as Error).message));
+        .catch((e) => live && setError((e as Error).message));
+    } else {
+      api
+        .notebookContent(branch, path)
+        .then((text) => {
+          if (!live) {
+            return;
+          }
+          setSource(text);
+          setSavedSource(text);
+          setReloads((n) => n + 1);
+        })
+        .catch(() => live && setError(`Could not load ${path}.`));
     }
-    // The branch is part of what is being opened: switching to somebody else's
-    // is opening a different file that happens to have the same name.
-  }, [path, branch, isNotebook]);
+    // Two switches in quick succession are two requests, and they can come back
+    // in either order. Whichever one is no longer the view on screen drops its
+    // answer rather than writing it into state.
+    return () => {
+      live = false;
+    };
+  }, [path, branch, tab]);
 
   // Mode and layout are remembered, but nothing here ever reaches the notebook
   // file — how you were looking at it is not part of what it says.
@@ -213,7 +259,7 @@ export function Editor() {
   // Focus Mode owns the viewport: the work area is fixed to it and each pane
   // scrolls on its own, so the page behind must not scroll as well.
   useEffect(() => {
-    const on = mode === 'focus' && tab === 'notebook';
+    const on = mode === 'focus' && tab === 'edit';
     document.body.classList.toggle('focus-mode-on', on);
     return () => document.body.classList.remove('focus-mode-on');
   }, [mode, tab]);
@@ -394,7 +440,7 @@ export function Editor() {
    * milliseconds would be its own kind of data loss.
    */
   const saveNow = useCallback(async (keepalive = false) => {
-    if (tab === 'source' || !isNotebook) {
+    if (editingText) {
       const text = source ?? '';
       await api.saveNotebookContent(path, text, keepalive);
       setSavedSource(text);
@@ -402,12 +448,12 @@ export function Editor() {
       await api.saveNotebookCells(path, toApiCells(cells ?? []), keepalive);
       setSaved(cells ?? []);
     }
-  }, [path, tab, isNotebook, source, cells]);
+  }, [path, editingText, source, cells]);
 
   const { status: saveStatus, flush, retry } = useAutosave(
     // The buffer itself is the revision: every edit is a new value, which is what
     // restarts the debounce.
-    tab === 'source' || !isNotebook ? source : cells,
+    editingText ? source : cells,
     dirty,
     saveNow,
     () => {
@@ -481,19 +527,28 @@ export function Editor() {
   }
 
   /**
-   * Both sides come from the content GET, which reads any environment — only
-   * writing is test-only. A 404 on prod means the file exists solely on test, so
-   * the original side is empty and the whole thing reads as added.
+   * Production's copy, for the diff. It comes from the content GET, which reads
+   * any branch — only writing is your own branch. A 404 means the file exists
+   * nowhere but here, so the original side is empty and the whole thing reads as
+   * added.
+   *
+   * Fetched on arriving at the view rather than in the click that goes there:
+   * the view is a URL, so it is arrived at by reload and by the back button too.
    */
-  async function showDiff() {
-    setTab('diff');
-    setProd(null);
-    try {
-      setProd(await api.notebookContent('prod', path));
-    } catch {
-      setProd('');
+  useEffect(() => {
+    if (tab !== 'diff') {
+      return;
     }
-  }
+    let live = true;
+    setProd(null);
+    api
+      .notebookContent('prod', path)
+      .then((text) => live && setProd(text))
+      .catch(() => live && setProd(''));
+    return () => {
+      live = false;
+    };
+  }, [tab, path]);
 
   async function promote() {
     if (!confirm(`Promote ${path} to production?`)) {
@@ -542,7 +597,7 @@ export function Editor() {
     setNotice('Connection cell added. Run it to open the connection.');
   }
 
-  const focusing = mode === 'focus' && tab === 'notebook';
+  const focusing = mode === 'focus' && tab === 'edit';
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
   const fills = focusing || tab === 'source' || tab === 'diff';
@@ -581,7 +636,14 @@ export function Editor() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <NotebookToolbar
         tab={tab}
-        onTab={(next) => (next === 'diff' ? showDiff() : setTab(next as Tab))}
+        onTab={async (next) => {
+          // Write before moving, and while the view being left is still the one
+          // selected: `saveNow` picks its endpoint from it, so flushing after
+          // the navigation would push the new view's untouched copy over the
+          // edits you just made in the old one.
+          await flush();
+          navigate(editPath(projectSlug(), branch, path, next as NotebookView));
+        }}
         isNotebook={isNotebook}
         canRun={canRun}
         running={running}
@@ -620,7 +682,7 @@ export function Editor() {
             is cost without information. */}
       </div>
 
-      {tab === 'notebook' &&
+      {tab === 'edit' &&
         (cells == null ? (
           <p className="px-4 text-base text-muted-foreground">Loading…</p>
         ) : (

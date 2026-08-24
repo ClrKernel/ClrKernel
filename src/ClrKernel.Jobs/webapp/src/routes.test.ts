@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   editPath,
   isEditorPath,
+  viewOf,
   jobPath,
   legacyEditPath,
   newJobPath,
@@ -38,6 +39,32 @@ describe('editPath', () => {
   it('survives a splat that is not valid escaping', () => {
     expect(pathFromSplat('100%/done.nb.md')).toBe('100%/done.nb.md');
     expect(pathFromSplat(undefined)).toBe('');
+  });
+});
+
+describe('the view is a URL', () => {
+  it('sits where `edit` does, so the three are siblings', () => {
+    expect(editPath('default', 'mine', 'etl.nb.md'))
+      .toBe('/files/default/edit/mine/etl.nb.md');
+    expect(editPath('default', 'mine', 'etl.nb.md', 'source'))
+      .toBe('/files/default/source/mine/etl.nb.md');
+    expect(editPath('default', 'test', 'reports/monthly.nb.md', 'diff'))
+      .toBe('/files/default/diff/test/reports/monthly.nb.md');
+  });
+
+  it('is read back out of a path, and only out of one that has one', () => {
+    expect(viewOf('/files/default/source/mine/etl.nb.md')).toBe('source');
+    expect(viewOf('/files/default/diff/mine/etl.nb.md')).toBe('diff');
+    expect(viewOf('/files/default')).toBeNull();
+    expect(viewOf('/files/default/preview/mine/etl.nb.md')).toBeNull();
+    expect(viewOf('/jobs/default/test/nightly')).toBeNull();
+  });
+
+  it('keeps the editor layout on every one of them', () => {
+    // Source and Diff fill the pane exactly as the notebook does; missing one
+    // here is a page that scrolls twice rather than an error.
+    expect(isEditorPath('/files/default/source/mine/etl.nb.md')).toBe(true);
+    expect(isEditorPath('/files/default/diff/mine/etl.nb.md')).toBe(true);
   });
 });
 

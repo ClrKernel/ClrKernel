@@ -89,7 +89,7 @@ describe('kernelLabel', () => {
 
 describe('showsExecution', () => {
   it('is the Notebook tab only', () => {
-    expect(showsExecution('notebook')).toBe(true);
+    expect(showsExecution('edit')).toBe(true);
     expect(showsExecution('source')).toBe(false);
     expect(showsExecution('diff')).toBe(false);
   });

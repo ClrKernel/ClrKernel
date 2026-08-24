@@ -8,6 +8,17 @@
  * somewhere instead of quietly changing what the page you are on is about.
  */
 
+/**
+ * How a notebook is being looked at. Three readings of one file, so they are
+ * three URLs — the same rule the Settings tabs follow, and it is what makes a
+ * view something you can link to, reload into, and go back from.
+ *
+ * Not to be confused with read-only, which is not a view: that comes from the
+ * branch, and every one of these is read-only on a branch that is not yours.
+ */
+export const NOTEBOOK_VIEWS = ['edit', 'source', 'diff'] as const;
+export type NotebookView = (typeof NOTEBOOK_VIEWS)[number];
+
 /** The sections whose URL names a project. Everything else is server-wide. */
 export const PROJECT_SECTIONS = ['jobs', 'files'] as const;
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number];
@@ -40,9 +51,10 @@ export function filesPath(project: string): string {
  * encoding them would make `reports/monthly.nb.md` one unreadable segment, and
  * the router hands the tail back raw either way.
  */
-export function editPath(project: string, branch: string, path: string): string {
+export function editPath(
+  project: string, branch: string, path: string, view: NotebookView = 'edit'): string {
   const parts = path.split('/').filter(Boolean).map(encodeURIComponent);
-  return `/files/${slug(project)}/edit/${slug(branch)}/${parts.join('/')}`;
+  return `/files/${slug(project)}/${view}/${slug(branch)}/${parts.join('/')}`;
 }
 
 /** The notebook path back out of a router splat, whatever it did to the escapes. */
@@ -80,10 +92,18 @@ export function sectionOf(pathname: string): ProjectSection | null {
   return PROJECT_SECTIONS.find((s) => s === first) ?? null;
 }
 
+/** Which reading of a notebook a path asks for, or null when it is not one. */
+export function viewOf(pathname: string): NotebookView | null {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments[0] !== 'files' || segments.length < 5) {
+    return null;
+  }
+  return NOTEBOOK_VIEWS.find((v) => v === segments[2]) ?? null;
+}
+
 /** True on the notebook editor, which lays its own panes out full height. */
 export function isEditorPath(pathname: string): boolean {
-  const segments = pathname.split('/').filter(Boolean);
-  return segments[0] === 'files' && segments[2] === 'edit';
+  return viewOf(pathname) != null;
 }
 
 /**

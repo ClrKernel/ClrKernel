@@ -101,14 +101,20 @@ export function useCellEditor(
     return () => {
       sizeListener.dispose();
       changeListener.dispose();
+      // The editor first, then the model. The other way round leaves a live
+      // editor attached to a disposed model for one turn, and Monaco's own
+      // observables read that model's version while they unsubscribe —
+      // "Model is disposed!" thrown from inside Monaco, with nothing of ours
+      // in the stack.
+      const model = created.getModel();
+      created.dispose();
       // A cell's model is the notebook's, not this editor's: unmounting a cell
       // editor (switching modes, scrolling a cell out of the tree) must not take
       // the document with it. releaseCellModels disposes them when the cell is
       // actually gone. Anything else made its own model here and owns it.
       if (shared == null) {
-        created.getModel()?.dispose();
+        model?.dispose();
       }
-      created.dispose();
       editor.current = null;
     };
     // Created once per cell: value and language are applied below so typing
@@ -205,8 +211,14 @@ export function useFillEditor(
     );
     return () => {
       changeListener.dispose();
-      created.getModel()?.dispose();
+      // The editor first, then the model. The other way round leaves a live
+      // editor attached to a disposed model for one turn, and Monaco's own
+      // observables read that model's version while they unsubscribe —
+      // "Model is disposed!" thrown from inside Monaco, with nothing of ours
+      // in the stack.
+      const model = created.getModel();
       created.dispose();
+      model?.dispose();
       editor.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -418,9 +430,14 @@ export function useDiffEditor(original: string, modified: string, language: stri
     editor.setModel({ original: originalModel, modified: modifiedModel });
 
     return () => {
+      // The editor first, then the model. The other way round leaves a live
+      // editor attached to a disposed model for one turn, and Monaco's own
+      // observables read that model's version while they unsubscribe —
+      // "Model is disposed!" thrown from inside Monaco, with nothing of ours
+      // in the stack.
+      editor.dispose();
       originalModel.dispose();
       modifiedModel.dispose();
-      editor.dispose();
     };
   }, [original, modified, language]);
 

@@ -120,5 +120,5 @@ export function kernelLabel(
  * not information. Saving and promoting are document-level and stay everywhere.
  */
 export function showsExecution(tab: string): boolean {
-  return tab === 'notebook';
+  return tab === 'edit';
 }

@@ -60,6 +60,15 @@ describe('breadcrumbFor', () => {
     ]);
   });
 
+  it('is the same trail whichever way you are reading the file', () => {
+    for (const view of ['edit', 'source', 'diff']) {
+      expect(breadcrumbFor(`/files/default/${view}/mine/demo.nb.md`)).toEqual([
+        { label: 'Files', to: '/files/default' },
+        { label: 'demo.nb.md', badge: 'branch' },
+      ]);
+    }
+  });
+
   it('keeps a nested notebook path whole', () => {
     expect(breadcrumbFor('/files/default/edit/test/reports/monthly.nb.md')[1].label)
       .toBe('reports/monthly.nb.md');

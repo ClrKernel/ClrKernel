@@ -559,7 +559,7 @@ the theme picker. What you can *do* lives on the page, not in the chrome.
 | `/jobs/<project>` | that project's jobs |
 | `/jobs/<project>/<branch>/<name>` | one job |
 | `/files/<project>` | that project's files, on one branch |
-| `/files/<project>/edit/<branch>/<path>` | one notebook, on one branch |
+| `/files/<project>/edit\|source\|diff/<branch>/<path>` | one notebook, on one branch, read one of three ways |
 | `/runs/<id>` | one run |
 | `/channels`, `/settings/<section>` | server-wide, so no project |
 
@@ -572,8 +572,17 @@ section and not to the same page, because this project's `nightly` is not that
 project's.
 
 The notebook path goes last because it is the only part that can be any number of
-segments deep; `edit` is a literal and the branch is exactly one segment, so
+segments deep; the view and the branch are one segment each, so
 `reports/monthly.nb.md` stays readable instead of becoming one escaped blob.
+
+**Notebook, Source and Diff vs production are three URLs**, the same way the
+Settings tabs are — a view is something you can link to, reload into and go back
+from. They are three readings of one file, not three permissions: read-only comes
+from the branch, and every one of them is read-only on a branch that is not
+yours. Switching writes what you were editing first and then re-reads the file,
+because the cells and the text go stale the moment you edit through the other
+one. A file that does not parse into cells — an `.ipynb`, a `.csx` — has no
+Notebook view and opens at Source.
 
 `/jobs` and `/files` on their own — what the rail links to, and what you get from
 a bookmark — open the project you were last in, remembered per browser. Links

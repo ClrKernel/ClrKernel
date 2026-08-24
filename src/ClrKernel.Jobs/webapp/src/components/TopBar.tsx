@@ -13,7 +13,7 @@ import { api, type BranchSummary } from '../api';
 import { breadcrumbFor } from '../breadcrumb';
 import { usePolling } from './common';
 import { useProjects } from '../projectContext';
-import { editPath, pathFromSplat, sectionOf, switchProject } from '../routes';
+import { editPath, pathFromSplat, sectionOf, switchProject, type NotebookView } from '../routes';
 import { showsSearch, withQuery } from '../search';
 import type { AccentName } from '../theme/palette';
 import { AccentPicker } from './AccentPicker';
@@ -93,10 +93,12 @@ function ProjectSwitcher() {
  * Everything but your own is read-only, which the list says rather than leaving
  * you to infer it from a name.
  */
-function BranchSwitcher({ project, branch: current, path }: {
+function BranchSwitcher({ project, branch: current, path, view }: {
   project: string;
   branch: string;
   path: string;
+  /** Kept across the switch: reading somebody else's diff should stay the diff. */
+  view: NotebookView;
 }) {
   const navigate = useNavigate();
   const { data } = usePolling(() => api.branches(), null);
@@ -104,7 +106,7 @@ function BranchSwitcher({ project, branch: current, path }: {
   const here = branches.find((b) => b.id === current);
 
   function open(branch: BranchSummary) {
-    navigate(editPath(project, branch.id, path));
+    navigate(editPath(project, branch.id, path, view));
   }
 
   return (
@@ -214,6 +216,7 @@ export function TopBar({
                 project={segments[1]}
                 branch={segments[3]}
                 path={pathFromSplat(segments.slice(4).join('/'))}
+                view={segments[2] as NotebookView}
               />
             ) : (
               crumb.badge && <EnvBadge env={crumb.badge} />
