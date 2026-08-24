@@ -1109,10 +1109,17 @@ public static class JobsApi {
     /// </summary>
     private static IResult SaveToBranch(
         HttpContext context, Scope scope, string branch, string resolved, string path, string content) {
-        var git = scope.Git;
-        git.WithLock(() => {
-            Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
-            File.WriteAllText(resolved, content);
+        scope.Git.WithLock(() => {
+            var directory = Path.GetDirectoryName(resolved)!;
+            Directory.CreateDirectory(directory);
+            // Write beside it and rename over the top. The editor autosaves every
+            // few seconds, so "crashed halfway through writing" stops being a
+            // thought experiment — and a half-written notebook is not a notebook.
+            // The staging file is in the same directory on purpose: a rename is
+            // only atomic within one filesystem.
+            var staging = Path.Combine(directory, "." + Path.GetFileName(resolved) + ".saving");
+            File.WriteAllText(staging, content);
+            File.Move(staging, resolved, overwrite: true);
         });
         return Results.Ok(new { saved = true, branch });
     }

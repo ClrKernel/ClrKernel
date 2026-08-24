@@ -415,6 +415,13 @@ public sealed class GitService {
         if (paths.Length > 0) {
             addArgs.Add("--");
             addArgs.AddRange(paths);
+        } else {
+            // A save writes beside the file and renames over it. A crash between
+            // those two leaves the staging file behind, and `add -A` would then
+            // commit it — a stray half-notebook arriving in test on the next push.
+            addArgs.Add("--");
+            addArgs.Add(".");
+            addArgs.Add(":(exclude)**/.*.saving");
         }
         Run(worktree, addArgs.ToArray());
         var staged = TryRun(worktree, "diff", "--cached", "--quiet");

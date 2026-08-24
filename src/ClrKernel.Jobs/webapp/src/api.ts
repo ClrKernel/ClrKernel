@@ -424,10 +424,15 @@ export const api = {
   notebookContent: (env: string, path: string) =>
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
-  saveNotebookContent: (path: string, content: string) =>
+  /**
+   * `keepalive` for the write that happens as the page goes away. An ordinary
+   * fetch is cancelled with the document; a keepalive one is not, at the cost of
+   * a 64 KB body cap the browser enforces.
+   */
+  saveNotebookContent: (path: string, content: string, keepalive = false) =>
     request<{ saved: boolean; branch: string }>(
       `${scope('mine')}/notebooks/content?path=${encodeURIComponent(path)}`,
-      { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
+      { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' }, keepalive },
     ),
   // The UI diffs by fetching both environments' content into Monaco. GET
   // /api/git/diff still exists and is still the right thing over curl.
@@ -437,10 +442,10 @@ export const api = {
     request<{ cells: ApiCell[]; languages: ApiLanguage[] }>(
       `${scope(env)}/notebooks/cells?path=${encodeURIComponent(path)}`,
     ),
-  saveNotebookCells: (path: string, cells: ApiCell[]) =>
+  saveNotebookCells: (path: string, cells: ApiCell[], keepalive = false) =>
     request<{ saved: boolean; branch: string }>(
       `${scope('mine')}/notebooks/cells?path=${encodeURIComponent(path)}`,
-      { method: 'PUT', body: JSON.stringify({ cells }) },
+      { method: 'PUT', body: JSON.stringify({ cells }), keepalive },
     ),
   // Interactive execution against the notebook's warm kernel. None of this
   // writes to the run store: an interactive run never appears in run history

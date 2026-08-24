@@ -421,8 +421,13 @@ The loop:
 
 1. **Edit** in the web UI (see [The notebook editor](#the-notebook-editor), where you
    can also run cells against a warm kernel) or in your own editor inside your
-   `user-<id>/` folder. Saving is a **file write, not a commit** — nobody else sees
-   it and nothing runs from it.
+   `user-<id>/` folder. There is nothing to press: the editor **writes as you
+   work**, about a second after you stop typing, and again when you leave the tab,
+   run a cell, or navigate away. That is a **file write, not a commit** — nobody
+   else sees it and nothing runs from it. `Saved` is a status, not a button:
+   *Saved*, *Unsaved*, *Saving…*, or *Save failed* — the last of which is the only
+   one you can click, and it retries. `⌘S` / `Ctrl+S` writes now rather than in a
+   moment.
 2. **Push to test** from the editor's toolbar. That is the commit: everything you
    have saved becomes one commit on `test`, under a message you write, authored as
    you. If `test` has moved since you branched, the push is refused and the button
@@ -442,6 +447,11 @@ The loop:
 Deleting a notebook in test is promotable the same way (it removes the files and the
 jobs from prod). Promotion carries the notebook **and** its jobs files as a unit —
 sibling jobs share the notebook, so nothing smaller would be honest.
+
+Every write lands atomically — into a file beside the target, then renamed over
+it. The editor writes every few seconds, so "crashed halfway through writing" stops
+being a thought experiment, and half a notebook is not a notebook. If a crash does
+leave a staging file behind, a push will not carry it into test.
 
 To mirror the workspace elsewhere, set a push remote (Settings → Git workflow, or
 `--git-push-remote`). Pushes are best-effort after each commit/promotion — a failing

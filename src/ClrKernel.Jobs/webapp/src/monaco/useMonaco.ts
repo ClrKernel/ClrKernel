@@ -43,6 +43,8 @@ export function useCellEditor(
   onChange: (value: string) => void,
   readOnly = false,
   binding?: CellBinding,
+  /** Bump to push <c>value</c> back into the editor — see useFillEditor. */
+  resetKey: unknown = 0,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -140,12 +142,17 @@ export function useCellEditor(
 
   // Only for value changes that came from outside this editor (a reload, or a
   // cell moving) — writing back what the user just typed would fight the cursor.
+  const latestValue = useRef(value);
+  latestValue.current = value;
+
   useEffect(() => {
     const current = editor.current;
-    if (current && current.getValue() !== value) {
-      current.setValue(value);
+    if (current && current.getValue() !== latestValue.current) {
+      current.setValue(latestValue.current);
     }
-  }, [value]);
+    // Deliberately not [value] — see resetKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
 
   return container;
 }
@@ -163,6 +170,19 @@ export function useFillEditor(
   value: string,
   onChange: (value: string) => void,
   readOnly = false,
+  /**
+   * Bump to push <paramref name="value"/> back into the editor.
+   *
+   * Nothing else does. `value` is React state fed by this editor's own
+   * `onChange`, so it arrives a render behind what has been typed — syncing on
+   * every change means that during a fast burst the editor is repeatedly reset to
+   * a prefix of the sentence, with the cursor sent back with it. Characters go
+   * missing, and with autosave running they go missing from the file too.
+   *
+   * The cases that genuinely need the buffer replaced — a merge landing under
+   * you, a reload — say so by changing this.
+   */
+  resetKey: unknown = 0,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -199,12 +219,17 @@ export function useFillEditor(
     }
   }, [language]);
 
+  const latestValue = useRef(value);
+  latestValue.current = value;
+
   useEffect(() => {
     const current = editor.current;
-    if (current && current.getValue() !== value) {
-      current.setValue(value);
+    if (current && current.getValue() !== latestValue.current) {
+      current.setValue(latestValue.current);
     }
-  }, [value]);
+    // Deliberately not [value] — see resetKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
 
   return container;
 }

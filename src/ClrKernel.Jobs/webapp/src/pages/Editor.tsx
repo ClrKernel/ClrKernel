@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError, api, type ApiCell, type ApiLanguage } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
@@ -25,6 +25,7 @@ import {
 } from '../prefs';
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
 import { useCanWrite } from '../sessionContext';
+import { useAutosave } from '../useAutosave';
 import { neighbourCell } from '../toc';
 import {
   cellsToRun,
@@ -66,6 +67,8 @@ export function Editor() {
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
   const [savedSource, setSavedSource] = useState<string | null>(null);
+  /** Bumped when the file changed underneath the editor — a merge, or a reload. */
+  const [reloads, setReloads] = useState(0);
   /** Production's copy of this file: null while loading, '' when it has none. */
   const [prod, setProd] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(isNotebook ? 'notebook' : 'source');
@@ -292,6 +295,7 @@ export function Editor() {
       const text = await api.notebookContent('mine', path);
       setSource(text);
       setSavedSource(text);
+      setReloads((n) => n + 1);
       if (isNotebook) {
         const reloaded = await api.notebookCells('mine', path);
         setCells(keepIds(reloaded.cells, []));
@@ -305,42 +309,38 @@ export function Editor() {
     }
   }
 
-  async function save() {
-    setError(null);
-    setNotice(null);
-    if (!dirty) {
-      setNotice('Nothing changed.');
-      return;
-    }
-    setBusy(true);
-    try {
-      if (tab === 'source' || !isNotebook) {
-        await api.saveNotebookContent(path, source ?? '');
-      } else {
-        await api.saveNotebookCells(path, toApiCells(cells ?? []));
-      }
-      // A file write on your own branch, not a commit — pushing to test is where
-      // work becomes history, and where you say what it was for.
-      setNotice('Saved to your branch.');
-      // Re-read: the server is the authority on how cells serialize.
-      const text = await api.notebookContent('mine', path);
-      setSource(text);
+  /**
+   * Writes the buffer to your branch. Called on a debounce while you type, and
+   * again at the moments where losing the last few seconds would matter — see
+   * `useAutosave`.
+   *
+   * It does not re-read afterwards. It used to, because a save was a commit and
+   * the committed bytes were what mattered; now the file is a file and the buffer
+   * is what you are looking at. Replacing it under a cursor every eight hundred
+   * milliseconds would be its own kind of data loss.
+   */
+  const saveNow = useCallback(async (keepalive = false) => {
+    if (tab === 'source' || !isNotebook) {
+      const text = source ?? '';
+      await api.saveNotebookContent(path, text, keepalive);
       setSavedSource(text);
-      if (isNotebook) {
-        const reloaded = await api.notebookCells('mine', path);
-        // Keep the ids the cells were run under: saving should not clear the
-        // outputs you just produced.
-        setCells((current) => keepIds(reloaded.cells, current ?? []));
-        setSaved(reloaded.cells);
-      }
+    } else {
+      await api.saveNotebookCells(path, toApiCells(cells ?? []), keepalive);
+      setSaved(cells ?? []);
+    }
+  }, [path, tab, isNotebook, source, cells]);
+
+  const { status: saveStatus, flush, retry } = useAutosave(
+    // The buffer itself is the revision: every edit is a new value, which is what
+    // restarts the debounce.
+    tab === 'source' || !isNotebook ? source : cells,
+    dirty,
+    saveNow,
+    () => {
       reloadPromotion();
       reloadStanding();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+  );
 
   /**
    * Runs a slice of the notebook against the warm kernel. What runs is decided
@@ -356,6 +356,10 @@ export function Editor() {
     setError(null);
     setNotice(null);
     try {
+      // The cells go out in the request, so what runs is what you see whatever the
+      // file says. Writing first anyway: a run is the moment you would most mind
+      // discovering that the last thing you typed was still only in the browser.
+      await flush();
       await api.runCells(path, toRunCells(toRun));
       for (const cell of toRun) {
         ranSource.current[cell.id] = cell.source;
@@ -505,9 +509,9 @@ export function Editor() {
         onMode={setMode}
         onRunAll={() => run(0, 'all')}
         onRestart={restartKernel}
-        dirty={dirty}
+        saveStatus={saveStatus}
         busy={busy}
-        onSave={save}
+        onSave={retry}
         onPromote={promote}
         promotion={promotion}
         standing={standing}
@@ -615,7 +619,10 @@ export function Editor() {
               <div className="px-4">
             <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
             {cells.map((cell, index) => (
-              <div key={cell.id} data-cell-id={cell.id}>
+              // The reload counter is in the key so a file replaced under the
+              // editor — a merge from test — redraws its cells rather than
+              // leaving Monaco holding the text you had before it.
+              <div key={`${reloads}:${cell.id}`} data-cell-id={cell.id}>
                 <CellEditor
                   cell={cell}
                   index={index}
@@ -651,7 +658,12 @@ export function Editor() {
           {source == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
           ) : (
-            <SourceEditor value={source} language={fileLanguage(path)} onChange={setSource} />
+            <SourceEditor
+              value={source}
+              language={fileLanguage(path)}
+              onChange={setSource}
+              resetKey={reloads}
+            />
           )}
         </div>
       )}
@@ -669,8 +681,8 @@ export function Editor() {
               <p className="mb-2 max-w-[78ch] shrink-0 text-base text-muted-foreground">
                 Production (left) vs test (right)
                 {prod === '' && ' — this file does not exist in production yet'}
-                {dirty &&
-                  '. Unsaved edits are not shown: this compares what is committed on each branch.'}
+                {'. Your own branch is not in this: it compares what is committed on '}
+                {'each of the two branches that run.'}
               </p>
               <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
             </>
@@ -701,13 +713,15 @@ export function Editor() {
 /** The whole file as one editor — the fallback for non-notebooks, and the escape
  *  hatch when you want to see exactly what is on disk. */
 function SourceEditor({
-  value, language, onChange,
+  value, language, onChange, resetKey,
 }: {
   value: string;
   language: string;
   onChange: (value: string) => void;
+  /** Changes when the file was replaced under the editor rather than typed into. */
+  resetKey: number;
 }) {
-  const container = useFillEditor(language, value, onChange, !useCanWrite());
+  const container = useFillEditor(language, value, onChange, !useCanWrite(), resetKey);
   return <div className="source-editor" ref={container} />;
 }
 

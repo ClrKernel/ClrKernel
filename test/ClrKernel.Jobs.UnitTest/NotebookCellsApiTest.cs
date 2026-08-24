@@ -126,6 +126,27 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task A_save_is_atomic_and_its_leftovers_never_reach_test() {
+        await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={_notebook}",
+            new StringContent("saved\n"));
+        var directory = Path.GetDirectoryName(Path.Combine(MinePath, _notebook));
+        Assert.AreEqual(0, Directory.GetFiles(directory, "*.saving").Length,
+            "the staging file is renamed over the target, not left beside it");
+
+        // What a crash between the write and the rename would leave behind. It must
+        // not ride along on the next push: it is half a notebook.
+        File.WriteAllText(Path.Combine(directory, ".daily.nb.md.saving"), "half a fi");
+
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "x" }))
+                .StatusCode);
+        Assert.AreEqual("saved\n", File.ReadAllText(Path.Combine(_git.TestPath, _notebook)));
+        Assert.AreEqual(0, Directory.GetFiles(
+            Path.GetDirectoryName(Path.Combine(_git.TestPath, _notebook)), ".*.saving").Length);
+    }
+
+    [TestMethod]
     public async Task Test_and_prod_refuse_a_write_from_everybody() {
         var cells = new object[] {
             new { kind = "code", tag = "sql", source = "SELECT 99" },

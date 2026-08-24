@@ -1,4 +1,12 @@
-import { ArrowDownToLine, Info, MoreHorizontal, Play, RotateCcw, Upload } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  Info,
+  MoreHorizontal,
+  Play,
+  RotateCcw,
+  TriangleAlert,
+  Upload,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +22,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import type { BranchStanding } from '../api';
+import { STATUS_LABEL, STATUS_TITLE, type SaveStatus } from '../autosave';
 import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
 import { useCanWrite } from '../sessionContext';
 
@@ -70,8 +79,9 @@ export interface NotebookToolbarProps {
   onMode: (mode: 'normal' | 'focus') => void;
   onRunAll: () => void;
   onRestart: () => void;
-  dirty: boolean;
+  saveStatus: SaveStatus;
   busy: boolean;
+  /** Retry, for the one state where there is something to retry. */
   onSave: () => void;
   onPromote: () => void;
   promotion: { eligible: boolean; isDeletion?: boolean; reasons: string[] } | null;
@@ -151,6 +161,36 @@ function explainSaving(): void {
       towards promotion. Promotion unlocks when every job on this notebook has a clean green run in
       test of exactly this content.
     </p>,
+  );
+}
+
+/**
+ * Where the buffer stands, as a word rather than a button.
+ *
+ * There is nothing to press: the editor writes to your branch as you work. The
+ * one state that is actionable is a failed write, and that one is a button —
+ * everything else is a label, and a label that looks pressable is a lie.
+ */
+function SaveStatusChip({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  if (status === 'failed') {
+    return (
+      <Button variant="outline" size="xs" onClick={onRetry} title={STATUS_TITLE.failed}>
+        <TriangleAlert className="size-3.5 text-status-error" aria-hidden="true" />
+        {STATUS_LABEL.failed}
+      </Button>
+    );
+  }
+  return (
+    <span
+      title={STATUS_TITLE[status]}
+      aria-live="polite"
+      // A fixed width so the row does not shuffle every time the word changes.
+      className={`inline-block w-[58px] shrink-0 text-right text-xs ${
+        status === 'saved' ? 'text-muted-subtle' : 'text-muted-foreground'
+      }`}
+    >
+      {STATUS_LABEL[status]}
+    </span>
   );
 }
 
@@ -411,14 +451,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       {/* Document-level, so these stay on every tab and never collapse. */}
       {canWrite && (
       <div className="flex items-center gap-2">
-      <Button
-        variant="secondary"
-        size="xs"
-        onClick={props.onSave}
-        disabled={props.busy || !props.dirty}
-      >
-        {props.dirty ? 'Save' : 'Saved'}
-      </Button>
+      <SaveStatusChip status={props.saveStatus} onRetry={props.onSave} />
       <InfoTip label="Where does this save to?" onOpen={explainSaving} />
       <PushControl
         standing={props.standing}
