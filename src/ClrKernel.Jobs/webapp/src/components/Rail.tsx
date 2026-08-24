@@ -69,7 +69,7 @@ export function Rail() {
       // `w-full`, not `w-12`: the grid column is an absolute 48px, and a rem
       // width inside it paints narrower on any browser whose default font size
       // is not 16px, leaving a strip of page showing down the left edge.
-      className="flex w-full flex-col items-center gap-4.5 border-r border-border bg-card py-2.5"
+      className="flex w-full flex-col items-center gap-1 border-r border-border bg-card py-2.5"
     >
       {/* <Tooltip>
         <TooltipTrigger asChild>
