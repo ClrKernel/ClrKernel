@@ -96,6 +96,16 @@ public sealed class NotebookSessionManager : BackgroundService {
         return true;
     }
 
+    /// <summary>
+    /// How a notebook is named in a message. The parent folder as well as the file:
+    /// two projects may each hold an <c>etl.nb.md</c>, and "all sessions are busy
+    /// (etl.nb.md, etl.nb.md)" names nothing at all.
+    /// </summary>
+    private static string Name(string notebookPath) =>
+        System.IO.Path.Combine(
+            System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(notebookPath)) ?? string.Empty,
+            System.IO.Path.GetFileName(notebookPath)).Replace('\\', '/');
+
     // Evicts the least recently used idle session when the cap is reached.
     private void MakeRoom() {
         while (_sessions.Count >= MaxSessions) {
@@ -106,7 +116,7 @@ public sealed class NotebookSessionManager : BackgroundService {
             if (victim == null) {
                 throw new InvalidOperationException(
                     $"All {MaxSessions} notebook sessions are running cells ({string.Join(", ",
-                        _sessions.Values.Select(s => System.IO.Path.GetFileName(s.NotebookPath)))}). " +
+                        _sessions.Values.Select(s => Name(s.NotebookPath)))}). " +
                     "Wait for one to finish, or restart its kernel.");
             }
             _sessions.TryRemove(victim.NotebookPath, out _);

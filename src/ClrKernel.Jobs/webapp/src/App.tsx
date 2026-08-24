@@ -29,22 +29,41 @@ export function App() {
   const isEditor = location.pathname === '/edit';
   const [session, setSession] = useState<SessionState | null>(null);
 
-  const refresh = useCallback(() => {
-    loadSession().then(setSession).catch(() => setSession(null));
-  }, []);
-  useEffect(refresh, [refresh]);
+  // Returns the session it loaded, because arriving from a sign-in has to wait
+  // for it: navigating while the old state still says "not signed in" bounces
+  // straight back out through the signed-out routes below.
+  const refresh = useCallback(
+    () => loadSession().then((next) => {
+      setSession(next);
+      return next;
+    }).catch(() => {
+      setSession(null);
+      return null;
+    }),
+    [],
+  );
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
-  // Which project the API client addresses. A server that has registered nothing
-  // runs one project called `default`, which is what the client already assumes;
-  // this only matters once projects.json names something else. Failures are
-  // deliberately silent — the default is a working answer.
+  // Which project the API client addresses. Resolved before the shell renders,
+  // not alongside it: `default` is only the right guess for a server that has
+  // registered nothing, and every request made before this settles would 404 on
+  // a server whose projects.json names something else. Failures still let the
+  // app through — the default is a working answer for the common case.
+  const [projectReady, setProjectReady] = useState(false);
   useEffect(() => {
     if (session?.authenticated !== true) {
       return;
     }
     api.projects()
-      .then(({ projects }) => projects[0] && setProject(projects[0].slug))
-      .catch(() => undefined);
+      .then(({ projects }) => {
+        if (projects[0]) {
+          setProject(projects[0].slug);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setProjectReady(true));
   }, [session?.authenticated]);
 
   const accentValue = ACCENTS.find((a) => a.name === accent) ?? ACCENTS[0];
@@ -52,12 +71,20 @@ export function App() {
   // The server redirects a signed-out browser here, so these routes render
   // without the app shell — there is no breadcrumb to show and no rail to
   // navigate with until you are somebody.
-  const signedOut = ['/signin', '/setup'].includes(location.pathname)
+  const anonymousPage = ['/signin', '/setup'].includes(location.pathname)
     || location.pathname.startsWith('/invite/');
-  if (signedOut || (session != null && !session.authenticated)) {
+  // Signing in from one of those pages leaves you standing on it. Sending an
+  // authenticated session to the app is what makes the redirects below safe to
+  // write as plain rules rather than as a race against the session refresh.
+  if (anonymousPage && session?.authenticated === true && !session.needsSetup) {
+    return <Navigate to="/" replace />;
+  }
+  if (anonymousPage || (session != null && !session.authenticated)) {
+    // The navigation waits for the new session: `session` still says
+    // unauthenticated at this point, and moving to / before it updates would
+    // re-enter this branch and redirect back to /setup or /signin.
     const arrive = () => {
-      refresh();
-      navigate('/', { replace: true });
+      refresh().then(() => navigate('/', { replace: true }));
     };
     return (
       <AccentContext.Provider value={accentValue}>
@@ -91,9 +118,11 @@ export function App() {
     );
   }
 
-  // The very first paint, before /api/auth/session has answered. Rendering the
-  // shell here would flash a signed-in app at someone who is not.
-  if (session == null) {
+  // The very first paint, before /api/auth/session and /api/projects have
+  // answered. Rendering the shell here would flash a signed-in app at someone
+  // who is not, and would fire notebook requests at a project slug we are still
+  // guessing at.
+  if (session == null || !projectReady) {
     return <div className="min-h-screen bg-background" />;
   }
 
