@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { bindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { getCellModel } from './models';
@@ -345,8 +345,24 @@ export interface FocusEditorOptions {
 export function useFocusEditor({
   readOnly = false, binding, language, value, onChange, onRun, onRunAndAdvance, onStep,
 }: FocusEditorOptions) {
-  const container = useRef<HTMLDivElement | null>(null);
-  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  /**
+   * The live editor, as state rather than a ref — because its container comes
+   * and goes.
+   *
+   * It used to be made in an effect with empty deps, which meant: if the pane
+   * was not on screen at mount, it was never made at all. Focus Mode renders an
+   * empty state instead of the editor while it has no active cell, and there is
+   * exactly one moment when that is true on a notebook that has cells — the
+   * instant after you navigate to it, before its cells have arrived. Come back
+   * to a file you left in Focus Mode and you got the contents tree beside a pane
+   * with nothing in it, for good: no later render could make the editor, because
+   * the effect that makes it had already run. Switching to Normal and back
+   * remounted the component, which is why that cleared it.
+   *
+   * A ref callback fires whenever the node arrives, however late, and state is
+   * what lets everything below wait for it.
+   */
+  const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
   const viewStates = useRef(new Map<string, monaco.editor.ICodeEditorViewState | null>());
   const showing = useRef<string | null>(null);
 
@@ -355,13 +371,16 @@ export function useFocusEditor({
   // run the first cell forever.
   const latest = useRef({ binding, language, value, onChange, onRun, onRunAndAdvance, onStep });
   latest.current = { binding, language, value, onChange, onRun, onRunAndAdvance, onStep };
+  const latestReadOnly = useRef(readOnly);
+  latestReadOnly.current = readOnly;
 
-  useEffect(() => {
-    if (!container.current) {
-      return;
+  const container = useCallback((node: HTMLDivElement | null) => {
+    if (node == null) {
+      return; // React 19 calls the cleanup below instead
     }
-    const created = monaco.editor.create(container.current, { ...focusEditorOptions, readOnly });
-    editor.current = created;
+    const created = monaco.editor.create(node, {
+      ...focusEditorOptions, readOnly: latestReadOnly.current,
+    });
 
     const changeListener = created.onDidChangeModelContent(() =>
       latest.current.onChange(created.getValue()),
@@ -372,20 +391,24 @@ export function useFocusEditor({
       latest.current.onRunAndAdvance());
     created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.UpArrow, () => latest.current.onStep(-1));
     created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.DownArrow, () => latest.current.onStep(1));
+    setEditor(created);
 
     return () => {
       // Only the editor: every model here belongs to the notebook.
       changeListener.dispose();
       created.dispose();
-      editor.current = null;
+      // Which cell is on screen is a fact about the editor, so it goes with it.
+      // Left set, the next editor would agree it was already showing that cell
+      // and never be given a model — the same empty pane by another route.
       showing.current = null;
+      setEditor((current) => (current === created ? null : current));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Swap the model when the active cell changes, saving where you were first.
+  // `editor` is in the deps because it arrives after the first render now.
   useEffect(() => {
-    const current = editor.current;
+    const current = editor;
     if (current == null) {
       return;
     }
@@ -418,18 +441,18 @@ export function useFocusEditor({
     }
     showing.current = binding.cellId;
     current.focus();
-  }, [binding, language, value]);
+  }, [editor, binding, language, value]);
 
   // The picker can change the language without the cell changing.
   useEffect(() => {
-    const model = editor.current?.getModel();
+    const model = editor?.getModel();
     if (model != null) {
       monaco.editor.setModelLanguage(model, language);
     }
-  }, [language]);
+  }, [editor, language]);
 
   useEffect(() => {
-    const model = editor.current?.getModel();
+    const model = editor?.getModel();
     if (model == null || binding?.diagnostics == null) {
       return;
     }
@@ -438,10 +461,10 @@ export function useFocusEditor({
       MARKER_OWNER,
       binding.diagnostics.map((d) => toMonacoMarker(d, monaco.MarkerSeverity as never)),
     );
-  }, [binding?.diagnostics, binding?.cellId]);
+  }, [editor, binding?.diagnostics, binding?.cellId]);
 
   /** Re-measures after a splitter drag or a sidebar resize. */
-  const relayout = useCallback(() => editor.current?.layout(), []);
+  const relayout = useCallback(() => editor?.layout(), [editor]);
 
   return { container, relayout };
 }
