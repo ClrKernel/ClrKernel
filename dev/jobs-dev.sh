@@ -2,9 +2,10 @@
 # Local development loop for ClrKernel.Jobs: the API/scheduler with `dotnet watch`
 # (restarts on C# edits) and the Vite dev server (hot-reloads the UI on save).
 #
-#   ./dev/jobs-dev.sh                       # sample notebooks in dev/notebooks
+#   ./dev/jobs-dev.sh                       # dev/notebooks, which starts empty
 #   ./dev/jobs-dev.sh ~/my-notebooks        # your own tree
 #   API_PORT=5099 ./dev/jobs-dev.sh         # if something else holds the port
+#   STORE=files ./dev/jobs-dev.sh           # run history as files, not sqlite
 #
 # Open the UI at http://localhost:5173 — it proxies /api to the backend, so the
 # whole app works from that one URL. Ctrl+C stops both.
@@ -42,12 +43,31 @@ echo
 
 # `dotnet run --project` sets the app's working directory to the project folder,
 # so every path here is absolute on purpose.
+serve_api() {
+    dotnet watch --project "$REPO/src/ClrKernel.Jobs" run -- serve \
+        "$@" \
+        --notebooks "$NOTEBOOKS" \
+        --data-dir "$DATA" \
+        --clrkernel "$KERNEL" \
+        --urls "http://localhost:$API_PORT"
+}
+
 set -m
-dotnet watch --project "$REPO/src/ClrKernel.Jobs" run -- serve \
-    --notebooks "$NOTEBOOKS" \
-    --data-dir "$DATA" \
-    --clrkernel "$KERNEL" \
-    --urls "http://localhost:$API_PORT" &
+# `serve` refuses to guess where run history goes. That is the right call for a
+# real deployment and pure friction here, where a fresh clone has no
+# settings.json and the whole promise is one command — so pass sqlite, unless a
+# settings.json is there to answer for itself. A flag would override that file,
+# and `cp dev/settings/postgres.settings.json dev/data/settings.json` is the
+# documented way to point this loop at a container.
+#
+# Two branches rather than an unquoted "$STORE_ARGS": word splitting an empty
+# variable is a different thing in bash and in zsh, and a dev loop that depends
+# on which one you invoked it with is a bug waiting for a Tuesday.
+if [ -f "$DATA/settings.json" ]; then
+    serve_api &
+else
+    serve_api --store "${STORE:-sqlite}" &
+fi
 API_PID=$!
 
 CLRKERNEL_JOBS_API="http://localhost:$API_PORT" \

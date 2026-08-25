@@ -723,12 +723,22 @@ either `chown 1654` it first or pass `--user`.
 One command brings up both halves with live reload:
 
 ```bash
-./dev/jobs-dev.sh                    # sample notebooks in dev/notebooks
+./dev/jobs-dev.sh                    # dev/notebooks, which starts empty
 ./dev/jobs-dev.sh ~/my-notebooks     # your own tree
 ```
 
 Open **<http://localhost:5173>** — the Vite dev server, which proxies `/api` to the
 backend, so the whole app works from that one URL. Ctrl+C stops both.
+
+`dev/notebooks/` ships empty, on purpose: everything a running server puts there —
+your notebooks, the worktrees the git workflow creates, and `connections.json`,
+which names real servers and usernames — is ignored, so nothing you try locally
+can be committed by accident. Make a notebook with **+** in the file explorer, or
+start from the ones in the repo:
+
+```bash
+cp samples/*.nb.md dev/notebooks/
+```
 
 - **Edit a `.tsx`/`.css`** → the browser updates in place (Vite HMR), no reload.
 - **Edit a `.cs`** → `dotnet watch` applies it live ("Hot reload succeeded"); edits
