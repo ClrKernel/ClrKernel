@@ -60,6 +60,24 @@ public static class AuthContext {
             user, grants.TryGetValue(found.Slug, out var grant) ? grant : (ProjectRole?)null);
     }
 
+    private const string _roleItem = "clrkernel.project-role";
+
+    /// <summary>
+    /// What <see cref="AdminOnlyExtensions.RequiresProject"/> already worked out for
+    /// this request, without a second lookup — and without an <c>await</c>, which is
+    /// the point: a handler deep in a synchronous path can ask.
+    /// <para>
+    /// Null when no filter has asked, which is not a reason to widen access. Read it
+    /// only to decline something optional; anything that guards access asks
+    /// <see cref="ProjectRoleAsync"/> and awaits the answer.
+    /// </para>
+    /// </summary>
+    public static ProjectRole? GrantedRole(this HttpContext context) =>
+        context.Items.TryGetValue(_roleItem, out var role) ? (ProjectRole?)role : null;
+
+    internal static void RememberRole(HttpContext context, ProjectRole role) =>
+        context.Items[_roleItem] = role;
+
     /// <summary>Every project the caller may see, with what they may do in each.</summary>
     public static async Task<IReadOnlyDictionary<string, ProjectRole>> VisibleProjectsAsync(
         this HttpContext context, ProjectRegistry registry) {
@@ -139,6 +157,7 @@ public static class AdminOnlyExtensions {
             if (role == null) {
                 return Results.NotFound(new { error = $"No project '{slug}'." });
             }
+            AuthContext.RememberRole(http, role.Value);
             return role < minimum
                 ? Results.Json(new { error = RefusalFor(minimum) }, statusCode: 403)
                 : await next(context);

@@ -302,6 +302,38 @@ public class NotebookCellsApiTest {
     }
 
     [TestMethod]
+    public async Task Opening_a_notebook_on_your_own_branch_is_what_makes_the_branch() {
+        // The reported bug: the first thing the editor does with a notebook is read
+        // it, and a read used to be the one request that would not make your
+        // worktree. So the first notebook you opened after signing in — a
+        // deep-link, a bookmark, or just landing on the editor — said the file did
+        // not exist, and reloading fixed it because by then something else had made
+        // the branch.
+        Assert.IsFalse(Directory.Exists(MinePath), "no branch before the first request");
+
+        var body = await GetCellsAsync("mine");
+
+        Assert.AreEqual(3, body.GetProperty("cells").GetArrayLength(),
+            "the notebook opens on the first attempt, not the second");
+        Assert.IsTrue(Directory.Exists(MinePath), "and reading it is what made the branch");
+        Assert.AreEqual(_source, File.ReadAllText(Path.Combine(MinePath, _notebook)),
+            "cut from test, so it is the file test has");
+    }
+
+    [TestMethod]
+    public async Task A_viewer_reading_your_project_still_gets_no_branch() {
+        using var viewer = new HttpClient { BaseAddress = _client.BaseAddress };
+        var them = await TestAuth.SignInAsync(_app, viewer, UserRole.ServerViewer, "Auditor");
+
+        var read = await viewer.GetAsync(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}");
+
+        Assert.AreEqual(HttpStatusCode.NotFound, read.StatusCode);
+        Assert.IsFalse(Directory.Exists(_git.UserPath(them.Id.ToString("D"))),
+            "somebody who may never write anywhere accumulates no empty branches");
+    }
+
+    [TestMethod]
     public async Task Two_people_editing_the_same_notebook_do_not_see_each_other() {
         using var other = new HttpClient { BaseAddress = _client.BaseAddress };
         var them = await TestAuth.SignInAsync(_app, other, UserRole.ServerAdmin, "Grace Hopper");

@@ -1221,14 +1221,21 @@ public static class JobsApi {
         /// "nobody edits another user's branch" is a property of the route table
         /// rather than a check somebody has to remember to write.
         /// <para>
-        /// Resolving it creates the worktree if this is their first edit here — but
-        /// only for a request that is about to write. A read of a branch that is not
-        /// there answers "no such file", which is true; making a checkout for
-        /// somebody who is only looking means a viewer, who may never write
-        /// anywhere, accumulates an empty branch in every project they open. Every
-        /// route in a project that is not a GET needs Project Member or better, so
-        /// "a viewer has no branch" is a property of this line and the route table
-        /// together.
+        /// Resolving it creates the worktree if this is their first request here —
+        /// including a read, as long as the reader is a Project Member. It used to
+        /// be writes only, on the reasoning that a read of a branch that is not
+        /// there answers "no such file", which is true. It is also what you got for
+        /// opening a notebook: the first thing the editor does is read, so a
+        /// deep-link to a file on your own branch — a bookmark, a shared URL, the
+        /// page you land on right after signing up — said the file did not exist
+        /// until you reloaded and something else had made the branch in the
+        /// meantime. Whose branch it is decides this, not which verb asked for it.
+        /// </para>
+        /// <para>
+        /// A viewer still gets no checkout: they may never write anywhere, and an
+        /// empty branch in every project they browse is disk kept for nothing. That
+        /// is the role test rather than the method test — the filter has already
+        /// resolved the role, so this costs a dictionary lookup.
         /// </para>
         /// <para>
         /// Lazy at all because most people never touch most projects, and an empty
@@ -1243,7 +1250,11 @@ public static class JobsApi {
                 if (context.CurrentUser() is not { } user) {
                     return null;
                 }
-                if (!HttpMethods.IsGet(context.Request.Method)) {
+                // A write always makes one — every route in a project that is not
+                // a GET needs Project Member anyway, so the second half is what
+                // decides a read.
+                if (!HttpMethods.IsGet(context.Request.Method)
+                    || context.GrantedRole() >= ProjectRole.ProjectMember) {
                     Git.EnsureUserWorktree(user.Id);
                     ConnectionsApi.OnWorktreeCreated(context, Git, user.Id);
                 }
