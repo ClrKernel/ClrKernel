@@ -137,8 +137,14 @@ the same "who ran that against production?" question in a different costume.
   schema, and a SQL cell gets both. The completion schema is one query per connection, cached
   under the same key as that connection's tree so Refresh and Disconnect clear it too. The
   judgement lives in `sqlCompletion.ts`, React-free and deliberately not a SQL parser.
-- **Query history** per user, re-runnable from a panel.
-- **Saved queries**, shared or private, mirroring the connection scopes.
+- ~~**Query history** per user, re-runnable from a panel.~~ — **done**, as the second tab of
+  the History panel. It needed private-connection runs to be recorded, which §5's first version
+  refused to do; they are recorded now and the promise is kept by the read side instead — a row
+  about a private connection is its actor's alone, admins included, and the rule lives in the
+  store so a route cannot forget it.
+- ~~**Saved queries**, shared or private, mirroring the connection scopes.~~ — **done**, in the
+  run store. Opening one replaces the editor and asks first when there is work to lose;
+  inserting at the cursor is right for a snippet and wrong for a whole query.
 - **Execution plans**, where the provider can produce them.
 - **ER / relationship view** for a selected set of tables.
 ---
