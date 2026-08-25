@@ -234,10 +234,26 @@ phase 2. Writing and committing across every worktree of every project is the ri
 the feature; it waits until something depends on it.
 
 Phase 2 is then: materialization, the SQL cell picker replacing the inline wizard,
-"Open in notebook", the private-connection warning and the promotion blocker. One check to run
-first: whether a server commit on a user branch flips `worktree.Merged` false and blocks prune
-at `GitService.cs:497,518` — `git merge-base --is-ancestor` against test answers it, and the
-answer decides commit-into-user-worktrees versus write-them-gitignored.
+"Open in notebook", the private-connection warning and the promotion blocker.
+
+**The prune check has been run, and it decided the shape.** `Merged` is
+`git merge-base --is-ancestor <branch> test`, so a server commit on a personal branch makes
+that branch permanently unprunable and falsely "ahead". So the server does **not** write into
+personal worktrees. Shared connections are committed in **test and prod only**; a personal
+branch gets the file the ordinary way, by descending from test or merging it.
+
+Two further things were measured rather than assumed:
+
+- The bare repo's `info/exclude` **is** what a linked worktree reads, so the private overlay
+  can be excluded without committing a `.gitignore` and without putting anybody behind. The
+  path is asked for with `git rev-parse --git-common-dir` rather than assumed to be the bare
+  repo — in this layout they coincide, which is not a thing to depend on. Note `info/exclude`
+  is neither versioned nor cloned: somebody who clones the repo to a laptop will see
+  `connections.local.json` as untracked there.
+- Committing in test leaves personal branches clean and prunable, but **one commit behind**.
+  Behind is what `NotebookToolbar` turns into "Update from test" *in place of* the Push button,
+  so a shared-connection edit asks everybody on the server to merge before their next push.
+  That was put to the user with the alternative and they kept committing, knowingly.
 
 ## 5. Execution permission — no read-only credential, no execution
 

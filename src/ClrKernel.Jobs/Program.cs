@@ -377,6 +377,9 @@ public static class Program {
         builder.Services.AddSingleton(provider => new ConnectionStore(
             options, secrets ?? new Core.Secrets.SecretStore(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionStore>()));
+        builder.Services.AddSingleton(provider => new ConnectionMaterializer(
+            projects, provider.GetRequiredService<ConnectionStore>(),
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionMaterializer>()));
         builder.Services.AddSingleton(provider => new QueryRunner(
             secrets ?? new Core.Secrets.SecretStore(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<QueryRunner>()));

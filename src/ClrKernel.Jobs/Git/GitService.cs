@@ -432,6 +432,63 @@ public sealed class GitService {
         return true;
     }
 
+    /// <summary>
+    /// Commits one path in a branch, and only that path. Returns false when it did
+    /// not change.
+    /// <para>
+    /// A pathspec-limited commit rather than <see cref="CommitAs"/>, because this is
+    /// used on the prod worktree, where a promotion may already have staged other
+    /// files. <c>git commit -- path</c> commits that path whatever else is in the
+    /// index; a bare <c>git commit</c> would sweep a half-finished promotion in with
+    /// it.
+    /// </para>
+    /// </summary>
+    public bool CommitPath(string branch, string relativePath, string message) {
+        var worktree = PathFor(branch);
+        // A path that is neither on disk nor in the index is not "nothing to commit",
+        // it is a pathspec error — `git add` exits 128 with "did not match any files"
+        // and takes the caller down with it. That is the state a server with no shared
+        // connections at all is in.
+        var tracked = TryRun(worktree, "ls-files", "--error-unmatch", "--", relativePath).Code == 0;
+        if (!tracked && !File.Exists(System.IO.Path.Combine(worktree, relativePath))) {
+            return false;
+        }
+        Run(worktree, "add", "--", relativePath);
+        if (TryRun(worktree, "diff", "--cached", "--quiet", "--", relativePath).Code == 0) {
+            return false;
+        }
+        Run(worktree, "commit", "-m", message, "--", relativePath);
+        return true;
+    }
+
+    /// <summary>
+    /// Makes sure a pattern is in the repo's <c>info/exclude</c>, so a generated file
+    /// never shows up as untracked work.
+    /// <para>
+    /// <c>info/exclude</c> rather than a committed <c>.gitignore</c>: it is not
+    /// versioned, so writing it commits nothing and puts nobody's branch behind, and
+    /// git reads it from the <em>common</em> directory, which every linked worktree
+    /// shares. The path is asked for rather than assumed — it is the bare repo in
+    /// this layout, and that is a coincidence worth not depending on.
+    /// </para>
+    /// </summary>
+    public void EnsureExcluded(string pattern) {
+        var common = TryRun(TestPath, "rev-parse", "--git-common-dir").Stdout.Trim();
+        if (common.Length == 0) {
+            return;
+        }
+        var directory = System.IO.Path.IsPathRooted(common)
+            ? common
+            : System.IO.Path.GetFullPath(System.IO.Path.Combine(TestPath, common));
+        var file = System.IO.Path.Combine(directory, "info", "exclude");
+        var lines = File.Exists(file) ? File.ReadAllLines(file) : Array.Empty<string>();
+        if (lines.Any(line => line.Trim() == pattern)) {
+            return;
+        }
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
+        File.AppendAllText(file, (lines.Length > 0 ? "\n" : string.Empty) + pattern + "\n");
+    }
+
     /// <summary>Copies a path's test content into the prod worktree (stages it).</summary>
     public void CheckoutIntoProd(string path) =>
         Run(ProdPath, "checkout", TestBranch, "--", path);

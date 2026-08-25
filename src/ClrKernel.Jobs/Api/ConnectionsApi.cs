@@ -64,13 +64,14 @@ public static class ConnectionsApi {
         });
 
         api.MapPost("/", (
-                HttpContext context, ConnectionStore store, JobsOptions options, ConnectionBody body) =>
-            Save(context, store, options, id: null, body));
+                HttpContext context, ConnectionStore store, JobsOptions options,
+                ConnectionMaterializer files, ConnectionBody body) =>
+            Save(context, store, options, files, id: null, body));
 
         api.MapPut("/{id}", (
-                HttpContext context, ConnectionStore store, JobsOptions options, string id,
-                ConnectionBody body) =>
-            Save(context, store, options, id, body));
+                HttpContext context, ConnectionStore store, JobsOptions options,
+                ConnectionMaterializer files, string id, ConnectionBody body) =>
+            Save(context, store, options, files, id, body));
 
         // --- execution ------------------------------------------------------
 
@@ -222,20 +223,22 @@ public static class ConnectionsApi {
                 return Results.Ok(new { history });
             });
 
-        api.MapDelete("/{id}", (HttpContext context, ConnectionStore store, string id) => {
-            if (context.CurrentUser() is not { } user) {
-                return Unauthorized();
-            }
-            var found = store.Find(id, user);
-            if (found == null) {
-                return NoSuchConnection(id);
-            }
-            if (Refusal(context, found.Scope, found.OwnerId) is { } refusal) {
-                return refusal;
-            }
-            store.Remove(found.Id);
-            return Results.Ok(new { removed = found.Id });
-        });
+        api.MapDelete("/{id}", (
+                HttpContext context, ConnectionStore store, ConnectionMaterializer files, string id) => {
+                    if (context.CurrentUser() is not { } user) {
+                        return Unauthorized();
+                    }
+                    var found = store.Find(id, user);
+                    if (found == null) {
+                        return NoSuchConnection(id);
+                    }
+                    if (Refusal(context, found.Scope, found.OwnerId) is { } refusal) {
+                        return refusal;
+                    }
+                    store.Remove(found.Id);
+                    files.Sync();
+                    return Results.Ok(new { removed = found.Id });
+                });
     }
 
     /// <summary>
@@ -252,8 +255,27 @@ public static class ConnectionsApi {
     private static IReadOnlyList<ConnectionProviderDescriptor> Providers { get; } =
         new[] { SqlServerConnectionProvider.Descriptor };
 
+    /// <summary>
+    /// Gives a worktree that has just been created its owner's private connections.
+    /// <para>
+    /// Resolved from the request rather than injected: the two places that create a
+    /// worktree are deep inside the notebook routes, and threading a connections
+    /// service through them to write one file would put connections in the signature
+    /// of everything on the way down.
+    /// </para>
+    /// </summary>
+    internal static void OnWorktreeCreated(HttpContext context, GitService git, Guid userId) =>
+        (context.RequestServices.GetService(typeof(ConnectionMaterializer)) as ConnectionMaterializer)
+            ?.SyncUser(git, userId);
+
+    /// <summary>The descriptor for a stored connection's <c>$type</c>, or null. The
+    /// materializer asks, to learn which of a provider's settings is its credential.</summary>
+    internal static ConnectionProviderDescriptor ProviderFor(string type) =>
+        Providers.FirstOrDefault(p => string.Equals(p.Type, type, StringComparison.OrdinalIgnoreCase));
+
     private static IResult Save(
-        HttpContext context, ConnectionStore store, JobsOptions options, string id, ConnectionBody body) {
+        HttpContext context, ConnectionStore store, JobsOptions options, ConnectionMaterializer files,
+        string id, ConnectionBody body) {
         if (context.CurrentUser() is not { } user) {
             return Unauthorized();
         }
@@ -300,6 +322,9 @@ public static class ConnectionsApi {
         };
         try {
             var saved = store.Save(entry, body.Password, body.ReadOnlyPassword);
+            // On the way out, not on a timer: a connection somebody just saved has to
+            // be resolvable by the next notebook that names it.
+            files.Sync();
             return Results.Ok(ConnectionView.From(saved, store, context, options));
         } catch (ConnectionException e) {
             return Results.BadRequest(new { error = e.Message });

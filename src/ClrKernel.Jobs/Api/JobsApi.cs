@@ -234,6 +234,7 @@ public static class JobsApi {
                     // than in BranchFor: this is the page you open in order to have
                     // one, so it is the read that means you are about to work.
                     var mine = scope.Git.EnsureUserWorktree(me.Id);
+                    ConnectionsApi.OnWorktreeCreated(context, scope.Git, me.Id);
                     // Annotated with this branch's jobs, which is none: the catalog
                     // scans environments, and a personal branch is not one. Leaving
                     // the environment out would annotate with every job on the
@@ -1228,6 +1229,7 @@ public static class JobsApi {
                 }
                 if (!HttpMethods.IsGet(context.Request.Method)) {
                     Git.EnsureUserWorktree(user.Id);
+                    ConnectionsApi.OnWorktreeCreated(context, Git, user.Id);
                 }
                 return GitService.BranchForUser(user.Id);
             }
