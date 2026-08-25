@@ -39,7 +39,18 @@ export const DEFAULT_LAYOUT: LayoutPrefs = {
 
 export interface NotebookState {
   mode?: 'normal' | 'focus';
-  activeCellId?: string;
+  /**
+   * Which cell you were on, as its position in the notebook.
+   *
+   * Not its id. Ids are minted per page load — `n1`, `n2`, … from a counter that
+   * restarts — so a stored one means nothing after a refresh, and worse, it can
+   * mean something wrong: open a different notebook first and the counter hands
+   * `n3` to a completely different cell, so the id that was meant to restore
+   * your place lands you somewhere arbitrary instead. A position survives a
+   * refresh, and when the file has changed underneath it is approximately right,
+   * which is what "put me back where I was" asks for.
+   */
+  activeCell?: number;
 }
 
 // A corrupt or hand-edited value must not take the editor down with it: every
@@ -102,8 +113,12 @@ export function loadNotebookState(path: string): NotebookState {
 }
 
 export function saveNotebookState(path: string, state: NotebookState): void {
-  const all = read<Record<string, NotebookState>>(NOTEBOOK_KEY, {});
-  write(NOTEBOOK_KEY, { ...all, [path]: { ...all[path], ...state } });
+  const all = read<Record<string, NotebookState & { activeCellId?: string }>>(NOTEBOOK_KEY, {});
+  // `activeCellId` was the previous spelling of `activeCell`, and it is dropped
+  // on the first write rather than left sitting in everybody's browser looking
+  // like something that is still read.
+  const { activeCellId: _dropped, ...kept } = all[path] ?? {};
+  write(NOTEBOOK_KEY, { ...all, [path]: { ...kept, ...state } });
 }
 
 /**

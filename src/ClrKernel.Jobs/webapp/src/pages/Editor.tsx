@@ -277,9 +277,13 @@ export function Editor() {
 
   // Mode and layout are remembered, but nothing here ever reaches the notebook
   // file — how you were looking at it is not part of what it says.
+  // Which cell is *not* restored here: it is remembered as a position, and a
+  // position means nothing until the cells it indexes have arrived. The effect
+  // below owns it. Doing it here would resolve the new notebook's remembered
+  // position against the old notebook's cells, which is how you land on a cell
+  // from the file you just left.
   useEffect(() => {
     setMode(loadNotebookState(path).mode ?? 'normal');
-    setActiveId(loadNotebookState(path).activeCellId ?? null);
   }, [path]);
   useEffect(() => saveLayout(layout), [layout]);
 
@@ -337,24 +341,44 @@ export function Editor() {
     const cell = document.querySelector(`[data-cell-id="${activeId}"]`);
     cell?.scrollIntoView({ block: 'center', behavior: 'auto' });
   }, [mode, activeId]);
-  useEffect(() => saveNotebookState(path, { mode }), [path, mode]);
-  useEffect(() => {
-    if (activeId != null) {
-      saveNotebookState(path, { activeCellId: activeId });
-    }
-  }, [path, activeId]);
+  /**
+   * Both preferences are written when you change them, never from an effect that
+   * watches them.
+   *
+   * An effect keyed on `[path, mode]` runs on the render where the path has
+   * changed and the state has not, so it writes the file you left's answer under
+   * the file you arrived at. That was survivable for the mode by luck — the
+   * effect that restores it is declared first, so it read the old value before
+   * the write landed — and it is not the sort of thing to leave standing.
+   */
+  function chooseMode(next: 'normal' | 'focus') {
+    setMode(next);
+    saveNotebookState(path, { mode: next });
+  }
 
-  // The active cell has to exist. It may not on first load (a remembered id from
-  // before an edit), and it stops existing when you delete it — in which case the
-  // next cell takes over, or the previous one if it was last.
+  function activate(cellId: string) {
+    setActiveId(cellId);
+    const at = (cells ?? []).findIndex((cell) => cell.id === cellId);
+    if (at >= 0) {
+      saveNotebookState(path, { activeCell: at });
+    }
+  }
+
+  // The active cell has to exist. It does not when the notebook has just been
+  // read — the cells are new objects with new ids — and it stops existing when
+  // you delete it. Either way this puts you back at the position you were last
+  // on in this file, clamped to what the file now has: a notebook that lost
+  // cells while you were away lands you on its last one rather than nowhere.
   useEffect(() => {
     if (cells == null || cells.length === 0) {
       return;
     }
-    if (activeId == null || !cells.some((cell) => cell.id === activeId)) {
-      setActiveId(cells[0].id);
+    if (activeId != null && cells.some((cell) => cell.id === activeId)) {
+      return;
     }
-  }, [cells, activeId]);
+    const wanted = loadNotebookState(path).activeCell ?? 0;
+    setActiveId(cells[clamp(wanted, 0, cells.length - 1)].id);
+  }, [cells, activeId, path]);
 
   // Cell models belong to the notebook, so they are freed when a cell is deleted
   // and when the notebook is closed — not when an editor unmounts, which now
@@ -776,7 +800,7 @@ export function Editor() {
         running={running}
         session={session}
         mode={mode}
-        onMode={setMode}
+        onMode={chooseMode}
         onRunAll={() => run(0, 'all')}
         onRestart={restartKernel}
         canUndo={canUndo}
@@ -878,7 +902,7 @@ export function Editor() {
                 busy={running}
                 cleared={cleared}
                 layout={layout}
-                onActivate={setActiveId}
+                onActivate={activate}
                 onChange={(cellId, value) =>
                   setCells((current) =>
                     (current ?? []).map((c) => (c.id === cellId ? { ...c, source: value } : c)))}
