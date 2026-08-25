@@ -5,6 +5,7 @@ import {
   Database,
   FileCode2,
   Folder,
+  Loader2,
   MoreHorizontal,
   Plug,
   PlugZap,
@@ -249,11 +250,13 @@ export function ConnectionTree({
             : ICONS[node.type === 'object' ? node.kind ?? 'table' : node.type] ?? Columns3;
           const expandable = node.type !== 'detail' && !node.leaf;
           const isOpen = open.has(node.key);
+          const loading = busy.has(node.key);
           return (
             <div key={node.key}>
               <div
                 className={`connection-tree-row${selected === node.connection.id && node.type === 'connection' ? ' is-selected' : ''}`}
                 style={{ paddingLeft: 6 + node.depth * 14 }}
+                aria-busy={loading || undefined}
               >
                 {expandable ? (
                   <button
@@ -262,9 +265,14 @@ export function ConnectionTree({
                     aria-label={isOpen ? `Collapse ${node.label}` : `Expand ${node.label}`}
                     aria-expanded={isOpen}
                   >
-                    {isOpen
-                      ? <ChevronDown className="size-3.5" aria-hidden="true" />
-                      : <ChevronRight className="size-3.5" aria-hidden="true" />}
+                    {/* The spinner goes where the chevron was, not beside the label:
+                        the chevron is what you just clicked and where you are already
+                        looking, and every node that fetches anything has one. */}
+                    {loading
+                      ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                      : isOpen
+                        ? <ChevronDown className="size-3.5" aria-hidden="true" />
+                        : <ChevronRight className="size-3.5" aria-hidden="true" />}
                   </button>
                 ) : (
                   <span className="connection-tree-chevron" aria-hidden="true" />
@@ -294,7 +302,7 @@ export function ConnectionTree({
                 >
                   {node.label}
                 </button>
-                {busy.has(node.key) && <span className="connection-tree-busy">…</span>}
+                {loading && <span className="sr-only">Loading…</span>}
                 {node.type === 'connection' && (
                   <>
                     {connected && <span className="sr-only">connected</span>}

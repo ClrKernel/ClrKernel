@@ -1152,15 +1152,10 @@
   color: var(--color-foreground);
 }
 
-.connection-tree-busy,
-.connection-tree-error {
-  color: var(--color-muted-subtle);
-  font-size: var(--text-sm);
-}
-
 .connection-tree-error {
   padding-right: 8px;
   color: var(--color-destructive);
+  font-size: var(--text-sm);
 }
 
 .connections-work {
