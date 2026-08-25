@@ -14,14 +14,14 @@ describe('toolbarLayout', () => {
   });
 
   it('drops Restart’s label first', () => {
-    const layout = toolbarLayout(1050);
+    const layout = toolbarLayout(BREAKPOINTS.tight);
     expect(layout.restartIconOnly).toBe(true);
     expect(layout.runAllIconOnly).toBe(false);
     expect(layout.collapse).toBe(false);
   });
 
   it('then drops Run All’s label and the kernel version', () => {
-    const layout = toolbarLayout(950);
+    const layout = toolbarLayout(BREAKPOINTS.collapse);
     expect(layout.runAllIconOnly).toBe(true);
     expect(layout.showKernelVersion).toBe(false);
     expect(layout.collapse).toBe(false);
@@ -38,7 +38,11 @@ describe('toolbarLayout', () => {
   });
 
   it('degrades monotonically — nothing comes back as the bar narrows', () => {
-    const widths = [1600, 1140, 1139, 1000, 999, 880, 879, 780, 779, 500];
+    const widths = [
+      1600, BREAKPOINTS.compact, BREAKPOINTS.compact - 1, BREAKPOINTS.tight,
+      BREAKPOINTS.tight - 1, BREAKPOINTS.collapse, BREAKPOINTS.collapse - 1,
+      BREAKPOINTS.narrow, BREAKPOINTS.narrow - 1, 500,
+    ];
     const layouts = widths.map(toolbarLayout);
     const score = (l: ReturnType<typeof toolbarLayout>) =>
       Number(l.restartIconOnly) + Number(l.runAllIconOnly) + Number(!l.showKernelVersion) +

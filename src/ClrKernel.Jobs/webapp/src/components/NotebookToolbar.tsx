@@ -6,6 +6,7 @@ import {
   Play,
   RotateCcw,
   TriangleAlert,
+  Undo2,
   Upload,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -80,6 +81,9 @@ export interface NotebookToolbarProps {
   onMode: (mode: 'normal' | 'focus') => void;
   onRunAll: () => void;
   onRestart: () => void;
+  /** There is a structural change to walk back. */
+  canUndo: boolean;
+  onUndo: () => void;
   saveStatus: SaveStatus;
   busy: boolean;
   /** Retry, for the one state where there is something to retry. */
@@ -487,6 +491,21 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       {/* Document-level, so these stay on every tab and never collapse. */}
       {canWrite && (
       <div className="flex items-center gap-2">
+      {/* Cells only: on Source and Diff, undo is Monaco's and lives in the
+          editor under the same key. Icon-only at every width — it is one glyph
+          everybody already knows, and the bar has no room to spend teaching it. */}
+      {showsExecution(props.tab) && (
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={!props.canUndo}
+          onClick={props.onUndo}
+          aria-label="Undo"
+          title="Undo the last cell change (⌘/Ctrl+Z). Editing inside a cell undoes with the same key."
+        >
+          <Undo2 className="size-3.5" aria-hidden="true" />
+        </Button>
+      )}
       <SaveStatusChip status={props.saveStatus} onRetry={props.onSave} />
       <InfoTip label="Where does this save to?" onOpen={explainSaving} />
       <PushControl

@@ -193,6 +193,47 @@ export function moveCell(cells: EditorCell[], from: number, to: number): EditorC
   return next;
 }
 
+/**
+ * A copy of a cell for pasting. The id is always fresh: ids key the Monaco
+ * model, the session's outputs and React's list, so two cells sharing one is
+ * three separate kinds of wrong — and pasting twice from one copy is the
+ * ordinary case, not an edge one.
+ *
+ * What is deliberately not copied is the run: a pasted cell has never run here.
+ * Nothing carries it, because run state lives in the session under the id.
+ */
+export function copyOfCell(cell: EditorCell): EditorCell {
+  return { ...cell, id: newCellId() };
+}
+
+/** How far back structural changes are kept. Deep enough to walk out of a
+ *  mistake, shallow enough that the history is not a second notebook. */
+export const UNDO_DEPTH = 50;
+
+export function pushUndo(stack: EditorCell[][], cells: EditorCell[]): EditorCell[][] {
+  return [...stack, cells].slice(-UNDO_DEPTH);
+}
+
+/**
+ * The cells to go back to, given the snapshot taken before a structural change
+ * and the notebook as it stands now.
+ *
+ * Undo here is structural — it puts back a deleted cell, an order, a language —
+ * and a cell that still exists keeps the text it has *now*. Restoring the
+ * snapshot wholesale would mean Ctrl+Z after deleting one cell quietly threw
+ * away everything typed into the others since, and it would do it invisibly:
+ * a surviving cell keeps its Monaco model, which is only seeded on creation, so
+ * the screen would go on showing the text while the file was written without it.
+ *
+ * A cell that is gone is not in `current`, so it comes back with the text it had
+ * when it left — which is the only copy left, its model having been disposed.
+ */
+export function restoreCells(snapshot: EditorCell[], current: EditorCell[]): EditorCell[] {
+  const live = new Map(current.map((cell) => [cell.id, cell.source]));
+  return snapshot.map(
+    (cell) => (live.has(cell.id) ? { ...cell, source: live.get(cell.id)! } : cell));
+}
+
 export function insertCell(cells: EditorCell[], index: number, cell: EditorCell): EditorCell[] {
   const next = [...cells];
   next.splice(index, 0, cell);

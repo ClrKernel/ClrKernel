@@ -22,6 +22,7 @@ import {
 } from '../notebook';
 import { clamp, MAX_SIDEBAR, MIN_SIDEBAR, type LayoutPrefs } from '../prefs';
 import { buildToc, sectionIds, stepCell, visibleLeaves } from '../toc';
+import { CellMenu } from './CellEditor';
 import { Output } from './NotebookView';
 import { Splitter } from './Splitter';
 import { TocTree } from './TocTree';
@@ -56,8 +57,9 @@ const MIN_PANE = 80;
  * each pane scrolls on its own and neither moves the other.
  */
 export function FocusMode({
-  cells, path, languages, runState, activeId, canRun, busy, cleared, layout,
+  cells, path, languages, runState, activeId, canRun, busy, cleared, layout, clipboard,
   onActivate, onChange, onLanguage, onRun, onClearOutput, onLayout, onDelete, onInsert,
+  onCut, onCopy, onPaste,
 }: {
   cells: EditorCell[];
   path: string;
@@ -76,6 +78,11 @@ export function FocusMode({
   onLayout: (layout: LayoutPrefs) => void;
   onDelete: (cellId: string) => void;
   onInsert: (afterId: string | null, kind: 'code' | 'markdown') => void;
+  /** Something has been cut or copied, so Paste has somewhere to come from. */
+  clipboard: boolean;
+  onCut: (cellId: string) => void;
+  onCopy: (cellId: string) => void;
+  onPaste: (cellId: string, where: 'above' | 'below') => void;
 }) {
   const work = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -372,12 +379,22 @@ export function FocusMode({
                 </span>
               )}
               {canWrite && (
+              <>
               <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => onDelete(active.id)}
                 title="Delete this cell"
               >
                 ✕
               </Button>
+              {/* The same menu the cell list has. Focus Mode shows one cell at a
+                  time, so a paste lands beside this one and the view follows it. */}
+              <CellMenu
+                clipboard={clipboard}
+                onCut={() => onCut(active.id)}
+                onCopy={() => onCopy(active.id)}
+                onPaste={(where) => onPaste(active.id, where)}
+              />
+              </>
               )}
             </div>
 

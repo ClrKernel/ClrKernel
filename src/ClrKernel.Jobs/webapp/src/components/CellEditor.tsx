@@ -1,6 +1,14 @@
+import { MoreHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -48,10 +56,15 @@ interface Props {
   busy: boolean;
   /** True while this cell's outputs are hidden by "Clear output". */
   cleared: boolean;
+  /** Something has been cut or copied, so Paste has somewhere to come from. */
+  clipboard: boolean;
   onChange: (source: string) => void;
   onLanguage: (value: string) => void;
   onMove: (to: number) => void;
   onDelete: () => void;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: (where: 'above' | 'below') => void;
   onRun: (mode: RunMode) => void;
   onClearOutput: () => void;
   onConnect: () => void;
@@ -65,7 +78,8 @@ interface Props {
  */
 export function CellEditor({
   cell, index, count, languages, path, diagnostics, connectionId, run, canRun, busy, cleared,
-  onChange, onLanguage, onMove, onDelete, onRun, onClearOutput, onConnect,
+  clipboard, onChange, onLanguage, onMove, onDelete, onCut, onCopy, onPaste, onRun,
+  onClearOutput, onConnect,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
   const [editing, setEditing] = useState(false);
@@ -144,6 +158,12 @@ export function CellEditor({
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} title="Delete this cell">
                   ✕
                 </Button>
+                <CellMenu
+                  clipboard={clipboard}
+                  onCut={onCut}
+                  onCopy={onCopy}
+                  onPaste={onPaste}
+                />
               </>
             )}
           </div>
@@ -221,6 +241,49 @@ export function CellEditor({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The cell's "…": what you can do to the cell as a thing, rather than to the
+ * text inside it.
+ *
+ * A menu rather than three more buttons — the hover row is already five wide,
+ * and a named item says what it does where another glyph would need hovering to
+ * find out. Paste is dimmed when nothing has been copied rather than hidden: a
+ * control that vanishes teaches nothing about why it is not there.
+ *
+ * Radix portals the popup to the body, which is what lets it escape the cell's
+ * `overflow: hidden` — the clipping that OutputMenu below has to position around
+ * by hand.
+ */
+export function CellMenu({
+  clipboard, onCut, onCopy, onPaste,
+}: {
+  clipboard: boolean;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: (where: 'above' | 'below') => void;
+}) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-6 px-2 text-sm" aria-label="Cell actions" title="Cell actions">
+          <MoreHorizontal className="size-3.5" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onCut}>Cut cell</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onCopy}>Copy cell</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={!clipboard} onSelect={() => onPaste('above')}>
+          Paste cell above
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!clipboard} onSelect={() => onPaste('below')}>
+          Paste cell below
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

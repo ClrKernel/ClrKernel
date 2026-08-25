@@ -31,6 +31,7 @@ import { neighbourCell } from '../toc';
 import {
   cellsToRun,
   connectableLanguage,
+  copyOfCell,
   emptyCell,
   fileLanguage,
   insertCell,
@@ -38,7 +39,9 @@ import {
   keepIds,
   mergeStatus,
   moveCell,
+  pushUndo,
   removeCell,
+  restoreCells,
   setCellLanguage,
   toApiCells,
   toRunCells,
@@ -123,6 +126,17 @@ export function Editor() {
   const [restartDismissed, setRestartDismissed] = useState(false);
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const [connectFor, setConnectFor] = useState<number | null>(null);
+  /**
+   * The cell clipboard, and the structural history.
+   *
+   * Both belong to the editor rather than to a notebook: this component stays
+   * mounted while you move between files, so a cell copied in one pastes into
+   * the next — which is most of the reason to want cut and paste at all. The
+   * history is cleared on load, because a snapshot of another file is not
+   * something Ctrl+Z should be able to reach.
+   */
+  const [clipboard, setClipboard] = useState<EditorCell | null>(null);
+  const [undoStack, setUndoStack] = useState<EditorCell[][]>([]);
   // Focus Mode: one cell at a time. Per notebook, so switching files takes you
   // back to how you were working in that file.
   const [mode, setMode] = useState<'normal' | 'focus'>(() => loadNotebookState(path).mode ?? 'normal');
@@ -232,6 +246,7 @@ export function Editor() {
           }
           setCells(withIds(result.cells));
           setSaved(result.cells);
+          setUndoStack([]);
           setLanguages(result.languages ?? []);
           setPrivateConnections(result.privateConnections ?? []);
           void resolveConnection(result.connections ?? []).then(
@@ -267,6 +282,43 @@ export function Editor() {
     setActiveId(loadNotebookState(path).activeCellId ?? null);
   }, [path]);
   useEffect(() => saveLayout(layout), [layout]);
+
+  /**
+   * Ctrl/⌘+Z, for the structural history.
+   *
+   * Only when the keystroke did not land in an editor: inside a cell, Ctrl+Z is
+   * Monaco's text undo and taking it would make the two undos fight over one
+   * key. That is the same split VS Code makes, and it is why this listens on the
+   * document rather than binding a Monaco command.
+   *
+   * Deliberately no Ctrl+X/C/V for cells. Those are the text clipboard
+   * everywhere else on this page, and without a cell-selection mode — a notebook
+   * where a cell can be selected *without* its editor being focused — there is no
+   * moment when they are unambiguously about the cell rather than about the code
+   * in it. The menu says which one it means.
+   */
+  useEffect(() => {
+    if (tab !== 'edit' || !allows.write) {
+      return;
+    }
+    function onKey(event: KeyboardEvent) {
+      const undoKey = (event.metaKey || event.ctrlKey)
+        && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'z';
+      if (!undoKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.monaco-editor, input, textarea, [contenteditable="true"]') != null) {
+        return;
+      }
+      event.preventDefault();
+      undo();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // `undo` closes over both, so the listener is replaced whenever either moves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, allows.write, undoStack, cells]);
 
   // Focus Mode owns the viewport: the work area is fixed to it and each pane
   // scrolls on its own, so the page behind must not scroll as well.
@@ -432,6 +484,7 @@ export function Editor() {
         const reloaded = await api.notebookCells(branch, path);
         setCells(keepIds(reloaded.cells, []));
         setSaved(reloaded.cells);
+        setUndoStack([]);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -582,12 +635,74 @@ export function Editor() {
     }
   }
 
+  /** Typing. Deliberately not undoable here — inside a cell, Ctrl+Z is Monaco's
+   *  own text undo and belongs to it. */
   function update(index: number, change: (cell: EditorCell) => EditorCell) {
     setCells((current) => current?.map((cell, i) => (i === index ? change(cell) : cell)) ?? current);
   }
 
+  /**
+   * Every structural change goes through here — anything that adds, removes,
+   * reorders or retypes a cell — so the history cannot be forgotten by whichever
+   * call site is added next. A change that turns out to be a no-op (moving the
+   * first cell up) records nothing, or Undo would do nothing and look broken.
+   */
+  function edit(change: (current: EditorCell[]) => EditorCell[]) {
+    if (cells == null) {
+      return;
+    }
+    const next = change(cells);
+    if (next === cells) {
+      return;
+    }
+    setUndoStack((stack) => pushUndo(stack, cells));
+    setCells(next);
+  }
+
+  const canUndo = undoStack.length > 0;
+
+  function undo() {
+    const snapshot = undoStack[undoStack.length - 1];
+    if (snapshot == null || cells == null) {
+      return;
+    }
+    setCells(restoreCells(snapshot, cells));
+    setUndoStack(undoStack.slice(0, -1));
+  }
+
   function insertAt(index: number, kind: 'code' | 'markdown') {
-    setCells((current) => insertCell(current ?? [], index, emptyCell(kind)));
+    edit((current) => insertCell(current, index, emptyCell(kind)));
+  }
+
+  function copyCell(index: number) {
+    const cell = cells?.[index];
+    if (cell != null) {
+      setClipboard(cell);
+    }
+  }
+
+  /** One action, so one history entry: undoing a cut puts the cell back where
+   *  it was, rather than needing two presses to undo one gesture. */
+  function cutCell(index: number) {
+    const cell = cells?.[index];
+    if (cell == null) {
+      return;
+    }
+    setClipboard(cell);
+    const remaining = removeCell(cells!, index);
+    edit(() => remaining);
+    setActiveId(neighbourCell(remaining, index));
+  }
+
+  /** Pasted cells are copies with fresh ids — see `copyOfCell`. The new one
+   *  becomes active so Focus Mode, which shows one cell at a time, lands on it. */
+  function pasteCell(index: number) {
+    if (clipboard == null) {
+      return;
+    }
+    const cell = copyOfCell(clipboard);
+    edit((current) => insertCell(current, index, cell));
+    setActiveId(cell.id);
   }
 
   /**
@@ -597,8 +712,8 @@ export function Editor() {
    */
   function insertConnection(index: number, directive: string) {
     const source = cells?.[index];
-    setCells((current) =>
-      insertCell(current ?? [], index, {
+    edit((current) =>
+      insertCell(current, index, {
         ...emptyCell('code'),
         tag: source?.tag ?? null,
         languageId: source?.languageId ?? null,
@@ -664,6 +779,8 @@ export function Editor() {
         onMode={setMode}
         onRunAll={() => run(0, 'all')}
         onRestart={restartKernel}
+        canUndo={canUndo}
+        onUndo={undo}
         saveStatus={saveStatus}
         busy={busy}
         onSave={retry}
@@ -766,23 +883,29 @@ export function Editor() {
                   setCells((current) =>
                     (current ?? []).map((c) => (c.id === cellId ? { ...c, source: value } : c)))}
                 onLanguage={(cellId, value) =>
-                  setCells((current) =>
-                    (current ?? []).map((c) =>
-                      c.id === cellId ? setCellLanguage(c, value, languages) : c))}
+                  edit((current) => current.map(
+                    (c) => (c.id === cellId ? setCellLanguage(c, value, languages) : c)))}
                 onRun={(cellId) => run(cells.findIndex((c) => c.id === cellId), 'one')}
                 onClearOutput={(cellId) => setCleared((current) => new Set(current).add(cellId))}
                 onLayout={setLayout}
                 onDelete={(cellId) => {
                   const index = cells.findIndex((c) => c.id === cellId);
                   const remaining = removeCell(cells, index);
-                  setCells(remaining);
+                  edit(() => remaining);
                   setActiveId(neighbourCell(remaining, index));
                 }}
                 onInsert={(afterId, kind) => {
                   const at = afterId == null ? 0 : cells.findIndex((c) => c.id === afterId) + 1;
                   const cell = emptyCell(kind);
-                  setCells(insertCell(cells, at, cell));
+                  edit((current) => insertCell(current, at, cell));
                   setActiveId(cell.id);
+                }}
+                clipboard={clipboard != null}
+                onCut={(cellId) => cutCell(cells.findIndex((c) => c.id === cellId))}
+                onCopy={(cellId) => copyCell(cells.findIndex((c) => c.id === cellId))}
+                onPaste={(cellId, where) => {
+                  const index = cells.findIndex((c) => c.id === cellId);
+                  pasteCell(where === 'above' ? index : index + 1);
                 }}
               />
             ) : (
@@ -805,9 +928,14 @@ export function Editor() {
                   canRun={canRun}
                   busy={running}
                   onChange={(value) => update(index, (c) => ({ ...c, source: value }))}
-                  onLanguage={(value) => update(index, (c) => setCellLanguage(c, value, languages))}
-                  onMove={(to) => setCells((current) => (current ? moveCell(current, index, to) : current))}
-                  onDelete={() => setCells((current) => (current ? removeCell(current, index) : current))}
+                  onLanguage={(value) => edit((current) => current.map(
+                    (c, i) => (i === index ? setCellLanguage(c, value, languages) : c)))}
+                  onMove={(to) => edit((current) => moveCell(current, index, to))}
+                  onDelete={() => edit((current) => removeCell(current, index))}
+                  clipboard={clipboard != null}
+                  onCut={() => cutCell(index)}
+                  onCopy={() => copyCell(index)}
+                  onPaste={(where) => pasteCell(where === 'above' ? index : index + 1)}
                   onRun={(mode) => run(index, mode)}
                   cleared={cleared.has(cell.id)}
                   onClearOutput={() => setCleared((current) => new Set(current).add(cell.id))}

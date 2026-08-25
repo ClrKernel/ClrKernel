@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiCell, ApiLanguage, ApiSession, TreeNode } from './api';
 import {
+  UNDO_DEPTH,
   cellsToRun,
+  copyOfCell,
   fileLanguage,
   isDirty,
   keepIds,
@@ -10,7 +12,9 @@ import {
   monacoLanguage,
   moveCell,
   notebookPaths,
+  pushUndo,
   removeCell,
+  restoreCells,
   setCellLanguage,
   toApiCells,
   toRunCells,
@@ -222,6 +226,55 @@ describe('structural edits', () => {
 
   it('removes a cell', () => {
     expect(removeCell(cells, 1).map((c) => c.source)).toEqual(['a', 'c']);
+  });
+});
+
+describe('copyOfCell', () => {
+  const [original] = withIds([cell({ source: 'x', tag: 'sql', languageId: 'sql' })]);
+
+  it('keeps everything the file cares about', () => {
+    const copy = copyOfCell(original);
+    expect(copy.source).toBe('x');
+    expect(copy.tag).toBe('sql');
+    expect(copy.languageId).toBe('sql');
+  });
+
+  it('and never the id — pasting twice must not make two cells one', () => {
+    const first = copyOfCell(original);
+    const second = copyOfCell(original);
+    expect(first.id).not.toBe(original.id);
+    expect(second.id).not.toBe(first.id);
+  });
+});
+
+describe('undo', () => {
+  const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+
+  it('keeps the newest and forgets the oldest past its depth', () => {
+    let stack: (typeof cells)[] = [];
+    for (let i = 0; i < UNDO_DEPTH + 5; i += 1) {
+      stack = pushUndo(stack, withIds([cell({ source: `${i}` })]));
+    }
+    expect(stack).toHaveLength(UNDO_DEPTH);
+    expect(stack[stack.length - 1][0].source).toBe(`${UNDO_DEPTH + 4}`);
+    expect(stack[0][0].source).toBe('5');
+  });
+
+  it('puts back a deleted cell with the text it had', () => {
+    const after = removeCell(cells, 0);
+    expect(restoreCells(cells, after).map((c) => c.source)).toEqual(['a', 'b']);
+  });
+
+  it('but leaves what was typed since alone', () => {
+    // The whole point: undoing a delete must not be a way to lose an edit made
+    // to a different cell afterwards.
+    const after = removeCell(cells, 0).map((c) => ({ ...c, source: 'b typed since' }));
+    expect(restoreCells(cells, after).map((c) => c.source)).toEqual(['a', 'b typed since']);
+  });
+
+  it('drops a cell that the snapshot never had', () => {
+    const after = [...cells, copyOfCell(cells[0])];
+    expect(restoreCells(cells, after).map((c) => c.id)).toEqual(cells.map((c) => c.id));
   });
 });
 

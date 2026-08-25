@@ -11,10 +11,21 @@
  * and a 218px sidebar makes the window a fifth wider than the space the toolbar
  * actually has. Dragging that sidebar fires no window resize at all.
  *
- * The numbers below are measured, not guessed: the full layout needs about
- * 1124px of bar — measured with the promotion-blocked info button present,
- * which is the wider of the two cases — and each tier below it is what remains
- * once that tier's label has gone. Re-measure if the controls change.
+ * The numbers below are measured, not guessed — against `contentRect.width`,
+ * which is the bar's *content* box and so 32px narrower than its clientWidth.
+ * Each tier is what its own contents need. Re-measure if the controls change.
+ *
+ * They are measured **with Push to test on the bar**, which is where they went
+ * wrong before: Push appears the moment you have unpushed work, which is most of
+ * a working session, and the previous numbers were taken without it. They were
+ * 80–110px short in every tier, so the toolbar quietly scrolled sideways as soon
+ * as you typed — the one thing this module exists to prevent. Adding Undo made
+ * that worse rather than causing it. Measure in the state you actually work in.
+ *
+ * Undo is on the Notebook tab only, so Source and Diff now shed detail slightly
+ * earlier than they need to. That costs those two a label at a width where they
+ * had room for it, and is cheaper than a layout that has to be told which tab
+ * it is on.
  */
 
 export interface ToolbarLayout {
@@ -32,7 +43,7 @@ export interface ToolbarLayout {
 }
 
 /** Toolbar widths at which something has to give. */
-export const BREAKPOINTS = { narrow: 780, collapse: 880, tight: 1000, compact: 1140 } as const;
+export const BREAKPOINTS = { narrow: 900, collapse: 950, tight: 1210, compact: 1290 } as const;
 
 export function toolbarLayout(width: number): ToolbarLayout {
   if (width < BREAKPOINTS.narrow) {
