@@ -1216,6 +1216,21 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+.result-grid-search {
+  width: 200px;
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  padding: 2px 8px;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.result-grid-search:focus {
+  border-color: var(--color-ring);
+}
+
 .result-grid-scroll {
   flex: 1;
   overflow: auto;
@@ -1227,16 +1242,89 @@
   font-size: var(--text-sm);
 }
 
-.result-grid-scroll th {
+/* Two sticky rows, so the second has to know how tall the first is. Stated
+   rather than measured: the alternative is a resize observer writing a custom
+   property, for a header whose height is not in question. */
+.result-grid-scroll thead th {
   position: sticky;
-  top: 0;
   z-index: 1;
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-panel);
-  cursor: pointer;
   text-align: left;
   white-space: nowrap;
+}
+
+.result-grid-head th {
+  top: 0;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  cursor: pointer;
+}
+
+.result-grid-filters th {
+  top: 26px;
+  cursor: auto;
+  height: 24px;
+  padding: 0 4px 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.result-grid-filters input {
+  width: 100%;
+  min-width: 60px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-input);
+  border-radius: 4px;
+  background: var(--color-background);
+  padding: 0 4px;
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 18px;
+  outline: none;
+}
+
+.result-grid-filters input:focus {
+  border-color: var(--color-ring);
+}
+
+
+.result-grid-sort {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+/* Faint, never absent. A control you cannot see is a control you do not know is
+   there, and hunting for one by waving the pointer along a header row is not
+   discovery — the same reason the connection tree's row actions are faint rather
+   than hidden. */
+.result-grid-funnel {
+  margin-left: 4px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--color-muted-subtle);
+  cursor: pointer;
+  opacity: 0.4;
+  vertical-align: middle;
+}
+
+.result-grid-head th:hover .result-grid-funnel,
+.result-grid-funnel:focus-visible,
+.result-grid-funnel.is-active {
+  opacity: 1;
+}
+
+.result-grid-funnel.is-active {
+  color: var(--color-primary);
+}
+
+.result-grid-funnel:hover {
+  background: var(--color-surface-panel-strong);
+  color: var(--color-foreground);
 }
 
 /* The height is stated rather than derived, and the line height matches it. The
@@ -1270,4 +1358,99 @@
 .result-grid-null {
   color: var(--color-muted-subtle);
   font-style: italic;
+}
+
+.result-grid-empty {
+  color: var(--color-muted-subtle);
+  font-family: var(--font-sans);
+  text-align: center;
+}
+
+/* Fixed, not absolute: the scroll container clips anything inside it, and no
+   z-index escapes a clip. */
+.result-grid-popup {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  width: 240px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  /* No shadow: hierarchy in this design is carried by borders, and the token
+     layer is the only place a colour may be written. */
+  background: var(--color-popover);
+}
+
+.result-grid-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.result-grid-popup-head input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-input);
+  border-radius: 4px;
+  background: var(--color-background);
+  padding: 2px 6px;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.result-grid-popup-head button,
+.result-grid-popup-actions button {
+  border: none;
+  background: none;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.result-grid-popup-head button:hover,
+.result-grid-popup-actions button:hover {
+  color: var(--color-foreground);
+  text-decoration: underline;
+}
+
+.result-grid-popup-actions {
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--color-muted-subtle);
+  font-size: var(--text-sm);
+}
+
+.result-grid-popup-list {
+  overflow: auto;
+  max-height: 260px;
+  padding: 2px 0;
+}
+
+.result-grid-popup-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.result-grid-popup-list label:hover {
+  background: var(--color-surface-panel);
+}
+
+.result-grid-popup-list span {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-grid-popup-list p {
+  padding: 6px 8px;
 }
