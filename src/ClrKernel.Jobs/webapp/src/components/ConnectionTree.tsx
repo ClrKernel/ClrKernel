@@ -387,10 +387,12 @@ export function ConnectionTree({
  */
 function RowMenu({ label, children }: { label: string; children: ReactNode }) {
   return (
-    // modal={false}: the default puts pointer-events:none on the body while the
-    // menu is open and swallows the pointer event that dismisses it, so the next
-    // thing you click in the tree does nothing at all. A row's menu has no business
-    // making the rest of the page inert.
+    // modal={false}, and measured rather than assumed: with Radix's default, while
+    // a row menu is open the document itself intercepts pointer events and the rest
+    // of the page is inert — nothing else on it can be clicked at all. Non-modal, a
+    // click elsewhere dismisses the menu and the page stays live. The dismissing
+    // click is still spent dismissing, which is how menus behave everywhere; being
+    // unable to reach the page at all is not.
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button aria-label={label} title="Actions">
