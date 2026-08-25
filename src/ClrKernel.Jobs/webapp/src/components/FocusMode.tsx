@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { StatusBadge } from './common';
+import { CollapsedRail, StatusBadge } from './common';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useFocusEditor } from '../monaco/useMonaco';
@@ -266,15 +266,10 @@ export function FocusMode({
   return (
     <div className="focus-shell" ref={work}>
       {layout.sidebarCollapsed ? (
-        <button
-          type="button"
-          className="focus-rail"
-          title="Show contents"
-          aria-label="Show contents"
-          onClick={() => onLayout({ ...layout, sidebarCollapsed: false })}
-        >
-          ⟩
-        </button>
+        <CollapsedRail
+          label="Show contents"
+          onExpand={() => onLayout({ ...layout, sidebarCollapsed: false })}
+        />
       ) : (
         <>
           <div className="focus-sidebar" style={{ width: layout.sidebarWidth }}>

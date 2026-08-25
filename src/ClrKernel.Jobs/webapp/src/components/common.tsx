@@ -1,9 +1,43 @@
-import { CircleAlert } from 'lucide-react';
+import { ChevronRight, CircleAlert } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { SelectGroup, SelectItem, SelectLabel, SelectSeparator } from '@/components/ui/select';
 import type { BranchTree, CellStatus, RunStatus } from '../api';
+
+/**
+ * The reveal handle a collapsed sidebar leaves behind.
+ *
+ * Top-aligned rather than centred on the column. It is the same control as the
+ * ⟨ that hid the panel, so it belongs where that button was: the eye goes back
+ * to where it last clicked. Centred, it sat wherever the window happened to be
+ * tall — which is nowhere in particular, and a long way from the header on a
+ * big screen.
+ *
+ * And drawn as a chip rather than a bare glyph. A 12px chevron in the faintest
+ * text colour on a 16px strip is not visibly a control; the border and the
+ * lighter fill are what say "press me", and they are the same border the button
+ * that collapsed the panel wears.
+ *
+ * Shared because there were two of these — one lucide chevron, one `⟩`
+ * character, different sizes, different weights: the same control looking like
+ * two different things depending on which sidebar you had shut.
+ */
+export function CollapsedRail({ label, onExpand }: { label: string; onExpand: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      title={label}
+      aria-label={label}
+      className="flex w-[22px] shrink-0 items-start justify-center border-r border-border bg-muted pt-2 text-muted-foreground outline-none hover:bg-surface-panel-strong hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="flex size-[18px] items-center justify-center rounded-sm border border-input bg-background">
+        <ChevronRight className="size-3.5" aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
 
 /** A branch that belongs to a person rather than to the project. */
 export function isPersonalBranch(name: string): boolean {

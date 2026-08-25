@@ -19,7 +19,7 @@ import { createNotebook, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
 import { editPath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
-import { BranchOptions, usePolling } from './common';
+import { BranchOptions, CollapsedRail, usePolling } from './common';
 import { FileBadge } from './FileBadge';
 
 /** The editor link for one file on one branch. */
@@ -123,17 +123,7 @@ export function NotebookExplorer({
   }
 
   if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={() => onCollapse(false)}
-        title="Show explorer"
-        aria-label="Show explorer"
-        className="flex w-[16px] shrink-0 items-center justify-center border-r border-border bg-muted text-muted-subtle outline-none hover:bg-surface-panel-strong hover:text-primary"
-      >
-        <ChevronRight className="size-3" aria-hidden="true" />
-      </button>
-    );
+    return <CollapsedRail label="Show explorer" onExpand={() => onCollapse(false)} />;
   }
 
   const selected = environments.find((e) => e.name === env);

@@ -748,24 +748,6 @@
     background: var(--surface-panel);
   }
 
-  /* The reveal affordance when the sidebar is collapsed to nothing: a thin rail,
-     so the contents are always one click away rather than lost. */
-  .focus-rail {
-    flex: 0 0 16px;
-    border: 0;
-    border-right: 1px solid var(--border);
-    background: var(--surface-panel);
-    cursor: pointer;
-    color: var(--muted-subtle);
-    font-size: 10px;
-    padding: 0;
-  }
-
-  .focus-rail:hover {
-    background: var(--surface-panel-strong);
-    color: var(--primary);
-  }
-
   ul.focus-toc,
   ul.focus-toc ul {
     list-style: none;
