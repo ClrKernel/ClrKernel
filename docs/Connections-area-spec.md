@@ -280,6 +280,26 @@ fact. The pool is keyed by connection string and shared, so one person's Disconn
 pooled sockets for everybody — harmless, since the next query opens a new one, and it is the
 only honest meaning the word can have when the connection is pooled rather than held.
 
+## Since resolved
+
+**Providers are no longer hardcoded.** `describeConnections` gained a no-language form
+(a per-language question can never reach Fabric, Oracle, ODBC or JDBC, which belong to no cell
+language), and `ConnectionProviderCatalog` probes it once per process. Any type the kernel
+declares can be saved and named by a notebook. Only the types this process references can be
+*opened* — browsing and querying refuse the rest on the connection, on the route and in the
+form, because building a SQL Server connection out of another provider's settings and dialling
+it is worse than saying no.
+
+**The statement check exists**, as the spec framed it: a message, never the mechanism.
+`StatementCheck` reports a verb only when a statement plainly begins with one, after stripping
+comments and quoted text. A CTE ending in `INSERT` and a `SELECT … INTO` are asserted as missed
+in its tests — the read-only credential is what refuses those, and a check that tried to catch
+them would start refusing reads.
+
+**The live tests run.** `dev/docker-compose.dbs.yml` already had a SQL Server service, so
+there was no image to build. The fixture database is created with a collation that is
+deliberately not the server's, which is the regression test for the reported conflict.
+
 ## Defaults taken without asking
 
 - **10,000 rows** capped by default with a visible "showing first N" notice; a per-connection
