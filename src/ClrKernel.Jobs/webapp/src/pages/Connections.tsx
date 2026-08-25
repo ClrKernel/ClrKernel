@@ -3,7 +3,9 @@ import type * as monaco from 'monaco-editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { api, type ApiConnection, type ApiQueryResult } from '../api';
+import { api, projectSlug, type ApiConnection, type ApiQueryResult } from '../api';
+import { notebookPaths } from '../notebook';
+import { editPath } from '../routes';
 import { ConnectionForm } from '../components/ConnectionForm';
 import { ConnectionTree } from '../components/ConnectionTree';
 import { ErrorBanner } from '../components/common';
@@ -48,6 +50,7 @@ export function Connections() {
   const [running, setRunning] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [password, setPassword] = useState('');
+  const [moving, setMoving] = useState(false);
 
   const selected = connections.find((c) => c.id === id) ?? null;
 
@@ -139,6 +142,29 @@ export function Connections() {
     }
   }
 
+  /**
+   * Puts the query into a notebook cell on the caller's own branch.
+   *
+   * A `#!sql --connection x` cell rather than a copy of the connection's settings:
+   * the shared connections.json sits beside the notebook, so naming the connection
+   * is all the cell needs, and the notebook stays free of anything to keep in step.
+   */
+  async function intoNotebook(path: string) {
+    if (selected == null) {
+      return;
+    }
+    const cell = {
+      kind: 'code' as const,
+      tag: 'sql',
+      languageId: 'sql',
+      source: `#!sql --connection ${selected.name}\n${sql.trim()}`,
+    };
+    const existing = await api.notebookCells('mine', path);
+    await api.saveNotebookCells(path, [...existing.cells, cell]);
+    setMoving(false);
+    navigate(editPath(projectSlug(), 'mine', path));
+  }
+
   function onSplitDrag(y: number) {
     const box = work.current?.getBoundingClientRect();
     if (box) {
@@ -226,6 +252,16 @@ export function Connections() {
               className="h-7 rounded-lg border border-input bg-background px-2 text-sm"
             />
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-sm"
+            disabled={selected == null || sql.trim().length === 0}
+            onClick={() => setMoving(true)}
+            title="Append this query to a notebook on your branch"
+          >
+            Open in notebook…
+          </Button>
           {running != null ? (
             <>
               <span className="text-sm text-muted-subtle">{(elapsed / 1000).toFixed(1)}s</span>
@@ -293,6 +329,14 @@ export function Connections() {
         </div>
       </div>
 
+      {moving && selected != null && (
+        <NotebookChooser
+          connection={selected}
+          onChoose={intoNotebook}
+          onClose={() => setMoving(false)}
+        />
+      )}
+
       {(creating || editing != null) && (
         <ConnectionForm
           connection={editing}
@@ -308,6 +352,71 @@ export function Connections() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Which notebook a scratch query should become a cell of.
+ *
+ * Only notebooks on your own branch are offered, and that is not a filter — it is
+ * the only branch you may write to. Offering the others would be offering a save
+ * the server is going to refuse.
+ */
+function NotebookChooser({ connection, onChoose, onClose }: {
+  connection: ApiConnection;
+  onChoose: (path: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [trees, setTrees] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.notebooks()
+      .then((result) => setTrees(
+        notebookPaths(result.environments.find((e) => e.name === 'mine')?.tree)))
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  async function choose(path: string) {
+    setBusy(path);
+    try {
+      await onChoose(path);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <h2 style={{ margin: 0 }}>Open in notebook</h2>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
+        </div>
+        <ErrorBanner error={error} />
+        <p className="text-base text-muted-foreground">
+          The query becomes a new cell at the end, running on <strong>{connection.name}</strong>.
+        </p>
+        {trees == null && !error && (
+          <p className="text-base text-muted-foreground">Looking for your notebooks…</p>
+        )}
+        {trees?.length === 0 && (
+          <p className="text-base text-muted-foreground">
+            You have no notebooks on your branch yet. Make one in Files first.
+          </p>
+        )}
+        <div className="wizard-saved">
+          {(trees ?? []).map((path) => (
+            <button key={path} disabled={busy != null} onClick={() => void choose(path)}>
+              <span className="wizard-saved-name">{path}</span>
+              {busy === path && <span className="wizard-saved-detail">adding…</span>}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

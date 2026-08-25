@@ -198,6 +198,42 @@ public class ConnectionMaterializerTest {
     // --- both together ------------------------------------------------------
 
     [TestMethod]
+    public void ABranchOlderThanTheSharedListStillGetsIt() {
+        // The branch is cut first, so it does not track connections.json — and
+        // FindFiles stops at the first directory holding either file, so without a
+        // copy here the owner's overlay would be all that is found and every shared
+        // connection would vanish for them.
+        _git.EnsureUserWorktree(_grace);
+        Save("warehouse", ConnectionScope.Shared);
+        Save("scratch", ConnectionScope.Private, _grace);
+        _files.Sync();
+
+        var worktree = WorktreeOf(_grace);
+        StringAssert.Contains(
+            File.ReadAllText(Path.Combine(worktree, ConnectionMaterializer.SharedFileName)),
+            "\"warehouse\"");
+        Assert.IsFalse(_git.IsDirty(GitService.BranchForUser(_grace)),
+            "and the copy is ignored, so it is not unsaved work");
+        Assert.IsTrue(_git.UserWorktrees().Single(w => w.UserId == _grace).Merged,
+            "nor a commit test has not seen");
+    }
+
+    [TestMethod]
+    public void ABranchThatAlreadyTracksTheSharedListIsLeftAlone() {
+        // Cut after the file was committed to test, so the branch tracks it. Writing
+        // over a tracked file would read as unsaved work forever.
+        Save("warehouse", ConnectionScope.Shared);
+        _files.Sync();
+        _git.EnsureUserWorktree(_grace);
+        Save("second", ConnectionScope.Shared);
+        _files.Sync();
+
+        var branch = GitService.BranchForUser(_grace);
+        Assert.IsTrue(_git.Tracks(branch, ConnectionMaterializer.SharedFileName));
+        Assert.IsFalse(_git.IsDirty(branch), "the tracked copy is the branch's to update by merging");
+    }
+
+    [TestMethod]
     public void TheSharedFileAndTheOverlayEndUpInTheSameDirectory() {
         // ConnectionConfig.FindFiles stops at the first directory holding either, so
         // a worktree with only an overlay would lose every shared connection. The

@@ -453,7 +453,11 @@ public sealed class GitService {
         if (!tracked && !File.Exists(System.IO.Path.Combine(worktree, relativePath))) {
             return false;
         }
-        Run(worktree, "add", "--", relativePath);
+        // -f, because the same path is deliberately in info/exclude: a personal
+        // branch that does not track it gets an ignored copy so its owner keeps the
+        // shared list, and git would otherwise refuse to stage the real one here.
+        // Forcing says what is meant — this path belongs in this branch.
+        Run(worktree, "add", "-f", "--", relativePath);
         if (TryRun(worktree, "diff", "--cached", "--quiet", "--", relativePath).Code == 0) {
             return false;
         }
@@ -472,6 +476,10 @@ public sealed class GitService {
     /// this layout, and that is a coincidence worth not depending on.
     /// </para>
     /// </summary>
+    /// <summary>Whether a path is tracked on the branch checked out in a worktree.</summary>
+    public bool Tracks(string branch, string relativePath) =>
+        TryRun(PathFor(branch), "ls-files", "--error-unmatch", "--", relativePath).Code == 0;
+
     public void EnsureExcluded(string pattern) {
         var common = TryRun(TestPath, "rev-parse", "--git-common-dir").Stdout.Trim();
         if (common.Length == 0) {

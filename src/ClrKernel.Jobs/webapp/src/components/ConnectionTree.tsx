@@ -377,7 +377,11 @@ export function ConnectionTree({
  */
 function RowMenu({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <DropdownMenu>
+    // modal={false}: the default puts pointer-events:none on the body while the
+    // menu is open and swallows the pointer event that dismisses it, so the next
+    // thing you click in the tree does nothing at all. A row's menu has no business
+    // making the rest of the page inert.
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button aria-label={label} title="Actions">
           <MoreHorizontal className="size-3.5" aria-hidden="true" />

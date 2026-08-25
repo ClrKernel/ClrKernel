@@ -1454,3 +1454,44 @@
 .result-grid-popup-list p {
   padding: 6px 8px;
 }
+
+/* The saved-connection list in the cell wizard. */
+.wizard-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  max-height: 240px;
+}
+
+.wizard-saved button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.wizard-saved button:hover {
+  border-color: var(--color-ring);
+  background: var(--color-surface-panel);
+}
+
+.wizard-saved-name {
+  font-weight: 600;
+}
+
+.wizard-saved-detail {
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--color-muted-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

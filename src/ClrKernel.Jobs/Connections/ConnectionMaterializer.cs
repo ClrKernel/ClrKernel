@@ -77,6 +77,11 @@ public sealed class ConnectionMaterializer {
             return;
         }
 
+        // Both names, and the shared one for a reason worth stating: on test and prod
+        // it is tracked, where an exclude has no effect and the commit works as
+        // before. On a personal branch that predates it, it is untracked — and there
+        // it has to be ignored or the copy written below would read as unsaved work.
+        git.EnsureExcluded(SharedFileName);
         git.EnsureExcluded(PrivateFileName);
         git.WithLock(() => {
             // Committed, so a connection is live for the scheduler the moment it is
@@ -93,13 +98,31 @@ public sealed class ConnectionMaterializer {
                 }
             }
 
-            // Personal worktrees get only the overlay. The base arrives on their
-            // branch the ordinary way, by merging test — writing it here instead
-            // would dirty a tracked file and make the worktree unprunable.
             foreach (var worktree in git.UserWorktrees()) {
                 Write(Path.Combine(worktree.Path, PrivateFileName), PrivateFor(worktree.UserId));
+                WriteSharedInto(git, worktree);
             }
         });
+    }
+
+    /// <summary>
+    /// Gives a personal worktree a copy of the shared list — but only while its
+    /// branch does not track one.
+    /// <para>
+    /// A branch cut from test after the file was committed there already has it, and
+    /// writing over a tracked file would show as unsaved work and make the worktree
+    /// unprunable. A branch cut <em>before</em> has neither — and because
+    /// <see cref="ConnectionConfig.FindFiles"/> stops at the first directory holding
+    /// either file, its owner's overlay would then be the only thing found and every
+    /// shared connection would silently vanish for them. So the untracked case gets a
+    /// copy, ignored, until a merge from test replaces it with the real one.
+    /// </para>
+    /// </summary>
+    private void WriteSharedInto(GitService git, GitService.UserWorktree worktree) {
+        if (git.Tracks(GitService.BranchForUser(worktree.UserId), SharedFileName)) {
+            return;
+        }
+        Write(Path.Combine(worktree.Path, SharedFileName), Shared());
     }
 
     /// <summary>
@@ -112,9 +135,14 @@ public sealed class ConnectionMaterializer {
     /// </summary>
     public void SyncUser(GitService git, Guid userId) {
         try {
+            git.EnsureExcluded(SharedFileName);
             git.EnsureExcluded(PrivateFileName);
-            var worktree = git.PathFor(GitService.BranchForUser(userId));
+            var branch = GitService.BranchForUser(userId);
+            var worktree = git.PathFor(branch);
             Write(Path.Combine(worktree, PrivateFileName), PrivateFor(userId));
+            if (!git.Tracks(branch, SharedFileName)) {
+                Write(Path.Combine(worktree, SharedFileName), Shared());
+            }
         } catch (Exception e) {
             _logger?.LogWarning(
                 "Could not write the private connections for {User}: {Error}", userId, e.Message);
