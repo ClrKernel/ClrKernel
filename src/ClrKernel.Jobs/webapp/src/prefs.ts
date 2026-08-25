@@ -20,6 +20,11 @@ export interface LayoutPrefs {
    *  Focus-mode contents sidebar above, and separately sized. */
   explorerWidth: number;
   explorerCollapsed: boolean;
+  /** The Connections area's own two panes. Its own numbers rather than the
+   *  editor's: it is a different screen, and dragging the query editor taller has
+   *  no business making the notebook editor taller too. */
+  connectionsSplit: number;
+  connectionsTreeWidth: number;
 }
 
 export const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -28,6 +33,8 @@ export const DEFAULT_LAYOUT: LayoutPrefs = {
   splitRatio: 0.5,
   explorerWidth: 218,
   explorerCollapsed: false,
+  connectionsSplit: 0.45,
+  connectionsTreeWidth: 280,
 };
 
 export interface NotebookState {
@@ -64,6 +71,8 @@ export function loadLayout(): LayoutPrefs {
     splitRatio: clamp(layout.splitRatio, 0.1, 0.9),
     explorerWidth: clamp(layout.explorerWidth, MIN_EXPLORER, MAX_EXPLORER),
     explorerCollapsed: layout.explorerCollapsed === true,
+    connectionsSplit: clamp(layout.connectionsSplit, 0.15, 0.85),
+    connectionsTreeWidth: clamp(layout.connectionsTreeWidth, MIN_TREE, MAX_TREE),
   };
 }
 
@@ -76,6 +85,11 @@ export const MAX_SIDEBAR = 640;
 
 export const MIN_EXPLORER = 150;
 export const MAX_EXPLORER = 420;
+
+/** Object names run long, so the connection tree is allowed to be wider than the
+ *  file explorer. */
+export const MIN_TREE = 180;
+export const MAX_TREE = 640;
 
 export function clamp(value: number, min: number, max: number): number {
   return Number.isFinite(value) ? Math.min(Math.max(value, min), max) : min;

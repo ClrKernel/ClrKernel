@@ -12,7 +12,7 @@ import {
   Table2,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -31,6 +31,7 @@ import {
   type ApiMetadataNode,
   type ApiObjectDetail,
 } from '../api';
+import { readCache, without, writeCache } from '../connectionCache';
 
 /**
  * Where a node sits, as the four coordinates the metadata route takes. The key
@@ -122,12 +123,21 @@ export function ConnectionTree({
 }) {
   // Everything loaded so far, by node key. Absent means "not opened yet";
   // present means opened, so an empty schema stays open showing nothing rather
-  // than re-fetching every time it is clicked.
-  const [children, setChildren] = useState<Record<string, ApiMetadataNode[]>>({});
-  const [details, setDetails] = useState<Record<string, ApiObjectDetail>>({});
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // than re-fetching every time it is clicked. Seeded from the tab-lived cache, so
+  // leaving this page and coming back does not re-query the database.
+  const [children, setChildren] = useState<Record<string, ApiMetadataNode[]>>(
+    () => readCache().children);
+  const [details, setDetails] = useState<Record<string, ApiObjectDetail>>(
+    () => readCache().details);
+  const [open, setOpen] = useState<Set<string>>(() => new Set(readCache().open));
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // One place writes through, rather than every setter remembering to. The cache is
+  // a plain object, so this is three references, not a copy of the tree.
+  useEffect(() => {
+    writeCache({ children, details, open: [...open] });
+  }, [children, details, open]);
 
   async function toggle(node: Node) {
     const next = new Set(open);
@@ -183,8 +193,8 @@ export function ConnectionTree({
 
   /** Drops the pooled sockets and everything this connection had loaded. */
   async function disconnect(node: Node) {
-    setChildren((c) => dropUnder(c, node.key));
-    setDetails((d) => dropUnder(d, node.key));
+    setChildren((c) => without(c, node.key));
+    setDetails((d) => without(d, node.key));
     setOpen((current) => {
       const next = new Set(current);
       for (const key of next) {
@@ -200,8 +210,8 @@ export function ConnectionTree({
   /** Reload one node and everything under it — the explicit Refresh, because a
    *  cached tree that quietly went stale is worse than one you refresh. */
   async function refresh(node: Node) {
-    setChildren((c) => dropUnder(c, node.key));
-    setDetails((d) => dropUnder(d, node.key));
+    setChildren((c) => without(c, node.key));
+    setDetails((d) => without(d, node.key));
     await load(node);
   }
 
@@ -404,17 +414,6 @@ function selectTop(node: Node): string {
 
 function copyName(node: Node) {
   void navigator.clipboard.writeText(qualified(node));
-}
-
-/** Drops a subtree's cached answers so Refresh actually re-asks. */
-function dropUnder<T>(cache: Record<string, T>, key: string): Record<string, T> {
-  const next: Record<string, T> = {};
-  for (const [k, value] of Object.entries(cache)) {
-    if (!k.startsWith(key)) {
-      next[k] = value;
-    }
-  }
-  return next;
 }
 
 /**

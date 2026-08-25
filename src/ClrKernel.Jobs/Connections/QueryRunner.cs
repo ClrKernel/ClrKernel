@@ -267,7 +267,7 @@ public sealed class QueryRunner {
             supplied.Set(spec.EffectiveSecretRef, password);
             secrets = SecretStore.ForProviders(supplied);
         }
-        var live = new SqlConnection(spec.BuildConnectionString(secrets));
+        var live = new SqlConnection(Pooled(spec.BuildConnectionString(secrets)));
         try {
             await live.OpenAsync(cancellationToken).ConfigureAwait(false);
             return live;
@@ -275,6 +275,31 @@ public sealed class QueryRunner {
             live.Dispose();
             throw;
         }
+    }
+
+    /// <summary>How long a pooled connection may live before it is retired rather
+    /// than reused. Long enough that a session of query-and-look-and-query-again
+    /// never pays to reconnect; short enough that a browser tab left open overnight
+    /// is not still holding a socket in the morning.</summary>
+    internal const int PoolLifetimeSeconds = 300;
+
+    /// <summary>
+    /// Bounds how long the pool keeps a connection.
+    /// <para>
+    /// Without this, a connection opened for one query is kept for reuse and the
+    /// pool only reclaims it on its own schedule — "a session open per browser tab
+    /// forever" is exactly what that looks like from the database's side. Set only
+    /// when the connection has not already asked for something: a raw connection
+    /// string somebody pasted is theirs, and second-guessing what it says is how a
+    /// deliberate setting silently stops applying.
+    /// </para>
+    /// </summary>
+    private static string Pooled(string connectionString) {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (builder.LoadBalanceTimeout == 0) {
+            builder.LoadBalanceTimeout = PoolLifetimeSeconds;
+        }
+        return builder.ConnectionString;
     }
 
     /// <summary>

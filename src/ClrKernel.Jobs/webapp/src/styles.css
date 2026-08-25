@@ -1495,3 +1495,41 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The query history panel. Statements run long, so it gets more width than a form. */
+.modal-wide {
+  width: min(58rem, 100%);
+}
+
+.query-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.query-history-row {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 8px 10px;
+}
+
+.query-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+}
+
+.query-history-row pre {
+  overflow: auto;
+  max-height: 9rem;
+  margin: 6px 0 0;
+  border-radius: 6px;
+  background: var(--color-surface-panel);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}

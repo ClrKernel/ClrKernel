@@ -3,7 +3,13 @@ import type * as monaco from 'monaco-editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { api, projectSlug, type ApiConnection, type ApiQueryResult } from '../api';
+import {
+  api,
+  projectSlug,
+  type ApiConnection,
+  type ApiQueryAudit,
+  type ApiQueryResult,
+} from '../api';
 import { notebookPaths } from '../notebook';
 import { editPath } from '../routes';
 import { ConnectionForm } from '../components/ConnectionForm';
@@ -13,13 +19,9 @@ import { ResultGrid } from '../components/ResultGrid';
 import { Splitter } from '../components/Splitter';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFillEditor } from '../monaco/useMonaco';
+import { clamp, loadLayout, saveLayout, DEFAULT_LAYOUT, MAX_TREE, MIN_TREE } from '../prefs';
 import { connectionsPath } from '../routes';
 
-/** Where the divider sits, as a fraction of the work area's height. */
-const DEFAULT_SPLIT = 0.45;
-
-/** How wide the tree starts. Object names are long, so it is wider than a file tree. */
-const DEFAULT_TREE = 280;
 
 /**
  * The Connections area: saved connections and their objects on the left, a query
@@ -37,8 +39,11 @@ export function Connections() {
   const [filter, setFilter] = useState('');
   const [editing, setEditing] = useState<ApiConnection | null>(null);
   const [creating, setCreating] = useState(false);
-  const [split, setSplit] = useState(DEFAULT_SPLIT);
-  const [treeWidth, setTreeWidth] = useState(DEFAULT_TREE);
+  // How the workspace is shaped is remembered, the way the notebook editor's panes
+  // are: you dragged it there once.
+  const [layout, setLayout] = useState(loadLayout);
+  const split = layout.connectionsSplit;
+  const treeWidth = layout.connectionsTreeWidth;
   const page = useRef<HTMLDivElement | null>(null);
   const work = useRef<HTMLDivElement | null>(null);
   const editorHandle = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -51,6 +56,7 @@ export function Connections() {
   const [elapsed, setElapsed] = useState(0);
   const [password, setPassword] = useState('');
   const [moving, setMoving] = useState(false);
+  const [history, setHistory] = useState(false);
 
   const selected = connections.find((c) => c.id === id) ?? null;
 
@@ -135,10 +141,18 @@ export function Connections() {
     setSql(live.getValue());
   }
 
+  function reshape(change: Partial<typeof layout>) {
+    setLayout((current) => {
+      const next = { ...current, ...change };
+      saveLayout(next);
+      return next;
+    });
+  }
+
   function onTreeDrag(x: number) {
     const box = page.current?.getBoundingClientRect();
     if (box) {
-      setTreeWidth(Math.min(640, Math.max(180, x - box.left)));
+      reshape({ connectionsTreeWidth: clamp(x - box.left, MIN_TREE, MAX_TREE) });
     }
   }
 
@@ -168,7 +182,7 @@ export function Connections() {
   function onSplitDrag(y: number) {
     const box = work.current?.getBoundingClientRect();
     if (box) {
-      setSplit(Math.min(0.85, Math.max(0.15, (y - box.top) / box.height)));
+      reshape({ connectionsSplit: clamp((y - box.top) / box.height, 0.15, 0.85) });
     }
   }
 
@@ -221,7 +235,7 @@ export function Connections() {
         orientation="vertical"
         label="Connections width"
         onDrag={onTreeDrag}
-        onReset={() => setTreeWidth(DEFAULT_TREE)}
+        onReset={() => reshape({ connectionsTreeWidth: DEFAULT_LAYOUT.connectionsTreeWidth })}
       />
 
       <div className="connections-work" ref={work}>
@@ -251,6 +265,20 @@ export function Connections() {
               aria-label="Password for this session"
               className="h-7 rounded-lg border border-input bg-background px-2 text-sm"
             />
+          )}
+          {/* Only shared connections are audited — a private one is somebody's own
+              credential and logging it would be surveillance — so the button is
+              offered exactly where there is something behind it. */}
+          {selected?.scope === 'shared' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-sm"
+              onClick={() => setHistory(true)}
+              title="What has been run against this connection"
+            >
+              History
+            </Button>
           )}
           <Button
             variant="outline"
@@ -292,7 +320,7 @@ export function Connections() {
           orientation="horizontal"
           label="Query and results"
           onDrag={onSplitDrag}
-          onReset={() => setSplit(DEFAULT_SPLIT)}
+          onReset={() => reshape({ connectionsSplit: DEFAULT_LAYOUT.connectionsSplit })}
         />
 
         <div className="connections-results">
@@ -328,6 +356,17 @@ export function Connections() {
           )}
         </div>
       </div>
+
+      {history && selected != null && (
+        <HistoryPanel
+          connection={selected}
+          onUse={(statement) => {
+            setHistory(false);
+            into(selected, statement);
+          }}
+          onClose={() => setHistory(false)}
+        />
+      )}
 
       {moving && selected != null && (
         <NotebookChooser
@@ -414,6 +453,76 @@ function NotebookChooser({ connection, onChoose, onClose }: {
               <span className="wizard-saved-name">{path}</span>
               {busy === path && <span className="wizard-saved-detail">adding…</span>}
             </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What has been run against a shared connection: who, when, and what they sent.
+ *
+ * The same question the manual-run audit answers about notebooks, in a different
+ * costume — so it shows the same things and, like that one, shows an admin
+ * everybody's and everyone else only their own. That filtering is the server's;
+ * this renders what it is given.
+ */
+function HistoryPanel({ connection, onUse, onClose }: {
+  connection: ApiConnection;
+  onUse: (statement: string) => void;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<ApiQueryAudit[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.connectionHistory(connection.id)
+      .then((result) => setRows(result.history))
+      .catch((e) => setError((e as Error).message));
+  }, [connection.id]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <h2 style={{ margin: 0 }}>History — {connection.name}</h2>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
+        </div>
+        <ErrorBanner error={error} />
+        {rows == null && !error && (
+          <p className="text-base text-muted-foreground">Reading the log…</p>
+        )}
+        {rows?.length === 0 && (
+          <p className="text-base text-muted-foreground">
+            Nothing has been run against this connection yet.
+          </p>
+        )}
+        <div className="query-history">
+          {(rows ?? []).map((row) => (
+            <div key={row.id} className="query-history-row">
+              <div className="query-history-meta">
+                <strong>{row.actorName ?? 'somebody'}</strong>
+                <span>{new Date(row.startedAt).toLocaleString()}</span>
+                <Badge variant="outline" className="font-normal">{row.outcome}</Badge>
+                {row.leastPrivilege && (
+                  <Badge variant="outline" className="font-normal">read-only login</Badge>
+                )}
+                <span>{Math.round(row.durationMs)} ms</span>
+                <span className="spacer" />
+                {/* Into the editor at the cursor, like everything else that writes
+                    there — running somebody's old statement is a decision they take
+                    after reading it, not a button that does it for them. */}
+                <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
+                  onClick={() => onUse(row.statement)}>
+                  Use
+                </Button>
+              </div>
+              <pre>{row.statement}</pre>
+              {row.errorSummary && (
+                <p className="text-sm text-destructive">{row.errorSummary}</p>
+              )}
+            </div>
           ))}
         </div>
       </div>
