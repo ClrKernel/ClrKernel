@@ -306,6 +306,51 @@ public class ConnectionsLiveTest {
             new[] { "OrderId", "Customer" }, detail.Columns.Select(c => c.Name).ToArray());
     }
 
+    // --- completion ---------------------------------------------------------
+
+    [TestMethod]
+    public async Task TheCompletionSchemaIsEveryTableAndViewWithItsColumns() {
+        var schema = await BrowseAsync((live, token) =>
+            SqlServerMetadata.CompletionsAsync(live, _database, token));
+
+        Assert.AreEqual(_database, schema.Database);
+        Assert.IsFalse(schema.Truncated, "a fixture this small is not near the cap");
+
+        var orders = schema.Objects.Single(o =>
+            o.Schema == _schema && o.Name == "Orders");
+        Assert.AreEqual("table", orders.Kind);
+        CollectionAssert.AreEqual(
+            new[] { "OrderId", "Customer", "Total" }, orders.Columns.ToArray(),
+            "and in the order the table declares them, not alphabetically");
+
+        var view = schema.Objects.Single(o => o.Name == "ActiveOrders");
+        Assert.AreEqual("view", view.Kind);
+        CollectionAssert.AreEquivalent(new[] { "OrderId", "Customer" }, view.Columns.ToArray());
+    }
+
+    [TestMethod]
+    public async Task ItLeavesOutTheThingsThereIsNothingToCompleteAgainst() {
+        var schema = await BrowseAsync((live, token) =>
+            SqlServerMetadata.CompletionsAsync(live, _database, token));
+
+        Assert.IsFalse(schema.Objects.Any(o => o.Schema == "sys"),
+            "the shipped catalog is not what somebody is typing a query against");
+        Assert.IsFalse(schema.Objects.Any(o => o.Name == "CountOrders"),
+            "a procedure has no columns to complete and would only pad the payload");
+    }
+
+    [TestMethod]
+    public async Task EveryObjectItReportsHasAtLeastOneColumn() {
+        // The LEFT JOIN is there so an object with no columns still appears; the
+        // grouping is what must not drop or merge them.
+        var schema = await BrowseAsync((live, token) =>
+            SqlServerMetadata.CompletionsAsync(live, _database, token));
+        Assert.IsTrue(schema.Objects.Count >= 3, schema.Objects.Count.ToString());
+        foreach (var found in schema.Objects) {
+            Assert.IsTrue(found.Columns.Count > 0, $"{found.Schema}.{found.Name}");
+        }
+    }
+
     // --- scripting ----------------------------------------------------------
 
     [TestMethod]

@@ -36,6 +36,9 @@ interface Props {
   path: string;
   /** What the kernel says is wrong in this cell. */
   diagnostics?: LspDiagnostic[];
+  /** The saved connection this notebook queries, for schema completion in SQL
+   *  cells. Null when it names none this reader can see. */
+  connectionId?: string | null;
   /** What this cell did in the session, if it has run. */
   run: CellRunState | null;
   /** False when this deployment cannot execute — no git workflow, or a server
@@ -61,7 +64,7 @@ interface Props {
  * other. A markdown cell shows its rendered prose until you click into it.
  */
 export function CellEditor({
-  cell, index, count, languages, path, diagnostics, run, canRun, busy, cleared,
+  cell, index, count, languages, path, diagnostics, connectionId, run, canRun, busy, cleared,
   onChange, onLanguage, onMove, onDelete, onRun, onClearOutput, onConnect,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
@@ -156,6 +159,7 @@ export function CellEditor({
               path={path}
               languages={languages}
               diagnostics={diagnostics}
+              connectionId={connectionId}
               onChange={onChange}
               onBlur={() => setEditing(false)}
             />
@@ -298,13 +302,14 @@ function OutputMenu({ onClear }: { onClear: () => void }) {
 }
 
 function CellBody({
-  cell, isMarkdown, path, languages, diagnostics, onChange, onBlur,
+  cell, isMarkdown, path, languages, diagnostics, connectionId, onChange, onBlur,
 }: {
   cell: EditorCell;
   isMarkdown: boolean;
   path: string;
   languages: ApiLanguage[];
   diagnostics?: LspDiagnostic[];
+  connectionId?: string | null;
   onChange: (source: string) => void;
   onBlur: () => void;
 }) {
@@ -319,6 +324,7 @@ function CellBody({
       languageId: cell.languageId ?? 'csharp-script',
       enabled: hasEditorServices(cell.languageId, languages),
       diagnostics,
+      connectionId,
     });
   return <div className="cell-editor" ref={container} onBlur={onBlur} />;
 }

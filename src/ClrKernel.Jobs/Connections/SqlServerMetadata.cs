@@ -19,6 +19,33 @@ public sealed class MetadataNode {
     public string Kind { get; set; }
 }
 
+/// <summary>
+/// One object and its column names — the shape completion needs, which is
+/// deliberately not the shape the tree needs. The tree asks about one object at a
+/// time because somebody is clicking; completion needs everything at once because
+/// somebody is typing and will not wait.
+/// </summary>
+public sealed class CompletionObject {
+    public string Schema { get; set; }
+    public string Name { get; set; }
+
+    /// <summary><c>table</c> or <c>view</c>.</summary>
+    public string Kind { get; set; }
+
+    public IReadOnlyList<string> Columns { get; set; } = Array.Empty<string>();
+}
+
+/// <summary>Everything a database offers to complete against.</summary>
+public sealed class CompletionSchema {
+    public string Database { get; set; }
+    public IReadOnlyList<CompletionObject> Objects { get; set; } = Array.Empty<CompletionObject>();
+
+    /// <summary>The database was too big to send whole. What is here is usable; it
+    /// is just not all of it, and the editor says so rather than quietly completing
+    /// against half a schema.</summary>
+    public bool Truncated { get; set; }
+}
+
 /// <summary>A column, key or index of one object — the leaf detail, fetched together
 /// because opening a table to look at its columns and then not knowing its keys is
 /// two round trips for one question.</summary>
@@ -273,6 +300,79 @@ public static class SqlServerMetadata {
         "function" => "FUNCTION",
         _ => "TABLE",
     };
+
+    /// <summary>
+    /// Every table and view in a database with its column names, in one pass.
+    /// <para>
+    /// One query rather than the tree's object-at-a-time walk: completion cannot
+    /// wait for a round trip per table, and a catalog join is cheap even on a large
+    /// schema. Procedures and functions are left out — they have no columns to
+    /// complete and would only pad the payload.
+    /// </para>
+    /// </summary>
+    public static async Task<CompletionSchema> CompletionsAsync(
+        SqlConnection live, string database, CancellationToken cancellationToken) {
+        await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
+        using var command = new SqlCommand(
+            @"SELECT s.name, o.name, CASE o.type WHEN 'V' THEN 'view' ELSE 'table' END, c.name
+              FROM sys.objects o
+              JOIN sys.schemas s ON s.schema_id = o.schema_id
+              LEFT JOIN sys.columns c ON c.object_id = o.object_id
+              WHERE o.type IN ('U', 'V')
+                AND s.name NOT IN ('sys', 'INFORMATION_SCHEMA')
+              ORDER BY s.name, o.name, c.column_id", live);
+
+        var objects = new List<CompletionObject>();
+        var columns = new List<string>();
+        string schema = null, name = null, kind = null;
+        var rows = 0;
+        var truncated = false;
+
+        void Flush() {
+            if (name != null) {
+                objects.Add(new CompletionObject {
+                    Schema = schema,
+                    Name = name,
+                    Kind = kind,
+                    Columns = columns.ToList(),
+                });
+            }
+        }
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
+            if (++rows > MaxCompletionRows) {
+                // Stop on a whole object rather than mid-way through one: half a
+                // table's columns is worse than none, because it looks complete.
+                truncated = true;
+                break;
+            }
+            var rowSchema = Text(reader, 0);
+            var rowName = Text(reader, 1);
+            if (rowName != name || rowSchema != schema) {
+                Flush();
+                schema = rowSchema;
+                name = rowName;
+                kind = Text(reader, 2);
+                columns = new List<string>();
+            }
+            if (Text(reader, 3) is { } column) {
+                columns.Add(column);
+            }
+        }
+        Flush();
+
+        return new CompletionSchema {
+            Database = live.Database,
+            Objects = objects,
+            Truncated = truncated,
+        };
+    }
+
+    /// <summary>How much of a schema is worth sending for completion. A warehouse
+    /// with more columns than this completes against the first of them and says so —
+    /// which is better than a payload nobody can afford to fetch.</summary>
+    private const int MaxCompletionRows = 20_000;
 
     // --- the queries --------------------------------------------------------
 

@@ -86,6 +86,14 @@ export function Editor() {
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
   const [privateConnections, setPrivateConnections] = useState<string[]>([]);
+  /**
+   * The saved connection this notebook queries, for schema completion in its SQL
+   * cells. The notebook names a connection; the id is this reader's lookup of that
+   * name, so a notebook shared between people completes against each of their own
+   * view of it — which is the same connection when it is shared, and nothing at all
+   * when it is somebody else's private one.
+   */
+  const [connectionId, setConnectionId] = useState<string | null>(null);
   const [saved, setSaved] = useState<ApiCell[]>([]);
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
@@ -226,6 +234,8 @@ export function Editor() {
           setSaved(result.cells);
           setLanguages(result.languages ?? []);
           setPrivateConnections(result.privateConnections ?? []);
+          void resolveConnection(result.connections ?? []).then(
+            (id) => live && setConnectionId(id));
           setReloads((n) => n + 1);
         })
         .catch((e) => live && setError((e as Error).message));
@@ -790,6 +800,7 @@ export function Editor() {
                   languages={languages}
                   path={path}
                   diagnostics={session?.diagnostics?.[cell.id]}
+                  connectionId={connectionId}
                   run={runState[cell.id] ?? null}
                   canRun={canRun}
                   busy={running}
@@ -897,4 +908,32 @@ function DiffView({
 }) {
   const container = useDiffEditor(original, modified, language, true);
   return <div className="diff-editor" ref={container} />;
+}
+
+/**
+ * The id of the first connection a notebook names that this reader can see.
+ *
+ * Names are what a notebook carries — an id would be meaningless in a file that
+ * travels between servers — so the lookup happens here, per reader. A name nobody
+ * can see resolves to nothing and the cells simply complete against the kernel
+ * alone, which is what they did before.
+ */
+async function resolveConnection(names: string[]): Promise<string | null> {
+  if (names.length === 0) {
+    return null;
+  }
+  try {
+    const { connections } = await api.connections();
+    for (const name of names) {
+      const found = connections.find(
+        (c) => c.name.toLowerCase() === name.toLowerCase() && c.queryable);
+      if (found != null) {
+        return found.id;
+      }
+    }
+  } catch {
+    // Completion is a convenience; failing to find a connection is not an error
+    // worth putting on screen.
+  }
+  return null;
 }

@@ -102,8 +102,13 @@ export function Connections() {
   // otherwise be calling the first render's `run` for the life of the page.
   const latestRun = useRef(run);
   latestRun.current = run;
+  // A ref, so the editor — created once — always asks for the connection that is
+  // selected now rather than the one that was selected when it was built.
+  const selectedId = useRef<string | null>(null);
+  selectedId.current = selected?.id ?? null;
   const editor = useFillEditor(
-    'sql', sql, setSql, false, resetKey, (text) => void latestRun.current(text), editorHandle);
+    'sql', sql, setSql, false, resetKey, (text) => void latestRun.current(text), editorHandle,
+    () => selectedId.current);
 
   async function cancel() {
     if (selected == null || running == null) {

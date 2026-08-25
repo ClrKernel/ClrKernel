@@ -350,6 +350,9 @@ public static class JobsApi {
                     // for the author, and the moment to learn otherwise is while
                     // writing it, not when the promotion is refused.
                     privateConnections = PrivateConnectionsIn(text, languages, connections, providers),
+                    // Every one it names, private or not — what the editor completes
+                    // table and column names against.
+                    connections = ConnectionReferences.In(text, languages, providers.Known),
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 

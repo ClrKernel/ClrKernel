@@ -3,6 +3,7 @@ import { bindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { getCellModel } from './models';
 import { cellEditorOptions, monaco } from './setup';
+import { bindSqlEditor, unbindSqlEditor } from './sqlSchema';
 
 /** Identifies a cell to the language providers. Absent for editors that are not
  *  cells — the Source tab, the production diff — which is what keeps completion
@@ -17,6 +18,9 @@ export interface CellBinding {
   /** What the kernel says is wrong in this cell. An empty array clears the
    *  squiggles; undefined means the kernel has never had an opinion. */
   diagnostics?: LspDiagnostic[];
+  /** The saved connection this notebook queries, when it names one — for schema
+   *  completion. The kernel answers about the session; this is about the database. */
+  connectionId?: string | null;
 }
 
 /** Who owns the markers we set, so clearing ours never clears Monaco's own. */
@@ -76,6 +80,9 @@ export function useCellEditor(
     // this is what separates a cell from the Source tab and the diff panes.
     const model = created.getModel();
     if (model != null && binding != null) {
+      // Read through the ref, like everything else here: the notebook's connection
+      // is discovered after the cells load and can change as the cell is edited.
+      bindSqlEditor(model, () => latestBinding.current?.connectionId ?? null);
       bindCell(model, {
         path: binding.path,
         cellId: binding.cellId,
@@ -107,6 +114,9 @@ export function useCellEditor(
       // "Model is disposed!" thrown from inside Monaco, with nothing of ours
       // in the stack.
       const model = created.getModel();
+      if (model != null) {
+        unbindSqlEditor(model);
+      }
       created.dispose();
       // A cell's model is the notebook's, not this editor's: unmounting a cell
       // editor (switching modes, scrolling a cell out of the tree) must not take
@@ -207,6 +217,12 @@ export function useFillEditor(
    * touch every call site to give one of them a handle.
    */
   handle?: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null>,
+  /**
+   * Which saved connection this editor queries, for schema completion. A function
+   * because the answer changes when somebody picks a different connection, and the
+   * editor is created once.
+   */
+  connection?: () => string | null,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -214,6 +230,8 @@ export function useFillEditor(
   latestOnChange.current = onChange;
   const latestOnRun = useRef(onRun);
   latestOnRun.current = onRun;
+  const latestConnection = useRef(connection);
+  latestConnection.current = connection;
 
   useEffect(() => {
     if (!container.current) {
@@ -228,6 +246,10 @@ export function useFillEditor(
     editor.current = created;
     if (handle) {
       handle.current = created;
+    }
+    const model = created.getModel();
+    if (model != null && latestConnection.current != null) {
+      bindSqlEditor(model, () => latestConnection.current?.() ?? null);
     }
     const changeListener = created.onDidChangeModelContent(() =>
       latestOnChange.current(created.getValue()),
@@ -251,6 +273,9 @@ export function useFillEditor(
       // "Model is disposed!" thrown from inside Monaco, with nothing of ours
       // in the stack.
       const model = created.getModel();
+      if (model != null) {
+        unbindSqlEditor(model);
+      }
       created.dispose();
       model?.dispose();
       editor.current = null;

@@ -524,6 +524,9 @@ export const api = {
       /** Connection names this notebook uses that only their owner can resolve.
        *  Empty for everybody else's notebooks, because they cannot see them. */
       privateConnections?: string[];
+      /** Every connection name it references, which is what SQL cells complete
+       *  table and column names against. */
+      connections?: string[];
     }>(
       `${scope(env)}/notebooks/cells?path=${encodeURIComponent(path)}`,
     ),
@@ -758,7 +761,7 @@ export interface ApiObjectDetail {
 }
 
 export interface ApiMetadataRequest {
-  level: 'databases' | 'schemas' | 'objects' | 'detail' | 'script';
+  level: 'databases' | 'schemas' | 'objects' | 'detail' | 'script' | 'completions';
   database?: string;
   schema?: string;
   object?: string;

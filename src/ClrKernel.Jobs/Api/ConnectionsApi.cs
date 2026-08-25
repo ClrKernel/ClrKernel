@@ -194,6 +194,8 @@ public static class ConnectionsApi {
                         },
                         "detail" => (object)await SqlServerMetadata.DetailAsync(
                             live, body.Database, body.Schema, body.Object, token),
+                        "completions" => (object)await SqlServerMetadata.CompletionsAsync(
+                            live, body.Database, token),
                         "script" => new {
                             script = await SqlServerMetadata.ScriptAsync(
                                 live, body.Database, body.Schema, body.Object, body.Kind, body.Variant,
@@ -463,7 +465,7 @@ public sealed class CancelBody {
 
 /// <summary>Which level of the object tree is being opened, and where.</summary>
 public sealed class MetadataBody {
-    /// <summary>databases | schemas | objects | detail | script.</summary>
+    /// <summary>databases | schemas | objects | detail | script | completions.</summary>
     public string Level { get; set; }
 
     public string Database { get; set; }
