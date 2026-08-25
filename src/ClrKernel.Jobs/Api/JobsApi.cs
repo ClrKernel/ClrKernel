@@ -319,7 +319,8 @@ public static class JobsApi {
         // reader/writer `clrkernel run` and the VS Code extension agree with.
         scoped.MapGet("/notebooks/cells", async (
             HttpContext context, ProjectRegistry projects, KernelLanguages kernelLanguages,
-            ConnectionStore connections, string project, string branch, string path) => {
+            ConnectionStore connections, ConnectionProviderCatalog providers,
+            string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -348,7 +349,7 @@ public static class JobsApi {
                     // that uses a connection only its author can see works perfectly
                     // for the author, and the moment to learn otherwise is while
                     // writing it, not when the promotion is refused.
-                    privateConnections = PrivateConnectionsIn(text, languages, connections),
+                    privateConnections = PrivateConnectionsIn(text, languages, connections, providers),
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 
@@ -633,7 +634,7 @@ public static class JobsApi {
         scoped.MapGet("/notebooks/promotion", async (
             HttpContext context, ProjectRegistry projects, IRunStore store,
             ConnectionStore connections, KernelLanguages kernelLanguages,
-            string project, string branch, string path) => {
+            ConnectionProviderCatalog providers, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -642,13 +643,14 @@ public static class JobsApi {
                     return refusal;
                 }
                 return Results.Ok(await Promotion.CheckAsync(
-                    scope.Project, projects, store, path, connections, await kernelLanguages.GetAsync()));
+                    scope.Project, projects, store, path, connections,
+                    await kernelLanguages.GetAsync(), await providers.GetAsync()));
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/notebooks/promote", async (
             HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options,
             ConnectionStore connections, KernelLanguages kernelLanguages,
-            string project, string branch, string path) => {
+            ConnectionProviderCatalog providers, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -658,7 +660,8 @@ public static class JobsApi {
                 }
                 // Re-check inside the request: the button may be stale.
                 var eligibility = await Promotion.CheckAsync(
-                    scope.Project, projects, store, path, connections, await kernelLanguages.GetAsync());
+                    scope.Project, projects, store, path, connections,
+                    await kernelLanguages.GetAsync(), await providers.GetAsync());
                 if (!eligibility.Eligible) {
                     return Results.Conflict(new { error = "Not eligible.", reasons = eligibility.Reasons });
                 }
@@ -1426,8 +1429,9 @@ public static class JobsApi {
     /// </para>
     /// </summary>
     private static IReadOnlyList<string> PrivateConnectionsIn(
-        string notebook, IReadOnlyList<LanguageDescriptor> languages, ConnectionStore connections) =>
-        ConnectionReferences.In(notebook, languages, ConnectionsApi.Providers)
+        string notebook, IReadOnlyList<LanguageDescriptor> languages, ConnectionStore connections,
+        ConnectionProviderCatalog providers) =>
+        ConnectionReferences.In(notebook, languages, providers.Known)
             .Where(name => connections.All.Any(c =>
                 c.Scope == ConnectionScope.Private
                 && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))

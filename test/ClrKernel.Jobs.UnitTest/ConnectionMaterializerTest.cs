@@ -52,7 +52,12 @@ public class ConnectionMaterializerTest {
         // Sync swallows a project's failure so one broken workspace cannot stop the
         // others. That is right in production and useless in a test, so the warnings
         // are captured and every test asserts there were none.
-        _files = new ConnectionMaterializer(_projects, _store, new Capturing(_warnings));
+        // A catalog with no kernel to probe, which falls back to the built-in
+        // providers — the same list the materializer used to hold itself.
+        _files = new ConnectionMaterializer(
+            _projects, _store,
+            new ConnectionProviderCatalog(_options, NullLogger<ConnectionProviderCatalog>.Instance),
+            new Capturing(_warnings));
     }
 
     [TestCleanup]

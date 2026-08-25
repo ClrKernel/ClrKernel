@@ -305,6 +305,9 @@ export interface ApiConnectionProvider {
   languageIds?: string[];
   /** The directive a connection for this provider is written as, e.g. `#!sql-connect`. */
   connectSelector?: string | null;
+  /** Only on the Connections area's own list: whether this server can open the
+   *  connection itself, as opposed to only storing it for a notebook to name. */
+  queryable?: boolean;
   settings: ApiConnectionSetting[];
   allowExtraSettings?: boolean;
 }
@@ -691,6 +694,9 @@ export interface ApiConnection {
   /** False with a reason rather than a button that fails. */
   canExecute: boolean;
   canExecuteReason: string | null;
+  /** Whether this server can open it, as opposed to only storing it for a notebook
+   *  to name. False for providers whose driver is loaded into a kernel session. */
+  queryable: boolean;
   canEdit: boolean;
   timeoutSeconds: number;
   rowCap: number;

@@ -202,6 +202,16 @@ export function ConnectionForm({
           ))}
         </div>
 
+        {provider != null && provider.queryable === false && (
+          <Alert>
+            <AlertDescription>
+              This server can save a {provider.displayName} connection so notebooks can name it,
+              and the kernel opens it when one runs. It cannot browse or query it here — that
+              provider's driver is loaded into a kernel session rather than into this server.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {integrated && (
           <Alert>
             <AlertDescription>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Jobs;
@@ -38,7 +39,8 @@ public static class Promotion {
     /// </param>
     public static async Task<PromotionEligibility> CheckAsync(
         Project project, ProjectRegistry projects, IRunStore store, string notebookPath,
-        ConnectionStore connections = null, IReadOnlyList<LanguageDescriptor> languages = null) {
+        ConnectionStore connections = null, IReadOnlyList<LanguageDescriptor> languages = null,
+        IReadOnlyList<ConnectionProviderDescriptor> providers = null) {
         var catalog = projects.CatalogFor(project);
         var git = projects.GitFor(project);
         var reasons = new List<string>();
@@ -128,7 +130,7 @@ public static class Promotion {
         }
 
         // Anything at all changed?
-        foreach (var name in PrivateReferences(catalog, notebookPath, connections, languages)) {
+        foreach (var name in PrivateReferences(catalog, notebookPath, connections, languages, providers)) {
             reasons.Add($"'{notebookPath}' uses the private connection '{name}'. " +
                 "Private connections resolve only for the person who owns them, so a scheduled " +
                 "run would fail. Make it a shared connection, or point the notebook at one.");
@@ -163,14 +165,15 @@ public static class Promotion {
     /// </summary>
     private static IEnumerable<string> PrivateReferences(
         JobCatalog catalog, string notebookPath, ConnectionStore connections,
-        IReadOnlyList<LanguageDescriptor> languages) {
+        IReadOnlyList<LanguageDescriptor> languages,
+        IReadOnlyList<ConnectionProviderDescriptor> providers) {
         var path = Path.Combine(catalog.RootFor(GitService.TestBranch), notebookPath);
         if (connections == null || !File.Exists(path)) {
             return Array.Empty<string>();
         }
         return ConnectionReferences
             .In(File.ReadAllText(path), languages ?? Array.Empty<LanguageDescriptor>(),
-                ConnectionsApi.Providers)
+                providers ?? Array.Empty<ConnectionProviderDescriptor>())
             .Where(name => connections.All.Any(c =>
                 c.Scope == ConnectionScope.Private
                 && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))

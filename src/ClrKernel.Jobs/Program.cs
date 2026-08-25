@@ -377,8 +377,13 @@ public static class Program {
         builder.Services.AddSingleton(provider => new ConnectionStore(
             options, secrets ?? new Core.Secrets.SecretStore(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionStore>()));
+        // What this server can connect to, asked of the kernel once and cached.
+        builder.Services.AddSingleton(provider => new ConnectionProviderCatalog(
+            options,
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionProviderCatalog>()));
         builder.Services.AddSingleton(provider => new ConnectionMaterializer(
             projects, provider.GetRequiredService<ConnectionStore>(),
+            provider.GetRequiredService<ConnectionProviderCatalog>(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionMaterializer>()));
         builder.Services.AddSingleton(provider => new QueryRunner(
             secrets ?? new Core.Secrets.SecretStore(),

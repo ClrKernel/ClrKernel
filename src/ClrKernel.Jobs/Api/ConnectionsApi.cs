@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
-using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -28,11 +27,13 @@ public static class ConnectionsApi {
         // The settings schema the one generic form renders — same descriptor shape
         // the notebook connection wizard already renders, so a provider describes
         // itself once and both surfaces follow.
-        api.MapGet("/providers", (HttpContext context, ConnectionStore store, JobsOptions options) =>
+        api.MapGet("/providers", async (
+            HttpContext context, ConnectionStore store, JobsOptions options,
+            ConnectionProviderCatalog catalog, CancellationToken cancellationToken) =>
             context.CurrentUser() == null
                 ? Unauthorized()
                 : Results.Ok(new {
-                    providers = Providers.Select(ProviderView.From),
+                    providers = (await catalog.GetAsync(cancellationToken)).Select(ProviderView.From),
                     // The form needs this to know whether a *private* connection also
                     // needs a least-privilege login to be runnable — otherwise it
                     // renders no field for one and the connection can never run.
@@ -63,15 +64,23 @@ public static class ConnectionsApi {
                 : NoSuchConnection(id);
         });
 
-        api.MapPost("/", (
+        api.MapPost("/", async (
                 HttpContext context, ConnectionStore store, JobsOptions options,
-                ConnectionMaterializer files, ConnectionBody body) =>
-            Save(context, store, options, files, id: null, body));
+                ConnectionMaterializer files, ConnectionProviderCatalog catalog,
+                ConnectionBody body, CancellationToken cancellationToken) => {
+                    // Awaited here so a type the kernel offers is accepted the first time
+                    // somebody saves one, rather than only after something else has probed.
+                    await catalog.GetAsync(cancellationToken);
+                    return Save(context, store, options, files, catalog, id: null, body);
+                });
 
-        api.MapPut("/{id}", (
+        api.MapPut("/{id}", async (
                 HttpContext context, ConnectionStore store, JobsOptions options,
-                ConnectionMaterializer files, string id, ConnectionBody body) =>
-            Save(context, store, options, files, id, body));
+                ConnectionMaterializer files, ConnectionProviderCatalog catalog, string id,
+                ConnectionBody body, CancellationToken cancellationToken) => {
+                    await catalog.GetAsync(cancellationToken);
+                    return Save(context, store, options, files, catalog, id, body);
+                });
 
         // --- execution ------------------------------------------------------
 
@@ -98,6 +107,14 @@ public static class ConnectionsApi {
                 }
                 var user = context.CurrentUser();
                 var leastPrivilege = LeastPrivilege(context, options, connection);
+                // Defence in depth, and only that: the read-only login is what
+                // actually refuses a write. This catches the plain cases early so the
+                // answer is a sentence rather than a permissions error, and it is
+                // deliberately not trusted for anything — see StatementCheck.
+                if (leastPrivilege && StatementCheck.WriteVerbIn(sql) is { } verb) {
+                    return Results.Json(
+                        new { error = StatementCheck.Refusal(verb) }, statusCode: 403);
+                }
                 // The client names the query so it can cancel it, and a client-chosen id
                 // is fine because cancelling checks who started it, not who knows the id.
                 var queryId = Trimmed(body.QueryId) ?? Guid.NewGuid().ToString("N");
@@ -153,7 +170,8 @@ public static class ConnectionsApi {
                 if (Executable(context, store, options, id, out var connection, out var refusal) is false) {
                     return refusal;
                 }
-                if (!SqlServerMetadata.Supports(connection.Type)) {
+                if (!ConnectionProviderCatalog.IsQueryable(connection.Type)
+                || !SqlServerMetadata.Supports(connection.Type)) {
                     // Degrade rather than error: a provider this process cannot open is
                     // still a connection worth having in the list, and the tree shows it as
                     // a leaf instead of a folder that opens onto nothing.
@@ -242,20 +260,6 @@ public static class ConnectionsApi {
     }
 
     /// <summary>
-    /// The connection types the form offers.
-    /// <para>
-    /// ponytail: the one provider this process can actually open. The others
-    /// (Oracle, ODBC, JDBC, Fabric) describe themselves only inside a kernel
-    /// session — they are loaded there by <c>#r</c> — so listing them needs the
-    /// <c>describeConnections</c> probe <see cref="KernelLanguages"/> already has the
-    /// shape for. Add it when phase 2 lets a notebook reference a saved connection
-    /// this process cannot itself query.
-    /// </para>
-    /// </summary>
-    internal static IReadOnlyList<ConnectionProviderDescriptor> Providers { get; } =
-        new[] { SqlServerConnectionProvider.Descriptor };
-
-    /// <summary>
     /// Gives a worktree that has just been created its owner's private connections.
     /// <para>
     /// Resolved from the request rather than injected: the two places that create a
@@ -268,14 +272,9 @@ public static class ConnectionsApi {
         (context.RequestServices.GetService(typeof(ConnectionMaterializer)) as ConnectionMaterializer)
             ?.SyncUser(git, userId);
 
-    /// <summary>The descriptor for a stored connection's <c>$type</c>, or null. The
-    /// materializer asks, to learn which of a provider's settings is its credential.</summary>
-    internal static ConnectionProviderDescriptor ProviderFor(string type) =>
-        Providers.FirstOrDefault(p => string.Equals(p.Type, type, StringComparison.OrdinalIgnoreCase));
-
     private static IResult Save(
         HttpContext context, ConnectionStore store, JobsOptions options, ConnectionMaterializer files,
-        string id, ConnectionBody body) {
+        ConnectionProviderCatalog catalog, string id, ConnectionBody body) {
         if (context.CurrentUser() is not { } user) {
             return Unauthorized();
         }
@@ -301,7 +300,7 @@ public static class ConnectionsApi {
         if (Refusal(context, scope, owner) is { } refusal) {
             return refusal;
         }
-        if (!Providers.Any(p => string.Equals(p.Type, body.Type, StringComparison.OrdinalIgnoreCase))) {
+        if (catalog.Find(body.Type) == null) {
             return Results.BadRequest(new { error = $"No connection type '{body.Type}'." });
         }
 
@@ -369,6 +368,17 @@ public static class ConnectionsApi {
         connection = store.Find(id, user);
         if (connection == null) {
             refusal = NoSuchConnection(id);
+            return false;
+        }
+        if (!ConnectionProviderCatalog.IsQueryable(connection.Type)) {
+            // Saving one is the point — a notebook can name it and the kernel opens it
+            // there. Opening it *here* would build a SQL Server connection out of an
+            // Oracle connection's settings and dial it, which is worse than refusing.
+            refusal = Results.Json(new {
+                error = $"{connection.Type} connections are opened by the kernel, not by this "
+                    + "server, so they cannot be browsed or queried here. A notebook can still "
+                    + "use this connection by name.",
+            }, statusCode: 400);
             return false;
         }
         if (Restricted(context, options, connection) && !store.HasSecret(connection.ReadOnlySecretRef)) {
@@ -519,6 +529,11 @@ public sealed class ConnectionView {
     public bool CanExecute { get; set; }
 
     public string CanExecuteReason { get; set; }
+
+    /// <summary>Whether this server can open it at all, as opposed to only storing
+    /// it for a notebook to name.</summary>
+    public bool Queryable { get; set; }
+
     public bool CanEdit { get; set; }
     public int TimeoutSeconds { get; set; }
     public int RowCap { get; set; }
@@ -529,11 +544,16 @@ public sealed class ConnectionView {
         var admin = context.IsAdmin();
         var mine = c.Scope == ConnectionScope.Private;
         var readOnlyConfigured = !string.IsNullOrEmpty(c.ReadOnlyUser) && store.HasSecret(c.ReadOnlySecretRef);
-        // The same rule the execution routes apply, asked here so the button agrees
+        // The same rules the execution routes apply, asked here so the button agrees
         // with the server rather than being disabled by a second opinion.
+        var queryable = ConnectionProviderCatalog.IsQueryable(c.Type);
         var restricted = !admin && (!mine || options.PrivateConnectionsReadOnly);
         var (canExecute, reason) =
-            !restricted ? (true, (string)null)
+            !queryable
+                ? (false, $"{c.Type} connections are opened by the kernel rather than by this "
+                    + "server, so they cannot be browsed or queried here — a notebook can still "
+                    + "name this one.")
+            : !restricted ? (true, (string)null)
             : readOnlyConfigured ? (true, null)
             : mine
                 ? (false, "This server requires a read-only login on every connection. "
@@ -553,6 +573,7 @@ public sealed class ConnectionView {
             ReadOnlySecretConfigured = readOnlyConfigured,
             CanExecute = canExecute,
             CanExecuteReason = reason,
+            Queryable = queryable,
             CanEdit = mine || admin,
             TimeoutSeconds = c.TimeoutSeconds,
             RowCap = c.RowCap,
@@ -568,12 +589,19 @@ public sealed class ProviderView {
     public string Type { get; set; }
     public string DisplayName { get; set; }
     public string Description { get; set; }
+
+    /// <summary>Whether this server can open the connection itself. False means it
+    /// can be saved and named by a notebook — which is the point of saving it — but
+    /// not browsed or queried from the Connections area.</summary>
+    public bool Queryable { get; set; }
+
     public IReadOnlyList<SettingView> Settings { get; set; }
 
     public static ProviderView From(ConnectionProviderDescriptor d) => new() {
         Type = d.Type,
         DisplayName = d.DisplayName,
         Description = d.Description,
+        Queryable = ConnectionProviderCatalog.IsQueryable(d.Type),
         // `name` is dropped: a provider declares it because the connect directive
         // carries it, but here the name is the connection's identity — what a
         // notebook references — and the store owns it. Leaving it in gives the form

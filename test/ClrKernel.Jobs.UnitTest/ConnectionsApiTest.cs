@@ -344,6 +344,55 @@ public class ConnectionsApiTest {
     }
 
     [TestMethod]
+    public async Task ANonAdminIsToldWhyBeforeTheDatabaseTellsThem() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var body = Unreachable("warehouse", "shared");
+        body["readOnlyUser"] = "reader";
+        body["readOnlyPassword"] = "readonly-pw";
+        var created = await CreateAsync(body);
+
+        await SignInAsync(UserRole.ServerUser);
+        var response = await _client.PostAsJsonAsync(
+            $"/api/connections/{created.GetProperty("id").GetString()}/query",
+            new Dictionary<string, object> { ["sql"] = "DELETE FROM dbo.Orders" });
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        var error = await response.Content.ReadAsStringAsync();
+        StringAssert.Contains(error, "DELETE");
+        StringAssert.Contains(error, "The database is what enforces that");
+        Assert.AreEqual(0, (await HistoryAsync(created)).Count,
+            "it never reached a database, so it is not an execution");
+    }
+
+    [TestMethod]
+    public async Task AndAReadGoesThroughUntouched() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var body = Unreachable("warehouse", "shared");
+        body["readOnlyUser"] = "reader";
+        body["readOnlyPassword"] = "readonly-pw";
+        var created = await CreateAsync(body);
+
+        await SignInAsync(UserRole.ServerUser);
+        // Mentions delete, is a read. Refusing this would be a bug nobody can work
+        // around, which is why the check only looks at what a statement starts with.
+        var result = await RunAsync(created, "SELECT 'delete me' AS note");
+        Assert.IsFalse(string.IsNullOrEmpty(result.GetProperty("error").GetString()),
+            "it reached the connection and failed there, which is the point");
+    }
+
+    [TestMethod]
+    public async Task AnAdminIsNotSecondGuessed() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var created = await CreateAsync(Unreachable("warehouse", "shared"));
+
+        // A server admin runs as the connection's own login, so there is nothing for
+        // the check to warn about and it must not get in the way.
+        var result = await RunAsync(created, "DELETE FROM dbo.Orders");
+        Assert.IsFalse(string.IsNullOrEmpty(result.GetProperty("error").GetString()));
+        StringAssert.DoesNotMatch(result.GetProperty("error").GetString(),
+            new System.Text.RegularExpressions.Regex("read-only login"));
+    }
+
+    [TestMethod]
     public void TheLeastPrivilegeLoginIsWhatANonAdminRunsAs() {
         var runner = new QueryRunner(
             SecretStore.ForProviders(new InMemorySecretProvider()),

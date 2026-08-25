@@ -118,7 +118,8 @@ public class PromotionTest {
 
     private Task<PromotionEligibility> CheckAsync(ConnectionStore connections) =>
         Promotion.CheckAsync(
-            _projects.Default, _projects, _store, "etl.nb.md", connections, new[] { _sql });
+            _projects.Default, _projects, _store, "etl.nb.md", connections, new[] { _sql },
+            new[] { ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor });
 
     [TestMethod]
     public async Task A_notebook_using_a_private_connection_is_not_promotable() {
@@ -154,6 +155,22 @@ public class PromotionTest {
 
         var result = await CheckAsync(StoreWith("scratch", ConnectionScope.Private));
         Assert.IsFalse(result.Reasons.Any(r => r.Contains("private connection")), string.Join(" | ", result.Reasons));
+    }
+
+    [TestMethod]
+    public async Task Without_the_providers_no_directive_is_classified_and_nothing_is_blocked() {
+        // The caller could not say which providers exist, so a connect directive
+        // cannot be told from a definition — and the check fails toward letting the
+        // promotion through rather than refusing one that was never in question.
+        CommitDev("etl.nb.md", "```sql\n#!sql-connect --name scratch\nSELECT 1\n```\n");
+        CommitDev("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: etl\n");
+        await RecordRunAsync();
+
+        var result = await Promotion.CheckAsync(
+            _projects.Default, _projects, _store, "etl.nb.md",
+            StoreWith("scratch", ConnectionScope.Private), new[] { _sql });
+        Assert.IsFalse(result.Reasons.Any(r => r.Contains("private connection")),
+            string.Join(" | ", result.Reasons));
     }
 
     [TestMethod]

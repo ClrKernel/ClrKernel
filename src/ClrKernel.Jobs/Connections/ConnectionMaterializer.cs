@@ -36,12 +36,15 @@ public sealed class ConnectionMaterializer {
 
     private readonly ProjectRegistry _projects;
     private readonly ConnectionStore _store;
+    private readonly ConnectionProviderCatalog _providers;
     private readonly ILogger _logger;
 
     public ConnectionMaterializer(
-        ProjectRegistry projects, ConnectionStore store, ILogger<ConnectionMaterializer> logger) {
+        ProjectRegistry projects, ConnectionStore store, ConnectionProviderCatalog providers,
+        ILogger<ConnectionMaterializer> logger) {
         _projects = projects;
         _store = store;
+        _providers = providers;
         _logger = logger;
     }
 
@@ -163,7 +166,7 @@ public sealed class ConnectionMaterializer {
     /// longer be there. Rebuilding is how a deleted connection actually disappears.
     /// </para>
     /// </summary>
-    private static void Write(string path, IReadOnlyList<StoredConnection> connections) {
+    private void Write(string path, IReadOnlyList<StoredConnection> connections) {
         if (File.Exists(path)) {
             File.Delete(path);
         }
@@ -185,7 +188,7 @@ public sealed class ConnectionMaterializer {
     /// this is a copy rather than a translation, and a provider added later needs no
     /// case here.
     /// </summary>
-    private static IEnumerable<ConfigProperty> Properties(StoredConnection connection) {
+    private IEnumerable<ConfigProperty> Properties(StoredConnection connection) {
         foreach (var setting in connection.Settings) {
             yield return ConfigProperty.Plain(setting.Key, setting.Value);
         }
@@ -196,8 +199,8 @@ public sealed class ConnectionMaterializer {
         }
     }
 
-    private static string SecretKeyFor(string type) =>
-        ConnectionsApi.ProviderFor(type)?.Settings
+    private string SecretKeyFor(string type) =>
+        _providers.Find(type)?.Settings
             .FirstOrDefault(s => s.Kind == ConnectionSettingKind.SecretRef)?.Name
         ?? "password";
 }

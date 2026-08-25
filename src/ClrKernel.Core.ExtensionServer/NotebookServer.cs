@@ -48,11 +48,23 @@ public class NotebookServer {
         };
     }
 
-    /// <summary>The connection-provider descriptors for a language — same payload
-    /// the LSP surface serves via clrkernel/connections/describe.</summary>
+    /// <summary>
+    /// The connection-provider descriptors for a language — same payload the LSP
+    /// surface serves via clrkernel/connections/describe.
+    /// <para>
+    /// No language means every one this session knows, including the providers that
+    /// belong to no cell language at all (Fabric, Oracle, ODBC, JDBC are used from C#
+    /// cells, so they name none). Asking per language can never reach those, and a
+    /// caller cataloguing what this kernel can connect to needs them.
+    /// </para>
+    /// </summary>
     [JsonRpcMethod("describeConnections")]
     public object DescribeConnections(string languageId) =>
-        new { providers = _engine.ConnectionProvidersFor(languageId ?? string.Empty) };
+        new {
+            providers = string.IsNullOrWhiteSpace(languageId)
+                ? _engine.ConnectionProviders
+                : _engine.ConnectionProvidersFor(languageId),
+        };
 
     [JsonRpcMethod("execute")]
     public async Task<object> ExecuteAsync(string cellId, string code) {
