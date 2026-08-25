@@ -18,6 +18,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<JobTriggerState> JobTriggerStates => Set<JobTriggerState>();
     public DbSet<ManualRun> ManualRuns => Set<ManualRun>();
     public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
+    public DbSet<SavedQuery> SavedQueries => Set<SavedQuery>();
 
     // Accounts live here rather than in a file of their own so one backup covers
     // the whole server. The consequence is that `--store files` cannot host a
@@ -107,10 +108,30 @@ public abstract class RunsDbContext : DbContext {
             audit.Property(a => a.Outcome).HasColumnName("outcome").HasMaxLength(16);
             audit.Property(a => a.RowsAffected).HasColumnName("rows_affected");
             audit.Property(a => a.ErrorSummary).HasColumnName("error_summary");
+            audit.Property(a => a.Scope).HasColumnName("scope").HasMaxLength(16);
             audit.HasIndex(a => a.StartedAt);
             audit.HasIndex(a => a.ConnectionId);
             // No foreign key to users, for the same reason the manual-run audit has
             // none: the row has to outlive the account it is about.
+        });
+
+        modelBuilder.Entity<SavedQuery>(query => {
+            query.ToTable("saved_queries");
+            query.HasKey(q => q.Id);
+            query.Property(q => q.Id).HasColumnName("id");
+            query.Property(q => q.Name).HasColumnName("name").IsRequired().HasMaxLength(200);
+            query.Property(q => q.Scope).HasColumnName("scope").IsRequired().HasMaxLength(16);
+            query.Property(q => q.OwnerId).HasColumnName("owner_id");
+            query.Property(q => q.ConnectionId).HasColumnName("connection_id").HasMaxLength(64);
+            query.Property(q => q.ConnectionName).HasColumnName("connection_name").HasMaxLength(200);
+            query.Property(q => q.Sql).HasColumnName("sql");
+            query.Property(q => q.CreatedBy).HasColumnName("created_by");
+            query.Property(q => q.CreatedByName).HasColumnName("created_by_name").HasMaxLength(120);
+            query.Property(q => q.CreatedAt).HasColumnName("created_at");
+            query.Property(q => q.UpdatedAt).HasColumnName("updated_at");
+            query.HasIndex(q => new { q.Scope, q.OwnerId });
+            // No foreign key to users or connections: a saved query outlives both,
+            // and a cascade would delete the thing somebody came back for.
         });
 
         modelBuilder.Entity<JobTriggerState>(state => {

@@ -660,6 +660,23 @@ export const api = {
   connectionHistory: (id: string) =>
     request<{ history: ApiQueryAudit[] }>(`/connections/${encodeURIComponent(id)}/history`),
 
+  // --- what you have run, and what you have kept ---------------------------
+
+  /** Yours, across every connection — including your own private ones, which the
+   *  per-connection audit deliberately never shows to anybody else. */
+  queryHistory: () => request<{ history: ApiQueryAudit[] }>('/queries/history'),
+  savedQueries: () => request<{ queries: ApiSavedQuery[] }>('/queries'),
+  saveQuery: (body: {
+    id?: string;
+    name: string;
+    scope: ConnectionScope;
+    connectionId?: string | null;
+    connectionName?: string | null;
+    sql: string;
+  }) => request<ApiSavedQuery>('/queries', { method: 'POST', body: JSON.stringify(body) }),
+  deleteSavedQuery: (id: string) =>
+    request<{ removed: string }>(`/queries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   settings: () => request<{ sections: SettingsSection[] }>('/settings'),
   saveSettings: (section: string, values: Record<string, unknown>) =>
     request<{ saved: boolean; restartRequired: boolean }>(`/settings/${encodeURIComponent(section)}`, {
@@ -780,6 +797,19 @@ export interface ApiMetadataReply<T> {
   payload?: T;
 }
 
+export interface ApiSavedQuery {
+  id: string;
+  name: string;
+  scope: ConnectionScope;
+  connectionId: string | null;
+  connectionName: string | null;
+  sql: string;
+  createdByName: string | null;
+  updatedAt: string;
+  /** Whether this reader may change it — shared ones are a server admin's. */
+  canEdit: boolean;
+}
+
 export interface ApiQueryAudit {
   id: string;
   connectionId: string;
@@ -793,6 +823,9 @@ export interface ApiQueryAudit {
   outcome: string;
   rowsAffected: number;
   errorSummary: string | null;
+  /** Which kind of row this is, and therefore who may read it. Private ones are
+   *  only ever their own actor's. */
+  scope?: ConnectionScope;
 }
 
 export function isActive(status: RunStatus): boolean {

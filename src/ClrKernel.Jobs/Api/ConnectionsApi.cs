@@ -123,22 +123,25 @@ public static class ConnectionsApi {
                 var result = await runner.RunAsync(
                     connection, sql, leastPrivilege, user.Id, queryId, body.Password, cancellationToken);
 
-                if (connection.Scope == ConnectionScope.Shared) {
-                    await runs.RecordQueryAsync(new QueryAudit {
-                        Id = Guid.NewGuid(),
-                        ConnectionId = connection.Id,
-                        ConnectionName = connection.Name,
-                        ActorId = user.Id,
-                        ActorName = user.DisplayName,
-                        StartedAt = startedAt,
-                        DurationMs = result.ElapsedMs,
-                        Statement = sql,
-                        LeastPrivilege = leastPrivilege,
-                        Outcome = result.Canceled ? "Cancelled" : result.Error == null ? "Succeeded" : "Failed",
-                        RowsAffected = result.RowsAffected,
-                        ErrorSummary = result.Error,
-                    });
-                }
+                // Every execution, private connections included — that is what makes a
+                // personal history worth having. The scope rides along, and it is what
+                // decides who may ever read the row back: a private one is its actor's
+                // alone, admins included.
+                await runs.RecordQueryAsync(new QueryAudit {
+                    Id = Guid.NewGuid(),
+                    ConnectionId = connection.Id,
+                    ConnectionName = connection.Name,
+                    ActorId = user.Id,
+                    ActorName = user.DisplayName,
+                    StartedAt = startedAt,
+                    DurationMs = result.ElapsedMs,
+                    Statement = sql,
+                    LeastPrivilege = leastPrivilege,
+                    Outcome = result.Canceled ? "Cancelled" : result.Error == null ? "Succeeded" : "Failed",
+                    RowsAffected = result.RowsAffected,
+                    ErrorSummary = result.Error,
+                    Scope = connection.Scope == ConnectionScope.Shared ? "shared" : "private",
+                });
                 return Results.Ok(new {
                     queryId,
                     result.ResultSets,
@@ -234,11 +237,13 @@ public static class ConnectionsApi {
                 if (connection == null) {
                     return NoSuchConnection(id);
                 }
+                // Who may see which rows is the store's rule, not this route's — an
+                // admin reads everybody's against a shared connection, and nobody but
+                // its actor reads one against a private connection.
                 var history = await runs.QueryAuditAsync(new QueryAuditQuery {
                     ConnectionId = connection.Id,
-                    // Everyone's, for an admin; your own otherwise. Who ran what against a
-                    // shared database is an admin's question, not everybody's.
-                    ActorId = context.IsAdmin() ? null : user.Id,
+                    ViewerId = user.Id,
+                    ViewerIsAdmin = context.IsAdmin(),
                 });
                 return Results.Ok(new { history });
             });

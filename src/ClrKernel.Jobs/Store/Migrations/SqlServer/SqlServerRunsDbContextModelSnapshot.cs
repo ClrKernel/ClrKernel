@@ -320,6 +320,11 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                         .HasColumnType("int")
                         .HasColumnName("rows_affected");
 
+                    b.Property<string>("Scope")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("scope");
+
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("started_at");
@@ -470,6 +475,67 @@ namespace ClrKernel.Jobs.Store.Migrations.SqlServer
                     b.HasKey("RunId", "CellIndex");
 
                     b.ToTable("run_cells", (string)null);
+                });
+
+            modelBuilder.Entity("ClrKernel.Jobs.SavedQuery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ConnectionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("connection_id");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("connection_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Sql")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("sql");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Scope", "OwnerId");
+
+                    b.ToTable("saved_queries", (string)null);
                 });
 
             modelBuilder.Entity("ClrKernel.Jobs.User", b =>

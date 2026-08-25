@@ -9,6 +9,7 @@ import {
   type ApiConnection,
   type ApiQueryAudit,
   type ApiQueryResult,
+  type ApiSavedQuery,
 } from '../api';
 import { notebookPaths } from '../notebook';
 import { editPath } from '../routes';
@@ -21,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFillEditor } from '../monaco/useMonaco';
 import { clamp, loadLayout, saveLayout, DEFAULT_LAYOUT, MAX_TREE, MIN_TREE } from '../prefs';
 import { connectionsPath } from '../routes';
+import { useIsServerAdmin } from '../sessionContext';
 
 
 /**
@@ -57,6 +59,7 @@ export function Connections() {
   const [password, setPassword] = useState('');
   const [moving, setMoving] = useState(false);
   const [history, setHistory] = useState(false);
+  const [savedOpen, setSavedOpen] = useState(false);
 
   const selected = connections.find((c) => c.id === id) ?? null;
 
@@ -152,6 +155,25 @@ export function Connections() {
       saveLayout(next);
       return next;
     });
+  }
+
+  /**
+   * Puts a whole saved query in the editor, replacing what is there.
+   *
+   * Not inserted at the cursor like the snippets are: "open" means this query, and
+   * dropping it into the middle of a half-written one produces a mangled hybrid of
+   * both. Replacing can lose work, so it asks first when there is any — the one
+   * case where a confirm earns its interruption.
+   */
+  function replaceEditor(text: string) {
+    const live = editorHandle.current;
+    if (live != null && live.getValue().trim().length > 0
+      && !confirm('Replace what is in the editor?')) {
+      return;
+    }
+    setSql(text);
+    setResetKey((key) => key + 1);
+    live?.focus();
   }
 
   function onTreeDrag(x: number) {
@@ -271,20 +293,26 @@ export function Connections() {
               className="h-7 rounded-lg border border-input bg-background px-2 text-sm"
             />
           )}
-          {/* Only shared connections are audited — a private one is somebody's own
-              credential and logging it would be surveillance — so the button is
-              offered exactly where there is something behind it. */}
-          {selected?.scope === 'shared' && (
+          {selected != null && (
             <Button
               variant="outline"
               size="sm"
               className="h-7 px-2 text-sm"
               onClick={() => setHistory(true)}
-              title="What has been run against this connection"
+              title="What has been run — here, or by you anywhere"
             >
               History
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-sm"
+            onClick={() => setSavedOpen(true)}
+            title="Queries you and your colleagues have kept"
+          >
+            Saved
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -370,6 +398,18 @@ export function Connections() {
             into(selected, statement);
           }}
           onClose={() => setHistory(false)}
+        />
+      )}
+
+      {savedOpen && (
+        <SavedQueriesPanel
+          connection={selected}
+          sql={sql}
+          onOpen={(query) => {
+            setSavedOpen(false);
+            replaceEditor(query.sql);
+          }}
+          onClose={() => setSavedOpen(false)}
         />
       )}
 
@@ -478,36 +518,58 @@ function HistoryPanel({ connection, onUse, onClose }: {
   onUse: (statement: string) => void;
   onClose: () => void;
 }) {
+  /**
+   * Two genuinely different questions, which is why they are a toggle rather than
+   * one list. *This connection* is an audit of a database — on a shared one a
+   * server admin sees everybody's. *Mine* is your own record of your own work,
+   * across every connection including your own private ones, and nobody else ever
+   * sees it.
+   */
+  const [scope, setScope] = useState<'connection' | 'mine'>('connection');
   const [rows, setRows] = useState<ApiQueryAudit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.connectionHistory(connection.id)
-      .then((result) => setRows(result.history))
-      .catch((e) => setError((e as Error).message));
-  }, [connection.id]);
+    let live = true;
+    setRows(null);
+    const asking = scope === 'connection' ? api.connectionHistory(connection.id) : api.queryHistory();
+    asking
+      .then((result) => live && setRows(result.history))
+      .catch((e) => live && setError((e as Error).message));
+    return () => {
+      live = false;
+    };
+  }, [connection.id, scope]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
-          <h2 style={{ margin: 0 }}>History — {connection.name}</h2>
+          <h2 style={{ margin: 0 }}>History</h2>
           <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
         </div>
+        <Tabs value={scope} onValueChange={(v) => setScope(v as 'connection' | 'mine')}>
+          <TabsList>
+            <TabsTrigger value="connection">{connection.name}</TabsTrigger>
+            <TabsTrigger value="mine">Everything I have run</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <ErrorBanner error={error} />
         {rows == null && !error && (
           <p className="text-base text-muted-foreground">Reading the log…</p>
         )}
         {rows?.length === 0 && (
           <p className="text-base text-muted-foreground">
-            Nothing has been run against this connection yet.
+            {scope === 'connection'
+              ? 'Nothing has been run against this connection yet.'
+              : 'You have not run anything yet.'}
           </p>
         )}
         <div className="query-history">
           {(rows ?? []).map((row) => (
             <div key={row.id} className="query-history-row">
               <div className="query-history-meta">
-                <strong>{row.actorName ?? 'somebody'}</strong>
+                <strong>{scope === 'mine' ? row.connectionName : row.actorName ?? 'somebody'}</strong>
                 <span>{new Date(row.startedAt).toLocaleString()}</span>
                 <Badge variant="outline" className="font-normal">{row.outcome}</Badge>
                 {row.leastPrivilege && (
@@ -530,6 +592,151 @@ function HistoryPanel({ connection, onUse, onClose }: {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Queries somebody kept — shared ones a server admin manages, and your own.
+ *
+ * The same two lists connections come in, and deliberately so: they are used
+ * together, and a different rule for each would be a rule nobody could remember.
+ */
+function SavedQueriesPanel({ connection, sql, onOpen, onClose }: {
+  /** Only to label what is being saved. Opening one needs no connection: a saved
+   *  query is text, and which connection to run it on is the next decision. */
+  connection: ApiConnection | null;
+  sql: string;
+  onOpen: (query: ApiSavedQuery) => void;
+  onClose: () => void;
+}) {
+  const isAdmin = useIsServerAdmin();
+  const [queries, setQueries] = useState<ApiSavedQuery[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [scope, setScope] = useState<'shared' | 'private'>('private');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.savedQueries()
+      .then((result) => setQueries(result.queries))
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.saveQuery({
+        name,
+        scope,
+        sql,
+        // A hint, not a requirement: the query outlives the connection it was
+        // written against, and the server keeps it either way.
+        connectionId: connection?.id ?? null,
+        connectionName: connection?.name ?? null,
+      });
+      setQueries((current) => [...(current ?? []), created]);
+      setName('');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(query: ApiSavedQuery) {
+    if (!confirm(`Delete the saved query '${query.name}'?`)) {
+      return;
+    }
+    try {
+      await api.deleteSavedQuery(query.id);
+      setQueries((current) => (current ?? []).filter((q) => q.id !== query.id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  const groups: { scope: 'shared' | 'private'; label: string }[] = [
+    { scope: 'shared', label: 'Shared' },
+    { scope: 'private', label: 'Mine' },
+  ];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <h2 style={{ margin: 0 }}>Saved queries</h2>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
+        </div>
+        <ErrorBanner error={error} />
+
+        {sql.trim().length > 0 && (
+          <div className="saved-query-new">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Save what is in the editor as…"
+              aria-label="Name for this query"
+            />
+            {isAdmin && (
+              <select value={scope} onChange={(e) => setScope(e.target.value as 'shared' | 'private')}
+                aria-label="Visible to">
+                <option value="private">Only me</option>
+                <option value="shared">Everyone</option>
+              </select>
+            )}
+            <Button size="sm" disabled={busy || name.trim().length === 0} onClick={save}>
+              Save
+            </Button>
+          </div>
+        )}
+
+        {queries == null && !error && (
+          <p className="text-base text-muted-foreground">Looking…</p>
+        )}
+        {queries?.length === 0 && (
+          <p className="text-base text-muted-foreground">
+            Nothing saved yet. Write a query and keep it here to find it again.
+          </p>
+        )}
+
+        {groups.map(({ scope: group, label }) => {
+          const inGroup = (queries ?? []).filter((q) => q.scope === group);
+          if (inGroup.length === 0) {
+            return null;
+          }
+          return (
+            <div key={group}>
+              <h3>{label}</h3>
+              <div className="query-history">
+                {inGroup.map((query) => (
+                  <div key={query.id} className="query-history-row">
+                    <div className="query-history-meta">
+                      <strong>{query.name}</strong>
+                      {query.connectionName && <span>{query.connectionName}</span>}
+                      <span>{query.createdByName}</span>
+                      <span className="spacer" />
+                      <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
+                        title="Put it in the editor" onClick={() => onOpen(query)}>
+                        Open
+                      </Button>
+                      {query.canEdit && (
+                        <Button variant="outline" size="sm"
+                          className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => void remove(query)}>
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                    <pre>{query.sql}</pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

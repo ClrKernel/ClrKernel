@@ -398,6 +398,7 @@ public static class Program {
         app.MapAuthApi();
         app.MapJobsApi();
         app.MapConnectionsApi();
+        app.MapQueriesApi();
 
         // The SPA, when it has been built (webapp/ -> wwwroot/). Absent in a
         // source build that skipped npm, and the API still works without it.

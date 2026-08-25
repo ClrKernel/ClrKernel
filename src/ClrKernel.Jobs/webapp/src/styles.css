@@ -1533,3 +1533,25 @@
   font-size: var(--text-sm);
   white-space: pre-wrap;
 }
+
+/* Saving what is in the editor, from the saved-queries panel. */
+.saved-query-new {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.saved-query-new input {
+  flex: 1;
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  padding: 2px 8px;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.saved-query-new input:focus {
+  border-color: var(--color-ring);
+}

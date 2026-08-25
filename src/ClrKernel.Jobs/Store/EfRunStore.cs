@@ -164,10 +164,44 @@ public sealed class EfRunStore : IRunStore {
         if (!string.IsNullOrEmpty(query.ConnectionId)) {
             audits = audits.Where(a => a.ConnectionId == query.ConnectionId);
         }
-        if (query.ActorId != null) {
-            audits = audits.Where(a => a.ActorId == query.ActorId);
-        }
+        // The visibility rule, in the one place a route cannot skip: a private
+        // connection's rows are its actor's alone, and an admin reads everybody's
+        // shared ones.
+        audits = audits.Where(a =>
+            a.ActorId == query.ViewerId
+            || (a.Scope != "private" && query.ViewerIsAdmin));
         return await audits.OrderByDescending(a => a.StartedAt).Take(query.Limit).ToListAsync();
+    }
+
+    public async Task SaveQueryAsync(SavedQuery query) {
+        using var db = _contextFactory();
+        var existing = await db.SavedQueries.FindAsync(query.Id);
+        if (existing == null) {
+            db.SavedQueries.Add(query);
+        } else {
+            db.Entry(existing).CurrentValues.SetValues(query);
+        }
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<SavedQuery>> SavedQueriesAsync(SavedQueryFilter filter) {
+        using var db = _contextFactory();
+        return await db.SavedQueries.AsNoTracking()
+            .Where(q => q.Scope != "private" || q.OwnerId == filter.ViewerId)
+            .OrderBy(q => q.Scope).ThenBy(q => q.Name)
+            .Take(filter.Limit)
+            .ToListAsync();
+    }
+
+    public async Task<SavedQuery> SavedQueryAsync(Guid id, Guid viewerId) {
+        using var db = _contextFactory();
+        return await db.SavedQueries.AsNoTracking().FirstOrDefaultAsync(q =>
+            q.Id == id && (q.Scope != "private" || q.OwnerId == viewerId));
+    }
+
+    public async Task<bool> DeleteSavedQueryAsync(Guid id) {
+        using var db = _contextFactory();
+        return await db.SavedQueries.Where(q => q.Id == id).ExecuteDeleteAsync() > 0;
     }
 
     public async Task<Run> GetLastSuccessfulRunAsync(string project, string environment, string jobName) {

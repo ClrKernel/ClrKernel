@@ -50,6 +50,19 @@ public interface IRunStore {
 
     Task<IReadOnlyList<QueryAudit>> QueryAuditAsync(QueryAuditQuery query);
 
+    /// <summary>Creates or replaces a saved query.</summary>
+    Task SaveQueryAsync(SavedQuery query);
+
+    /// <summary>The saved queries one person may see: every shared one, plus their
+    /// own.</summary>
+    Task<IReadOnlyList<SavedQuery>> SavedQueriesAsync(SavedQueryFilter filter);
+
+    /// <summary>One saved query, or null when it does not exist or is not this
+    /// person's to see — those two answer the same, deliberately.</summary>
+    Task<SavedQuery> SavedQueryAsync(Guid id, Guid viewerId);
+
+    Task<bool> DeleteSavedQueryAsync(Guid id);
+
     /// <summary>Marks rows stuck in Pending/Running (from a crash) as Failed. Returns the count.</summary>
     Task<int> MarkOrphansFailedAsync();
 }

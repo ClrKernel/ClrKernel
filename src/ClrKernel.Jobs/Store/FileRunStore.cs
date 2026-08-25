@@ -281,11 +281,61 @@ public sealed class FileRunStore : IRunStore {
             audits = audits.Where(a =>
                 string.Equals(a.ConnectionId, query.ConnectionId, StringComparison.OrdinalIgnoreCase));
         }
-        if (query.ActorId != null) {
-            audits = audits.Where(a => a.ActorId == query.ActorId);
-        }
+        // The same rule the EF store applies, and it has to be the same: a private
+        // connection's rows are its actor's alone.
+        audits = audits.Where(a =>
+            a.ActorId == query.ViewerId
+            || (!string.Equals(a.Scope, "private", StringComparison.OrdinalIgnoreCase)
+                && query.ViewerIsAdmin));
         return Task.FromResult<IReadOnlyList<QueryAudit>>(
             audits.OrderByDescending(a => a.StartedAt).Take(query.Limit).ToList());
+    }
+
+    private string SavedQueriesPath => Path.Combine(_root, "..", "saved-queries.json");
+
+    public async Task SaveQueryAsync(SavedQuery query) {
+        var all = ReadSavedQueries().Where(q => q.Id != query.Id).ToList();
+        all.Add(query);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(SavedQueriesPath))!);
+        await File.WriteAllTextAsync(SavedQueriesPath, JsonSerializer.Serialize(all, _compact));
+    }
+
+    public Task<IReadOnlyList<SavedQuery>> SavedQueriesAsync(SavedQueryFilter filter) =>
+        Task.FromResult<IReadOnlyList<SavedQuery>>(
+            ReadSavedQueries()
+                .Where(q => !IsPrivate(q) || q.OwnerId == filter.ViewerId)
+                .OrderBy(q => q.Scope, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(filter.Limit)
+                .ToList());
+
+    public Task<SavedQuery> SavedQueryAsync(Guid id, Guid viewerId) =>
+        Task.FromResult(ReadSavedQueries().FirstOrDefault(q =>
+            q.Id == id && (!IsPrivate(q) || q.OwnerId == viewerId)));
+
+    public async Task<bool> DeleteSavedQueryAsync(Guid id) {
+        var all = ReadSavedQueries();
+        var kept = all.Where(q => q.Id != id).ToList();
+        if (kept.Count == all.Count) {
+            return false;
+        }
+        await File.WriteAllTextAsync(SavedQueriesPath, JsonSerializer.Serialize(kept, _compact));
+        return true;
+    }
+
+    private static bool IsPrivate(SavedQuery query) =>
+        string.Equals(query.Scope, "private", StringComparison.OrdinalIgnoreCase);
+
+    private List<SavedQuery> ReadSavedQueries() {
+        if (!File.Exists(SavedQueriesPath)) {
+            return new List<SavedQuery>();
+        }
+        try {
+            return JsonSerializer.Deserialize<List<SavedQuery>>(
+                File.ReadAllText(SavedQueriesPath), _compact) ?? new List<SavedQuery>();
+        } catch (JsonException) {
+            return new List<SavedQuery>();
+        }
     }
 
     private List<QueryAudit> ReadQueryAudits() {

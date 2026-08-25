@@ -320,13 +320,24 @@ public class ConnectionsApiTest {
     }
 
     [TestMethod]
-    public async Task RunningAgainstYourOwnConnectionIsNotAudited() {
-        await SignInAsync(UserRole.ServerUser);
+    public async Task RunningAgainstYourOwnConnectionIsRecordedForYouAndNobodyElse() {
+        // Recording it is what makes a personal history worth having. Not showing it
+        // to anybody else is the promise that goes with it — an earlier version kept
+        // that promise by not recording at all, which cost the feature.
+        var grace = await SignInAsync(UserRole.ServerUser, "Grace");
         var created = await CreateAsync(Unreachable("scratch", "private"));
         await RunAsync(created, "SELECT 1");
 
-        Assert.AreEqual(0, (await HistoryAsync(created)).Count,
-            "a private connection is the person's own credential; logging it is surveillance, not audit");
+        var hers = await HistoryAsync(created);
+        Assert.AreEqual(1, hers.Count);
+        Assert.AreEqual("SELECT 1", hers[0].GetProperty("statement").GetString());
+        Assert.IsNotNull(grace);
+
+        await SignInAsync(UserRole.ServerAdmin, "Ada");
+        var response = await _client.GetAsync(
+            $"/api/connections/{created.GetProperty("id").GetString()}/history");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode,
+            "a server admin cannot reach somebody else's private connection at all");
     }
 
     [TestMethod]

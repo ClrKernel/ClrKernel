@@ -106,13 +106,19 @@ public sealed class ManualRunQuery {
 }
 
 /// <summary>
-/// One statement run against a shared connection: who, when, which connection, and
-/// what they sent. The same "who ran that against production?" question the manual-run
-/// audit answers, in a different costume.
+/// One statement somebody ran: who, when, which connection, and what they sent.
 /// <para>
-/// Only shared connections are recorded. A private connection is the person's own
-/// credential against a server they could reach with SSMS anyway — logging it would be
-/// surveillance rather than audit, and the database's own trail already has it.
+/// It answers two questions that must not be confused. For a <b>shared</b>
+/// connection it is an audit — "who ran that against production?" — and a server
+/// admin can read everybody's. For a <b>private</b> one it is that person's own
+/// history of their own work, and <em>only they ever see it</em>: not an admin, not
+/// anybody. Recording it is what makes a personal history worth having; showing it
+/// to somebody else would be the surveillance an earlier version of this avoided by
+/// not recording it at all.
+/// </para>
+/// <para>
+/// The rule lives in the store rather than in the routes — see
+/// <see cref="QueryAuditQuery"/> — so a new route cannot forget it.
 /// </para>
 /// </summary>
 public sealed class QueryAudit {
@@ -140,16 +146,67 @@ public sealed class QueryAudit {
 
     public int RowsAffected { get; set; }
     public string ErrorSummary { get; set; }
+
+    /// <summary><c>shared</c> | <c>private</c> — which of the two things this row is,
+    /// and therefore who may read it.</summary>
+    public string Scope { get; set; }
 }
 
+/// <summary>
+/// Who is asking, and about what. The reader is named rather than the rows wanted,
+/// because the filtering is not the caller's to decide: a row about a private
+/// connection belongs to its actor alone, and a store that took "give me
+/// everything" would let one forgetful route hand it over.
+/// </summary>
 public sealed class QueryAuditQuery {
-    /// <summary>null = every connection.</summary>
+    /// <summary>null = every connection this reader may see rows about.</summary>
     public string ConnectionId { get; set; }
 
-    /// <summary>null = everybody. A non-admin only ever asks about themselves.</summary>
-    public Guid? ActorId { get; set; }
+    /// <summary>Whose view this is. Rows about private connections are only ever
+    /// theirs.</summary>
+    public Guid ViewerId { get; set; }
+
+    /// <summary>A server admin reads everybody's rows about <em>shared</em>
+    /// connections. Never anybody's private ones.</summary>
+    public bool ViewerIsAdmin { get; set; }
 
     public int Limit { get; set; } = 50;
+}
+
+/// <summary>
+/// A query somebody kept. Scoped the way connections are — shared ones a server
+/// admin manages and everybody can open, private ones invisible to everyone else —
+/// because the two are used together and a different rule for each would be a rule
+/// nobody could remember.
+/// </summary>
+public sealed class SavedQuery {
+    public Guid Id { get; set; }
+    public string Name { get; set; }
+
+    /// <summary><c>shared</c> | <c>private</c>.</summary>
+    public string Scope { get; set; }
+
+    /// <summary>Set for a private query, null for a shared one.</summary>
+    public Guid? OwnerId { get; set; }
+
+    /// <summary>The connection it was written against, when it was written against
+    /// one. Kept as a hint rather than a requirement: a query outlives the connection
+    /// it was first run on, and refusing to open it afterwards would be worse than
+    /// opening it beside a different one.</summary>
+    public string ConnectionId { get; set; }
+
+    public string ConnectionName { get; set; }
+    public string Sql { get; set; }
+    public Guid CreatedBy { get; set; }
+    public string CreatedByName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>The saved queries one person may see: every shared one, plus their own.</summary>
+public sealed class SavedQueryFilter {
+    public Guid ViewerId { get; set; }
+    public int Limit { get; set; } = 500;
 }
 
 /// <summary>Fan-in freshness bookkeeping: when each job was last triggered.</summary>
