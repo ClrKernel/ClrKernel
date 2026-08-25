@@ -341,7 +341,7 @@ public static class SqlServerMetadata {
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
-            if (++rows > MaxCompletionRows) {
+            if (++rows > _maxCompletionRows) {
                 // Stop on a whole object rather than mid-way through one: half a
                 // table's columns is worse than none, because it looks complete.
                 truncated = true;
@@ -372,7 +372,7 @@ public static class SqlServerMetadata {
     /// <summary>How much of a schema is worth sending for completion. A warehouse
     /// with more columns than this completes against the first of them and says so —
     /// which is better than a payload nobody can afford to fetch.</summary>
-    private const int MaxCompletionRows = 20_000;
+    private const int _maxCompletionRows = 20_000;
 
     // --- the queries --------------------------------------------------------
 
