@@ -132,10 +132,11 @@ the same "who ran that against production?" question in a different costume.
 
 ## Later phases (need to document, then ask when done with above to continue with these)
 
-- **Schema-aware IntelliSense** — feed the cached metadata into a Monaco
-  completion provider so table and column names complete in both the query editor
-  and notebook SQL cells. This is the highest-value follow-on and the reason the
-  metadata cache is worth building properly now.
+- ~~**Schema-aware IntelliSense**~~ — **done.** A second Monaco provider for `sql`, merged
+  with the kernel-backed one: the kernel answers about the session, the database about the
+  schema, and a SQL cell gets both. The completion schema is one query per connection, cached
+  under the same key as that connection's tree so Refresh and Disconnect clear it too. The
+  judgement lives in `sqlCompletion.ts`, React-free and deliberately not a SQL parser.
 - **Query history** per user, re-runnable from a panel.
 - **Saved queries**, shared or private, mirroring the connection scopes.
 - **Execution plans**, where the provider can produce them.
