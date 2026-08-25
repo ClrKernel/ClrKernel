@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using ClrKernel.Core.Scripting;
+using ClrKernel.Core.Secrets;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -77,6 +80,91 @@ public class PromotionTest {
 
     private Task<PromotionEligibility> CheckAsync() =>
         Promotion.CheckAsync(_projects.Default, _projects, _store, "etl.nb.md");
+
+    /// <summary>A language whose directives are shaped the way the SQL one's are,
+    /// built here so the check is proven to run off what the kernel reports rather
+    /// than off anything this project knows about SQL.</summary>
+    private static readonly LanguageDescriptor _sql = new() {
+        Id = "sql",
+        Selectors = new[] { "#!sql", "#!sql-connect" },
+        LanguageTags = new[] { "sql" },
+        Directives = new[] {
+            new DirectiveDefinition {
+                Selector = "#!sql-connect",
+                Parameters = new[] {
+                    new DirectiveParameter { Name = "--name", Required = true },
+                    new DirectiveParameter { Name = "--server" },
+                },
+            },
+        },
+    };
+
+    private ConnectionStore StoreWith(string name, ConnectionScope scope) {
+        var connections = new ConnectionStore(
+            new JobsOptions { DataDir = _dir, NotebooksRoot = _dir },
+            SecretStore.ForProviders(new InMemorySecretProvider()),
+            NullLogger<ConnectionStore>.Instance);
+        connections.Save(
+            new StoredConnection {
+                Name = name,
+                Scope = scope,
+                OwnerId = scope == ConnectionScope.Private ? Guid.NewGuid() : null,
+                Type = "SqlServer",
+                Settings = new Dictionary<string, string> { ["server"] = "dw" },
+            },
+            password: null, readOnlyPassword: null);
+        return connections;
+    }
+
+    private Task<PromotionEligibility> CheckAsync(ConnectionStore connections) =>
+        Promotion.CheckAsync(
+            _projects.Default, _projects, _store, "etl.nb.md", connections, new[] { _sql });
+
+    [TestMethod]
+    public async Task A_notebook_using_a_private_connection_is_not_promotable() {
+        CommitDev("etl.nb.md", "```sql\n#!sql-connect --name scratch\nSELECT 1\n```\n");
+        CommitDev("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: etl\n");
+        await RecordRunAsync();
+
+        var result = await CheckAsync(StoreWith("scratch", ConnectionScope.Private));
+        Assert.IsFalse(result.Eligible);
+        StringAssert.Contains(
+            result.Reasons.Single(r => r.Contains("scratch")),
+            "resolve only for the person who owns them");
+    }
+
+    [TestMethod]
+    public async Task A_notebook_using_a_shared_connection_is_fine() {
+        CommitDev("etl.nb.md", "```sql\n#!sql-connect --name warehouse\nSELECT 1\n```\n");
+        CommitDev("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: etl\n");
+        await RecordRunAsync();
+
+        var result = await CheckAsync(StoreWith("warehouse", ConnectionScope.Shared));
+        Assert.IsFalse(result.Reasons.Any(r => r.Contains("private connection")), string.Join(" | ", result.Reasons));
+    }
+
+    [TestMethod]
+    public async Task A_notebook_defining_its_own_connection_inline_is_not_blocked() {
+        // It carries its own settings, so it is not asking for anybody's saved entry
+        // — blocking it because the name collides would refuse work that is fine.
+        CommitDev("etl.nb.md",
+            "```sql\n#!sql-connect --name scratch --server dw.db.local\nSELECT 1\n```\n");
+        CommitDev("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: etl\n");
+        await RecordRunAsync();
+
+        var result = await CheckAsync(StoreWith("scratch", ConnectionScope.Private));
+        Assert.IsFalse(result.Reasons.Any(r => r.Contains("private connection")), string.Join(" | ", result.Reasons));
+    }
+
+    [TestMethod]
+    public async Task The_check_does_not_ask_when_it_has_no_connections_to_ask_about() {
+        CommitDev("etl.nb.md", "```sql\n#!sql-connect --name scratch\nSELECT 1\n```\n");
+        CommitDev("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: etl\n");
+        await RecordRunAsync();
+
+        var result = await CheckAsync();
+        Assert.IsFalse(result.Reasons.Any(r => r.Contains("private connection")));
+    }
 
     [TestMethod]
     public async Task A_never_run_job_is_not_promotable() {

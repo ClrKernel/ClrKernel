@@ -252,7 +252,7 @@ public static class ConnectionsApi {
     /// this process cannot itself query.
     /// </para>
     /// </summary>
-    private static IReadOnlyList<ConnectionProviderDescriptor> Providers { get; } =
+    internal static IReadOnlyList<ConnectionProviderDescriptor> Providers { get; } =
         new[] { SqlServerConnectionProvider.Descriptor };
 
     /// <summary>

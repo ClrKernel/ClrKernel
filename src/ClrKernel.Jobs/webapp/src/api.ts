@@ -515,7 +515,13 @@ export const api = {
   // The notebook as cells, with the languages this kernel can run — parsed and
   // written server-side so the browser never needs its own copy of the format.
   notebookCells: (env: string, path: string) =>
-    request<{ cells: ApiCell[]; languages: ApiLanguage[] }>(
+    request<{
+      cells: ApiCell[];
+      languages: ApiLanguage[];
+      /** Connection names this notebook uses that only their owner can resolve.
+       *  Empty for everybody else's notebooks, because they cannot see them. */
+      privateConnections?: string[];
+    }>(
       `${scope(env)}/notebooks/cells?path=${encodeURIComponent(path)}`,
     ),
   saveNotebookCells: (path: string, cells: ApiCell[], keepalive = false) =>

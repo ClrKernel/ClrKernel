@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using ClrKernel.Core.Scripting;
 
 namespace ClrKernel.Jobs;
 
@@ -29,8 +30,15 @@ public sealed class PromotionEligibility {
 /// validate, so a dependent can't be promoted ahead of its dependency.
 /// </summary>
 public static class Promotion {
+    /// <param name="connections">
+    /// The saved connections, when the caller has them. A notebook naming a private
+    /// one cannot be promoted: private connections are never written into test or
+    /// prod, so the scheduled run would fail looking for a name that is not there.
+    /// Omitted, the check simply does not ask.
+    /// </param>
     public static async Task<PromotionEligibility> CheckAsync(
-        Project project, ProjectRegistry projects, IRunStore store, string notebookPath) {
+        Project project, ProjectRegistry projects, IRunStore store, string notebookPath,
+        ConnectionStore connections = null, IReadOnlyList<LanguageDescriptor> languages = null) {
         var catalog = projects.CatalogFor(project);
         var git = projects.GitFor(project);
         var reasons = new List<string>();
@@ -120,6 +128,12 @@ public static class Promotion {
         }
 
         // Anything at all changed?
+        foreach (var name in PrivateReferences(catalog, notebookPath, connections, languages)) {
+            reasons.Add($"'{notebookPath}' uses the private connection '{name}'. " +
+                "Private connections resolve only for the person who owns them, so a scheduled " +
+                "run would fail. Make it a shared connection, or point the notebook at one.");
+        }
+
         if (reasons.Count == 0 && git.NameStatus(paths.ToArray()).Count == 0) {
             reasons.Add("test and prod are identical for these files — nothing to promote.");
         }
@@ -139,6 +153,30 @@ public static class Promotion {
     /// the git lock — and the catalog scans inside that same lock, so a scheduler
     /// tick can never see half a promotion.
     /// </summary>
+    /// <summary>
+    /// The private connections the test copy of a notebook names.
+    /// <para>
+    /// The test copy, because that is the one being promoted. The editor warns about
+    /// the same thing much earlier, on the branch where it can still be fixed
+    /// cheaply; this is the gate that stops it reaching production if nobody did.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<string> PrivateReferences(
+        JobCatalog catalog, string notebookPath, ConnectionStore connections,
+        IReadOnlyList<LanguageDescriptor> languages) {
+        var path = Path.Combine(catalog.RootFor(GitService.TestBranch), notebookPath);
+        if (connections == null || !File.Exists(path)) {
+            return Array.Empty<string>();
+        }
+        return ConnectionReferences
+            .In(File.ReadAllText(path), languages ?? Array.Empty<LanguageDescriptor>(),
+                ConnectionsApi.Providers)
+            .Where(name => connections.All.Any(c =>
+                c.Scope == ConnectionScope.Private
+                && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
     public static string Apply(GitService git, PromotionEligibility eligibility, string notebookPath) {
         return git.WithLock(() => {
             var changes = git.NameStatus(eligibility.Paths.ToArray());

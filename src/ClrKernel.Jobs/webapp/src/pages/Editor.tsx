@@ -85,6 +85,7 @@ export function Editor() {
   const isNotebook = /\.(nb\.)?md$/i.test(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
+  const [privateConnections, setPrivateConnections] = useState<string[]>([]);
   const [saved, setSaved] = useState<ApiCell[]>([]);
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
@@ -224,6 +225,7 @@ export function Editor() {
           setCells(withIds(result.cells));
           setSaved(result.cells);
           setLanguages(result.languages ?? []);
+          setPrivateConnections(result.privateConnections ?? []);
           setReloads((n) => n + 1);
         })
         .catch((e) => live && setError((e as Error).message));
@@ -694,6 +696,19 @@ export function Editor() {
               <p className="px-4 text-base text-muted-foreground">
                 Running cells is unavailable here: {sessionError}
               </p>
+            )}
+
+            {privateConnections.length > 0 && (
+              <Alert variant="warning" className="mx-4 mb-3 w-auto">
+                <AlertDescription>
+                  This notebook uses {privateConnections.length === 1 ? 'the private connection' : 'private connections'}{' '}
+                  <strong>{privateConnections.join(', ')}</strong>.{' '}
+                  {privateConnections.length === 1 ? 'It resolves' : 'They resolve'} only for you, so this
+                  notebook fails for everybody else and for every scheduled run — and promotion will
+                  refuse it. Make {privateConnections.length === 1 ? 'it' : 'them'} shared, or point the
+                  notebook at a shared connection.
+                </AlertDescription>
+              </Alert>
             )}
 
             {session?.scheduledRunActive && (

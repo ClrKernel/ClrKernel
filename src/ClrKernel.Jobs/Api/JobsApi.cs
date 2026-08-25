@@ -319,7 +319,7 @@ public static class JobsApi {
         // reader/writer `clrkernel run` and the VS Code extension agree with.
         scoped.MapGet("/notebooks/cells", async (
             HttpContext context, ProjectRegistry projects, KernelLanguages kernelLanguages,
-            string project, string branch, string path) => {
+            ConnectionStore connections, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -339,10 +339,16 @@ public static class JobsApi {
                     return Results.NotFound(new { error = $"No such file: {path}" });
                 }
                 var languages = await kernelLanguages.GetAsync();
-                var cells = NotebookMarkdown.Parse(File.ReadAllText(resolved), languages);
+                var text = File.ReadAllText(resolved);
+                var cells = NotebookMarkdown.Parse(text, languages);
                 return Results.Ok(new {
                     cells = cells.Select((c, i) => CellView.From(c, i, languages)),
                     languages,
+                    // Named here rather than discovered at promotion time: a notebook
+                    // that uses a connection only its author can see works perfectly
+                    // for the author, and the moment to learn otherwise is while
+                    // writing it, not when the promotion is refused.
+                    privateConnections = PrivateConnectionsIn(text, languages, connections),
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 
@@ -626,6 +632,7 @@ public static class JobsApi {
 
         scoped.MapGet("/notebooks/promotion", async (
             HttpContext context, ProjectRegistry projects, IRunStore store,
+            ConnectionStore connections, KernelLanguages kernelLanguages,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -634,11 +641,13 @@ public static class JobsApi {
                 if (PromotionRefusal(scope, branch, path) is { } refusal) {
                     return refusal;
                 }
-                return Results.Ok(await Promotion.CheckAsync(scope.Project, projects, store, path));
+                return Results.Ok(await Promotion.CheckAsync(
+                    scope.Project, projects, store, path, connections, await kernelLanguages.GetAsync()));
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPost("/notebooks/promote", async (
             HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options,
+            ConnectionStore connections, KernelLanguages kernelLanguages,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -648,7 +657,8 @@ public static class JobsApi {
                     return refusal;
                 }
                 // Re-check inside the request: the button may be stale.
-                var eligibility = await Promotion.CheckAsync(scope.Project, projects, store, path);
+                var eligibility = await Promotion.CheckAsync(
+                    scope.Project, projects, store, path, connections, await kernelLanguages.GetAsync());
                 if (!eligibility.Eligible) {
                     return Results.Conflict(new { error = "Not eligible.", reasons = eligibility.Reasons });
                 }
@@ -1404,6 +1414,24 @@ public static class JobsApi {
         scope.OwnedBy(context, branch)
             ? (resolved, false)
             : ($"{resolved}\u0000{context.CurrentUser()?.Id:D}", true);
+
+    /// <summary>
+    /// The private connections a notebook names — what the editor warns about.
+    /// <para>
+    /// A name that is private and nothing else. One that is also a shared connection
+    /// cannot happen (the store refuses a private name that would shadow a shared
+    /// one), and one that matches nothing saved is not this warning's business: it
+    /// may be defined in a config file beside the notebook, which is a perfectly
+    /// ordinary way to work.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<string> PrivateConnectionsIn(
+        string notebook, IReadOnlyList<LanguageDescriptor> languages, ConnectionStore connections) =>
+        ConnectionReferences.In(notebook, languages, ConnectionsApi.Providers)
+            .Where(name => connections.All.Any(c =>
+                c.Scope == ConnectionScope.Private
+                && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
 
     /// <summary>
     /// Opens an audit row for a hand-driven run in test or prod, and closes it when
