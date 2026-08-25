@@ -1045,11 +1045,22 @@
   flex: 1;
 }
 
+/* The pane owns the width so the splitter has one thing to drag; the tree fills
+   it. Its right edge is the Splitter rather than a border, which is what makes it
+   draggable at all. */
+.connection-tree-pane {
+  display: flex;
+  min-width: 0;
+  flex-shrink: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .connection-tree {
   display: flex;
-  width: 280px;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
-  border-right: 1px solid var(--color-border);
   background: var(--color-surface-panel);
 }
 
@@ -1108,27 +1119,36 @@
   white-space: nowrap;
 }
 
-/* The row actions stay out of the way until the row is under the pointer —
-   a tree where every row wears three buttons is unreadable. */
+/* Faint until the row is hovered, rather than absent until then: a control you
+   cannot see is a control you do not know is there, and hunting for it by waving
+   the pointer along a tree is not discovery. */
 .connection-tree-actions {
-  display: none;
-  gap: 2px;
+  display: flex;
+  gap: 1px;
+  opacity: 0.45;
 }
 
 .connection-tree-row:hover .connection-tree-actions,
-.connection-tree-row:focus-within .connection-tree-actions {
-  display: flex;
+.connection-tree-row:focus-within .connection-tree-actions,
+.connection-tree-actions:has([data-state='open']) {
+  opacity: 1;
 }
 
 .connection-tree-actions button {
+  display: inline-flex;
+  height: 20px;
+  width: 20px;
+  align-items: center;
+  justify-content: center;
   border: none;
+  border-radius: 4px;
   background: none;
-  color: var(--color-muted-subtle);
+  color: var(--color-muted-foreground);
   cursor: pointer;
-  font-size: var(--text-sm);
 }
 
 .connection-tree-actions button:hover {
+  background: var(--color-surface-panel-strong);
   color: var(--color-foreground);
 }
 

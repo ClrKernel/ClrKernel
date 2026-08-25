@@ -108,46 +108,128 @@ public static class SqlServerMetadata {
         await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
         return new ObjectDetail {
             Columns = await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false),
-            Keys = await StringsAsync(live,
-                @"SELECT kc.name + ' (' + kc.type_desc + ')'
-                  FROM sys.key_constraints kc
-                  JOIN sys.objects o ON o.object_id = kc.parent_object_id
-                  JOIN sys.schemas s ON s.schema_id = o.schema_id
-                  WHERE s.name = @schema AND o.name = @object
-                  UNION ALL
-                  -- ISNULL around the referenced names: a login that cannot see the
-                  -- other end of a foreign key gets NULL from OBJECT_NAME, and NULL
-                  -- concatenation makes the whole expression NULL — which used to
-                  -- throw rather than show the table.
-                  SELECT fk.name + ' -> '
-                         + ISNULL(OBJECT_SCHEMA_NAME(fk.referenced_object_id), '?')
-                         + '.' + ISNULL(OBJECT_NAME(fk.referenced_object_id), '?')
-                  FROM sys.foreign_keys fk
-                  JOIN sys.objects o ON o.object_id = fk.parent_object_id
-                  JOIN sys.schemas s ON s.schema_id = o.schema_id
-                  WHERE s.name = @schema AND o.name = @object",
-                schema, obj, cancellationToken).ConfigureAwait(false),
-            Indexes = await StringsAsync(live,
-                @"SELECT i.name + CASE WHEN i.is_unique = 1 THEN ' (unique)' ELSE '' END
-                  FROM sys.indexes i
-                  JOIN sys.objects o ON o.object_id = i.object_id
-                  JOIN sys.schemas s ON s.schema_id = o.schema_id
-                  WHERE s.name = @schema AND o.name = @object AND i.name IS NOT NULL
-                  ORDER BY i.name",
-                schema, obj, cancellationToken).ConfigureAwait(false),
+            Keys = await KeysAsync(live, schema, obj, cancellationToken).ConfigureAwait(false),
+            Indexes = await IndexesAsync(live, schema, obj, cancellationToken).ConfigureAwait(false),
         };
     }
 
     /// <summary>
-    /// The object's definition as text. Views, procedures and functions keep theirs on
-    /// the server; a table has none, so one is generated from its columns — which is
-    /// closer to what somebody wants than the alternative of refusing.
+    /// Primary and unique keys, then foreign keys.
+    /// <para>
+    /// Two queries composing their labels in C#, rather than one <c>UNION ALL</c> of
+    /// concatenated strings. That version failed on any database whose collation
+    /// differs from the server's — <c>name</c> is <c>sysname</c> in the database's
+    /// collation, <c>type_desc</c> is <c>nvarchar</c> in the server's, and
+    /// concatenating or union-ing the two is a collation conflict SQL Server refuses
+    /// outright ("Cannot resolve collation conflict … in add operator"). Sprinkling
+    /// <c>COLLATE DATABASE_DEFAULT</c> would have fixed that one query; not building
+    /// strings in SQL at all removes the whole class.
+    /// </para>
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> KeysAsync(
+        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) {
+        var keys = new List<string>();
+        await ReadAsync(live,
+            @"SELECT kc.name, kc.type_desc
+              FROM sys.key_constraints kc
+              JOIN sys.objects o ON o.object_id = kc.parent_object_id
+              JOIN sys.schemas s ON s.schema_id = o.schema_id
+              WHERE s.name = @schema AND o.name = @object
+              ORDER BY kc.name",
+            schema, obj, cancellationToken,
+            reader => keys.Add($"{Text(reader, 0)} ({Text(reader, 1)})")).ConfigureAwait(false);
+
+        await ReadAsync(live,
+            // The referenced names come back null when this login cannot see the other
+            // end of the key; that is a row worth labelling, not one worth throwing on.
+            @"SELECT fk.name,
+                     OBJECT_SCHEMA_NAME(fk.referenced_object_id),
+                     OBJECT_NAME(fk.referenced_object_id)
+              FROM sys.foreign_keys fk
+              JOIN sys.objects o ON o.object_id = fk.parent_object_id
+              JOIN sys.schemas s ON s.schema_id = o.schema_id
+              WHERE s.name = @schema AND o.name = @object
+              ORDER BY fk.name",
+            schema, obj, cancellationToken,
+            reader => keys.Add(
+                $"{Text(reader, 0)} → {Text(reader, 1) ?? "?"}.{Text(reader, 2) ?? "?"}"))
+            .ConfigureAwait(false);
+        return keys;
+    }
+
+    private static async Task<IReadOnlyList<string>> IndexesAsync(
+        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) {
+        var indexes = new List<string>();
+        await ReadAsync(live,
+            @"SELECT i.name, i.is_unique
+              FROM sys.indexes i
+              JOIN sys.objects o ON o.object_id = i.object_id
+              JOIN sys.schemas s ON s.schema_id = o.schema_id
+              WHERE s.name = @schema AND o.name = @object AND i.name IS NOT NULL
+              ORDER BY i.name",
+            schema, obj, cancellationToken,
+            reader => indexes.Add(Text(reader, 0) + (reader.GetBoolean(1) ? " (unique)" : string.Empty)))
+            .ConfigureAwait(false);
+        return indexes;
+    }
+
+    /// <summary>
+    /// Scripts an object the way SSMS's "Script as" does.
+    /// <para>
+    /// <c>create</c> asks the server for a view's or procedure's stored definition; a
+    /// table has none, so one is generated from its columns. Everything else —
+    /// <c>drop</c>, <c>select</c>, <c>insert</c>, <c>update</c>, <c>delete</c>,
+    /// <c>execute</c> — is generated here from the same column list the tree already
+    /// fetched, and is meant to be edited rather than run as it stands: the
+    /// placeholders say so out loud, which is exactly what SSMS emits and why nobody
+    /// runs one by accident.
+    /// </para>
     /// </summary>
     public static async Task<string> ScriptAsync(
-        SqlConnection live, string database, string schema, string obj, string kind,
+        SqlConnection live, string database, string schema, string obj, string kind, string variant,
         CancellationToken cancellationToken) {
         await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(kind, "table", StringComparison.OrdinalIgnoreCase)) {
+        var name = Quote(schema) + "." + Quote(obj);
+        var isTable = string.Equals(kind, "table", StringComparison.OrdinalIgnoreCase);
+
+        switch ((variant ?? "create").ToLowerInvariant()) {
+            case "drop":
+                return $"DROP {Noun(kind)} {name};{Environment.NewLine}";
+
+            case "execute":
+                return $"EXEC {name};{Environment.NewLine}";
+
+            case "select": {
+                    var columns = await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false);
+                    var list = columns.Count == 0
+                        ? "*"
+                        : string.Join("," + Environment.NewLine + "       ", columns.Select(c => Quote(c.Name)));
+                    return $"SELECT TOP 1000 {list}{Environment.NewLine}FROM {name};{Environment.NewLine}";
+                }
+
+            case "insert": {
+                    var columns = await WritableAsync(live, schema, obj, cancellationToken).ConfigureAwait(false);
+                    var names = string.Join(", ", columns.Select(c => Quote(c.Name)));
+                    var values = string.Join(", ", columns.Select(Placeholder));
+                    return $"INSERT INTO {name} ({names}){Environment.NewLine}VALUES ({values});{Environment.NewLine}";
+                }
+
+            case "update": {
+                    var columns = await WritableAsync(live, schema, obj, cancellationToken).ConfigureAwait(false);
+                    var sets = string.Join("," + Environment.NewLine + "    ",
+                        columns.Select(c => $"{Quote(c.Name)} = {Placeholder(c)}"));
+                    return $"UPDATE {name}{Environment.NewLine}SET {sets}{Environment.NewLine}"
+                        + $"WHERE <search condition,,>;{Environment.NewLine}";
+                }
+
+            case "delete":
+                return $"DELETE FROM {name}{Environment.NewLine}WHERE <search condition,,>;{Environment.NewLine}";
+
+            default:
+                break;
+        }
+
+        if (!isTable) {
             using var command = new SqlCommand(
                 "SELECT OBJECT_DEFINITION(OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@object)))", live);
             command.Parameters.AddWithValue("@schema", schema);
@@ -157,22 +239,40 @@ public static class SqlServerMetadata {
                 ?? "-- No definition is available. It may be encrypted, or this login cannot see it.";
         }
 
-        var columns = await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false);
+        var all = await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false);
         var script = new StringBuilder()
-            .Append("CREATE TABLE ").Append(Quote(schema)).Append('.').Append(Quote(obj)).AppendLine(" (");
-        for (var i = 0; i < columns.Count; i++) {
-            var column = columns[i];
+            .Append("CREATE TABLE ").Append(name).AppendLine(" (");
+        for (var i = 0; i < all.Count; i++) {
+            var column = all[i];
             script.Append("    ").Append(Quote(column.Name)).Append(' ').Append(column.Type)
                 .Append(column.Identity ? " IDENTITY" : string.Empty)
                 .Append(column.Nullable ? " NULL" : " NOT NULL")
-                .AppendLine(i == columns.Count - 1 ? string.Empty : ",");
+                .AppendLine(i == all.Count - 1 ? string.Empty : ",");
         }
-        var keys = columns.Where(c => c.PrimaryKey).Select(c => Quote(c.Name)).ToList();
+        var keys = all.Where(c => c.PrimaryKey).Select(c => Quote(c.Name)).ToList();
         if (keys.Count > 0) {
             script.Append("    , PRIMARY KEY (").Append(string.Join(", ", keys)).AppendLine(")");
         }
         return script.AppendLine(");").ToString();
     }
+
+    /// <summary>The columns an INSERT or UPDATE may name — identity columns are the
+    /// server's to fill, and listing them produces a statement that always fails.</summary>
+    private static async Task<IReadOnlyList<ColumnDetail>> WritableAsync(
+        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) =>
+        (await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false))
+            .Where(c => !c.Identity).ToList();
+
+    /// <summary>SSMS's placeholder shape, kept because people recognise it and because
+    /// a script full of these cannot be run by accident.</summary>
+    private static string Placeholder(ColumnDetail column) => $"<{column.Name}, {column.Type},>";
+
+    private static string Noun(string kind) => (kind ?? string.Empty).ToLowerInvariant() switch {
+        "view" => "VIEW",
+        "procedure" => "PROCEDURE",
+        "function" => "FUNCTION",
+        _ => "TABLE",
+    };
 
     // --- the queries --------------------------------------------------------
 
@@ -211,22 +311,23 @@ public static class SqlServerMetadata {
         return columns;
     }
 
-    private static async Task<IReadOnlyList<string>> StringsAsync(
-        SqlConnection live, string sql, string schema, string obj, CancellationToken cancellationToken) {
+    /// <summary>Runs a schema/object query and hands each row to <paramref name="row"/>.</summary>
+    private static async Task ReadAsync(
+        SqlConnection live, string sql, string schema, string obj, CancellationToken cancellationToken,
+        Action<SqlDataReader> row) {
         using var command = new SqlCommand(sql, live);
         command.Parameters.AddWithValue("@schema", schema);
         command.Parameters.AddWithValue("@object", obj);
-        var values = new List<string>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
-            // Belt and braces with the ISNULLs above: a name this login cannot resolve
-            // is a row worth skipping, never a thrown tree.
-            if (!reader.IsDBNull(0)) {
-                values.Add(reader.GetString(0));
-            }
+            row(reader);
         }
-        return values;
     }
+
+    /// <summary>A string column, or null — catalog views return null for anything this
+    /// login cannot resolve, and that is a label to write rather than a throw.</summary>
+    private static string Text(SqlDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
 
     private static async Task<IReadOnlyList<MetadataNode>> NodesAsync(
         SqlConnection live, string sql, string kind, CancellationToken cancellationToken) {

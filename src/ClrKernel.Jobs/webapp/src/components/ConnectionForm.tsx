@@ -212,7 +212,11 @@ export function ConnectionForm({
           </Alert>
         )}
 
-        <h3>Password</h3>
+        {/* "Credential", not "Password": under a field list that already ends in
+            Encrypt and Trust server certificate, a heading called Password reads
+            like one more setting rather than the start of a section — and there is
+            a field called Password inside it. */}
+        <h3>Credential</h3>
         {secretHelp && (
           <Alert>
             <AlertDescription>{secretHelp}</AlertDescription>

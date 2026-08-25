@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type * as monaco from 'monaco-editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,9 @@ import { connectionsPath } from '../routes';
 
 /** Where the divider sits, as a fraction of the work area's height. */
 const DEFAULT_SPLIT = 0.45;
+
+/** How wide the tree starts. Object names are long, so it is wider than a file tree. */
+const DEFAULT_TREE = 280;
 
 /**
  * The Connections area: saved connections and their objects on the left, a query
@@ -32,7 +36,10 @@ export function Connections() {
   const [editing, setEditing] = useState<ApiConnection | null>(null);
   const [creating, setCreating] = useState(false);
   const [split, setSplit] = useState(DEFAULT_SPLIT);
+  const [treeWidth, setTreeWidth] = useState(DEFAULT_TREE);
+  const page = useRef<HTMLDivElement | null>(null);
   const work = useRef<HTMLDivElement | null>(null);
+  const editorHandle = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const [sql, setSql] = useState('');
   const [resetKey, setResetKey] = useState(0);
@@ -87,7 +94,7 @@ export function Connections() {
   const latestRun = useRef(run);
   latestRun.current = run;
   const editor = useFillEditor(
-    'sql', sql, setSql, false, resetKey, (text) => void latestRun.current(text));
+    'sql', sql, setSql, false, resetKey, (text) => void latestRun.current(text), editorHandle);
 
   async function cancel() {
     if (selected == null || running == null) {
@@ -96,14 +103,40 @@ export function Connections() {
     await api.cancelQuery(selected.id, running).catch(() => undefined);
   }
 
+  /**
+   * Puts generated SQL into the editor **at the cursor**, never over what is there.
+   *
+   * It replaced the buffer at first, which meant picking "Select Top 1000" threw
+   * away whatever you were part-way through writing. Inserting is the same thing
+   * when the editor is empty and costs nothing when it is not — and it is what
+   * every editor's snippet insertion does, so it needs no explaining.
+   */
   function into(connection: ApiConnection, text: string) {
     if (connection.id !== id) {
       navigate(connectionsPath(connection.id));
     }
-    setSql(text);
-    // The editor holds the buffer; this is one of the few cases that genuinely
-    // needs it replaced, so it says so rather than syncing on every change.
-    setResetKey((key) => key + 1);
+    const live = editorHandle.current;
+    if (live == null) {
+      setSql(text);
+      setResetKey((key) => key + 1);
+      return;
+    }
+    const selection = live.getSelection();
+    const body = live.getValue().trim().length === 0 ? text : `\n${text}`;
+    live.executeEdits('connections', [{
+      range: selection ?? live.getModel()!.getFullModelRange(),
+      text: body,
+      forceMoveMarkers: true,
+    }]);
+    live.focus();
+    setSql(live.getValue());
+  }
+
+  function onTreeDrag(x: number) {
+    const box = page.current?.getBoundingClientRect();
+    if (box) {
+      setTreeWidth(Math.min(640, Math.max(180, x - box.left)));
+    }
   }
 
   function onSplitDrag(y: number) {
@@ -133,26 +166,36 @@ export function Connections() {
   ];
 
   return (
-    <div className="connections-page">
-      <ConnectionTree
-        connections={connections}
-        selected={id ?? null}
-        filter={filter}
-        onFilter={setFilter}
-        onSelect={(c) => navigate(connectionsPath(c.id))}
-        onQuery={into}
-        onScript={async (connection, node) => {
-          const reply = await api.connectionMetadata<{ script: string }>(connection.id, {
-            level: 'script',
-            database: node.database,
-            schema: node.schema,
-            object: node.object,
-            kind: node.kind,
-          });
-          into(connection, reply.payload?.script ?? reply.error ?? '');
-        }}
-        onNew={() => setCreating(true)}
-        onEdit={setEditing}
+    <div className="connections-page" ref={page}>
+      <div className="connection-tree-pane" style={{ width: treeWidth }}>
+        <ConnectionTree
+          connections={connections}
+          selected={id ?? null}
+          filter={filter}
+          onFilter={setFilter}
+          onSelect={(c) => navigate(connectionsPath(c.id))}
+          onQuery={into}
+          onScript={async (connection, node, variant) => {
+            const reply = await api.connectionMetadata<{ script: string }>(connection.id, {
+              level: 'script',
+              database: node.database,
+              schema: node.schema,
+              object: node.object,
+              kind: node.kind,
+              variant,
+            });
+            into(connection, reply.payload?.script ?? reply.error ?? '');
+          }}
+          onNew={() => setCreating(true)}
+          onEdit={setEditing}
+        />
+      </div>
+
+      <Splitter
+        orientation="vertical"
+        label="Connections width"
+        onDrag={onTreeDrag}
+        onReset={() => setTreeWidth(DEFAULT_TREE)}
       />
 
       <div className="connections-work" ref={work}>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { bindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { getCellModel } from './models';
@@ -198,6 +198,15 @@ export function useFillEditor(
    * — and a second copy of it is a second chance to get it wrong.
    */
   onRun?: (text: string) => void,
+  /**
+   * Filled in with the live editor, for the callers that need to act on it rather
+   * than only to read its value — inserting a snippet at the cursor, say.
+   *
+   * A ref rather than a second return value: the hook returns the container ref
+   * that its consumers spread onto a div, and widening that return type would
+   * touch every call site to give one of them a handle.
+   */
+  handle?: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null>,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -217,6 +226,9 @@ export function useFillEditor(
       readOnly,
     });
     editor.current = created;
+    if (handle) {
+      handle.current = created;
+    }
     const changeListener = created.onDidChangeModelContent(() =>
       latestOnChange.current(created.getValue()),
     );
@@ -242,6 +254,9 @@ export function useFillEditor(
       created.dispose();
       model?.dispose();
       editor.current = null;
+      if (handle) {
+        handle.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

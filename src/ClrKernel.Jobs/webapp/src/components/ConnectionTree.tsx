@@ -5,13 +5,25 @@ import {
   Database,
   FileCode2,
   Folder,
+  MoreHorizontal,
   Plug,
   PlugZap,
+  RefreshCw,
   Table2,
   type LucideIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import {
   api,
@@ -57,6 +69,36 @@ const ICONS: Record<string, LucideIcon> = {
 
 /** Objects are filed under the three folders SSMS uses, and functions and
  *  procedures share one — which is what Programmability means. */
+/**
+ * The "Script as" menu, per kind. A view has no INSERT worth offering and a
+ * procedure has no SELECT, so the list is not one list with things greyed out —
+ * the menu only ever shows what the object can actually be scripted as.
+ */
+const SCRIPTS: Record<string, { variant: string; label: string }[]> = {
+  table: [
+    { variant: 'create', label: 'CREATE' },
+    { variant: 'drop', label: 'DROP' },
+    { variant: 'select', label: 'SELECT' },
+    { variant: 'insert', label: 'INSERT' },
+    { variant: 'update', label: 'UPDATE' },
+    { variant: 'delete', label: 'DELETE' },
+  ],
+  view: [
+    { variant: 'create', label: 'CREATE' },
+    { variant: 'drop', label: 'DROP' },
+    { variant: 'select', label: 'SELECT' },
+  ],
+  procedure: [
+    { variant: 'create', label: 'CREATE' },
+    { variant: 'drop', label: 'DROP' },
+    { variant: 'execute', label: 'EXECUTE' },
+  ],
+  function: [
+    { variant: 'create', label: 'CREATE' },
+    { variant: 'drop', label: 'DROP' },
+  ],
+};
+
 const GROUPS: { key: string; label: string; kinds: string[] }[] = [
   { key: 'tables', label: 'Tables', kinds: ['table'] },
   { key: 'views', label: 'Views', kinds: ['view'] },
@@ -71,9 +113,10 @@ export function ConnectionTree({
   filter: string;
   onFilter: (value: string) => void;
   onSelect: (connection: ApiConnection) => void;
-  /** Select Top N / a qualified name dropped into the editor. */
+  /** SQL for the editor. It is inserted at the cursor rather than replacing the
+   *  buffer — see the page — so choosing one of these never costs you work. */
   onQuery: (connection: ApiConnection, sql: string) => void;
-  onScript: (connection: ApiConnection, node: Node) => void;
+  onScript: (connection: ApiConnection, node: Node, variant: string) => void;
   onNew: () => void;
   onEdit: (connection: ApiConnection) => void;
 }) {
@@ -222,43 +265,95 @@ export function ConnectionTree({
                 />
                 <button
                   className="connection-tree-label"
+                  // Clicking a row opens it. It used to drop a SELECT into the query
+                  // editor, which threw away whatever you had been writing — a click
+                  // on a tree should never be able to lose work. Everything that
+                  // writes to the editor is in the menu, where you meant it.
                   onClick={() => {
+                    // A connection is selected by clicking it — that is what the
+                    // query editor targets — and connected by its chevron or its
+                    // menu, so connecting stays something you asked for. Everything
+                    // below it opens on click, which is what a tree is.
                     if (node.type === 'connection') {
                       onSelect(node.connection);
-                    } else if (node.type === 'object') {
-                      onQuery(node.connection, selectTop(node));
-                    } else {
+                    } else if (expandable) {
                       void toggle(node);
                     }
                   }}
-                  title={node.type === 'object' ? 'Select the first 1000 rows' : node.label}
+                  title={node.label}
                 >
                   {node.label}
                 </button>
+                {busy.has(node.key) && <span className="connection-tree-busy">…</span>}
                 {node.type === 'connection' && (
                   <>
-                    {connected && (
-                      <span className="sr-only">connected</span>
-                    )}
-                    <ConnectionActions
-                      node={node}
-                      connected={connected}
-                      onEdit={onEdit}
-                      onRefresh={() => refresh(node)}
-                      onConnect={() => toggle(node)}
-                      onDisconnect={() => disconnect(node)}
-                    />
+                    {connected && <span className="sr-only">connected</span>}
+                    <span className="connection-tree-actions">
+                      {connected && (
+                        <button onClick={() => refresh(node)} title="Refresh" aria-label="Refresh">
+                          <RefreshCw className="size-3.5" aria-hidden="true" />
+                        </button>
+                      )}
+                      <RowMenu label={`Actions for ${node.label}`}>
+                        {connected ? (
+                          <DropdownMenuItem onSelect={() => void disconnect(node)}>
+                            Disconnect
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onSelect={() => void toggle(node)}>
+                            Connect
+                          </DropdownMenuItem>
+                        )}
+                        {connected && (
+                          <DropdownMenuItem onSelect={() => void refresh(node)}>
+                            Refresh
+                          </DropdownMenuItem>
+                        )}
+                        {node.connection.canEdit && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={() => onEdit(node.connection)}>
+                              Edit connection…
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </RowMenu>
+                    </span>
                   </>
                 )}
                 {node.type === 'object' && (
                   <span className="connection-tree-actions">
-                    <button onClick={() => copyName(node)} title="Copy the qualified name">⧉</button>
-                    <button onClick={() => onScript(node.connection, node)} title="Script this object">
-                      {'</>'}
-                    </button>
+                    <RowMenu label={`Actions for ${node.label}`}>
+                      {(node.kind === 'table' || node.kind === 'view') && (
+                        <DropdownMenuItem
+                          onSelect={() => onQuery(node.connection, selectTop(node))}
+                        >
+                          Select Top 1000 Rows
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Script {node.kind} as</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          {(SCRIPTS[node.kind ?? 'table'] ?? SCRIPTS.table).map((script) => (
+                            <DropdownMenuItem
+                              key={script.variant}
+                              onSelect={() => onScript(node.connection, node, script.variant)}
+                            >
+                              {script.label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => copyName(node)}>
+                        Copy qualified name
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => void refresh(node)}>
+                        Refresh
+                      </DropdownMenuItem>
+                    </RowMenu>
                   </span>
                 )}
-                {busy.has(node.key) && <span className="connection-tree-busy">…</span>}
               </div>
               {errors[node.key] && (
                 <p className="connection-tree-error" style={{ paddingLeft: 20 + node.depth * 14 }}>
@@ -273,30 +368,23 @@ export function ConnectionTree({
   );
 }
 
-function ConnectionActions({
-  node, connected, onEdit, onRefresh, onConnect, onDisconnect,
-}: {
-  node: Node;
-  connected: boolean;
-  onEdit: (connection: ApiConnection) => void;
-  onRefresh: () => void;
-  onConnect: () => void;
-  onDisconnect: () => void;
-}) {
+/**
+ * A row's "…" menu.
+ *
+ * Named options in a menu rather than a row of glyph buttons: ⧉ and </> were two
+ * icons nobody could read without hovering each one to find out, and there are
+ * more actions coming than a row has width for.
+ */
+function RowMenu({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <span className="connection-tree-actions">
-      {connected ? (
-        <button onClick={onDisconnect} title="Disconnect — closes the pooled sockets">⏻</button>
-      ) : (
-        <button onClick={onConnect} title="Connect and list the databases">⏵</button>
-      )}
-      {connected && (
-        <button onClick={onRefresh} title="Reload this connection's objects">⟳</button>
-      )}
-      {node.connection.canEdit && (
-        <button onClick={() => onEdit(node.connection)} title="Edit this connection">✎</button>
-      )}
-    </span>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button aria-label={label} title="Actions">
+          <MoreHorizontal className="size-3.5" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">{children}</DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -307,9 +395,7 @@ function qualified(node: Node): string {
 }
 
 function selectTop(node: Node): string {
-  return node.kind === 'table' || node.kind === 'view'
-    ? `SELECT TOP 1000 *\nFROM ${qualified(node)};`
-    : `EXEC ${qualified(node)};`;
+  return `SELECT TOP 1000 *\nFROM ${qualified(node)};`;
 }
 
 function copyName(node: Node) {
@@ -415,6 +501,12 @@ function flatten(
                   leaf: true,
                   label: `${column.primaryKey ? '🔑 ' : ''}${column.name} : ${column.type}`
                     + `${column.nullable ? ' null' : ''}`,
+                });
+              }
+              for (const key of detail?.keys ?? []) {
+                rows.push({
+                  key: `${objectKey}/k:${key}`, label: key, depth: 6, type: 'detail',
+                  connection, leaf: true,
                 });
               }
               for (const index of detail?.indexes ?? []) {

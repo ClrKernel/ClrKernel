@@ -177,7 +177,8 @@ public static class ConnectionsApi {
                             live, body.Database, body.Schema, body.Object, token),
                         "script" => new {
                             script = await SqlServerMetadata.ScriptAsync(
-                                live, body.Database, body.Schema, body.Object, body.Kind, token),
+                                live, body.Database, body.Schema, body.Object, body.Kind, body.Variant,
+                                token),
                         },
                         _ => throw new ConnectionException($"No metadata level '{level}'."),
                     },
@@ -437,6 +438,10 @@ public sealed class MetadataBody {
     /// <summary>Only for <c>script</c>: a table has no stored definition and one is
     /// generated, everything else has one on the server.</summary>
     public string Kind { get; set; }
+
+    /// <summary>Only for <c>script</c>: create | drop | select | insert | update |
+    /// delete | execute. Defaults to create.</summary>
+    public string Variant { get; set; }
 
     public string Password { get; set; }
 }

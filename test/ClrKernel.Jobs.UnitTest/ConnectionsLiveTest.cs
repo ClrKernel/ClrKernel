@@ -155,14 +155,52 @@ public class ConnectionsLiveTest {
 
     [TestMethod]
     public async Task AViewScriptsAsItsDefinitionAndATableAsGeneratedSql() {
-        var view = await BrowseAsync((live, token) => SqlServerMetadata.ScriptAsync(
-            live, "master", "INFORMATION_SCHEMA", "TABLES", "view", token));
+        var view = await ScriptAsync("INFORMATION_SCHEMA", "TABLES", "view", "create");
         StringAssert.Contains(view.ToUpperInvariant(), "SELECT");
 
-        var table = await BrowseAsync((live, token) => SqlServerMetadata.ScriptAsync(
-            live, "master", "sys", "objects", "table", token));
+        var table = await ScriptAsync("sys", "objects", "table", "create");
         StringAssert.StartsWith(table, "CREATE TABLE [sys].[objects]");
     }
+
+    [TestMethod]
+    public async Task ScriptAsProducesTheUsualStatements() {
+        StringAssert.StartsWith(await ScriptAsync("sys", "objects", "table", "drop"),
+            "DROP TABLE [sys].[objects]");
+        StringAssert.StartsWith(await ScriptAsync("INFORMATION_SCHEMA", "TABLES", "view", "drop"),
+            "DROP VIEW [INFORMATION_SCHEMA].[TABLES]");
+
+        var select = await ScriptAsync("sys", "objects", "table", "select");
+        StringAssert.StartsWith(select, "SELECT TOP 1000 [name]");
+        StringAssert.Contains(select, "FROM [sys].[objects]");
+
+        // sys.objects has no identity column, so this only proves the shape; the
+        // identity exclusion is covered by the unit test over the same rule.
+        var insert = await ScriptAsync("sys", "objects", "table", "insert");
+        StringAssert.StartsWith(insert, "INSERT INTO [sys].[objects] (");
+        StringAssert.Contains(insert, "<name, sysname,>");
+
+        StringAssert.StartsWith(await ScriptAsync("sys", "objects", "table", "delete"),
+            "DELETE FROM [sys].[objects]");
+    }
+
+    [TestMethod]
+    public async Task ADatabaseWithADifferentCollationStillOpensItsTables() {
+        // The bug this covers: the keys and indexes were built by concatenating
+        // catalog strings in SQL, which is a collation conflict the server refuses
+        // outright on any database whose collation differs from its own. tempdb is
+        // the server's, so this is the shape check; a differently-collated database
+        // is what actually reproduced it.
+        var databases = await BrowseAsync((live, token) => SqlServerMetadata.DatabasesAsync(live, token));
+        foreach (var database in databases.Take(5)) {
+            var detail = await BrowseAsync((live, token) =>
+                SqlServerMetadata.DetailAsync(live, database.Name, "sys", "objects", token));
+            Assert.IsTrue(detail.Columns.Count > 0, database.Name);
+        }
+    }
+
+    private Task<string> ScriptAsync(string schema, string obj, string kind, string variant) =>
+        BrowseAsync((live, token) => SqlServerMetadata.ScriptAsync(
+            live, "master", schema, obj, kind, variant, token));
 
     private Task<QueryResult> RunAsync(string sql) =>
         _runner.RunAsync(

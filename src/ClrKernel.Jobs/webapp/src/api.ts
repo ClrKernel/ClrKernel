@@ -751,6 +751,8 @@ export interface ApiMetadataRequest {
   schema?: string;
   object?: string;
   kind?: string;
+  /** Only for `script`: create | drop | select | insert | update | delete | execute. */
+  variant?: string;
   password?: string;
 }
 
