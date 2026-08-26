@@ -175,7 +175,8 @@ public class SqlDialectTest {
         await engine.ExecuteAsync(
             "#!sql-connect --name warehouse --server localhost --database dw --auth integrated");
 
-        var refusal = await Raised(engine, "#!oraclesql warehouse\nSELECT * FROM DUAL");
+        var refusal = await Raised(
+            engine, "#!oraclesql --connections warehouse\nSELECT * FROM DUAL");
 
         Assert.IsNotNull(refusal, "Oracle SQL on a SQL Server connection cannot run");
         StringAssert.Contains(refusal.Message, "Oracle SQL");
@@ -195,11 +196,64 @@ public class SqlDialectTest {
         await engine.ExecuteAsync(
             "#!sql-connect --name warehouse --server localhost --database dw --auth integrated");
 
-        var refusal = await Raised(engine, "#!ansisql warehouse\nSELECT 1");
+        var refusal = await Raised(engine, "#!ansisql --connections warehouse\nSELECT 1");
 
         StringAssert.Contains(refusal?.Message ?? "", "SqlServer");
         Assert.IsFalse((refusal?.Message ?? "").Contains("No SQL connection named"),
             "the name resolved; it was the pairing that did not");
+    }
+
+    [TestMethod]
+    public async Task An_incompatible_pairing_is_flagged_before_it_is_run() {
+        // The same disagreement, said while you are writing it. A warning rather
+        // than an error: the cell is valid in its own dialect and the connection is
+        // real — it is the pairing that is wrong, and either side can change it.
+        var engine = NewEngine();
+        await engine.ExecuteAsync(
+            "#!sql-connect --name warehouse --server localhost --database dw --auth integrated");
+        var oracle = Languages().Languages.OfType<OracleSqlCellLanguage>().Single();
+        // The dialects in a fresh set do not know about the engine's connections,
+        // so ask the engine's own instance.
+        var services = engine.Languages.ById("oraclesql").Services;
+
+        var flagged = services.Diagnose("#!oraclesql --connections warehouse\nSELECT * FROM DUAL");
+        var byComment = services.Diagnose("-- connections warehouse\nSELECT * FROM DUAL");
+        Assert.AreEqual(1, byComment.Count, "named in a comment rather than on the selector line");
+
+        Assert.AreEqual(1, flagged.Count);
+        Assert.AreEqual(2, flagged[0].Severity, "a warning, not an error");
+        Assert.AreEqual(0, flagged[0].Line, "on the line that names the connection");
+        StringAssert.Contains(flagged[0].Message, "warehouse");
+        StringAssert.Contains(flagged[0].Message, "SqlServer");
+        StringAssert.Contains(flagged[0].Message, "Oracle SQL");
+        Assert.IsNotNull(oracle);
+    }
+
+    [TestMethod]
+    public async Task A_compatible_pairing_and_a_half_typed_name_are_both_quiet() {
+        var engine = NewEngine();
+        await engine.ExecuteAsync(
+            "#!sql-connect --name warehouse --server localhost --database dw --auth integrated");
+        var tsql = engine.Languages.ById("sql").Services;
+
+        var clean = tsql.Diagnose("#!sql --connections warehouse\nSELECT 1");
+        Assert.AreEqual(0, clean.Count,
+            "T-SQL on a SQL Server connection is exactly right: "
+            + string.Join(" | ", clean.Select(d => $"[{d.Severity}] {d.Message}")));
+
+        // And the same written the way a cell body actually carries it — the
+        // selector lives in the fence, not in the text, in both clients.
+        Assert.AreEqual(0, tsql.Diagnose("-- connections warehouse\nSELECT 1").Count);
+
+        // Half a name is a name being typed. A warning that flashes while you type
+        // is a warning people learn to stop reading.
+        Assert.AreEqual(0,
+            tsql.Diagnose("#!sql --connections wareh\nSELECT 1").Count,
+            "a name that resolves to nothing says nothing here");
+
+        // And a cell that names no connection is asking for the default, which is
+        // not this check's business.
+        Assert.AreEqual(0, tsql.Diagnose("SELECT 1").Count);
     }
 
     [TestMethod]

@@ -103,11 +103,13 @@ public sealed class SqlCellLanguageServices : ICellLanguageServices {
     /// rather than about SQL.
     /// </summary>
     public IReadOnlyList<DiagnosticResult> Diagnose(string text) {
-        var directives = DirectiveCompletion.Check(Directives, text);
+        var directives = DirectiveCompletion.Check(Directives, text)
+            .Concat(IncompatibleConnection(text))
+            .ToList();
         if (_dialect != null && _dialect is not SqlCellLanguage) {
-            return directives.ToList();
+            return directives;
         }
-        return TSqlSyntax.Check(text ?? string.Empty)
+        return TSqlSyntax.Check(WithoutSelectorLines(text))
             .Select(d => new DiagnosticResult {
                 Line = d.Line,
                 Column = d.Column,
@@ -119,4 +121,102 @@ public sealed class SqlCellLanguageServices : ICellLanguageServices {
             .Concat(directives)
             .ToList();
     }
+
+    /// <summary>
+    /// The cell's text with its <c>#!</c> lines blanked out.
+    /// <para>
+    /// A selector line is ClrKernel's, not T-SQL's, and handing one to the parser
+    /// gets "Incorrect syntax near '#'" — a squiggle on the one line in the cell
+    /// that is definitely correct. Blanked rather than removed so every other
+    /// diagnostic keeps the line number it was found on.
+    /// </para>
+    /// </summary>
+    private static string WithoutSelectorLines(string text) {
+        var lines = Lines(text);
+        for (var i = 0; i < lines.Length; i++) {
+            if (lines[i].TrimStart().StartsWith("#!", StringComparison.Ordinal)) {
+                lines[i] = string.Empty;
+            }
+        }
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// The dialect/provider mismatch, said while you are writing rather than when
+    /// you run it: a T-SQL cell pointed at an Oracle connection is going to fail,
+    /// and it will fail as a parse error from a driver, which names neither of the
+    /// two things that actually disagree.
+    /// <para>
+    /// A <b>warning</b>, not an error. The cell is valid in its own dialect and the
+    /// connection is a real connection; what is wrong is the pairing, and it stops
+    /// being wrong the moment either one is changed — including by somebody else,
+    /// in connections.json, without touching this notebook.
+    /// </para>
+    /// <para>
+    /// A name that resolves to nothing says nothing here. Half a name is a name
+    /// being typed, and a warning that flashes while you type is a warning people
+    /// learn to stop reading.
+    /// </para>
+    /// </summary>
+    private IEnumerable<DiagnosticResult> IncompatibleConnection(string text) {
+        if (_dialect == null || string.IsNullOrWhiteSpace(text)) {
+            yield break;
+        }
+        var (name, line) = ConnectionNamedIn(text);
+        if (name == null) {
+            yield break;
+        }
+
+        string providerType = null;
+        if (_session.Connections.TryGet(name, out _)) {
+            providerType = "SqlServer";
+        } else if (SqlTarget.ProviderTypesInConfig().TryGetValue(name, out var configured)) {
+            providerType = configured;
+        }
+        if (providerType == null || _dialect.Supports(providerType)) {
+            yield break;
+        }
+
+        yield return new DiagnosticResult {
+            Line = line,
+            Column = 0,
+            EndLine = line,
+            EndColumn = Lines(text).ElementAtOrDefault(line)?.Length ?? 0,
+            Severity = 2,
+            Message =
+                $"'{name}' is a {providerType} connection, and {_dialect.DisplayName} runs on " +
+                $"{string.Join(", ", _dialect.SupportedProviders)}. This cell will not run as written.",
+        };
+    }
+
+    /// <summary>
+    /// The connection a cell names and the line it names it on — from the selector
+    /// line's flag or from a <c>-- connections</c> comment. Null when the cell says
+    /// nothing, which means the session default and is not this check's business.
+    /// </summary>
+    private static (string Name, int Line) ConnectionNamedIn(string text) {
+        var lines = Lines(text);
+        for (var i = 0; i < lines.Length; i++) {
+            var trimmed = lines[i].Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+            if (trimmed.StartsWith("#!", StringComparison.Ordinal)) {
+                if (SqlDirectives.SelectorConnection(trimmed) is { Length: > 0 } named) {
+                    return (named, i);
+                }
+                continue;
+            }
+            if (!trimmed.StartsWith("--", StringComparison.Ordinal)) {
+                break; // the first real statement line ends the directive block
+            }
+            var request = SqlDirectives.ParseCell(trimmed);
+            if (!string.IsNullOrEmpty(request.ConnectionName)) {
+                return (request.ConnectionName, i);
+            }
+        }
+        return (null, 0);
+    }
+
+    private static string[] Lines(string text) => (text ?? string.Empty).Replace("\r\n", "\n").Split('\n');
 }

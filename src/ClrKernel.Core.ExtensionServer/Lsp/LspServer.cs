@@ -285,7 +285,7 @@ public sealed class LspServer {
                             Start = new Position { Line = d.Line, Character = d.Column },
                             End = new Position { Line = d.EndLine, Character = d.EndColumn },
                         },
-                        Severity = 1,
+                        Severity = d.Severity,
                         Source = "clrkernel-" + lang,
                         Code = d.Code.ToString(),
                         Message = d.Message,
