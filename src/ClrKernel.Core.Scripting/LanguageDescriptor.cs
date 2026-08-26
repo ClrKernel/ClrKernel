@@ -34,6 +34,9 @@ public sealed class LanguageDescriptor {
     /// one; null means use the editor language itself.</summary>
     public string GrammarId { get; init; }
 
+    /// <summary>Two to four characters naming this language in a chip.</summary>
+    public string Monogram { get; init; }
+
     /// <summary>The selector serializers prepend to a bare cell (the language's
     /// first registered selector).</summary>
     public string DefaultSelector { get; init; }
@@ -62,6 +65,7 @@ public sealed class LanguageDescriptor {
         SupportedProviders = language.SupportedProviders ?? Array.Empty<string>(),
         EditorLanguageId = language.EditorLanguageId ?? language.Id,
         GrammarId = language.GrammarId,
+        Monogram = language.Monogram,
         DefaultSelector = language.DefaultSelector,
         Selectors = language.Selectors ?? Array.Empty<string>(),
         LanguageTags = language.LanguageTags,

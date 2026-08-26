@@ -24,6 +24,8 @@ public sealed class OracleSqlCellLanguage : SqlDialectLanguage {
 
     public override SqlVocabulary Vocabulary => SqlVocabulary.OracleSql;
 
+    public override string Monogram => "ORA";
+
     /// <summary>ODP.NET first — it is the one that knows Oracle types. ODBC and JDBC
     /// carry the same statements over a driver somebody else installed.</summary>
     public override IReadOnlyList<string> SupportedProviders { get; } =

@@ -94,6 +94,43 @@ public class LanguageDescriptorTest {
     }
 
     [TestMethod]
+    public void Every_language_names_itself_in_four_characters_or_fewer() {
+        // The chip beside a cell in a contents list. Its whole job is that a
+        // notebook mixing several languages is scannable, which fails the moment
+        // two of them look the same or one is too long to fit.
+        var descriptors = AllLanguages().Describe();
+        foreach (var descriptor in descriptors) {
+            Assert.IsFalse(string.IsNullOrWhiteSpace(descriptor.Monogram), descriptor.Id);
+            Assert.IsTrue(descriptor.Monogram.Length <= 4,
+                $"{descriptor.Id}: '{descriptor.Monogram}' does not fit a chip");
+        }
+
+        var monograms = descriptors.Select(d => d.Monogram).ToList();
+        CollectionAssert.AreEqual(monograms.Distinct().ToList(), monograms,
+            "two languages wearing one monogram is a chip that says nothing");
+
+        // The pair the dialect split exists for.
+        Assert.AreEqual("TSQL", descriptors.Single(d => d.Id == "sql").Monogram);
+        Assert.AreEqual("ORA", descriptors.Single(d => d.Id == "oraclesql").Monogram);
+        Assert.AreEqual("SQL", descriptors.Single(d => d.Id == "ansisql").Monogram);
+    }
+
+    [TestMethod]
+    public void A_language_that_says_nothing_gets_its_id_cut_to_four() {
+        // The default, for a language plugged in at run time by a third party.
+        // Right for a short id and wrong for a long one, which is why the shipped
+        // languages with long ids say what they want instead.
+        Assert.AreEqual("HTTP", AllLanguages().Describe().Single(d => d.Id == "http").Monogram);
+        Assert.AreEqual("DAX", AllLanguages().Describe().Single(d => d.Id == "dax").Monogram);
+        Assert.AreEqual("MMD", AllLanguages().Describe().Single(d => d.Id == "mermaid").Monogram,
+            "not 'MERM'");
+        Assert.AreEqual("SH", AllLanguages().Describe().Single(d => d.Id == "shellscript").Monogram,
+            "not 'SHEL'");
+        Assert.AreEqual("PS", AllLanguages().Describe().Single(d => d.Id == "powershell").Monogram,
+            "not 'POWE'");
+    }
+
+    [TestMethod]
     public void A_language_that_is_not_a_dialect_needed_no_change_to_say_so() {
         // The point of defaulting every new member: HTTP, Mermaid and the shells
         // were not edited, and they answer sensibly anyway.

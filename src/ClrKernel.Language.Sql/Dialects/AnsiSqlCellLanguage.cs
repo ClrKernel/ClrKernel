@@ -22,6 +22,8 @@ public sealed class AnsiSqlCellLanguage : SqlDialectLanguage {
 
     public override SqlVocabulary Vocabulary => SqlVocabulary.AnsiSql;
 
+    public override string Monogram => "SQL";
+
     /// <summary>The two providers that reach a database this kernel has no
     /// first-party client for.</summary>
     public override IReadOnlyList<string> SupportedProviders { get; } =

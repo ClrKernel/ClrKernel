@@ -1,4 +1,6 @@
-import type { CellRunState } from '../notebook';
+import type { ApiLanguage } from '../api';
+import { chipFor } from '../cellChip';
+import type { CellRunState, EditorCell } from '../notebook';
 import type { TocNode } from '../toc';
 
 /**
@@ -10,12 +12,14 @@ import type { TocNode } from '../toc';
  * because a heading is a cell too and has to be editable from here.
  */
 export function TocTree({
-  nodes, activeId, collapsed, runState, onActivate, onToggle, onKeyDown,
+  nodes, activeId, collapsed, runState, languages, onActivate, onToggle, onKeyDown,
 }: {
   nodes: TocNode[];
   activeId: string | null;
   collapsed: ReadonlySet<string>;
   runState: Record<string, CellRunState>;
+  /** For the language chip, whose letters come from the kernel. */
+  languages: ApiLanguage[];
   onActivate: (cellId: string) => void;
   onToggle: (sectionId: string) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
@@ -29,6 +33,7 @@ export function TocTree({
           activeId={activeId}
           collapsed={collapsed}
           runState={runState}
+          languages={languages}
           onActivate={onActivate}
           onToggle={onToggle}
         />
@@ -38,12 +43,13 @@ export function TocTree({
 }
 
 function TocNodeRow({
-  node, activeId, collapsed, runState, onActivate, onToggle,
+  node, activeId, collapsed, runState, languages, onActivate, onToggle,
 }: {
   node: TocNode;
   activeId: string | null;
   collapsed: ReadonlySet<string>;
   runState: Record<string, CellRunState>;
+  languages: ApiLanguage[];
   onActivate: (cellId: string) => void;
   onToggle: (sectionId: string) => void;
 }) {
@@ -64,6 +70,7 @@ function TocNodeRow({
           onClick={() => onActivate(node.cellId)}
         >
           <StatusDot run={run} kind={node.cell.kind} />
+          <LanguageChip cell={node.cell} languages={languages} />
           <span className="focus-toc-count">
             {node.cell.kind === 'markdown' ? '' : `[${run?.executionCount ?? ' '}]`}
           </span>
@@ -96,6 +103,7 @@ function TocNodeRow({
               activeId={activeId}
               collapsed={collapsed}
               runState={runState}
+              languages={languages}
               onActivate={onActivate}
               onToggle={onToggle}
             />
@@ -107,11 +115,37 @@ function TocNodeRow({
 }
 
 /**
+ * The language monogram — `TSQL`, `ORA`, `C#`, `MD`.
+ *
+ * Letters, not an icon: the redesign narrowed to lucide, which has no icon for
+ * "Oracle SQL", and at this size a glyph would be a smudge while two or three
+ * letters stay legible. The letters come from the kernel, so a language plugged
+ * in at run time gets a correct chip with no change here; the colour is one of
+ * six hues picked by id, which only has to be stable and help the eye group
+ * things — the letters are what identify the cell.
+ */
+export function LanguageChip({ cell, languages }: { cell: EditorCell; languages: ApiLanguage[] }) {
+  const chip = chipFor(cell, languages);
+  return (
+    <span
+      className="cell-chip"
+      title={chip.title}
+      // Not aria-hidden: it is the only thing distinguishing two cells whose
+      // first line reads the same, and the row's own text does not say it.
+      aria-label={chip.title}
+      style={{ color: `var(${chip.colorVar})` }}
+    >
+      {chip.label}
+    </span>
+  );
+}
+
+/**
  * What a cell did, at a glance. An errored cell has to be findable from here
  * without opening every cell in turn — that is most of why the tree carries
  * status at all.
  */
-function StatusDot({ run, kind }: { run: CellRunState | null; kind: 'code' | 'markdown' }) {
+export function StatusDot({ run, kind }: { run: CellRunState | null; kind: 'code' | 'markdown' }) {
   if (kind === 'markdown') {
     return <span className="focus-toc-dot focus-toc-dot-md" aria-hidden="true">¶</span>;
   }

@@ -19,11 +19,14 @@ import {
   type EditorCell,
 } from '../notebook';
 import { clamp, MAX_SIDEBAR, MIN_SIDEBAR, type LayoutPrefs } from '../prefs';
+import { MIN_THUMBNAIL_WIDTH } from '../thumbnail';
 import { buildToc, sectionIds, stepCell, visibleLeaves } from '../toc';
 import { CellMenu } from './CellEditor';
 import { LanguageOptions, languageLabelFor } from './common';
 import { Output } from './NotebookView';
 import { Splitter } from './Splitter';
+import { ContentsViewToggle } from './ContentsViewToggle';
+import { Thumbnails } from './Thumbnails';
 import { TocTree } from './TocTree';
 
 /**
@@ -43,6 +46,9 @@ function scrollParent(node: HTMLElement): HTMLElement | null {
   return null;
 }
 
+
+/** Shared empty set, so the thumbnail path allocates nothing per keystroke. */
+const _nothingCollapsed: ReadonlySet<string> = new Set();
 
 /** Neither pane may be squeezed to nothing by the splitter. */
 const MIN_PANE = 80;
@@ -245,7 +251,11 @@ export function FocusMode({
     if (event.key === 'Enter') {
       return; // the row is already active; Enter is the confirm that changes nothing
     }
-    const leaves = visibleLeaves(toc, collapsed);
+    // Thumbnails have no collapsed sections, so every cell is reachable there.
+    // Using the outline's collapsed set would make ↓ skip cells that are plainly
+    // on screen.
+    const leaves = visibleLeaves(
+      toc, layout.contentsView === 'thumbnails' ? _nothingCollapsed : collapsed);
     const at = leaves.findIndex((leaf) => leaf.cellId === activeId);
     const next = leaves[clamp(at + (event.key === 'ArrowDown' ? 1 : -1), 0, leaves.length - 1)];
     if (next != null) {
@@ -278,6 +288,20 @@ export function FocusMode({
           <div className="focus-sidebar" style={{ width: layout.sidebarWidth }}>
             <div className="focus-sidebar-head">
               <span>Contents</span>
+              <span className="spacer" />
+              <ContentsViewToggle
+                view={layout.contentsView}
+                onView={(contentsView) => onLayout({
+                  ...layout,
+                  contentsView,
+                  // A 4:3 preview in a 180px sidebar is a grey smudge. Widen
+                  // rather than render something useless — and only ever wider,
+                  // so switching back and forth cannot creep the sidebar along.
+                  sidebarWidth: contentsView === 'thumbnails'
+                    ? Math.max(layout.sidebarWidth, MIN_THUMBNAIL_WIDTH)
+                    : layout.sidebarWidth,
+                })}
+              />
               <Button
                 type="button"
                 variant="outline"
@@ -292,12 +316,23 @@ export function FocusMode({
             </div>
             {cells.length === 0 ? (
               <p className="focus-empty">No cells yet.</p>
+            ) : layout.contentsView === 'thumbnails' ? (
+              <Thumbnails
+                nodes={toc}
+                activeId={activeId}
+                runState={runState}
+                languages={languages}
+                width={layout.sidebarWidth}
+                onActivate={onActivate}
+                onKeyDown={onTreeKeyDown}
+              />
             ) : (
               <TocTree
                 nodes={toc}
                 activeId={activeId}
                 collapsed={collapsed}
                 runState={runState}
+                languages={languages}
                 onActivate={onActivate}
                 onToggle={toggleSection}
                 onKeyDown={onTreeKeyDown}

@@ -53,6 +53,15 @@ function defineEditorTheme(name: string, theme: ThemeName): void {
       { token: 'metatag', foreground: editor.directive.slice(1) },
       { token: 'keyword.directive', foreground: editor.directive.slice(1) },
       { token: 'type', foreground: editor.keyword.slice(1) },
+      /* The base themes carry a few *language-specific* rules of their own, and
+         a more specific rule wins — so `string.sql` (pure red) and
+         `operator.sql` (slate) beat the generic ones above, and every SQL cell
+         has rendered its string literals in a red this palette does not contain
+         since the theme was written. Restated here at the same specificity.
+         Found while checking that a thumbnail matches the cell it previews: it
+         did, which is how the cell turned out to be the thing that was wrong. */
+      { token: 'string.sql', foreground: editor.string.slice(1) },
+      { token: 'operator.sql', foreground: editor.foreground.slice(1) },
     ],
     colors: {
       'editor.background': editor.background,

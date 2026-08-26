@@ -16,6 +16,10 @@ public sealed class PowerShellCellLanguage : ICellLanguage {
 
     public string DisplayName => "PowerShell";
 
+    /// <summary>Its id is too long to cut to four and still read — "PS" is
+    /// what people write.</summary>
+    public string Monogram => "PS";
+
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "pwsh", "powershell", "ps1" };
 
     // The cell directives are the language's routing tokens; #!pwsh leads, so it

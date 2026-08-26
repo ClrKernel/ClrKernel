@@ -255,6 +255,8 @@ export interface ApiLanguage {
    *  its own for `editorLanguageId`. Several languages may share one — the SQL
    *  dialects are three identities and one tokenizer. */
   grammarId?: string;
+  /** Two to four characters naming this language in a chip. */
+  monogram?: string;
 }
 
 /** What one cell did in an interactive session. Outputs are nbformat shapes —

@@ -41,6 +41,9 @@ public abstract class SqlDialectLanguage : ICellLanguage {
     /// <summary>The words this dialect knows.</summary>
     public abstract SqlVocabulary Vocabulary { get; }
 
+    /// <summary>Each dialect names itself in four characters or fewer.</summary>
+    public abstract string Monogram { get; }
+
     public abstract IReadOnlyList<string> SupportedProviders { get; }
 
     public abstract IReadOnlyList<DirectiveDefinition> Directives { get; }

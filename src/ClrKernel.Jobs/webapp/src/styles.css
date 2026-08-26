@@ -759,6 +759,136 @@
     padding-left: 0.75rem;
   }
 
+  /* The language monogram beside a cell — `TSQL`, `ORA`, `C#`. Letters rather
+     than an icon: the redesign narrowed to lucide, which has nothing for "Oracle
+     SQL", and at this size a glyph is a smudge while three letters stay legible.
+     Its colour is one of six `--lang-*` hues, set inline from the cell's id. */
+  .cell-chip {
+    flex-shrink: 0;
+    min-width: 26px;
+    padding: 0 3px;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 14px;
+    text-align: center;
+    letter-spacing: 0.02em;
+    /* The border and text are the hue; the fill is not, or a column of chips
+       becomes a column of coloured blocks that shouts over the cell labels. */
+    opacity: 0.9;
+  }
+
+  /* --- the thumbnail view ------------------------------------------------- */
+
+  .focus-thumbs {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 12px;
+  }
+
+  .focus-thumbs-section {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 5px 10px 4px;
+    background: var(--surface-panel);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-thumb {
+    display: block;
+    padding: 6px 10px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    /* The browser skips laying out and painting anything scrolled out of view,
+       which is what keeps a two-hundred-cell notebook scrolling smoothly without
+       a virtualiser of our own. The intrinsic size stops the scrollbar jumping
+       as skipped items come back. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
+  }
+
+  .focus-thumb:hover {
+    background: var(--surface-panel-strong);
+  }
+
+  .focus-thumb-active {
+    border-left-color: var(--primary);
+    background: var(--primary-soft);
+  }
+
+  .focus-thumb-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-bottom: 4px;
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .focus-thumb-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-thumb-count {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted-subtle);
+  }
+
+  /* Fixed 4:3 and `overflow: hidden` — clipped, never squashed. A preview that
+     changed shape per cell would be unreadable as a column. */
+  .focus-thumb-box {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--code-bg);
+    /* The clip fades rather than cutting, so a preview that ran out of room
+       says so — a hard edge reads as a cell that ends there. Applied to every
+       thumbnail: on one whose code stops short the faded band is empty anyway,
+       so there is nothing to detect and nothing to branch on. */
+    /* `currentColor` rather than the usual `#000`: a mask reads alpha, not hue,
+       so any opaque value does — and the token layer is the only place a colour
+       is written down. The guard test caught the black. */
+    mask-image: linear-gradient(to bottom, currentColor calc(100% - 18px), transparent);
+  }
+
+  .focus-thumb-code {
+    margin: 0;
+    padding: 4px 5px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--code-fg);
+    white-space: pre;
+    /* No wrapping: a wrapped preview is a different shape from the cell it is
+       previewing, which is the one thing a thumbnail has to get right. */
+    overflow: hidden;
+  }
+
+  /* Same box, no content — drawn while a preview is still being colorized so
+     nothing reflows when it arrives. */
+  .focus-thumb-pending {
+    width: 100%;
+    height: 100%;
+    background: var(--code-bg);
+  }
+
   .focus-toc-leaf,
   .focus-toc-section {
     display: flex;

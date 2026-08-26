@@ -21,6 +21,10 @@ public sealed class ShellCellLanguage : ICellLanguage {
 
     public string DisplayName => "Shell";
 
+    /// <summary>Its id is too long to cut to four and still read — "SH" is
+    /// what people write.</summary>
+    public string Monogram => "SH";
+
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "bash", "zsh", "sh", "shell" };
 
     // One cell directive per shell — these are the language's routing tokens —

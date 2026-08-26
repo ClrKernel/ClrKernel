@@ -85,6 +85,22 @@ public interface ICellLanguage {
     string EditorLanguageId => Id;
 
     /// <summary>
+    /// Two to four characters naming this language in a space too small for its
+    /// display name — the chip beside a cell in a contents list, where the whole
+    /// point is that a notebook mixing C#, SQL and HTTP is scannable at a glance.
+    /// <para>
+    /// Here rather than in a table in each client, so a language that arrives at
+    /// run time gets a correct chip with no front-end change. The default is the
+    /// id, uppercased and cut to four, which is right for short ids and wrong for
+    /// long ones — <c>shellscript</c> would be "SHEL" — so a language with a
+    /// longer id says what it wants instead.
+    /// </para>
+    /// </summary>
+    string Monogram => (Id ?? string.Empty).ToUpperInvariant() is { Length: > 4 } long_
+        ? long_.Substring(0, 4)
+        : (Id ?? string.Empty).ToUpperInvariant();
+
+    /// <summary>
     /// The syntax an editor should highlight these cells with, when it has no
     /// grammar of its own for <see cref="EditorLanguageId"/>. Null to use the
     /// editor language itself.

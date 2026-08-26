@@ -61,6 +61,19 @@
   --file-code: #1d4ed8;
   --file-config: #0f766e;
 
+  /* Language chips in the contents list. Six hues, assigned to a language by its
+     id rather than configured per language: the kernel says what a language is
+     called in four characters, and which hue it lands on only has to be stable
+     and distinguishable from its neighbours. A seventh language reuses one, which
+     is fine — the letters are what identifies it, the colour only helps you scan.
+     Chosen for the same reason the file badges were: they read as a family. */
+  --lang-1: #1d4ed8;
+  --lang-2: #7c3aed;
+  --lang-3: #0f766e;
+  --lang-4: #b45309;
+  --lang-5: #be123c;
+  --lang-6: #0e6e43;
+
   /* Code. `--code-bg` must equal Monaco's editor.background, or a seam shows
      at the cell edge. */
   --code-bg: #fffefb;
@@ -194,6 +207,13 @@
   --file-code: #8ab4f8;
   --file-config: #5eead4;
 
+  --lang-1: #8ab4f8;
+  --lang-2: #c4a2f7;
+  --lang-3: #5eead4;
+  --lang-4: #e0a458;
+  --lang-5: #f0748f;
+  --lang-6: #5fd39b;
+
   --code-bg: #212320;
   --code-fg: #d8d5ca;
   --line-number: #5c594f;
@@ -306,6 +326,12 @@
   --color-file-notebook: var(--file-notebook);
   --color-file-code: var(--file-code);
   --color-file-config: var(--file-config);
+  --color-lang-1: var(--lang-1);
+  --color-lang-2: var(--lang-2);
+  --color-lang-3: var(--lang-3);
+  --color-lang-4: var(--lang-4);
+  --color-lang-5: var(--lang-5);
+  --color-lang-6: var(--lang-6);
   --color-code-bg: var(--code-bg);
   --color-code-fg: var(--code-fg);
   --color-line-number: var(--line-number);

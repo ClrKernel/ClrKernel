@@ -11,9 +11,15 @@ const GLOBAL_KEY = 'clrkernel-jobs-layout';
 const NOTEBOOK_KEY = 'clrkernel-jobs-notebook-state';
 const BRANCH_KEY = 'clrkernel-jobs-branch';
 
+/** Which way the Focus-mode contents sidebar reads its cells. */
+export type ContentsView = 'outline' | 'thumbnails';
+
 export interface LayoutPrefs {
   sidebarWidth: number;
   sidebarCollapsed: boolean;
+  /** Outline or thumbnails. Beside the width and the collapsed flag because it
+   *  is the same kind of choice: how this panel is set up, everywhere. */
+  contentsView: ContentsView;
   /** Editor pane's share of the work area, 0-1. */
   splitRatio: number;
   /** The file explorer down the left of the editor — a different panel from the
@@ -30,6 +36,7 @@ export interface LayoutPrefs {
 export const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebarWidth: 240,
   sidebarCollapsed: false,
+  contentsView: 'outline',
   splitRatio: 0.5,
   explorerWidth: 218,
   explorerCollapsed: false,
@@ -79,6 +86,7 @@ export function loadLayout(): LayoutPrefs {
     // these bounds, and a sidebar wider than the window cannot be dragged back.
     sidebarWidth: clamp(layout.sidebarWidth, MIN_SIDEBAR, MAX_SIDEBAR),
     sidebarCollapsed: layout.sidebarCollapsed === true,
+    contentsView: layout.contentsView === 'thumbnails' ? 'thumbnails' : 'outline',
     splitRatio: clamp(layout.splitRatio, 0.1, 0.9),
     explorerWidth: clamp(layout.explorerWidth, MIN_EXPLORER, MAX_EXPLORER),
     explorerCollapsed: layout.explorerCollapsed === true,

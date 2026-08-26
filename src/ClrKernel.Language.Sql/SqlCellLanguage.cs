@@ -41,6 +41,10 @@ public sealed class SqlCellLanguage : SqlDialectLanguage {
 
     public override SqlVocabulary Vocabulary => SqlVocabulary.TSql;
 
+    /// <summary>"TSQL", not "SQL": the generic dialect has the plain one, and a
+    /// chip that cannot tell the two apart is most of what the split was for.</summary>
+    public override string Monogram => "TSQL";
+
     /// <summary>SQL Server first — the only one with bulk copy, MERGE and the
     /// deploy verbs behind it. ODBC and JDBC carry plain statements.</summary>
     public override IReadOnlyList<string> SupportedProviders { get; } =
