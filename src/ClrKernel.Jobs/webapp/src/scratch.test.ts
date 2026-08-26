@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isScratch, scratchNotebook, scratchPath, sqlOf, suggestedName } from './scratch';
+import { pendingInsert, scratchNotebook, scratchPath, sqlOf, suggestedName } from './scratch';
 
 describe('scratchNotebook / sqlOf', () => {
   it('round-trips a query', () => {
@@ -35,8 +35,6 @@ describe('scratchNotebook / sqlOf', () => {
 describe('scratchPath', () => {
   it('is per connection, under the folder the tree and the repo both skip', () => {
     expect(scratchPath('abc-123')).toBe('.scratch/query-abc-123.nb.md');
-    expect(isScratch(scratchPath('abc-123'))).toBe(true);
-    expect(isScratch('queries/sales.nb.md')).toBe(false);
   });
 });
 
@@ -47,5 +45,22 @@ describe('suggestedName', () => {
 
   it('and still produces a path when the name has nothing usable in it', () => {
     expect(suggestedName('—')).toBe('queries/query.nb.md');
+  });
+});
+
+describe('pendingInsert', () => {
+  it('appends a script carried from another connection', () => {
+    expect(pendingInsert('SELECT 1', 'SELECT TOP 1000 * FROM t'))
+      .toBe('SELECT 1\nSELECT TOP 1000 * FROM t');
+  });
+
+  it('and is the whole buffer when there was nothing to append to', () => {
+    expect(pendingInsert('', 'SELECT TOP 1000 * FROM t')).toBe('SELECT TOP 1000 * FROM t');
+    expect(pendingInsert('   \n', 'SELECT 2')).toBe('SELECT 2');
+  });
+
+  it('leaves the loaded file alone when nothing was carried', () => {
+    expect(pendingInsert('SELECT 1', null)).toBe('SELECT 1');
+    expect(pendingInsert('SELECT 1', '')).toBe('SELECT 1');
   });
 });

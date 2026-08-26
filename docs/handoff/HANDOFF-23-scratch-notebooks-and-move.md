@@ -64,6 +64,30 @@ typing and switching immediately, then reading both files off disk.
 unload, same ⌘S, same status chip. That chip on the Connections toolbar is most of what
 makes the page feel like the editor.
 
+## The regression the file check could not see
+
+Backing the buffer with a file broke `into()` — the tree's **Select Top 1000 Rows** and
+**Script as**, which are reachable for a connection *other* than the one selected. The
+old code navigated and then inserted into the editor. With a load effect behind the
+navigation that becomes: insert into A's editor → route changes → flush, which
+`owner` still points at A, so **the script is written into A's file** → the loaded text
+replaces the buffer, so **the script is wiped off the screen**. You ask a table under
+another connection for a script, land on that connection, and nothing appeared.
+
+The fix is the same ownership idea one step further: when the connection is not the
+selected one the script does not touch the editor at all. It goes into a `pending` ref
+and travels with the navigation; the load effect consumes it on the far side, once the
+file it belongs to has arrived. `savedSql` stays what is on disk, so the carried script
+leaves the buffer dirty and autosaves itself a moment later. `pendingInsert` is pure and
+unit-tested; the wiring is browser-tested against a real SQL Server, because reaching
+`into` cross-connection needs a tree with real metadata in it. `check_carry.py` was
+verified by reverting the fix — it reproduces exactly the two symptoms above.
+
+`.jobs.yaml` was the other thing the File menu reached that nobody had thought about:
+the Editor opens one on the Source tab, and `notebookPath` did not know the extension,
+so renaming one produced `nightly.jobs.yaml.nb.md`. `notebookPath` now takes the
+extension to keep, defaulted so New notebook cannot make a jobs file by accident.
+
 ## Save a copy as / Move
 
 **Save as needed no endpoint.** It is `createNotebook`'s shape — read first so it cannot

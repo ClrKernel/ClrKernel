@@ -27,6 +27,17 @@ describe('notebookPath', () => {
     expect(notebookPath('a/../../b')).toBeNull();
   });
 
+  it('keeps a jobs file a jobs file when one is being renamed', () => {
+    // The Editor's File menu is on `*.jobs.yaml` too, and `nightly.jobs.yaml.nb.md`
+    // is a file nothing would ever run.
+    expect(notebookPath('reports/nightly', '.jobs.yaml')).toBe('reports/nightly.jobs.yaml');
+    expect(notebookPath('reports/nightly.jobs.yaml', '.jobs.yaml')).toBe('reports/nightly.jobs.yaml');
+    // And typing a notebook name while renaming one still means a notebook.
+    expect(notebookPath('reports/nightly.nb.md', '.jobs.yaml')).toBe('reports/nightly.nb.md');
+    // The default is unchanged, so New notebook cannot make one by accident.
+    expect(notebookPath('reports/nightly.jobs.yaml')).toBe('reports/nightly.jobs.yaml.nb.md');
+  });
+
   it('reads a plain .md as the notebook it was meant to be', () => {
     // The server opens `.nb.md`, not `.md` — and `notes.md.nb.md` is nobody's
     // idea of what they typed.

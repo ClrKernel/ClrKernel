@@ -80,7 +80,21 @@ export function suggestedName(connectionName: string): string {
   return `queries/${slug || 'query'}.nb.md`;
 }
 
-/** True for a path this app keeps out of the way rather than one you named. */
-export function isScratch(path: string): boolean {
-  return (path ?? '').startsWith(`${SCRATCH_DIR}/`);
+/**
+ * The buffer to show when a script was carried in from another connection.
+ *
+ * Scripting a table under connection B while looking at A navigates, and the
+ * navigation reloads the buffer — so inserting into the editor there and then
+ * writes the script into A's file and then wipes it off the screen. The script
+ * travels as a value instead and is applied on the far side, once the file it
+ * belongs to has loaded.
+ *
+ * Same rule as inserting at the cursor: appended to what is there, alone when
+ * there is nothing.
+ */
+export function pendingInsert(loaded: string, carried: string | null): string {
+  if (carried == null || carried.length === 0) {
+    return loaded;
+  }
+  return loaded.trim().length === 0 ? carried : `${loaded}\n${carried}`;
 }

@@ -27,7 +27,7 @@ export const NEW_NOTEBOOK = '```csharp\n\n```\n';
  * separate "new folder" because there is nothing it could produce: git does not
  * track an empty directory, and the file tree prunes one.
  */
-export function notebookPath(entered: string): string | null {
+export function notebookPath(entered: string, extension = '.nb.md'): string | null {
   const cleaned = (entered ?? '').trim().replace(/\\/g, '/').replace(/\/+/g, '/');
   const segments = cleaned.split('/').filter((s) => s !== '' && s !== '.');
   // `..` is refused here as well as at the server, so the message names the
@@ -37,12 +37,17 @@ export function notebookPath(entered: string): string | null {
   }
   const path = segments.join('/');
   const name = segments[segments.length - 1].toLowerCase();
-  if (EXTENSIONS.some((e) => name.endsWith(e))) {
+  // `extension` is what a bare name gets, and it is also an extension to keep:
+  // renaming a `*.jobs.yaml` must not produce `nightly.jobs.yaml.nb.md`, and
+  // typing a notebook name while renaming one still means a notebook.
+  if ([...EXTENSIONS, extension].some((e) => name.endsWith(e))) {
     return path;
   }
   // `notes.md` means `notes.nb.md`. Appending would give `notes.md.nb.md`, and
   // a plain `.md` is not something the server will open as a notebook.
-  return name.endsWith('.md') ? `${path.slice(0, -3)}.nb.md` : `${path}.nb.md`;
+  return extension === '.nb.md' && name.endsWith('.md')
+    ? `${path.slice(0, -3)}.nb.md`
+    : `${path}${extension}`;
 }
 
 const PROMPT =
@@ -54,14 +59,16 @@ const PROMPT =
  * was typed still in the box, so a typo is corrected rather than retyped. Null
  * when the person cancelled.
  */
-export function promptForNotebook(folder = '', name = '', prompt = PROMPT): string | null {
+export function promptForNotebook(
+  folder = '', name = '', prompt = PROMPT, extension = '.nb.md',
+): string | null {
   let seed = `${folder ? `${folder}/` : ''}${name}`;
   for (;;) {
     const entered = window.prompt(prompt, seed);
     if (entered == null) {
       return null;
     }
-    const path = notebookPath(entered);
+    const path = notebookPath(entered, extension);
     if (path != null) {
       return path;
     }
@@ -85,6 +92,11 @@ export async function createNotebook(path: string, content = NEW_NOTEBOOK): Prom
   await api.saveNotebookContent(path, content);
 }
 
+/** A jobs file stays a jobs file; everything else is a notebook. */
+function extensionOf(path: string): string {
+  return path.toLowerCase().endsWith('.jobs.yaml') ? '.jobs.yaml' : '.nb.md';
+}
+
 const SAVE_AS_PROMPT =
   'Save a copy as — a path under the notebooks root on your branch.\n\n'
   + 'Folders are made as needed, so reports/monthly creates the folder too.';
@@ -101,7 +113,7 @@ const MOVE_PROMPT =
  * a read-only branch at all.
  */
 export async function saveNotebookAs(content: string, seed: string): Promise<string | null> {
-  const wanted = promptForNotebook('', seed, SAVE_AS_PROMPT);
+  const wanted = promptForNotebook('', seed, SAVE_AS_PROMPT, extensionOf(seed));
   if (wanted == null) {
     return null;
   }
@@ -118,7 +130,7 @@ export async function saveNotebookAs(content: string, seed: string): Promise<str
  * in a log nobody is watching. Naming them costs one request.
  */
 export async function moveNotebookTo(from: string, seed: string): Promise<string | null> {
-  const wanted = promptForNotebook('', seed, MOVE_PROMPT);
+  const wanted = promptForNotebook('', seed, MOVE_PROMPT, extensionOf(seed));
   if (wanted == null || wanted === from) {
     return null;
   }

@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { STATUS_LABEL, STATUS_TITLE } from '../autosave';
 import { moveNotebookTo, saveNotebookAs } from '../newNotebook';
-import { scratchNotebook, scratchPath, sqlOf, suggestedName } from '../scratch';
+import { pendingInsert, scratchNotebook, scratchPath, sqlOf, suggestedName } from '../scratch';
 import { useAutosave } from '../useAutosave';
 import { ConnectionForm } from '../components/ConnectionForm';
 import { ConnectionTree } from '../components/ConnectionTree';
@@ -126,6 +126,8 @@ export function Connections() {
    * instead of stamping them over the connection you just picked.
    */
   const owner = useRef<{ id: string; name: string; path: string } | null>(null);
+  /** A script scheduled for a connection whose file has not loaded yet. */
+  const pending = useRef<string | null>(null);
   const mayEdit = useIsProjectMember();
   const { data: health } = usePolling(() => api.health(), null);
   // No git workflow means no branch to write to. The page still works — it just
@@ -159,9 +161,13 @@ export function Connections() {
       if (!live) {
         return;
       }
+      const carried = pending.current;
+      pending.current = null;
       owner.current = { id: selected.id, name: selected.name, path };
+      // `savedSql` is what is on disk, so a carried script leaves the buffer
+      // dirty and autosaves itself a moment later.
       setSavedSql(text);
-      setSql(text);
+      setSql(pendingInsert(text, carried));
       setResetKey((key) => key + 1);
     })();
     return () => {
@@ -200,7 +206,19 @@ export function Connections() {
    */
   function into(connection: ApiConnection, text: string) {
     if (connection.id !== id) {
+      // Scripting an object under another connection navigates, and the load
+      // that follows replaces the buffer. Inserting here would put the script
+      // into *this* connection's file on the flush on the way past, and then
+      // wipe it off the screen — so it travels as a value and is applied on the
+      // far side. Only when there is a file to travel to: with no branch to
+      // write to nothing reloads, and inserting is still right.
+      if (backed) {
+        pending.current = text;
+      }
       navigate(connectionsPath(connection.id));
+      if (backed) {
+        return;
+      }
     }
     const live = editorHandle.current;
     if (live == null) {
