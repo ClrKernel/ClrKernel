@@ -17,6 +17,12 @@ const write = (cells: NotebookCellData[]) =>
 const code = (value: string, languageId: string) => new NotebookCellData(NotebookCellKind.Code, value, languageId);
 
 describe('language tags -> cell language', () => {
+    // The right-hand column is the id VS Code gives the cell, which for the SQL
+    // dialects is not the kernel's. `sql` is a VS Code built-in: a cell called
+    // that wears the built-in's name in every menu ("SQL", never "T-SQL") and
+    // every SQL extension the user has installed attaches to it — the same two
+    // reasons `csharp-script` is not `csharp`. What lands in the *file* is
+    // unchanged; the round-trip cases below are what pin that.
     const cases: Array<[string, string]> = [
         ['csharp', 'csharp-script'],
         ['c#', 'csharp-script'],
@@ -26,8 +32,8 @@ describe('language tags -> cell language', () => {
         ['powershell', 'powershell'],
         ['pwsh', 'powershell'],
         ['ps1', 'powershell'],
-        ['sql', 'sql'],
-        ['tsql', 'sql'],
+        ['sql', 'clr-sql'],
+        ['tsql', 'clr-sql'],
         ['dax', 'dax'],
         ['bash', 'shellscript'],
         ['zsh', 'shellscript'],
@@ -47,7 +53,7 @@ describe('language tags -> cell language', () => {
     });
 
     it('is case-insensitive', () => {
-        expect(read('```SQL\nselect 1\n```').cells[0].languageId).toBe('sql');
+        expect(read('```SQL\nselect 1\n```').cells[0].languageId).toBe('clr-sql');
     });
 
     it('uses csharp-script, not csharp, so other C# tooling stays off notebook cells', () => {
@@ -79,7 +85,7 @@ describe('round trip', () => {
     it('preserves markup, code and their order', () => {
         const md = ['# Title', '', '```sql', 'select 1', '```', '', 'Some prose.', '', '```dax', 'EVALUATE {1}', '```', ''].join('\n');
         const cells = read(md).cells;
-        expect(cells.map((c) => c.languageId)).toEqual(['markdown', 'sql', 'markdown', 'dax']);
+        expect(cells.map((c) => c.languageId)).toEqual(['markdown', 'clr-sql', 'markdown', 'dax']);
         expect(new TextDecoder().decode(serializer.serializeNotebook({ cells } as never))).toBe(md);
     });
 
@@ -91,18 +97,18 @@ describe('round trip', () => {
 
     it('handles CRLF input without leaving carriage returns in cells', () => {
         const cells = read('# T\r\n\r\n```sql\r\nselect 1\r\n```\r\n').cells;
-        expect(cells.find((c) => c.languageId === 'sql')?.value).toBe('select 1');
+        expect(cells.find((c) => c.languageId === 'clr-sql')?.value).toBe('select 1');
     });
 
     it('keeps the content of an unterminated block instead of dropping it', () => {
         const cells = read('```sql\nselect 1').cells;
-        expect(cells[0].languageId).toBe('sql');
+        expect(cells[0].languageId).toBe('clr-sql');
         expect(cells[0].value).toBe('select 1');
     });
 
     it('supports longer and tilde delimiters', () => {
-        expect(read('````sql\nselect 1\n````').cells[0].languageId).toBe('sql');
-        expect(read('~~~sql\nselect 1\n~~~').cells[0].languageId).toBe('sql');
+        expect(read('````sql\nselect 1\n````').cells[0].languageId).toBe('clr-sql');
+        expect(read('~~~sql\nselect 1\n~~~').cells[0].languageId).toBe('clr-sql');
     });
 });
 

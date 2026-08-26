@@ -148,6 +148,23 @@ public class SqlDialectTest {
     // --- the dialect/provider join -------------------------------------------
 
     [TestMethod]
+    public void A_document_synced_under_an_editor_id_finds_its_language() {
+        // The half of the editor-id story that would fail silently: VS Code gives
+        // a T-SQL cell the id `clr-sql`, then opens the document under it. If the
+        // kernel could not resolve that back, completion and diagnostics would be
+        // dead for every SQL cell and nothing would say why.
+        var languages = Languages();
+
+        Assert.AreEqual("sql", languages.ById("clr-sql")?.Id);
+        Assert.AreEqual("oraclesql", languages.ById("clr-oraclesql")?.Id);
+        Assert.AreEqual("ansisql", languages.ById("clr-ansisql")?.Id);
+
+        // And a language's own id still wins, so an editor id can never shadow one.
+        Assert.AreEqual("sql", languages.ById("sql")?.Id);
+        Assert.IsNull(languages.ById("clr-nothing"));
+    }
+
+    [TestMethod]
     public void A_dialect_says_which_providers_can_carry_it() {
         var languages = Languages();
         var tsql = (SqlDialectLanguage)languages.ById("sql");

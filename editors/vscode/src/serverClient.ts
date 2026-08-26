@@ -6,7 +6,7 @@ import {
     State,
     TransportKind,
 } from 'vscode-languageclient/node';
-import { currentLanguages, LanguageDescriptor, setLanguages } from './languages';
+import { LanguageDescriptor, currentLanguages, editorLanguageFor, setLanguages } from './languages';
 
 export interface DisplayNotification {
     cellId: string;
@@ -64,7 +64,8 @@ export class ServerClient {
             // server (re)start, while execution works immediately.
             documentSelector: [
                 { language: 'csharp-script' },
-                ...currentLanguages().filter((l) => l.hasEditorServices).map((l) => ({ language: l.id })),
+                ...currentLanguages().filter((l) => l.hasEditorServices)
+                    .map((l) => ({ language: editorLanguageFor(l) })),
             ],
             outputChannel: this.output,
         };

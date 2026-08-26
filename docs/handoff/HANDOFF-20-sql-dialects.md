@@ -34,16 +34,38 @@ executed on SQL Server — so every notebook already written would have silently
 become a generic-SQL notebook with no T-SQL completion and no syntax check. The
 new dialects took new ids instead. Nothing migrates.
 
-**One Monaco language, not three.** The spec preferred three registered editor
-languages and named the reason: Monaco's language ids are global, so three
-dialects registering as `sql` would stack three completion providers on one id
-and every SQL cell would offer every dialect's keywords. That reasoning is sound
-in general and does not apply here — this codebase's providers already consult a
-model→cell map (`monaco/language.ts`, `sqlSchema.ts`) and ask the kernel per
-cell, so completion is dialect-correct with one shared id. The spec's own
-"Alternative" is the cheaper correct route *in this codebase*. `EditorLanguageId`
-carries it as metadata, so a future dialect that genuinely wants its own
-tokenizer can ask for one.
+**Two fields, because an editor needs two different things.** The spec has one
+"editor language id" and it turned out to be doing two jobs:
+
+- `EditorLanguageId` is an **identity** — the id an editor gives the cell, and
+  therefore the id the document comes back under when the editor syncs it.
+  Distinct per language, or one would route to the other. `CellLanguageSet.ById`
+  resolves it as well as the kernel's own id, which is what makes the round trip
+  work.
+- `GrammarId` is an **appearance** — the syntax to highlight with when the editor
+  has no grammar of its own. Shared by all three dialects, because a tokenizer
+  reads strings, comments, numbers and identifiers rather than words, and words
+  are all the dialects differ by.
+
+Conflating them shipped first and was wrong in a way that showed immediately: the
+dialects all reported `sql`, so VS Code gave T-SQL cells the built-in `sql` id and
+the cell picker read "SQL", "Oracle SQL", "SQL (Generic)" — two entries reading
+"SQL", no "T-SQL", and the same cell called "T-SQL" in the web app. The dialects
+now take `clr-sql`, `clr-oraclesql` and `clr-ansisql`, declared in the VSIX with
+the names the kernel gives them and grammars that delegate to `source.sql`.
+
+That fixes a second thing that was never intentional: a cell called `sql` is a
+cell every SQL extension the user has installed attaches to, adding its own
+completions and squiggles. Exactly what `csharp-script` exists to prevent, and
+now prevented the same way.
+
+On Monaco specifically, the spec preferred three registered editor languages, and
+named the reason: Monaco's ids are global, so three dialects registering as `sql`
+would stack three completion providers on one id. Sound in general, and it does
+not apply here — this codebase's providers already consult a model→cell map
+(`monaco/language.ts`, `sqlSchema.ts`) and ask the kernel per cell, so completion
+is dialect-correct with one shared id. `GrammarId` is what carries that, and a
+future dialect that genuinely wants its own tokenizer asks for one by naming it.
 
 ## Where the sharing happens
 
@@ -93,9 +115,10 @@ codebase") that cannot be met, and it is the same carve-out `csharp-script`,
 `http`, `mermaid` and `dax` already live under. A test guards the drift: every
 bundled language must be declared in the manifest or be a VS Code built-in.
 
-The cell's languageId stays the kernel's id and is deliberately **not**
-`editorLanguageId` — that id is what routes a cell back to its language, so two
-dialects sharing one would send Oracle SQL to T-SQL.
+The cell's languageId **is** `editorLanguageId`, and everything that starts from
+`cell.document.languageId` goes through `languageForEditorLanguage`, which also
+matches the kernel's own id — a notebook opened before this changed still has
+cells called `sql` and they keep working.
 
 ## Not done
 

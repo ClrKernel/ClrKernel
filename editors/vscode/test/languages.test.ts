@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
     bundledLanguages,
     currentLanguages,
+    editorLanguageFor,
+    languageForEditorLanguage,
     languageForTag,
     selectorForTag,
     setLanguages,
@@ -35,11 +37,46 @@ describe('language registry', () => {
         const builtIn = new Set(['sql', 'powershell', 'shellscript', 'markdown', 'json', 'yaml']);
 
         for (const language of bundledLanguages) {
+            const editorId = editorLanguageFor(language);
             expect(
-                declared.has(language.id) || builtIn.has(language.id),
-                `${language.id}: neither declared in package.json nor a VS Code built-in`,
+                declared.has(editorId) || builtIn.has(editorId),
+                `${language.id}: its editor id ${editorId} is neither declared in package.json `
+                + 'nor a VS Code built-in',
             ).toBe(true);
         }
+    });
+
+    it('gives the SQL dialects editor ids of their own, and the names to go with them', () => {
+        // Why they are not just `sql`, `oraclesql`, `ansisql`: a VS Code language
+        // id is global and its built-ins register first, so a cell called `sql`
+        // wears the built-in's name in every menu — "SQL", never "T-SQL",
+        // whatever the kernel calls itself — and every SQL extension the user has
+        // installed attaches to it. `csharp-script` exists for the same reasons.
+        const manifest = JSON.parse(readFileSync(
+            fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
+        const nameOf = (id: string) => (manifest.contributes.languages as
+            { id: string; aliases?: string[] }[]).find((l) => l.id === id)?.aliases?.[0];
+
+        expect(editorLanguageFor(languageForTag('sql')!)).toBe('clr-sql');
+        expect(nameOf('clr-sql')).toBe('T-SQL');
+        expect(nameOf('clr-oraclesql')).toBe('Oracle SQL');
+        expect(nameOf('clr-ansisql')).toBe('SQL (Generic)');
+
+        // And the whole point of an identity: no two languages share one.
+        const editorIds = bundledLanguages.map(editorLanguageFor);
+        expect(new Set(editorIds).size).toBe(editorIds.length);
+    });
+
+    it('resolves a cell back from the id VS Code gave it', () => {
+        // The round trip. Everything that starts from cell.document.languageId
+        // depends on it — routing, the connections status bar, the serializer.
+        expect(languageForEditorLanguage('clr-sql')?.id).toBe('sql');
+        expect(languageForEditorLanguage('clr-oraclesql')?.id).toBe('oraclesql');
+
+        // A notebook opened before the ids changed still has cells called `sql`,
+        // and they keep working.
+        expect(languageForEditorLanguage('sql')?.id).toBe('sql');
+        expect(languageForEditorLanguage('nothing')).toBeUndefined();
     });
 
     it('ships the three SQL dialects, each claiming its own fence tags', () => {

@@ -36,11 +36,13 @@ export function withIds(cells: ApiCell[]): EditorCell[] {
  * (`shellscript`, `csharp-script`); Monaco has its own names, and for languages
  * it has no grammar for, plain text beats a wrong highlighter.
  *
- * `languages` is the kernel's descriptor list. A language that says which editor
- * language it wants is believed: that is how three SQL dialects share one
- * highlighter without this file learning their names. The table below it is the
- * fallback for the kernel languages that predate the field, and for the moment
- * before any descriptor has arrived.
+ * `languages` is the kernel's descriptor list. A language that says which syntax
+ * to highlight it with is believed: that is how three SQL dialects share one
+ * tokenizer without this file learning their names. `grammarId` and not
+ * `editorLanguageId` — the latter is an identity, distinct per language, and
+ * Monaco has no grammar for it. The table below is the fallback for the kernel
+ * languages that predate the field and for the moment before any descriptor has
+ * arrived.
  */
 export function monacoLanguage(
   languageId: string | null | undefined,
@@ -48,7 +50,7 @@ export function monacoLanguage(
   languages: ApiLanguage[] = [],
 ): string {
   const id = (languageId ?? '').toLowerCase();
-  const declared = languages.find((l) => l.id.toLowerCase() === id)?.editorLanguageId;
+  const declared = languages.find((l) => l.id.toLowerCase() === id)?.grammarId;
   if (declared != null && KNOWN_TO_MONACO.has(declared)) {
     return declared;
   }

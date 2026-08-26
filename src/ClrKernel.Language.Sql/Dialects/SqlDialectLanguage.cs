@@ -51,6 +51,19 @@ public abstract class SqlDialectLanguage : ICellLanguage {
     public string Category => "SQL";
 
     /// <summary>
+    /// An editor id of its own, prefixed so it can never collide with one an
+    /// editor or another extension already has.
+    /// <para>
+    /// The T-SQL dialect is why. Its kernel id is <c>sql</c>, which is a VS Code
+    /// built-in: a cell called <c>sql</c> wears the built-in's name in every menu
+    /// — "SQL", never "T-SQL", however the kernel describes itself — and every
+    /// SQL extension the user has installed attaches to it. Taking an id of our
+    /// own is the same move <c>csharp-script</c> makes, for the same two reasons.
+    /// </para>
+    /// </summary>
+    public string EditorLanguageId => "clr-" + Id;
+
+    /// <summary>
     /// One highlighter for all of them.
     /// <para>
     /// The dialects differ by a few dozen words, and a tokenizer does not read
@@ -61,7 +74,7 @@ public abstract class SqlDialectLanguage : ICellLanguage {
     /// maintenance burden and the reader nothing.
     /// </para>
     /// </summary>
-    public string EditorLanguageId => "sql";
+    public string GrammarId => "sql";
 
     /// <summary>Only the dialect that owns the C# API contributes to the session;
     /// the others would be contributing the same assemblies a second time.</summary>

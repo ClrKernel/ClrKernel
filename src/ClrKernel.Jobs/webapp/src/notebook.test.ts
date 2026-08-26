@@ -51,7 +51,7 @@ describe('monacoLanguage with descriptors', () => {
     // no hover and no diagnostics.
     const exotic = [{
       id: 'pgsql', displayName: 'PostgreSQL', defaultSelector: '#!pgsql', selectors: ['#!pgsql'],
-      languageTags: ['pgsql'], editorLanguageId: 'pgsql',
+      languageTags: ['pgsql'], editorLanguageId: 'clr-pgsql', grammarId: 'pgsql',
     }];
     expect(monacoLanguage('pgsql', null, exotic)).toBe('plaintext');
   });
@@ -329,18 +329,20 @@ describe('setCellLanguage', () => {
 const dialects: ApiLanguage[] = [
   {
     id: 'sql', displayName: 'T-SQL', defaultSelector: '#!sql', selectors: ['#!sql'],
-    languageTags: ['sql', 'tsql'], category: 'SQL', editorLanguageId: 'sql',
+    languageTags: ['sql', 'tsql'], category: 'SQL', editorLanguageId: 'clr-sql', grammarId: 'sql',
     supportedProviders: ['SqlServer', 'Odbc', 'Jdbc'],
   },
   {
     id: 'oraclesql', displayName: 'Oracle SQL', defaultSelector: '#!oraclesql',
     selectors: ['#!oraclesql'], languageTags: ['oraclesql', 'plsql'], category: 'SQL',
-    editorLanguageId: 'sql', supportedProviders: ['Oracle', 'Odbc', 'Jdbc'],
+    editorLanguageId: 'clr-oraclesql', grammarId: 'sql',
+    supportedProviders: ['Oracle', 'Odbc', 'Jdbc'],
   },
   {
     id: 'ansisql', displayName: 'SQL (Generic)', defaultSelector: '#!ansisql',
     selectors: ['#!ansisql'], languageTags: ['ansisql'], category: 'SQL',
-    editorLanguageId: 'sql', supportedProviders: ['Odbc', 'Jdbc'],
+    editorLanguageId: 'clr-ansisql', grammarId: 'sql',
+    supportedProviders: ['Odbc', 'Jdbc'],
   },
   { id: 'http', displayName: 'HTTP', defaultSelector: '#!http', selectors: ['#!http'], languageTags: ['http'] },
 ];

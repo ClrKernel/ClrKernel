@@ -75,8 +75,12 @@ public class LanguageDescriptorTest {
         CollectionAssert.AreEquivalent(
             new[] { "sql", "oraclesql", "ansisql" }, dialects.Select(d => d.Id).ToList(),
             "the three cluster under one heading in a picker");
-        Assert.IsTrue(dialects.All(d => d.EditorLanguageId == "sql"),
-            "three languages to the kernel, one highlighter to an editor");
+        CollectionAssert.AreEquivalent(
+            new[] { "clr-sql", "clr-oraclesql", "clr-ansisql" },
+            dialects.Select(d => d.EditorLanguageId).ToList(),
+            "an editor id of its own each — it is what identifies a cell, so it cannot be shared");
+        Assert.IsTrue(dialects.All(d => d.GrammarId == "sql"),
+            "and one highlighter between them, which is about appearance and can be");
 
         // The compatibility declaration: which connection types can carry each
         // dialect's statements. Providers, not dialects — a cell does not change
@@ -99,6 +103,7 @@ public class LanguageDescriptorTest {
             Assert.AreEqual(0, descriptor.SupportedProviders.Count,
                 $"{id} is not provider-bound, which is not the same as running on anything");
             Assert.AreEqual(id, descriptor.EditorLanguageId, $"{id} is its own editor language");
+            Assert.IsNull(descriptor.GrammarId, $"{id} is highlighted as itself");
         }
     }
 

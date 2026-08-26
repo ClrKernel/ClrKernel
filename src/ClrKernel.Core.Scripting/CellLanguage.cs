@@ -66,12 +66,37 @@ public interface ICellLanguage {
     IReadOnlyList<string> SupportedProviders => Array.Empty<string>();
 
     /// <summary>
-    /// The id an <em>editor</em> knows this language by, when that differs from
-    /// <see cref="Id"/>. Three SQL dialects are three languages to the kernel and
-    /// one tokenizer to Monaco; this is what lets a client pick a highlighter
-    /// without a table of language names in it.
+    /// The id an editor should give this language's cells, when it differs from
+    /// <see cref="Id"/>.
+    /// <para>
+    /// This is an <b>identity</b>, so it is distinct per language: it is what a
+    /// cell is called in the editor and therefore what comes back to
+    /// <see cref="CellLanguageSet.ById"/> when the editor syncs the document. Two
+    /// languages sharing one would route one of them to the other.
+    /// </para>
+    /// <para>
+    /// Why a language would want its own: VS Code's language ids are global and
+    /// its built-ins are registered first, so a cell language called <c>sql</c>
+    /// wears the built-in's name in every menu ("SQL", not "T-SQL") and every SQL
+    /// extension the user has installed attaches to it. Same reason
+    /// <c>csharp-script</c> is not <c>csharp</c>.
+    /// </para>
     /// </summary>
     string EditorLanguageId => Id;
+
+    /// <summary>
+    /// The syntax an editor should highlight these cells with, when it has no
+    /// grammar of its own for <see cref="EditorLanguageId"/>. Null to use the
+    /// editor language itself.
+    /// <para>
+    /// The opposite of the property above, and the reason they are two: this one
+    /// is about <em>appearance</em>, so several languages may share it. The SQL
+    /// dialects are three identities and one tokenizer — a tokenizer reads
+    /// strings, comments, numbers and identifiers rather than words, and the
+    /// dialects differ only by words.
+    /// </para>
+    /// </summary>
+    string GrammarId => null;
 
     /// <summary>
     /// The code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
@@ -290,9 +315,19 @@ public sealed class CellLanguageSet {
     public IReadOnlyList<ICellLanguage> Languages => _languages;
 
 
-    /// <summary>The registered language with this id, or null.</summary>
+    /// <summary>
+    /// The registered language with this id, or null.
+    /// <para>
+    /// Its <see cref="ICellLanguage.EditorLanguageId"/> answers too, and has to:
+    /// an editor that gives a cell an id of its own then syncs the document under
+    /// that id, and this is where the document comes back to find its language.
+    /// Own id first, so a language cannot be shadowed by another's editor id.
+    /// </para>
+    /// </summary>
     public ICellLanguage ById(string id) =>
-        _languages.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
+        _languages.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase))
+        ?? _languages.FirstOrDefault(
+            l => string.Equals(l.EditorLanguageId, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The single registered language of type <typeparamref name="T"/>, or null.</summary>
     public T Get<T>() where T : class, ICellLanguage => _languages.OfType<T>().FirstOrDefault();

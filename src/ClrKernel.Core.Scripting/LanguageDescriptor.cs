@@ -25,9 +25,14 @@ public sealed class LanguageDescriptor {
     /// <see cref="ICellLanguage.SupportedProviders"/>.</summary>
     public IReadOnlyList<string> SupportedProviders { get; init; } = Array.Empty<string>();
 
-    /// <summary>The id an editor knows this language by, when it differs from
-    /// <see cref="Id"/> — several dialects can share one highlighter.</summary>
+    /// <summary>The id an editor gives this language's cells — distinct per
+    /// language, because it is what identifies the cell back to the kernel.</summary>
     public string EditorLanguageId { get; init; }
+
+    /// <summary>The syntax to highlight these cells with when the editor has no
+    /// grammar for <see cref="EditorLanguageId"/>. Several languages may share
+    /// one; null means use the editor language itself.</summary>
+    public string GrammarId { get; init; }
 
     /// <summary>The selector serializers prepend to a bare cell (the language's
     /// first registered selector).</summary>
@@ -56,6 +61,7 @@ public sealed class LanguageDescriptor {
         Category = language.Category,
         SupportedProviders = language.SupportedProviders ?? Array.Empty<string>(),
         EditorLanguageId = language.EditorLanguageId ?? language.Id,
+        GrammarId = language.GrammarId,
         DefaultSelector = language.DefaultSelector,
         Selectors = language.Selectors ?? Array.Empty<string>(),
         LanguageTags = language.LanguageTags,

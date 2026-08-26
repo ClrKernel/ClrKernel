@@ -79,7 +79,7 @@
         "configuration": "./language-configuration.dax.json"
       },
       {
-        "id": "oraclesql",
+        "id": "clr-oraclesql",
         "aliases": [
           "Oracle SQL",
           "oraclesql",
@@ -91,13 +91,24 @@
         "configuration": "./language-configuration.sql-dialect.json"
       },
       {
-        "id": "ansisql",
+        "id": "clr-ansisql",
         "aliases": [
           "SQL (Generic)",
           "ansisql"
         ],
         "extensions": [
           ".ansisql"
+        ],
+        "configuration": "./language-configuration.sql-dialect.json"
+      },
+      {
+        "id": "clr-sql",
+        "aliases": [
+          "T-SQL",
+          "clr-sql"
+        ],
+        "extensions": [
+          ".tsql"
         ],
         "configuration": "./language-configuration.sql-dialect.json"
       }
@@ -127,14 +138,19 @@
         "path": "./syntaxes/dax.tmLanguage.json"
       },
       {
-        "language": "oraclesql",
+        "language": "clr-oraclesql",
         "scopeName": "source.oraclesql",
         "path": "./syntaxes/oraclesql.tmLanguage.json"
       },
       {
-        "language": "ansisql",
+        "language": "clr-ansisql",
         "scopeName": "source.ansisql",
         "path": "./syntaxes/ansisql.tmLanguage.json"
+      },
+      {
+        "language": "clr-sql",
+        "scopeName": "source.clr-sql",
+        "path": "./syntaxes/clr-sql.tmLanguage.json"
       }
     ],
     "configuration": {

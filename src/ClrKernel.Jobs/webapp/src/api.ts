@@ -248,9 +248,13 @@ export interface ApiLanguage {
    *  compatibility declaration, not part of the language's identity: a cell does
    *  not change language when it is pointed at a different connection. */
   supportedProviders?: string[];
-  /** The id an editor knows this language by. Several kernel languages can share
-   *  one — the SQL dialects are three languages and one highlighter. */
+  /** The id an editor should give this language's cells. Distinct per language:
+   *  it identifies a cell, so two sharing one would route one to the other. */
   editorLanguageId?: string;
+  /** The syntax to highlight those cells with when the editor has no grammar of
+   *  its own for `editorLanguageId`. Several languages may share one — the SQL
+   *  dialects are three identities and one tokenizer. */
+  grammarId?: string;
 }
 
 /** What one cell did in an interactive session. Outputs are nbformat shapes —
