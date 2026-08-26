@@ -6,6 +6,7 @@
  * you were on, and whether you were focusing, belong to the notebook you were
  * in. Nothing here is ever written to the notebook file.
  */
+import { clampZoom } from './thumbnail';
 
 const GLOBAL_KEY = 'clrkernel-jobs-layout';
 const NOTEBOOK_KEY = 'clrkernel-jobs-notebook-state';
@@ -20,6 +21,8 @@ export interface LayoutPrefs {
   /** Outline or thumbnails. Beside the width and the collapsed flag because it
    *  is the same kind of choice: how this panel is set up, everywhere. */
   contentsView: ContentsView;
+  /** How far the thumbnails are zoomed out, 0.5–1. */
+  thumbnailZoom: number;
   /** Editor pane's share of the work area, 0-1. */
   splitRatio: number;
   /** The file explorer down the left of the editor — a different panel from the
@@ -37,6 +40,7 @@ export const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebarWidth: 240,
   sidebarCollapsed: false,
   contentsView: 'outline',
+  thumbnailZoom: 1,
   splitRatio: 0.5,
   explorerWidth: 218,
   explorerCollapsed: false,
@@ -87,6 +91,7 @@ export function loadLayout(): LayoutPrefs {
     sidebarWidth: clamp(layout.sidebarWidth, MIN_SIDEBAR, MAX_SIDEBAR),
     sidebarCollapsed: layout.sidebarCollapsed === true,
     contentsView: layout.contentsView === 'thumbnails' ? 'thumbnails' : 'outline',
+    thumbnailZoom: clampZoom(layout.thumbnailZoom),
     splitRatio: clamp(layout.splitRatio, 0.1, 0.9),
     explorerWidth: clamp(layout.explorerWidth, MIN_EXPLORER, MAX_EXPLORER),
     explorerCollapsed: layout.explorerCollapsed === true,

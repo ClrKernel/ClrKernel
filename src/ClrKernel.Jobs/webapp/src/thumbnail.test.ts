@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ASPECT, MIN_THUMBNAIL_WIDTH, SCALE, previewKey, previewSource, thumbnailBox, visibleLines,
+  ASPECT, DEFAULT_ZOOM, MAX_ZOOM, MIN_THUMBNAIL_WIDTH, MIN_ZOOM, SCALE, clampZoom, codeScale,
+  previewKey, previewSource, thumbnailBox, visibleLines,
 } from './thumbnail';
 
 describe('the thumbnail box', () => {
@@ -84,5 +85,39 @@ describe('previewKey', () => {
 
   it('tells two cells apart even when they hold the same text', () => {
     expect(previewKey('n1', 'sql', 'x')).not.toBe(previewKey('n2', 'sql', 'x'));
+  });
+});
+
+describe('the zoom', () => {
+  it('shrinks the box', () => {
+    expect(thumbnailBox(320, 0.5).width).toBeLessThan(thumbnailBox(320, 1).width);
+    expect(thumbnailBox(320, 1).width).toBe(thumbnailBox(320).width);
+  });
+
+  it('keeps 4:3 at every step', () => {
+    for (const zoom of [0.5, 0.65, 0.8, 1]) {
+      const box = thumbnailBox(320, zoom);
+      expect(box.height).toBe(Math.round(box.width / ASPECT));
+    }
+  });
+
+  it('shows the same lines, smaller — not fewer lines the same size', () => {
+    // What a zoom means everywhere else, and what keeps a zoomed-out column
+    // recognisable: the shapes are the ones you already learned, further away.
+    const lines = [0.5, 0.7, 1].map((zoom) => visibleLines(320, zoom));
+    expect(new Set(lines).size).toBe(1);
+    expect(codeScale(0.5)).toBeLessThan(codeScale(1));
+    expect(codeScale(1)).toBe(SCALE);
+  });
+
+  it('holds a hand-edited value inside the range it means', () => {
+    expect(clampZoom(9)).toBe(MAX_ZOOM);
+    expect(clampZoom(0.01)).toBe(MIN_ZOOM);
+    expect(clampZoom(Number.NaN)).toBe(DEFAULT_ZOOM);
+    expect(clampZoom(undefined as unknown as number)).toBe(DEFAULT_ZOOM);
+  });
+
+  it('and never zooms a narrow sidebar below what it was already floored to', () => {
+    expect(thumbnailBox(120, 1).width).toBe(thumbnailBox(MIN_THUMBNAIL_WIDTH, 1).width);
   });
 });

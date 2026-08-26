@@ -927,6 +927,7 @@ export function Editor() {
                   edit(() => remaining);
                   setActiveId(neighbourCell(remaining, index));
                 }}
+                onMove={(from, to) => edit((current) => moveCell(current, from, to))}
                 onInsert={(afterId, kind) => {
                   const at = afterId == null ? 0 : cells.findIndex((c) => c.id === afterId) + 1;
                   const cell = emptyCell(kind);

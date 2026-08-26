@@ -1,6 +1,7 @@
 import type { ApiLanguage } from '../api';
 import { chipFor } from '../cellChip';
 import type { CellRunState, EditorCell } from '../notebook';
+import type { CellDrag } from './useCellDrag';
 import type { TocNode } from '../toc';
 
 /**
@@ -12,7 +13,7 @@ import type { TocNode } from '../toc';
  * because a heading is a cell too and has to be editable from here.
  */
 export function TocTree({
-  nodes, activeId, collapsed, runState, languages, onActivate, onToggle, onKeyDown,
+  nodes, activeId, collapsed, runState, languages, drag, onActivate, onToggle, onKeyDown,
 }: {
   nodes: TocNode[];
   activeId: string | null;
@@ -20,6 +21,8 @@ export function TocTree({
   runState: Record<string, CellRunState>;
   /** For the language chip, whose letters come from the kernel. */
   languages: ApiLanguage[];
+  /** Drag-to-reorder, shared with the thumbnail view. */
+  drag: CellDrag;
   onActivate: (cellId: string) => void;
   onToggle: (sectionId: string) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
@@ -34,6 +37,7 @@ export function TocTree({
           collapsed={collapsed}
           runState={runState}
           languages={languages}
+          drag={drag}
           onActivate={onActivate}
           onToggle={onToggle}
         />
@@ -43,13 +47,14 @@ export function TocTree({
 }
 
 function TocNodeRow({
-  node, activeId, collapsed, runState, languages, onActivate, onToggle,
+  node, activeId, collapsed, runState, languages, drag, onActivate, onToggle,
 }: {
   node: TocNode;
   activeId: string | null;
   collapsed: ReadonlySet<string>;
   runState: Record<string, CellRunState>;
   languages: ApiLanguage[];
+  drag: CellDrag;
   onActivate: (cellId: string) => void;
   onToggle: (sectionId: string) => void;
 }) {
@@ -68,6 +73,7 @@ function TocNodeRow({
           className={`focus-toc-leaf${active ? ' focus-toc-active' : ''}`}
           title={node.title || node.label}
           onClick={() => onActivate(node.cellId)}
+          {...drag.rowProps(node.index)}
         >
           <StatusDot run={run} kind={node.cell.kind} />
           <LanguageChip cell={node.cell} languages={languages} />
@@ -104,6 +110,7 @@ function TocNodeRow({
               collapsed={collapsed}
               runState={runState}
               languages={languages}
+              drag={drag}
               onActivate={onActivate}
               onToggle={onToggle}
             />

@@ -26,6 +26,9 @@ import { LanguageOptions, languageLabelFor } from './common';
 import { Output } from './NotebookView';
 import { Splitter } from './Splitter';
 import { ContentsViewToggle } from './ContentsViewToggle';
+import { ThumbnailZoom } from './ThumbnailZoom';
+import { useCellDrag } from './useCellDrag';
+import { stepIndex } from '../reorder';
 import { Thumbnails } from './Thumbnails';
 import { TocTree } from './TocTree';
 
@@ -65,7 +68,7 @@ export function FocusMode({
   cells, path, languages, runState, activeId, canRun, busy, cleared, layout, clipboard,
   connectionType,
   onActivate, onChange, onLanguage, onRun, onClearOutput, onLayout, onDelete, onInsert,
-  onCut, onCopy, onPaste,
+  onMove, onCut, onCopy, onPaste,
 }: {
   cells: EditorCell[];
   path: string;
@@ -86,6 +89,8 @@ export function FocusMode({
   onLayout: (layout: LayoutPrefs) => void;
   onDelete: (cellId: string) => void;
   onInsert: (afterId: string | null, kind: 'code' | 'markdown') => void;
+  /** Reorder, from a drag in either view or from Alt+↑/↓ in the contents. */
+  onMove: (from: number, to: number) => void;
   /** Something has been cut or copied, so Paste has somewhere to come from. */
   clipboard: boolean;
   onCut: (cellId: string) => void;
@@ -126,6 +131,10 @@ export function FocusMode({
   // controls, and with the editor read-only.
   const canWrite = useCanWrite();
   const mayRun = useCanRun();
+  // One drag for both views: the same gesture, the same arithmetic, and a
+  // reorder that behaved differently depending on which view you were in would
+  // be two features wearing one name. A viewer drags nothing.
+  const drag = useCellDrag(onMove, canWrite);
   const { container: editorRef, relayout } = useFocusEditor({
     readOnly: !canWrite,
     binding: active == null ? null : {
@@ -248,6 +257,19 @@ export function FocusMode({
       return;
     }
     event.preventDefault();
+
+    // Alt+↑/↓ moves the cell rather than the selection — the keyboard half of
+    // drag-to-reorder, without which a notebook could only be reordered with a
+    // pointer. VS Code binds the same chord to moving a line; this is the same
+    // idea one level up.
+    if (event.altKey && event.key !== 'Enter') {
+      const from = cells.findIndex((cell) => cell.id === activeId);
+      const to = stepIndex(from, event.key === 'ArrowDown' ? 1 : -1, cells.length);
+      if (from >= 0 && to !== from && canWrite) {
+        onMove(from, to);
+      }
+      return;
+    }
     if (event.key === 'Enter') {
       return; // the row is already active; Enter is the confirm that changes nothing
     }
@@ -317,15 +339,23 @@ export function FocusMode({
             {cells.length === 0 ? (
               <p className="focus-empty">No cells yet.</p>
             ) : layout.contentsView === 'thumbnails' ? (
+              <>
+              <ThumbnailZoom
+                zoom={layout.thumbnailZoom}
+                onZoom={(thumbnailZoom) => onLayout({ ...layout, thumbnailZoom })}
+              />
               <Thumbnails
                 nodes={toc}
                 activeId={activeId}
                 runState={runState}
                 languages={languages}
                 width={layout.sidebarWidth}
+                zoom={layout.thumbnailZoom}
+                drag={drag}
                 onActivate={onActivate}
                 onKeyDown={onTreeKeyDown}
               />
+              </>
             ) : (
               <TocTree
                 nodes={toc}
@@ -333,6 +363,7 @@ export function FocusMode({
                 collapsed={collapsed}
                 runState={runState}
                 languages={languages}
+                drag={drag}
                 onActivate={onActivate}
                 onToggle={toggleSection}
                 onKeyDown={onTreeKeyDown}

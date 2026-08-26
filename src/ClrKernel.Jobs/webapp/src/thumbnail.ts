@@ -25,10 +25,40 @@ export const MIN_THUMBNAIL_WIDTH = 220;
 /** Padding inside the sidebar, so a thumbnail is not flush to both edges. */
 const GUTTER = 20;
 
-/** The box a thumbnail occupies at a given sidebar width. */
-export function thumbnailBox(sidebarWidth: number): { width: number; height: number } {
-  const width = Math.max(sidebarWidth - GUTTER, MIN_THUMBNAIL_WIDTH - GUTTER);
+/**
+ * How far the previews are zoomed out, as a fraction of the sidebar's width.
+ *
+ * 1 fills the panel; below that you trade size for how many fit on screen at
+ * once, which is what the zoom is for — finding a cell in a long notebook by
+ * scanning rather than scrolling.
+ */
+export const MIN_ZOOM = 0.5;
+export const MAX_ZOOM = 1;
+export const DEFAULT_ZOOM = 1;
+
+export function clampZoom(zoom: number): number {
+  return Number.isFinite(zoom) ? Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM) : DEFAULT_ZOOM;
+}
+
+/** The box a thumbnail occupies at a given sidebar width and zoom. */
+export function thumbnailBox(
+  sidebarWidth: number, zoom: number = DEFAULT_ZOOM,
+): { width: number; height: number } {
+  const available = Math.max(sidebarWidth - GUTTER, MIN_THUMBNAIL_WIDTH - GUTTER);
+  const width = Math.round(available * clampZoom(zoom));
   return { width, height: Math.round(width / ASPECT) };
+}
+
+/**
+ * The scale the code is drawn at, which moves with the zoom.
+ *
+ * Both together, so zooming out shows the *same lines, smaller* rather than
+ * fewer lines at the same size. That is what a zoom means everywhere else, and
+ * it is what keeps a zoomed-out column recognisable: the shapes are the shapes
+ * you already learned, just further away.
+ */
+export function codeScale(zoom: number = DEFAULT_ZOOM): number {
+  return SCALE * clampZoom(zoom);
 }
 
 /**
@@ -36,9 +66,10 @@ export function thumbnailBox(sidebarWidth: number): { width: number; height: num
  *
  * Not "fit the whole cell". A thumbnail is for recognising a shape, not for
  * reading — at this size the text is a few pixels tall whatever you do — so it
- * renders at a fixed small scale and clips, which keeps every thumbnail's text
- * the same size. Scaling to fit would make a long cell's text microscopic and a
- * two-line cell's enormous, and the column would stop reading as a column.
+ * renders at one scale for the whole column and clips. Scaling each cell to fit
+ * would make a long one's text microscopic and a two-line one's enormous, and
+ * the column would stop reading as a column. The zoom moves this for every
+ * thumbnail at once, which is a different thing.
  */
 export const SCALE = 0.42;
 
@@ -49,8 +80,9 @@ const LINE_HEIGHT = 18;
  * How many lines can appear in the box, plus one so the clip lands mid-line —
  * a preview that ends exactly on a boundary looks like the cell ends there.
  */
-export function visibleLines(sidebarWidth: number): number {
-  return Math.ceil(thumbnailBox(sidebarWidth).height / (LINE_HEIGHT * SCALE)) + 1;
+export function visibleLines(sidebarWidth: number, zoom: number = DEFAULT_ZOOM): number {
+  return Math.ceil(
+    thumbnailBox(sidebarWidth, zoom).height / (LINE_HEIGHT * codeScale(zoom))) + 1;
 }
 
 /**

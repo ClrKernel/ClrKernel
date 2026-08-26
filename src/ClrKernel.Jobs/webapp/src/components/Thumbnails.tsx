@@ -3,8 +3,9 @@ import type { ApiLanguage } from '../api';
 import { colorize, colorized } from '../monaco/colorize';
 import { monacoLanguage, type CellRunState, type EditorCell } from '../notebook';
 import type { TocNode } from '../toc';
-import { SCALE, previewSource, thumbnailBox, visibleLines } from '../thumbnail';
+import { codeScale, previewSource, thumbnailBox, visibleLines } from '../thumbnail';
 import { LanguageChip, StatusDot } from './TocTree';
+import type { CellDrag } from './useCellDrag';
 
 /**
  * The Contents sidebar's thumbnail view: one column of small syntax-coloured
@@ -23,7 +24,7 @@ import { LanguageChip, StatusDot } from './TocTree';
  * burn memory for previews nobody can read.
  */
 export function Thumbnails({
-  nodes, activeId, runState, languages, width, onActivate, onKeyDown,
+  nodes, activeId, runState, languages, width, zoom, drag, onActivate, onKeyDown,
 }: {
   /** The same tree the outline renders, flattened here — sections become sticky
    *  headers so heading structure is not lost in a flat list. */
@@ -33,11 +34,15 @@ export function Thumbnails({
   languages: ApiLanguage[];
   /** The sidebar's width, which decides the box and how many lines fit. */
   width: number;
+  /** How far out the previews are zoomed, 0.5–1. */
+  zoom: number;
+  drag: CellDrag;
   onActivate: (cellId: string) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
 }) {
-  const box = thumbnailBox(width);
-  const lines = visibleLines(width);
+  const box = thumbnailBox(width, zoom);
+  const lines = visibleLines(width, zoom);
+  const scale = codeScale(zoom);
 
   return (
     <div
@@ -55,6 +60,8 @@ export function Thumbnails({
           languages={languages}
           box={box}
           lines={lines}
+          scale={scale}
+          drag={drag}
           onActivate={onActivate}
         />
       ))}
@@ -63,7 +70,7 @@ export function Thumbnails({
 }
 
 function ThumbnailNode({
-  node, activeId, runState, languages, box, lines, onActivate,
+  node, activeId, runState, languages, box, lines, scale, drag, onActivate,
 }: {
   node: TocNode;
   activeId: string | null;
@@ -71,12 +78,15 @@ function ThumbnailNode({
   languages: ApiLanguage[];
   box: { width: number; height: number };
   lines: number;
+  scale: number;
+  drag: CellDrag;
   onActivate: (cellId: string) => void;
 }) {
   if (node.kind === 'leaf') {
     return (
       <Thumbnail
         cell={node.cell}
+        index={node.index}
         label={node.label}
         title={node.title}
         active={node.cellId === activeId}
@@ -84,6 +94,8 @@ function ThumbnailNode({
         languages={languages}
         box={box}
         lines={lines}
+        scale={scale}
+        drag={drag}
         onActivate={onActivate}
       />
     );
@@ -103,6 +115,8 @@ function ThumbnailNode({
           languages={languages}
           box={box}
           lines={lines}
+          scale={scale}
+          drag={drag}
           onActivate={onActivate}
         />
       ))}
@@ -111,9 +125,10 @@ function ThumbnailNode({
 }
 
 function Thumbnail({
-  cell, label, title, active, run, languages, box, lines, onActivate,
+  cell, index, label, title, active, run, languages, box, lines, scale, drag, onActivate,
 }: {
   cell: EditorCell;
+  index: number;
   label: string;
   title: string;
   active: boolean;
@@ -121,6 +136,8 @@ function Thumbnail({
   languages: ApiLanguage[];
   box: { width: number; height: number };
   lines: number;
+  scale: number;
+  drag: CellDrag;
   onActivate: (cellId: string) => void;
 }) {
   const language = cell.kind === 'markdown'
@@ -140,6 +157,7 @@ function Thumbnail({
       className={`focus-thumb${active ? ' focus-thumb-active' : ''}`}
       title={title || label}
       onClick={() => onActivate(cell.id)}
+      {...drag.rowProps(index)}
     >
       <div className="focus-thumb-head">
         <StatusDot run={run} kind={cell.kind} />
@@ -164,11 +182,11 @@ function Thumbnail({
             <pre
               className="focus-thumb-code"
               style={{
-                transform: `scale(${SCALE})`,
+                transform: `scale(${scale})`,
                 // Top left, so every preview starts at the same place and the
                 // column's left edge stays straight.
                 transformOrigin: 'top left',
-                width: `${100 / SCALE}%`,
+                width: `${100 / scale}%`,
               }}
               // Monaco's own output: spans carrying .mtkN classes whose colours
               // come from the stylesheet it maintains for the current theme.
