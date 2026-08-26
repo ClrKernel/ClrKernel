@@ -1,7 +1,7 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks — including executable markdown — on ClrKernel. No Python, no Jupyter.",
+  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
   "version": "0.7.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
@@ -77,6 +77,29 @@
           ".dax"
         ],
         "configuration": "./language-configuration.dax.json"
+      },
+      {
+        "id": "oraclesql",
+        "aliases": [
+          "Oracle SQL",
+          "oraclesql",
+          "plsql"
+        ],
+        "extensions": [
+          ".oraclesql"
+        ],
+        "configuration": "./language-configuration.sql-dialect.json"
+      },
+      {
+        "id": "ansisql",
+        "aliases": [
+          "SQL (Generic)",
+          "ansisql"
+        ],
+        "extensions": [
+          ".ansisql"
+        ],
+        "configuration": "./language-configuration.sql-dialect.json"
       }
     ],
     "grammars": [
@@ -102,6 +125,16 @@
         "language": "dax",
         "scopeName": "source.dax",
         "path": "./syntaxes/dax.tmLanguage.json"
+      },
+      {
+        "language": "oraclesql",
+        "scopeName": "source.oraclesql",
+        "path": "./syntaxes/oraclesql.tmLanguage.json"
+      },
+      {
+        "language": "ansisql",
+        "scopeName": "source.ansisql",
+        "path": "./syntaxes/ansisql.tmLanguage.json"
       }
     ],
     "configuration": {
@@ -148,12 +181,12 @@
       },
       {
         "command": "clrkernel.sql.addConnection",
-        "title": "SQL: Add Connection…",
+        "title": "SQL: Add Connection\u2026",
         "category": "ClrKernel"
       },
       {
         "command": "clrkernel.sql.editConnection",
-        "title": "SQL: Edit Connection…",
+        "title": "SQL: Edit Connection\u2026",
         "category": "ClrKernel"
       },
       {
@@ -163,12 +196,12 @@
       },
       {
         "command": "clrkernel.dax.addConnection",
-        "title": "DAX: Add Cube…",
+        "title": "DAX: Add Cube\u2026",
         "category": "ClrKernel"
       },
       {
         "command": "clrkernel.dax.editConnection",
-        "title": "DAX: Edit Cube…",
+        "title": "DAX: Edit Cube\u2026",
         "category": "ClrKernel"
       },
       {

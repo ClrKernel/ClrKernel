@@ -22,6 +22,19 @@ export interface LanguageDescriptor {
     hasConnections?: boolean;
     configBacked?: boolean;
     directives?: DirectiveDefinition[];
+    /** What a picker groups this under — 'SQL' clusters the dialects. VS Code's
+     *  cell language picker is VS Code's own and cannot be grouped, so this is
+     *  carried for completeness and used by the web app. */
+    category?: string | null;
+    /** The connections.json `$type`s this language's cells can run on. A
+     *  compatibility declaration, not part of the language's identity. */
+    supportedProviders?: string[];
+    /** The id an editor knows this language by. Deliberately *not* used for a
+     *  notebook cell's languageId: that id is what routes the cell back to its
+     *  language, so two dialects sharing one would send Oracle SQL to T-SQL. The
+     *  dialects are declared as real VS Code languages in package.json instead,
+     *  with grammars that delegate to the SQL one. */
+    editorLanguageId?: string;
 }
 
 export interface DirectiveDefinition {
@@ -54,9 +67,20 @@ export const bundledLanguages: LanguageDescriptor[] = [
         languageTags: ['bash', 'zsh', 'sh', 'shell'],
     },
     {
-        id: 'sql', displayName: 'SQL', defaultSelector: '#!sql',
+        id: 'sql', displayName: 'T-SQL', defaultSelector: '#!sql',
         selectors: ['#!sql', '#!sql-connect', '#!sql-bulk', '#!sql-merge', '#!sql-run', '#!sql-deploy'],
         languageTags: ['sql', 'tsql'], hasEditorServices: true, hasConnections: true, configBacked: true,
+        category: 'SQL', editorLanguageId: 'sql', supportedProviders: ['SqlServer', 'Odbc', 'Jdbc'],
+    },
+    {
+        id: 'oraclesql', displayName: 'Oracle SQL', defaultSelector: '#!oraclesql',
+        selectors: ['#!oraclesql'], languageTags: ['oraclesql', 'plsql'], hasEditorServices: true,
+        category: 'SQL', editorLanguageId: 'sql', supportedProviders: ['Oracle', 'Odbc', 'Jdbc'],
+    },
+    {
+        id: 'ansisql', displayName: 'SQL (Generic)', defaultSelector: '#!ansisql',
+        selectors: ['#!ansisql'], languageTags: ['ansisql'], hasEditorServices: true,
+        category: 'SQL', editorLanguageId: 'sql', supportedProviders: ['Odbc', 'Jdbc'],
     },
     {
         id: 'dax', displayName: 'DAX', defaultSelector: '#!dax',
