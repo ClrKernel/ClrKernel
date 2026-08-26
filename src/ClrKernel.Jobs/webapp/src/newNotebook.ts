@@ -54,10 +54,10 @@ const PROMPT =
  * was typed still in the box, so a typo is corrected rather than retyped. Null
  * when the person cancelled.
  */
-export function promptForNotebook(folder = ''): string | null {
-  let seed = folder ? `${folder}/` : '';
+export function promptForNotebook(folder = '', name = '', prompt = PROMPT): string | null {
+  let seed = `${folder ? `${folder}/` : ''}${name}`;
   for (;;) {
-    const entered = window.prompt(PROMPT, seed);
+    const entered = window.prompt(prompt, seed);
     if (entered == null) {
       return null;
     }
@@ -77,10 +77,62 @@ export function promptForNotebook(folder = ''): string | null {
  * overwrite, and "new notebook" quietly emptying an existing one is the worst
  * available reading of the button.
  */
-export async function createNotebook(path: string): Promise<void> {
+export async function createNotebook(path: string, content = NEW_NOTEBOOK): Promise<void> {
   const existing = await api.notebookContent('mine', path).catch(() => null);
   if (existing != null) {
     throw new Error(`${path} is already on your branch.`);
   }
-  await api.saveNotebookContent(path, NEW_NOTEBOOK);
+  await api.saveNotebookContent(path, content);
+}
+
+const SAVE_AS_PROMPT =
+  'Save a copy as — a path under the notebooks root on your branch.\n\n'
+  + 'Folders are made as needed, so reports/monthly creates the folder too.';
+
+const MOVE_PROMPT =
+  'Move to — a path under the notebooks root on your branch.\n\n'
+  + 'Renaming is the same thing: a notebook\u2019s path is its name.';
+
+/**
+ * Asks where, and writes a copy there. Returns the path, or null if cancelled.
+ *
+ * Always onto your own branch, whichever branch the copy came from — the same
+ * rule every other write in this app follows, and the reason this is usable from
+ * a read-only branch at all.
+ */
+export async function saveNotebookAs(content: string, seed: string): Promise<string | null> {
+  const wanted = promptForNotebook('', seed, SAVE_AS_PROMPT);
+  if (wanted == null) {
+    return null;
+  }
+  await createNotebook(wanted, content);
+  return wanted;
+}
+
+/**
+ * Asks where, warns about the jobs that name the old path, and moves it.
+ *
+ * The warning is the whole reason this is not two lines at the call site. A
+ * `*.jobs.yaml` names its notebook by path, so moving one silently breaks
+ * every job that runs it — and the failure surfaces at the next scheduled run,
+ * in a log nobody is watching. Naming them costs one request.
+ */
+export async function moveNotebookTo(from: string, seed: string): Promise<string | null> {
+  const wanted = promptForNotebook('', seed, MOVE_PROMPT);
+  if (wanted == null || wanted === from) {
+    return null;
+  }
+  // Every environment's jobs, not just this branch's: a job in test names the
+  // path you are about to move on your own branch, and it breaks when you push.
+  const jobs = await api.jobs()
+    .then((reply) => reply.jobs.filter((job) => job.notebook === from).map((job) => job.name))
+    .catch(() => [] as string[]);
+  if (jobs.length > 0 && !confirm(
+    `${jobs.length === 1 ? 'A job runs' : `${jobs.length} jobs run`} this notebook by its path `
+    + `(${jobs.join(', ')}). Moving it breaks ${jobs.length === 1 ? 'that job' : 'them'} until `
+    + 'the jobs file is pointed at the new path.\n\nMove it anyway?')) {
+    return null;
+  }
+  await api.moveNotebook(from, wanted);
+  return wanted;
 }

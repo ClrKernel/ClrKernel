@@ -528,6 +528,12 @@ export const api = {
       `${scope('mine')}/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' }, keepalive },
     ),
+  /** Renames it, or moves it out of the scratch folder — the same operation. */
+  moveNotebook: (path: string, to: string) =>
+    request<{ moved: boolean; path: string; branch: string }>(
+      `${scope('mine')}/notebooks/move?path=${encodeURIComponent(path)}`,
+      { method: 'POST', body: JSON.stringify({ to }) },
+    ),
   // The UI diffs by fetching both environments' content into Monaco. GET
   // /api/git/diff still exists and is still the right thing over curl.
   // The notebook as cells, with the languages this kernel can run — parsed and

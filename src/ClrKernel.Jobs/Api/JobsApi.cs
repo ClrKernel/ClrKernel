@@ -388,6 +388,45 @@ public static class JobsApi {
                     NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
             }).RequiresProject(ProjectRole.ProjectMember);
 
+        // Renaming, and moving out of the scratch folder — one operation, because
+        // they are one operation: a notebook's path is its name.
+        scoped.MapPost("/notebooks/move", async (
+            ProjectRegistry projects, string project, string branch, string path,
+            HttpContext context) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                if (EditableTarget(context, scope, branch, path) is not { } from) {
+                    return TestWriteError(context, scope, branch, path);
+                }
+                var move = await BodyOf<MoveWrite>(context);
+                if (string.IsNullOrWhiteSpace(move?.To)) {
+                    return Results.BadRequest(new { error = "Body must be { to: \"...\" }." });
+                }
+                // The destination goes through the same gate as the source, so a move
+                // cannot write anywhere a save could not.
+                if (EditableTarget(context, scope, branch, move.To) is not { } to) {
+                    return TestWriteError(context, scope, branch, move.To);
+                }
+                return scope.Git.WithLock(() => {
+                    if (!File.Exists(from)) {
+                        return Results.NotFound(new { error = $"No such file: {path}" });
+                    }
+                    // Never over the top of something. A move is not a save, and the
+                    // one thing nobody means by it is "replace that other notebook".
+                    if (File.Exists(to)) {
+                        return Results.Conflict(new { error = $"{move.To} is already on your branch." });
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                    File.Move(from, to);
+                    // ponytail: a warm kernel session keyed on the old path is left
+                    // to idle out, so a move loses the variables in it. Hand the
+                    // session manager the rename if that ever bites.
+                    return Results.Ok(new { moved = true, path = move.To, branch });
+                });
+            }).RequiresProject(ProjectRole.ProjectMember);
+
         // --- interactive sessions -------------------------------------------
         //
         // Running a cell executes code the request body carried, against a warm
@@ -1887,6 +1926,11 @@ public sealed class LanguageRequest {
 }
 
 /// <summary>The editor's save: the whole notebook, as cells.</summary>
+/// <summary>Where a notebook is being moved to, relative to the same branch.</summary>
+public sealed class MoveWrite {
+    public string To { get; set; }
+}
+
 public sealed class CellWrite {
     public List<CellEdit> Cells { get; set; }
 }

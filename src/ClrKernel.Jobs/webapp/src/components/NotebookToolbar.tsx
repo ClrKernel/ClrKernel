@@ -1,6 +1,7 @@
 import {
   ArrowDownToLine,
   Copy,
+  FileOutput,
   Info,
   MoreHorizontal,
   Play,
@@ -98,6 +99,10 @@ export interface NotebookToolbarProps {
   branch: string;
   /** Copies what is on screen onto your own branch and opens it there. */
   onCopyToMine: () => void;
+  /** Writes a copy at a path you pick, and opens that. */
+  onSaveAs: () => void;
+  /** Renames it, or moves it into another folder. */
+  onMove: () => void;
 }
 
 /**
@@ -506,6 +511,21 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           <Undo2 className="size-3.5" aria-hidden="true" />
         </Button>
       )}
+      {/* Save as and Move, behind one icon. They are the two things you do to a
+          notebook's *name* rather than its contents, they are rare, and the bar
+          has no room for two more labelled buttons — the breakpoints below were
+          measured with this one glyph on it. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="xs" aria-label="File" title="Save a copy, or move this notebook">
+            <FileOutput className="size-3.5" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={props.onSaveAs}>Save a copy as…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={props.onMove}>Move or rename…</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <SaveStatusChip status={props.saveStatus} onRetry={props.onSave} />
       <InfoTip label="Where does this save to?" onOpen={explainSaving} />
       <PushControl

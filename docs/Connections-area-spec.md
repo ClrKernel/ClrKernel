@@ -120,8 +120,17 @@ Real enforcement comes from the database:
 
 - SQL cells pick their connection from this same list; the `Connect` control on a
   SQL cell opens the same picker.
-- **Open in notebook** action on the query editor, to move a scratch query into a
-  notebook cell on the caller's branch.
+- The query editor's buffer **is** a notebook — `.scratch/query-<connection>.nb.md` on
+  the caller's branch, one per connection, written as a `#!sql --connection x` cell so
+  it is always something you could run. It is autosaved, so a query survives switching
+  connections and reloading the page. The folder is excluded from git and skipped by
+  the file tree, so scratch work never makes a branch dirty, never rides along with a
+  push, and never shows up in Files.
+- **Save a copy as…** and **Move to my notebooks…** on the query editor, replacing the
+  old *Open in notebook* (which appended to an existing notebook and left nothing
+  behind here). Save a copy keeps you on the connection; Move ends the scratch and
+  takes you to the notebook editor. The same two are on the notebook editor's own
+  toolbar, so a notebook is renamed and copied the same way wherever you are.
 - The private-connection warning described above.
 
 ## Audit

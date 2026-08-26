@@ -682,4 +682,114 @@ public class NotebookCellsApiTest {
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         StringAssert.Contains(await response.Content.ReadAsStringAsync(), "error");
     }
+    private Task<HttpResponseMessage> MoveAsync(string from, string to) =>
+        _client.PostAsJsonAsync(
+            $"/api/projects/default/branches/mine/notebooks/move?path={from}", new { to });
+
+    [TestMethod]
+    public async Task A_notebook_moves_to_a_new_path_and_leaves_nothing_behind() {
+        await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={_notebook}",
+            new StringContent("moved me\n"));
+
+        var moved = await MoveAsync(_notebook, "archive/2026/old.nb.md");
+        Assert.AreEqual(HttpStatusCode.OK, moved.StatusCode, await moved.Content.ReadAsStringAsync());
+
+        Assert.AreEqual("moved me\n", File.ReadAllText(Path.Combine(MinePath, "archive", "2026", "old.nb.md")),
+            "the folders on the way are made, the way a save makes them");
+        Assert.IsFalse(File.Exists(Path.Combine(MinePath, _notebook)),
+            "a move is not a copy");
+    }
+
+    [TestMethod]
+    public async Task A_move_refuses_to_land_on_something() {
+        await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={_notebook}",
+            new StringContent("mine\n"));
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=other.nb.md",
+            new StringContent("theirs\n"));
+
+        Assert.AreEqual(HttpStatusCode.Conflict, (await MoveAsync(_notebook, "other.nb.md")).StatusCode);
+        Assert.AreEqual("theirs\n", File.ReadAllText(Path.Combine(MinePath, "other.nb.md")),
+            "and leaves the file that was there alone");
+        Assert.AreEqual("mine\n", File.ReadAllText(Path.Combine(MinePath, _notebook)));
+    }
+
+    [TestMethod]
+    public async Task A_move_is_refused_everywhere_a_save_would_be() {
+        await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={_notebook}",
+            new StringContent("mine\n"));
+
+        // Out of the tree, on either end — the destination goes through the same
+        // gate as the source, so neither half is a way past it.
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await MoveAsync(_notebook, "../escaped.nb.md")).StatusCode);
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await MoveAsync("../outside.nb.md", "fine.nb.md")).StatusCode);
+        // Not a notebook.
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await MoveAsync(_notebook, "notes.txt")).StatusCode);
+        // Not your branch.
+        var onTest = await _client.PostAsJsonAsync(
+            $"/api/projects/default/branches/test/notebooks/move?path={_notebook}",
+            new { to = "elsewhere.nb.md" });
+        Assert.AreEqual(HttpStatusCode.BadRequest, onTest.StatusCode);
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "elsewhere.nb.md")));
+    }
+
+    [TestMethod]
+    public async Task A_move_of_a_file_that_is_not_there_says_so() {
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await MoveAsync("never/existed.nb.md", "somewhere.nb.md")).StatusCode);
+    }
+
+    /// <summary>
+    /// The scratch folder is the query editor's buffer, and it must be invisible to
+    /// git — both halves, which are different code paths. Untracked scratch would
+    /// make <c>status --porcelain</c> non-empty, so the branch reads Dirty forever
+    /// and the Push button never clears; and the no-pathspec <c>add -A</c> behind a
+    /// push would sweep the file into test.
+    /// </summary>
+    [TestMethod]
+    public async Task A_scratch_file_leaves_no_trace_in_git() {
+        var scratch = GitService.ScratchDirectory + "/query-abc.nb.md";
+        var written = await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={scratch}",
+            new StringContent("```sql\n#!sql --connection W\nSELECT 1\n```\n"));
+        Assert.AreEqual(HttpStatusCode.OK, written.StatusCode, await written.Content.ReadAsStringAsync());
+        Assert.IsTrue(File.Exists(Path.Combine(MinePath, GitService.ScratchDirectory, "query-abc.nb.md")));
+
+        var standing = await _client.GetFromJsonAsync<JsonElement>("/api/projects/default/branch");
+        Assert.IsFalse(standing.GetProperty("dirty").GetBoolean(),
+            "a scratch query must not leave you permanently unpushed");
+
+        await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "x" });
+        Assert.IsFalse(Directory.Exists(Path.Combine(_git.TestPath, GitService.ScratchDirectory)),
+            "and must never ride along into test");
+    }
+
+    /// <summary>
+    /// The move that Connections makes: out of the scratch folder, into notebooks
+    /// you named. It is the one path where a scratch file is supposed to become
+    /// something git tracks.
+    /// </summary>
+    [TestMethod]
+    public async Task A_scratch_query_moves_out_and_becomes_a_real_notebook() {
+        var scratch = GitService.ScratchDirectory + "/query-abc.nb.md";
+        await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={scratch}",
+            new StringContent("```sql\n#!sql --connection W\nSELECT 1\n```\n"));
+
+        var moved = await MoveAsync(scratch, "queries/warehouse.nb.md");
+        Assert.AreEqual(HttpStatusCode.OK, moved.StatusCode, await moved.Content.ReadAsStringAsync());
+        Assert.IsFalse(File.Exists(Path.Combine(MinePath, GitService.ScratchDirectory, "query-abc.nb.md")));
+
+        await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "keep it" });
+        Assert.AreEqual("```sql\n#!sql --connection W\nSELECT 1\n```\n",
+            File.ReadAllText(Path.Combine(_git.TestPath, "queries", "warehouse.nb.md")),
+            "once it has a name it is a notebook like any other, and pushes like one");
+    }
+
 }

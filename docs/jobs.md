@@ -694,6 +694,14 @@ not a rule someone has to remember.
 Saving writes to your own branch, so a save that changes nothing is skipped: a needless commit
 would invalidate the "unchanged since that run" half of the promotion check.
 
+The **file** button beside Save holds the two things you do to a notebook's *name*
+rather than its contents: **Save a copy as…** writes what is on screen to a path you
+pick and opens it there, and **Move or rename…** moves the file. Renaming is the same
+operation as moving — a notebook's path is its name — so there is one of them, not two.
+Neither will land on a file that already exists. A move warns first when a
+`*.jobs.yaml` names the notebook by its old path, and says which jobs: nothing rewrites
+the jobs file for you, so those jobs are broken until you point them at the new path.
+
 Execution is refused unless you are a Server Admin, the git workflow is on, the file is
 in your own branch, and the path resolves inside your worktree. Reading and diffing still
 work for everyone; only running and saving are gated.

@@ -26,6 +26,11 @@
  * earlier than they need to. That costs those two a label at a width where they
  * had room for it, and is cheaper than a layout that has to be told which tab
  * it is on.
+ *
+ * Re-measured when the File menu arrived: each tier grew by the one glyph it
+ * added, and every number below moved with it. A control added without moving
+ * these is a bar that scrolls sideways at the width just above its old boundary
+ * — which is how they went wrong the last time.
  */
 
 export interface ToolbarLayout {
@@ -43,7 +48,7 @@ export interface ToolbarLayout {
 }
 
 /** Toolbar widths at which something has to give. */
-export const BREAKPOINTS = { narrow: 900, collapse: 950, tight: 1210, compact: 1290 } as const;
+export const BREAKPOINTS = { narrow: 940, collapse: 980, tight: 1240, compact: 1320 } as const;
 
 export function toolbarLayout(width: number): ToolbarLayout {
   if (width < BREAKPOINTS.narrow) {

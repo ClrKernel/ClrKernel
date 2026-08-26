@@ -9,6 +9,7 @@ import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
 import { NotebookToolbar } from '../components/NotebookToolbar';
+import { moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
 import { releaseCellModels } from '../monaco/models';
@@ -479,6 +480,44 @@ export function Editor() {
     }
   }
 
+  /**
+   * Save a copy at a path you pick, and go there.
+   *
+   * The bytes come back from the server rather than out of the cell state,
+   * after a flush: it is the one copy that is right whichever tab you are on,
+   * and it is the same file the next person to open it will read.
+   */
+  async function saveAs() {
+    setError(null);
+    setNotice(null);
+    try {
+      await flush();
+      const to = await saveNotebookAs(await api.notebookContent(branch, path), path);
+      if (to != null) {
+        navigate(editPath(projectSlug(), 'mine', to, tab as NotebookView));
+        setNotice(`Saved as ${to} on your branch.`);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  /** Rename, or move to another folder — one operation, and the same one. */
+  async function move() {
+    setError(null);
+    setNotice(null);
+    try {
+      await flush();
+      const to = await moveNotebookTo(path, path);
+      if (to != null) {
+        navigate(editPath(projectSlug(), 'mine', to, tab as NotebookView));
+        setNotice(`Moved to ${to}.`);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   /** The commit moment: everything on your branch becomes one commit on test. */
   async function push(message: string) {
     setError(null);
@@ -823,6 +862,8 @@ export function Editor() {
         onUpdate={updateFromTest}
         branch={branch}
         onCopyToMine={copyToMine}
+        onSaveAs={saveAs}
+        onMove={move}
       />
 
       {/* Focus Mode measures itself to the bottom of this scroller and gives

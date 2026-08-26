@@ -297,6 +297,7 @@ public sealed class GitService {
                 Run(TestPath, "commit", "-m", "adopt existing notebooks");
                 Run(ProdPath, "merge", "--ff-only", TestBranch);
             }
+            ExcludeScratch();
             _logger.LogInformation("Initialized git workspace at {Workspace} ({Adopted} adopted).",
                 _workspace, adopted);
             return adopted > 0
@@ -355,7 +356,26 @@ public sealed class GitService {
     /// <summary>Fixes worktree gitdir pointers after the workspace moved (volumes do).</summary>
     public void Repair() {
         Run(BareRepoPath, "worktree", "repair", TestPath, ProdPath);
+        ExcludeScratch();
     }
+
+    /// <summary>
+    /// Where a person's unsaved scratch work lives inside their worktree — the query
+    /// editor's buffer, which is a notebook on disk but is not their notebooks.
+    /// </summary>
+    public const string ScratchDirectory = ".scratch";
+
+    /// <summary>
+    /// Teaches the repo to ignore <see cref="ScratchDirectory"/>, once, for every
+    /// worktree at the same time.
+    /// <para>
+    /// Both halves matter and they are different code paths. Without it
+    /// <c>status --porcelain</c> reports the scratch file, so <see cref="StandingOf"/>
+    /// says Dirty forever — a Push button that never clears — and <see cref="CommitAs"/>
+    /// with no pathspec sweeps the file into test on the next push.
+    /// </para>
+    /// </summary>
+    private void ExcludeScratch() => EnsureExcluded(ScratchDirectory + "/");
 
     // --- queries (callers may hold the lock; these take it for one-off use) ------
 

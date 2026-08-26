@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as monaco from 'monaco-editor';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,18 +12,28 @@ import {
   type ApiQueryResult,
   type ApiSavedQuery,
 } from '../api';
-import { notebookPaths } from '../notebook';
 import { editPath } from '../routes';
+import { FileOutput } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { STATUS_LABEL, STATUS_TITLE } from '../autosave';
+import { moveNotebookTo, saveNotebookAs } from '../newNotebook';
+import { scratchNotebook, scratchPath, sqlOf, suggestedName } from '../scratch';
+import { useAutosave } from '../useAutosave';
 import { ConnectionForm } from '../components/ConnectionForm';
 import { ConnectionTree } from '../components/ConnectionTree';
-import { ErrorBanner } from '../components/common';
+import { ErrorBanner, usePolling } from '../components/common';
 import { ResultGrid } from '../components/ResultGrid';
 import { Splitter } from '../components/Splitter';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFillEditor } from '../monaco/useMonaco';
 import { clamp, loadLayout, saveLayout, DEFAULT_LAYOUT, MAX_TREE, MIN_TREE } from '../prefs';
 import { connectionsPath } from '../routes';
-import { useIsServerAdmin } from '../sessionContext';
+import { useIsProjectMember, useIsServerAdmin } from '../sessionContext';
 
 
 /**
@@ -57,7 +68,10 @@ export function Connections() {
   const [running, setRunning] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [password, setPassword] = useState('');
-  const [moving, setMoving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  // What is written to the scratch file, so "have you typed since" is a
+  // comparison rather than a flag that has to be cleared in every path.
+  const [savedSql, setSavedSql] = useState('');
   const [history, setHistory] = useState(false);
   const [savedOpen, setSavedOpen] = useState(false);
 
@@ -100,6 +114,62 @@ export function Connections() {
       setRunning(null);
     }
   }, [selected, running, password]);
+
+  /**
+   * The query editor's buffer is a notebook on your branch, one per connection.
+   *
+   * `owner` is which connection the text in the editor belongs to, and it moves
+   * only when a load completes — never when the selection changes. That is the
+   * whole trick: between clicking another connection and its file arriving,
+   * `sql` is still the old query and `owner` still names the old file, so the
+   * flush that happens on the way past writes the right bytes to the right path
+   * instead of stamping them over the connection you just picked.
+   */
+  const owner = useRef<{ id: string; name: string; path: string } | null>(null);
+  const mayEdit = useIsProjectMember();
+  const { data: health } = usePolling(() => api.health(), null);
+  // No git workflow means no branch to write to. The page still works — it just
+  // holds the query in memory, the way it always used to.
+  const backed = (health?.gitEnabled ?? false) && mayEdit;
+
+  const writeScratch = useCallback(async (keepalive = false) => {
+    const who = owner.current;
+    if (who == null) {
+      return;
+    }
+    const text = sql;
+    await api.saveNotebookContent(who.path, scratchNotebook(who.name, text), keepalive);
+    setSavedSql(text);
+  }, [sql]);
+
+  const dirty = backed && owner.current != null && sql !== savedSql;
+  const { status: saveStatus, flush } = useAutosave(sql, dirty, writeScratch);
+
+  useEffect(() => {
+    if (selected == null || !backed) {
+      return;
+    }
+    let live = true;
+    void (async () => {
+      // Before the buffer is replaced, not after: `flush` writes through
+      // `owner`, which still names the connection this text came from.
+      await flush();
+      const path = scratchPath(selected.id);
+      const text = await api.notebookContent('mine', path).then(sqlOf).catch(() => '');
+      if (!live) {
+        return;
+      }
+      owner.current = { id: selected.id, name: selected.name, path };
+      setSavedSql(text);
+      setSql(text);
+      setResetKey((key) => key + 1);
+    })();
+    return () => {
+      live = false;
+    };
+    // Deliberately only the id and whether there is anywhere to write: a rename
+    // of the connection must not throw away what you are in the middle of.
+  }, [selected?.id, backed]);
 
   // A ref, because the editor binds its keys once on creation and would
   // otherwise be calling the first render's `run` for the life of the page.
@@ -184,26 +254,57 @@ export function Connections() {
   }
 
   /**
-   * Puts the query into a notebook cell on the caller's own branch.
+   * Save a copy of the scratch as a notebook, and stay here.
    *
-   * A `#!sql --connection x` cell rather than a copy of the connection's settings:
-   * the shared connections.json sits beside the notebook, so naming the connection
-   * is all the cell needs, and the notebook stays free of anything to keep in step.
+   * Staying is the difference between this and Move. You keep a copy because the
+   * query is worth keeping; you are not finished with the connection, and being
+   * thrown into the notebook editor mid-thought would be the wrong answer to
+   * "keep this".
    */
-  async function intoNotebook(path: string) {
-    if (selected == null) {
+  async function saveAs() {
+    const who = owner.current;
+    if (who == null) {
       return;
     }
-    const cell = {
-      kind: 'code' as const,
-      tag: 'sql',
-      languageId: 'sql',
-      source: `#!sql --connection ${selected.name}\n${sql.trim()}`,
-    };
-    const existing = await api.notebookCells('mine', path);
-    await api.saveNotebookCells(path, [...existing.cells, cell]);
-    setMoving(false);
-    navigate(editPath(projectSlug(), 'mine', path));
+    setError(null);
+    setNotice(null);
+    try {
+      await flush();
+      const to = await saveNotebookAs(scratchNotebook(who.name, sql), suggestedName(who.name));
+      if (to != null) {
+        setNotice(`Saved as ${to} on your branch.`);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  /**
+   * Move the scratch into your notebooks, and go there.
+   *
+   * The other half of the pair, and the one that ends the scratch: the query
+   * stops being a thing this page is holding for you and becomes a file with a
+   * name. Nothing is left behind here, so the editor empties on the way out.
+   */
+  async function moveOut() {
+    const who = owner.current;
+    if (who == null) {
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    try {
+      await flush();
+      const to = await moveNotebookTo(who.path, suggestedName(who.name));
+      if (to != null) {
+        setSavedSql('');
+        setSql('');
+        setResetKey((key) => key + 1);
+        navigate(editPath(projectSlug(), 'mine', to));
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   function onSplitDrag(y: number) {
@@ -267,6 +368,11 @@ export function Connections() {
 
       <div className="connections-work" ref={work}>
         <ErrorBanner error={error} />
+        {notice && (
+          <Alert variant="success" className="mx-3 mt-3 w-auto">
+            <AlertDescription className="text-status-success">{notice}</AlertDescription>
+          </Alert>
+        )}
 
         <div className="connections-toolbar">
           {selected == null ? (
@@ -313,16 +419,35 @@ export function Connections() {
           >
             Saved
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-sm"
-            disabled={selected == null || sql.trim().length === 0}
-            onClick={() => setMoving(true)}
-            title="Append this query to a notebook on your branch"
-          >
-            Open in notebook…
-          </Button>
+          {backed && (
+            <span
+              className="whitespace-nowrap text-sm text-muted-subtle"
+              title={STATUS_TITLE[saveStatus]}
+            >
+              {STATUS_LABEL[saveStatus]}
+            </span>
+          )}
+          {/* The same menu, in the same place, as the notebook editor's: this is
+              a one-cell notebook, and the two things you do to its name are the
+              two things you do to any other notebook's. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-sm"
+                disabled={!backed || selected == null || sql.trim().length === 0}
+                aria-label="File"
+                title="Keep this query as a notebook on your branch"
+              >
+                <FileOutput className="size-3.5" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => void saveAs()}>Save a copy as…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void moveOut()}>Move to my notebooks…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {running != null ? (
             <>
               <span className="text-sm text-muted-subtle">{(elapsed / 1000).toFixed(1)}s</span>
@@ -413,14 +538,6 @@ export function Connections() {
         />
       )}
 
-      {moving && selected != null && (
-        <NotebookChooser
-          connection={selected}
-          onChoose={intoNotebook}
-          onClose={() => setMoving(false)}
-        />
-      )}
-
       {(creating || editing != null) && (
         <ConnectionForm
           connection={editing}
@@ -436,71 +553,6 @@ export function Connections() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * Which notebook a scratch query should become a cell of.
- *
- * Only notebooks on your own branch are offered, and that is not a filter — it is
- * the only branch you may write to. Offering the others would be offering a save
- * the server is going to refuse.
- */
-function NotebookChooser({ connection, onChoose, onClose }: {
-  connection: ApiConnection;
-  onChoose: (path: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [trees, setTrees] = useState<string[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.notebooks()
-      .then((result) => setTrees(
-        notebookPaths(result.environments.find((e) => e.name === 'mine')?.tree)))
-      .catch((e) => setError((e as Error).message));
-  }, []);
-
-  async function choose(path: string) {
-    setBusy(path);
-    try {
-      await onChoose(path);
-    } catch (e) {
-      setError((e as Error).message);
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
-          <h2 style={{ margin: 0 }}>Open in notebook</h2>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
-        </div>
-        <ErrorBanner error={error} />
-        <p className="text-base text-muted-foreground">
-          The query becomes a new cell at the end, running on <strong>{connection.name}</strong>.
-        </p>
-        {trees == null && !error && (
-          <p className="text-base text-muted-foreground">Looking for your notebooks…</p>
-        )}
-        {trees?.length === 0 && (
-          <p className="text-base text-muted-foreground">
-            You have no notebooks on your branch yet. Make one in Files first.
-          </p>
-        )}
-        <div className="wizard-saved">
-          {(trees ?? []).map((path) => (
-            <button key={path} disabled={busy != null} onClick={() => void choose(path)}>
-              <span className="wizard-saved-name">{path}</span>
-              {busy === path && <span className="wizard-saved-detail">adding…</span>}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
