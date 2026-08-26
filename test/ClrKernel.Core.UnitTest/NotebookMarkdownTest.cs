@@ -26,8 +26,45 @@ public class NotebookMarkdownTest {
         Descriptor("powershell", "#!pwsh", new[] { "pwsh", "powershell", "ps1" }, "#!powershell", "#!pwsh-connect"),
         Descriptor("shellscript", "#!bash", new[] { "bash", "zsh", "sh", "shell" }, "#!zsh", "#!sh", "#!shell", "#!shell-connect"),
         Descriptor("sql", "#!sql", new[] { "sql", "tsql" }, "#!sql-connect", "#!sql-bulk", "#!sql-merge", "#!sql-run", "#!sql-deploy"),
+        Descriptor("oraclesql", "#!oraclesql", new[] { "oraclesql", "plsql" }),
+        Descriptor("ansisql", "#!ansisql", new[] { "ansisql" }),
         Descriptor("dax", "#!dax", new[] { "dax" }, "#!dax-connect"),
     };
+
+    [TestMethod]
+    public void A_dialect_block_round_trips_and_runs_as_its_own_dialect() {
+        // A new tag is a new fence and nothing else: the reader and writer are
+        // driven by the descriptors, so adding a dialect needed no change here.
+        const string source =
+            "# Report\n\n```oraclesql\nSELECT * FROM DUAL\n```\n\n```sql\nSELECT 1\n```\n";
+
+        var cells = NotebookMarkdown.Parse(source, Languages());
+
+        Assert.AreEqual(3, cells.Count);
+        Assert.AreEqual("oraclesql", cells[1].Tag);
+        Assert.AreEqual("sql", cells[2].Tag);
+        Assert.AreEqual(source, NotebookMarkdown.Serialize(cells), "byte-identical after a round trip");
+
+        // And each runs as itself. The selector is prepended at run time and never
+        // written to disk, so a dialect cell reaches its own language.
+        StringAssert.StartsWith(
+            NotebookMarkdown.ExecutableSource(cells[1], Languages()), "#!oraclesql\n");
+        StringAssert.StartsWith(
+            NotebookMarkdown.ExecutableSource(cells[2], Languages()), "#!sql\n");
+    }
+
+    [TestMethod]
+    public void The_tsql_tag_still_belongs_to_the_dialect_that_has_always_had_it() {
+        // The acceptance criterion, from the file's point of view: ```sql and
+        // ```tsql are T-SQL, exactly as they were, and no new dialect took them.
+        Assert.AreEqual("sql", NotebookMarkdown.LanguageForTag("sql", Languages())?.Id);
+        Assert.AreEqual("sql", NotebookMarkdown.LanguageForTag("tsql", Languages())?.Id);
+
+        // A new cell in each dialect gets the tag named after it.
+        Assert.AreEqual("sql", NotebookMarkdown.TagFor(Languages().Single(l => l.Id == "sql")));
+        Assert.AreEqual("oraclesql", NotebookMarkdown.TagFor(Languages().Single(l => l.Id == "oraclesql")));
+        Assert.AreEqual("ansisql", NotebookMarkdown.TagFor(Languages().Single(l => l.Id == "ansisql")));
+    }
 
     private static LanguageDescriptor Descriptor(
         string id, string defaultSelector, string[] tags, params string[] extraSelectors) => new() {

@@ -78,11 +78,36 @@ See [samples/Shell.nb.md](samples/Shell.nb.md) and
 
 ### SQL cells
 
-Set a cell's language to **SQL** (or start it with `#!sql`) to run T-SQL against
+Set a cell's language to **T-SQL** (or start it with `#!sql`) to run T-SQL against
 Microsoft SQL Server. You get T-SQL highlighting, live syntax checking,
 keyword/function completion, and results as the same interactive grid (sort, a
 global filter, per-column filters and value pickers that combine, and Analyze)
 that C# query results use.
+
+SQL comes in three dialects, grouped together in the language picker:
+
+| Language | Selector | Runs on |
+|---|---|---|
+| **T-SQL** | `#!sql` | SQL Server, ODBC, JDBC |
+| **Oracle SQL** | `#!oraclesql` | Oracle, ODBC, JDBC |
+| **SQL (Generic)** | `#!ansisql` | ODBC, JDBC |
+
+The dialect is a property of the **cell** — it decides which keywords and
+functions are completed, so an Oracle cell offers `NVL` and never `NVARCHAR`. The
+provider is a property of the **connection**, and it decides what carries the
+statement; pointing a cell at a different connection never changes what language
+it is written in. A pairing that cannot work is flagged while you write it and
+refused by name when you run it, rather than arriving as a parse error from a
+driver.
+
+`#!sql` still means T-SQL, as it always has: notebooks written before the split
+open, complete and run exactly as they did. `#!sql-bulk`, `#!sql-merge`,
+`#!sql-run` and `#!sql-deploy` are SQL Server's own and stay on `#!sql`.
+
+Non-SQL-Server connections are defined in `connections.json` (`"$type": "Oracle"`,
+`"Odbc"`, `"Jdbc"`); the driver package is loaded per notebook with
+`#r "nuget: ClrKernel.Database.Provider.Oracle"`, and a cell naming a connection
+whose package is not loaded says which line to add.
 
 ![ClrKernel interactive results grid with a per-column value picker open](https://raw.githubusercontent.com/ClrKernel/ClrKernel/main/docs/images/grid-value-picker.png)
 

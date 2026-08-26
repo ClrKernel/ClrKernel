@@ -299,3 +299,30 @@ applied to a live database.
 
 Both fail loudly if they fail at all: `Migrate()` runs before the port is bound, so a
 bad migration is a startup error with guidance, not a 500 at sign-in.
+
+## 14. The JDBC dialect path
+
+`Jdbc.FromConfig` is new: it is what makes a `"$type": "Jdbc"` node in
+`connections.json` reachable from a cell rather than only from `Jdbc.Connect` in C#.
+The descriptor had called it a follow-up since it was written. IKVM is Windows x64,
+so it has never been run — it compiles and its shape matches the two providers that
+are exercised (`Oracle`, `Odbc`), which is all that can be said from macOS.
+
+- [ ] A `"$type": "Jdbc"` node with `jdbcUrl`, `driverClass` and a
+      `driverAssemblyPath`, named by an `#!ansisql` cell, returns rows.
+- [ ] The same with `driverJarPath` instead.
+- [ ] A node with neither says so by name rather than failing inside IKVM.
+- [ ] `#!sql` (T-SQL) over a JDBC connection to SQL Server — the dialect declares
+      it supported, and nothing has ever run it.
+
+## 15. Oracle from a cell
+
+`#!oraclesql` on a `"$type": "Oracle"` connection goes through
+`DataSourceCatalog` → `Oracle.FromConfig` → ODP.NET. The catalog is tested against
+the real provider assembly; no Oracle instance has been reachable from here.
+
+- [ ] `#r "nuget: ClrKernel.Database.Provider.Oracle"`, then an `#!oraclesql` cell
+      naming an Oracle connection, returns a grid.
+- [ ] Without the `#r`, the same cell says which package to load.
+- [ ] An `#!oraclesql` cell on a SQL Server connection is refused by name, and
+      warned about in the editor before it is run.
