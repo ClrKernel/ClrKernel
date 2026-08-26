@@ -1,4 +1,4 @@
-# Redesign: App Shell + Base Theme (ClrKernel.Jobs web UI)
+# Redesign: App Shell + Base Theme (ClrKernel.Studio web UI)
 
 ## Summary
 
@@ -70,7 +70,7 @@ inventing an aesthetic.
 
 - 48px fixed width, full height, own background one step darker than the app
   background, 1px right border.
-- Top: compact product mark (the `ClrKernel Jobs` wordmark moves out of the nav;
+- Top: compact product mark (the `ClrKernel Studio` wordmark moves out of the nav;
   a square mark stands in). Clicking it goes to Dashboard.
 - Below: nav items — **Dashboard, Jobs, Notebooks, Channels**. 20px lucide
   icons, 40×40 hit target, ~4px gap.

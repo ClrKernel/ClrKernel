@@ -1,4 +1,4 @@
-# Feature: Projects, per-user branches, and the promotion pipeline (ClrKernel.Jobs)
+# Feature: Projects, per-user branches, and the promotion pipeline (ClrKernel.Studio)
 
 ## Roadmap
 

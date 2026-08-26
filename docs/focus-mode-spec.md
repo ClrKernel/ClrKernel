@@ -1,4 +1,4 @@
-# Feature: Notebook Focus Mode (ClrKernel.Jobs web UI) when editing a notebook
+# Feature: Notebook Focus Mode (ClrKernel.Studio web UI) when editing a notebook
 
 ## Summary
 

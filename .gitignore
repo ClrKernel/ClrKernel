@@ -357,11 +357,11 @@ editors/vscode/*.vsix
 CLAUDE.md
 
 connections.local.json
-# ClrKernel.Jobs web app: npm deps and the Vite build output (built by ./build.sh Web).
-src/ClrKernel.Jobs/webapp/node_modules/
-src/ClrKernel.Jobs/wwwroot/
+# ClrKernel.Studio web app: npm deps and the Vite build output (built by ./build.sh Web).
+src/ClrKernel.Studio/webapp/node_modules/
+src/ClrKernel.Studio/wwwroot/
 
-# ClrKernel.Jobs local dev run history (dev/jobs-dev.sh writes here).
+# ClrKernel.Studio local dev run history (dev/studio-dev.sh writes here).
 dev/data/
 
 # Everything a local server puts in the notebooks root: the notebooks you write
@@ -369,8 +369,8 @@ dev/data/
 # workflow creates, and connections.json — which names real servers, real
 # databases and real usernames even though the passwords stay in the OS
 # credential store. None of it is anybody else's to clone. `.gitkeep` stays
-# because the directory has to exist: jobs-dev.sh cd's into it.
+# because the directory has to exist: studio-dev.sh cd's into it.
 dev/notebooks/*
 !dev/notebooks/.gitkeep
 # TypeScript incremental build state — a build artifact, not source.
-src/ClrKernel.Jobs/webapp/tsconfig.tsbuildinfo
+src/ClrKernel.Studio/webapp/tsconfig.tsbuildinfo

@@ -64,21 +64,21 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: src/ClrKernel.Jobs/webapp/package-lock.json
+          cache-dependency-path: src/ClrKernel.Studio/webapp/package-lock.json
 
       - name: Install
         run: npm ci
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
       # tsc proves the SPA is type-correct and vite proves it bundles; the unit
       # tests cover the renderer helpers, the only part with real logic.
       - name: Build
         run: npm run build
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
       - name: Test
         run: npm test
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
   jobs-stores:
     name: Jobs run-store contract (PostgreSQL + SQL Server)
@@ -88,7 +88,7 @@ jobs:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: ci-only
-          POSTGRES_DB: clrkernel_jobs
+          POSTGRES_DB: clrkernel_studio
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -114,12 +114,12 @@ jobs:
       # CLRKERNEL_TEST_REQUIRE_LIVE makes a missing server fail the job rather than
       # skip, so this can never go green without touching a database.
       - name: Run the store contract tests
-        run: dotnet test test/ClrKernel.Jobs.UnitTest/ClrKernel.Jobs.UnitTest.csproj
+        run: dotnet test test/ClrKernel.Studio.UnitTest/ClrKernel.Studio.UnitTest.csproj
           --filter ClassName~RunStoreContractTest
         env:
           CLRKERNEL_TEST_REQUIRE_LIVE: '1'
-          CLRKERNEL_JOBS_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_jobs;Username=postgres;Password=ci-only
-          CLRKERNEL_JOBS_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_jobs;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
+          CLRKERNEL_STUDIO_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_studio;Username=postgres;Password=ci-only
+          CLRKERNEL_STUDIO_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_studio;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
 
   jobs-image:
     name: Jobs Docker image (build + smoke)
@@ -130,7 +130,7 @@ jobs:
       # The Dockerfile builds the SPA and both tools from this commit, so this is
       # also the check that a from-scratch build of the whole thing works.
       - name: Build image
-        run: docker build -f src/ClrKernel.Jobs/Dockerfile -t clrkernel-jobs .
+        run: docker build -f src/ClrKernel.Studio/Dockerfile -t clrkernel-studio .
 
       - name: Run a notebook job in the container
         run: |
@@ -144,7 +144,7 @@ jobs:
           jobs:
             - name: hello
           EOF
-          docker run --rm -v "$PWD/smoke:/notebooks:ro" clrkernel-jobs run hello
+          docker run --rm -v "$PWD/smoke:/notebooks:ro" clrkernel-studio run hello
 
   notebook-smoke:
     name: Headless notebook smoke test

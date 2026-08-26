@@ -4,7 +4,7 @@
 **/bin/
 **/obj/
 **/node_modules/
-src/ClrKernel.Jobs/wwwroot/
+src/ClrKernel.Studio/wwwroot/
 editors/vscode/dist/
 editors/vscode/out/
 artifacts/

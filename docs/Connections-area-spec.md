@@ -1,4 +1,4 @@
-# Feature: Connections area (ClrKernel.Jobs)
+# Feature: Connections area (ClrKernel.Studio)
 
 ## Summary
 
@@ -186,7 +186,7 @@ cell: `Execute` takes no `CancellationToken` and `clrkernel/restart` only drops 
 entry, so through a kernel "Cancel" means "kill the process and lose the session". Pooling is
 an in-process ADO.NET feature, and no row cap exists anywhere in `Language.Sql`.
 
-`ClrKernel.Jobs` therefore references `ClrKernel.Database` and
+`ClrKernel.Studio` therefore references `ClrKernel.Database` and
 `ClrKernel.Database.Provider.SqlServer`, deliberately breaking the csproj's "the kernel itself
 is NOT referenced" boundary for this one area. `SqlCommand.Cancel()` is the cancel,
 `SqlConnectionSpec.BuildConnectionString(SecretStore)` is the connection, and ADO.NET's own
@@ -287,7 +287,7 @@ the mechanism.
 
 Private connections are governed by the database login itself. The install-level switch that
 forces the same rule on them is `--private-connections-read-only` /
-`CLRKERNEL_JOBS_PRIVATE_READONLY` / `privateConnectionsReadOnly` in `settings.json`, and it is
+`CLRKERNEL_STUDIO_PRIVATE_READONLY` / `privateConnectionsReadOnly` in `settings.json`, and it is
 shown in Settings → Connections. Off by default.
 
 **Disconnect is real, not a UI state.** It clears the ADO.NET pool for that connection string

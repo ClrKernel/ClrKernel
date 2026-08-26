@@ -1,13 +1,13 @@
-# Dev-only: the databases and mail server for exercising ClrKernel.Jobs' non-default
+# Dev-only: the databases and mail server for exercising ClrKernel.Studio' non-default
 # backends and its SMTP channel. Not used by CI or by the shipped tool.
 #
 #   docker compose -f dev/docker-compose.dbs.yml up -d
 #
-#   clrkernel-jobs serve --store postgres \
-#     --connection-string "Host=localhost;Port=55432;Database=clrkernel_jobs;Username=postgres;Password=devonly"
+#   clrkernel-studio serve --store postgres \
+#     --connection-string "Host=localhost;Port=55432;Database=clrkernel_studio;Username=postgres;Password=devonly"
 #
-#   clrkernel-jobs serve --store sqlserver \
-#     --connection-string "Server=localhost,51433;Database=clrkernel_jobs;User Id=sa;Password=DevOnly!Passw0rd;TrustServerCertificate=True"
+#   clrkernel-studio serve --store sqlserver \
+#     --connection-string "Server=localhost,51433;Database=clrkernel_studio;User Id=sa;Password=DevOnly!Passw0rd;TrustServerCertificate=True"
 #
 # Mailpit catches every message and shows it at http://localhost:8025 — point an
 # email channel at host localhost, port 1025, startTls false, no user.
@@ -22,7 +22,7 @@ services:
     ports: ['55432:5432']
     environment:
       POSTGRES_PASSWORD: devonly
-      POSTGRES_DB: clrkernel_jobs
+      POSTGRES_DB: clrkernel_studio
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
