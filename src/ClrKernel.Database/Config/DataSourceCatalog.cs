@@ -43,8 +43,8 @@ public static class DataSourceCatalog {
         }
         var opener = Opener(type)
             ?? throw new ConnectionConfigException(
-                $"Connection '{name}' is a {type} connection, and this session cannot open one. " +
-                $"Load the provider first:  #r \"nuget: {PackageFor(type)}\"");
+                $"Connection '{name}' uses the {type} provider, which this session cannot open. " +
+                $"Load it first:  #r \"nuget: {PackageFor(type)}\"");
         try {
             return (DataSource)opener.Invoke(null, new object[] { name, secrets });
         } catch (TargetInvocationException e) when (e.InnerException != null) {

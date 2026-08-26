@@ -64,7 +64,7 @@ public class DataSourceCatalogTest {
             () => DataSourceCatalog.Open("Snowflake", "dw"));
 
         StringAssert.Contains(refusal.Message, "dw");
-        StringAssert.Contains(refusal.Message, "Snowflake");
+        StringAssert.Contains(refusal.Message, "Snowflake provider");
         StringAssert.Contains(refusal.Message, "#r \"nuget: ClrKernel.Database.Provider.Snowflake\"");
     }
 

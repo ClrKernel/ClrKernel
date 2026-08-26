@@ -147,8 +147,8 @@ public sealed partial class SqlSession {
         var target = Resolve(requestedName);
         if (dialect != null && !dialect.Supports(target.ProviderType)) {
             throw new SqlCellException(
-                $"A {dialect.DisplayName} cell cannot run on '{target.Name}', which is a " +
-                $"{target.ProviderType} connection. {dialect.DisplayName} runs on: " +
+                $"A {dialect.DisplayName} cell cannot run on '{target.Name}', which uses the " +
+                $"{target.ProviderType} provider. {dialect.DisplayName} runs on: " +
                 $"{string.Join(", ", dialect.SupportedProviders)}. " +
                 "Either point the cell at a different connection or change the cell's language.");
         }

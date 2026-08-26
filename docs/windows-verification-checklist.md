@@ -302,27 +302,44 @@ bad migration is a startup error with guidance, not a 500 at sign-in.
 
 ## 14. The JDBC dialect path
 
-`Jdbc.FromConfig` is new: it is what makes a `"$type": "Jdbc"` node in
-`connections.json` reachable from a cell rather than only from `Jdbc.Connect` in C#.
-The descriptor had called it a follow-up since it was written. IKVM is Windows x64,
-so it has never been run — it compiles and its shape matches the two providers that
-are exercised (`Oracle`, `Odbc`), which is all that can be said from macOS.
+The JDBC provider itself is known good on Windows. What is new is
+`Jdbc.FromConfig` — the thing that makes a `"$type": "Jdbc"` node in
+`connections.json` reachable from a **cell** rather than only from `Jdbc.Connect`
+in C#. Its own descriptor had called that a follow-up since it was written. IKVM
+is Windows x64, so this path has never been run: it compiles and its shape
+matches the two providers that are exercised (`Oracle`, `Odbc`), which is all
+that can be said from macOS.
 
 - [ ] A `"$type": "Jdbc"` node with `jdbcUrl`, `driverClass` and a
       `driverAssemblyPath`, named by an `#!ansisql` cell, returns rows.
 - [ ] The same with `driverJarPath` instead.
 - [ ] A node with neither says so by name rather than failing inside IKVM.
+- [ ] Driver properties (any key that is not one of the six reserved names) reach
+      the driver.
 - [ ] `#!sql` (T-SQL) over a JDBC connection to SQL Server — the dialect declares
-      it supported, and nothing has ever run it.
+      it supported, and nothing has run it.
 
-## 15. Oracle from a cell
+## 15. Oracle from a cell — **done, 2026-08-25**
 
-`#!oraclesql` on a `"$type": "Oracle"` connection goes through
-`DataSourceCatalog` → `Oracle.FromConfig` → ODP.NET. The catalog is tested against
-the real provider assembly; no Oracle instance has been reachable from here.
+Verified on macOS against Oracle Free 23ai in Docker (`gvenzl/oracle-free:slim`,
+native arm64), so nothing here is outstanding. Recorded for the next person
+rather than as work:
 
-- [ ] `#r "nuget: ClrKernel.Database.Provider.Oracle"`, then an `#!oraclesql` cell
-      naming an Oracle connection, returns a grid.
-- [ ] Without the `#r`, the same cell says which package to load.
-- [ ] An `#!oraclesql` cell on a SQL Server connection is refused by name, and
+- [x] `#r "nuget: ClrKernel.Database.Provider.Oracle"`, then an `#!oraclesql` cell
+      naming an Oracle connection, returns a grid — `NVL`, `DUAL` and `ROWNUM` in
+      one statement, which the T-SQL parser would have rejected before it left
+      the process.
+- [x] Without the `#r`, the same cell says which package to load. Found by the
+      browser check and not by the unit tests, which could not see it: a test
+      project references the provider, so its assembly is loaded before anything
+      asks.
+- [x] A T-SQL cell on the Oracle connection is refused naming both halves, and
       warned about in the editor before it is run.
+- [x] The driver's own error (ORA-00942) reaches the cell.
+
+```bash
+docker compose -f dev/docker-compose.dbs.yml up -d oracle
+CLRKERNEL_TEST_ORACLE="User Id=clrkernel;Password=DevOnly1;Data Source=localhost:41521/FREEPDB1" \
+CLRKERNEL_TEST_REQUIRE_LIVE=1 \
+  dotnet test test/ClrKernel.Database.UnitTest -f net8.0 --filter ClassName~OracleDialectLiveTest
+```

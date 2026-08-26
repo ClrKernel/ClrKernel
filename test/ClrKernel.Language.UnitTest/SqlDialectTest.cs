@@ -198,7 +198,7 @@ public class SqlDialectTest {
         Assert.IsNotNull(refusal, "Oracle SQL on a SQL Server connection cannot run");
         StringAssert.Contains(refusal.Message, "Oracle SQL");
         StringAssert.Contains(refusal.Message, "warehouse");
-        StringAssert.Contains(refusal.Message, "SqlServer");
+        StringAssert.Contains(refusal.Message, "SqlServer provider");
         StringAssert.Contains(refusal.Message, "Oracle, Odbc, Jdbc",
             "and says what would work, rather than only what does not");
     }

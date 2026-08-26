@@ -184,7 +184,7 @@ public sealed class SqlCellLanguageServices : ICellLanguageServices {
             EndColumn = Lines(text).ElementAtOrDefault(line)?.Length ?? 0,
             Severity = 2,
             Message =
-                $"'{name}' is a {providerType} connection, and {_dialect.DisplayName} runs on " +
+                $"'{name}' uses the {providerType} provider, and {_dialect.DisplayName} runs on " +
                 $"{string.Join(", ", _dialect.SupportedProviders)}. This cell will not run as written.",
         };
     }

@@ -128,6 +128,17 @@ cells called `sql` and they keep working.
 - **An Oracle parser.** Only T-SQL has one (ScriptDom), so only T-SQL gets syntax
   errors. Running the T-SQL parser over Oracle would reject valid statements with
   confident-sounding messages, which is worse than not checking.
-- **A live run against Oracle or JDBC.** The path is tested against fakes and the
-  catalog against real provider assemblies; neither has been run against a real
-  Oracle instance from this machine.
+- **A live JDBC run.** The provider is known good on Windows; `Jdbc.FromConfig`,
+  which is what makes a JDBC connection nameable from a cell, is new and has
+  never been run — IKVM is Windows x64. It is item 14 on the Windows checklist.
+
+**Oracle is done.** Verified end to end against Oracle Free 23ai in Docker
+(`gvenzl/oracle-free:slim`, native arm64, now in `dev/docker-compose.dbs.yml`):
+six live tests in `OracleDialectLiveTest`, and a browser check running an
+`#!oraclesql` cell from the web editor.
+
+The browser check earned its keep immediately. The unit tests passed while the
+notebook did not, and could not have caught why: a test project *references* the
+Oracle provider, so its assembly is loaded before anything asks — the shipped
+kernel does not, and a notebook has to `#r "nuget: …"` first. The refusal that
+says so was already right; nothing had ever seen it in the one place it matters.

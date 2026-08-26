@@ -37,6 +37,27 @@ services:
     # The jobs database is created by the migrations on first start; the container
     # only needs to be up and reachable.
 
+  # Oracle Free 23ai, for the #!oraclesql dialect and the Oracle provider. Native
+  # arm64 as well as amd64, unlike the SQL Server image, which runs emulated on an
+  # Apple-silicon host. First start takes a couple of minutes while it creates the
+  # database; the healthcheck is what to wait on, not the port.
+  #
+  #   docker compose -f dev/docker-compose.dbs.yml up -d oracle
+  #   CLRKERNEL_TEST_ORACLE="User Id=clrkernel;Password=DevOnly1;Data Source=localhost:41521/FREEPDB1"
+  oracle:
+    image: gvenzl/oracle-free:slim
+    ports: ['41521:1521']
+    environment:
+      ORACLE_PASSWORD: 'DevOnly1'
+      APP_USER: clrkernel
+      APP_USER_PASSWORD: 'DevOnly1'
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
   mailpit:
     image: axllent/mailpit
     ports: ['1025:1025', '8025:8025']
