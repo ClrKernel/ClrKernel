@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using ClrKernel.Core.Secrets;
 
 namespace ClrKernel.Database.Provider.Jdbc;
@@ -54,6 +55,51 @@ public static class Jdbc {
         var connectionString = BuildConnectionString(jdbcUrl, driverClass, properties, user, secretRef, secrets);
         return new DataSource(name ?? jdbcUrl, () => new JdbcConnection { ConnectionString = connectionString });
     }
+
+    /// <summary>
+    /// Connects from a <c>$type: "Jdbc"</c> entry in a connection config file
+    /// (properties: <c>jdbcUrl</c>, <c>driverClass</c>, one of
+    /// <c>driverAssemblyPath</c> / <c>driverJarPath</c>, optional <c>user</c> and
+    /// <c>password</c> as a <c>{ "secret": "&lt;ref&gt;" }</c>; any other key is
+    /// passed to the driver as a property).
+    /// <para>
+    /// The descriptor has documented this as a follow-up since it was written —
+    /// JDBC was reachable from C# and from nowhere else. A dialect cell names a
+    /// connection, and a connection is a config node, so this is what makes
+    /// <c>#!ansisql</c> over JDBC a thing you can write down.
+    /// </para>
+    /// </summary>
+    public static DataSource FromConfig(string name, SecretStore secrets = null) {
+        var config = ConnectionConfig.Load(name, secrets).EnsureType("Jdbc");
+        var url = config.Require("jdbcUrl");
+        var driverClass = config.Require("driverClass");
+        var user = config.Get("user");
+        var password = config.Get("password");
+        var properties = config.Properties
+            .Where(pair => !_reserved.Contains(pair.Key))
+            .ToList();
+
+        // The password is already resolved by ConnectionConfig.Load, so it is
+        // passed as a property rather than as a secret reference to resolve twice.
+        if (!string.IsNullOrEmpty(password)) {
+            properties.Add(new KeyValuePair<string, string>("password", password));
+        }
+
+        var assemblyPath = config.Get("driverAssemblyPath");
+        var jarPath = config.Get("driverJarPath");
+        if (!string.IsNullOrWhiteSpace(assemblyPath)) {
+            return Connect(url, driverClass, assemblyPath, properties, user, null, secrets, config.Name);
+        }
+        if (!string.IsNullOrWhiteSpace(jarPath)) {
+            return ConnectJar(url, driverClass, jarPath, properties, user, null, secrets, config.Name);
+        }
+        throw new ConnectionConfigException(
+            $"JDBC connection '{name}' needs a driverAssemblyPath or a driverJarPath.");
+    }
+
+    private static readonly HashSet<string> _reserved = new HashSet<string>(
+        new[] { "jdbcUrl", "driverClass", "driverAssemblyPath", "driverJarPath", "user", "password" },
+        StringComparer.OrdinalIgnoreCase);
 
     internal static string BuildConnectionString(
         string jdbcUrl, string driverClass, IEnumerable<KeyValuePair<string, string>> properties,

@@ -17,6 +17,18 @@ public sealed class LanguageDescriptor {
 
     public string DisplayName { get; init; }
 
+    /// <summary>What a picker groups this under ("SQL"), or null.</summary>
+    public string Category { get; init; }
+
+    /// <summary>The connections.json <c>$type</c>s this language's cells can run on.
+    /// A compatibility declaration, not part of the language's identity — see
+    /// <see cref="ICellLanguage.SupportedProviders"/>.</summary>
+    public IReadOnlyList<string> SupportedProviders { get; init; } = Array.Empty<string>();
+
+    /// <summary>The id an editor knows this language by, when it differs from
+    /// <see cref="Id"/> — several dialects can share one highlighter.</summary>
+    public string EditorLanguageId { get; init; }
+
     /// <summary>The selector serializers prepend to a bare cell (the language's
     /// first registered selector).</summary>
     public string DefaultSelector { get; init; }
@@ -41,6 +53,9 @@ public sealed class LanguageDescriptor {
     public static LanguageDescriptor From(ICellLanguage language) => new() {
         Id = language.Id,
         DisplayName = language.DisplayName,
+        Category = language.Category,
+        SupportedProviders = language.SupportedProviders ?? Array.Empty<string>(),
+        EditorLanguageId = language.EditorLanguageId ?? language.Id,
         DefaultSelector = language.DefaultSelector,
         Selectors = language.Selectors ?? Array.Empty<string>(),
         LanguageTags = language.LanguageTags,

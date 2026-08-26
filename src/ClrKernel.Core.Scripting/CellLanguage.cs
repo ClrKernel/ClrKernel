@@ -45,6 +45,35 @@ public interface ICellLanguage {
     string DisplayName => Id;
 
     /// <summary>
+    /// What a picker clusters this language under — "SQL" keeps the dialects
+    /// together instead of scattering them between C# and HTTP. Null for a
+    /// language that stands on its own.
+    /// </summary>
+    string Category => null;
+
+    /// <summary>
+    /// The <c>connections.json</c> <c>$type</c> values this language's cells can
+    /// execute against, in preference order.
+    /// <para>
+    /// A <b>compatibility declaration, not an identity</b>: which provider carries
+    /// a statement is a property of the connection, and changing connection must
+    /// not change what language the cell is written in. Open strings rather than
+    /// an enum, so a third party shipping a PostgreSQL dialect needs no change
+    /// here. Empty means the language is not provider-bound at all (HTTP, Mermaid,
+    /// Markdown), which is not the same as "runs on anything".
+    /// </para>
+    /// </summary>
+    IReadOnlyList<string> SupportedProviders => Array.Empty<string>();
+
+    /// <summary>
+    /// The id an <em>editor</em> knows this language by, when that differs from
+    /// <see cref="Id"/>. Three SQL dialects are three languages to the kernel and
+    /// one tokenizer to Monaco; this is what lets a client pick a highlighter
+    /// without a table of language names in it.
+    /// </summary>
+    string EditorLanguageId => Id;
+
+    /// <summary>
     /// The code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
     /// documents (<c>sql</c>, <c>tsql</c>; <c>bash</c>, <c>zsh</c>…). Parsers and
     /// serializers consult these instead of hard-coding tag tables. Empty when the
@@ -154,10 +183,11 @@ public interface ICellExecutionContext {
 /// </para>
 /// </summary>
 public sealed class CellLanguageRegistry {
-    private readonly List<Func<ICellLanguage>> _factories;
+    private readonly List<Func<IReadOnlyList<ICellLanguage>>> _factories;
 
     /// <summary>A registry with no languages: cells run as C# only.</summary>
-    public static CellLanguageRegistry Empty { get; } = new CellLanguageRegistry(Array.Empty<Func<ICellLanguage>>());
+    public static CellLanguageRegistry Empty { get; } =
+        new CellLanguageRegistry(Array.Empty<Func<ICellLanguage>>());
 
     /// <summary>
     /// The registry used by engines constructed without an explicit one. Set
@@ -180,13 +210,35 @@ public sealed class CellLanguageRegistry {
     /// runspace), so every engine must get its own set. Sharing instances across
     /// engines leaks one notebook's connections into another.
     /// </param>
-    public CellLanguageRegistry(IEnumerable<Func<ICellLanguage>> factories) {
-        _factories = (factories ?? Array.Empty<Func<ICellLanguage>>()).Where(f => f != null).ToList();
+    public CellLanguageRegistry(IEnumerable<Func<ICellLanguage>> factories)
+        : this((factories ?? Array.Empty<Func<ICellLanguage>>())
+            .Where(f => f != null)
+            .Select<Func<ICellLanguage>, Func<IReadOnlyList<ICellLanguage>>>(
+                f => () => new[] { f() })) {
+    }
+
+    /// <param name="families">
+    /// One factory per <em>family</em> of languages that share per-notebook state.
+    /// <para>
+    /// The SQL dialects are why this exists: T-SQL, Oracle SQL and generic SQL are
+    /// three languages and one set of connections. A connection is a property of
+    /// the notebook, not of the dialect that happens to name it — declare it once
+    /// and every dialect resolves it, and a name means one thing in a notebook
+    /// rather than one thing per dialect. That requires them to share a session,
+    /// and a session must not outlive its engine, so the sharing has to happen
+    /// inside the factory call rather than in a variable the factories close over.
+    /// </para>
+    /// </param>
+    public CellLanguageRegistry(IEnumerable<Func<IReadOnlyList<ICellLanguage>>> families) {
+        _factories = (families ?? Array.Empty<Func<IReadOnlyList<ICellLanguage>>>())
+            .Where(f => f != null).ToList();
     }
 
     /// <summary>Builds a fresh set of language instances for one engine.</summary>
     public CellLanguageSet CreateSet() =>
-        new CellLanguageSet(_factories.Select(f => f()).Where(l => l != null));
+        new CellLanguageSet(_factories
+            .SelectMany(f => f() ?? Array.Empty<ICellLanguage>())
+            .Where(l => l != null));
 
 }
 

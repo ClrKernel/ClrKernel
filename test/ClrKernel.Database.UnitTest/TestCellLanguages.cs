@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.Fabric;
 using ClrKernel.Language.Dax;
@@ -25,9 +26,17 @@ public static class TestCellLanguages {
         // Providers emit display concepts; without the render registrations their
         // output has no text/html at all, so the suite mirrors this too.
         ClrKernel.Formatting.Html.HtmlFormatters.RegisterDefaults();
-        CellLanguageRegistry.Default = new CellLanguageRegistry(new Func<ICellLanguage>[] {
-            () => new SqlCellLanguage(),
-            () => new DaxCellLanguage(),
+        CellLanguageRegistry.Default = new CellLanguageRegistry(new Func<IReadOnlyList<ICellLanguage>>[] {
+            // The SQL dialects share one session — see the CLI's composition root.
+            () => {
+                var sql = new SqlCellLanguage();
+                return new ICellLanguage[] {
+                    sql,
+                    new OracleSqlCellLanguage(sql.Session),
+                    new AnsiSqlCellLanguage(sql.Session),
+                };
+            },
+            () => new[] { new DaxCellLanguage() },
         });
         // Fabric owns no #! selector but is still reachable from C# cells.
         CellLanguageRegistry.DefaultContributions = new[] {

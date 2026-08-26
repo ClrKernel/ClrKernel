@@ -17,9 +17,7 @@ namespace ClrKernel.Language.Sql;
 /// (longest selector first) instead of by the order of tests in this file.
 /// </para>
 /// </summary>
-public sealed class SqlCellLanguage : ICellLanguage {
-    private readonly SqlSession _session = new SqlSession();
-
+public sealed class SqlCellLanguage : SqlDialectLanguage {
     /// <summary>
     /// The instance backing the cell-visible <c>SqlServer</c> global. Set on
     /// construction; the last engine created wins, matching
@@ -27,35 +25,45 @@ public sealed class SqlCellLanguage : ICellLanguage {
     /// </summary>
     public static SqlCellLanguage Current { get; private set; }
 
-    public SqlCellLanguage() {
+    /// <summary>Its own session — the one the other dialects are handed.</summary>
+    public SqlCellLanguage() : this(new SqlSession()) {
+    }
+
+    public SqlCellLanguage(SqlSession session) : base(session) {
         Current = this;
     }
 
-    /// <summary>The session's connections, ETL and pipeline state.</summary>
-    public SqlSession Session => _session;
+    public override string Id => "sql";
 
-    public string Id => "sql";
+    /// <summary>"T-SQL", not "SQL" — the picker now offers three of them, and the
+    /// button has to say which one this cell is.</summary>
+    public override string DisplayName => "T-SQL";
 
-    public string DisplayName => "SQL";
+    public override SqlVocabulary Vocabulary => SqlVocabulary.TSql;
 
-    public IReadOnlyList<string> LanguageTags { get; } = new[] { "sql", "tsql" };
+    /// <summary>SQL Server first — the only one with bulk copy, MERGE and the
+    /// deploy verbs behind it. ODBC and JDBC carry plain statements.</summary>
+    public override IReadOnlyList<string> SupportedProviders { get; } =
+        new[] { "SqlServer", "Odbc", "Jdbc" };
 
-    public IReadOnlyList<DirectiveDefinition> Directives => SqlDirectives.AllDefinitions;
+    /// <summary>Unchanged, and deliberately: <c>sql</c> has meant T-SQL since the
+    /// first release, so every notebook already written keeps its meaning, its
+    /// completion and its syntax check. The new dialects took new ids rather than
+    /// this one taking a new meaning.</summary>
+    public override IReadOnlyList<string> LanguageTags { get; } = new[] { "sql", "tsql" };
 
-    public ICellLanguageServices Services => _services ??= new SqlCellLanguageServices(_session);
-
-    private ICellLanguageServices _services;
+    public override IReadOnlyList<DirectiveDefinition> Directives => SqlDirectives.AllDefinitions;
 
     // Two assemblies, not one: the cell-facing types are split across the language
     // package (SqlSession, SqlGlobals) and the provider (SqlDatabase, BulkCopyOptions,
     // MergeSpec, BulkCopyResult). These are string literals resolved when a cell
     // compiles, so a stale one builds clean and only fails at run time.
     /// <summary>The session's connections, for the editor's connection UI.</summary>
-    public IConnectionCatalog Connections => _connections ??= new SqlConnectionCatalog(_session);
+    public override IConnectionCatalog Connections => _connections ??= new SqlConnectionCatalog(Session);
 
     private IConnectionCatalog _connections;
 
-    public ScriptContribution ScriptContribution { get; } = new ScriptContribution(
+    public override ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(SqlSession).Assembly, typeof(BulkCopyOptions).Assembly },
         imports: new[] {
             "ClrKernel.Language.Sql",                 // SqlSession (the `Sql` global's type)
@@ -63,26 +71,23 @@ public sealed class SqlCellLanguage : ICellLanguage {
         },
         usingStatics: new[] { "using static ClrKernel.Language.Sql.SqlGlobals;" });
 
-    public async Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) {
+    public override async Task<object> ExecuteAsync(CellInvocation cell, ICellExecutionContext context) {
         switch (cell.Selector.ToLowerInvariant()) {
             case "#!sql-connect":
                 return await ConnectAsync(cell, context).ConfigureAwait(false);
+            // The four verbs are SQL Server's own — bulk copy, MERGE and the deploy
+            // planner have no equivalent through ODBC or JDBC — so they stay on this
+            // dialect and refuse a connection that is not SQL Server, in the session.
             case "#!sql-bulk":
-                return _session.ExecuteBulk(cell.FirstLine);
+                return Session.ExecuteBulk(cell.FirstLine);
             case "#!sql-merge":
-                return _session.ExecuteMerge(cell.FirstLine);
+                return Session.ExecuteMerge(cell.FirstLine);
             case "#!sql-run":
-                return _session.ExecuteRun(cell.FirstLine);
+                return Session.ExecuteRun(cell.FirstLine);
             case "#!sql-deploy":
-                return _session.ExecuteDeploy(cell.FirstLine);
+                return Session.ExecuteDeploy(cell.FirstLine);
             default:
-                // #!sql [connection]: re-express an inline connection name as the
-                // leading SQL comment the executor understands.
-                var inline = SqlDirectives.SelectorConnection(cell.FirstLine);
-                var cellText = string.IsNullOrEmpty(inline)
-                    ? cell.Body
-                    : "-- connections " + inline + "\n" + cell.Body;
-                return _session.Execute(cellText);
+                return ExecuteQuery(cell);
         }
     }
 
@@ -96,7 +101,7 @@ public sealed class SqlCellLanguage : ICellLanguage {
             if (!line.TrimStart().StartsWith("#!sql-connect", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-            var directive = _session.Connect(line.Trim());
+            var directive = Session.Connect(line.Trim());
             names.Add(directive.Spec.Name);
 
             // Bind a C# variable so #!csharp cells can use the connection
@@ -115,7 +120,7 @@ public sealed class SqlCellLanguage : ICellLanguage {
                 ? $" → C# variable `{bound[0]}`"
                 : $" → C# variables {string.Join(", ", bound.ConvertAll(b => "`" + b + "`"))}";
         }
-        return new DisplayData($"{label} (default: {_session.Connections.DefaultName})");
+        return new DisplayData($"{label} (default: {Session.Connections.DefaultName})");
     }
 
     private static string CSharpStringLiteral(string value) =>

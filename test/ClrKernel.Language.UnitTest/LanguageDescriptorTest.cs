@@ -1,8 +1,6 @@
 using System.Linq;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Language.Dax;
-using ClrKernel.Language.Http;
-using ClrKernel.Language.Mermaid;
 using ClrKernel.Language.PowerShell;
 using ClrKernel.Language.Shell;
 using ClrKernel.Language.Sql;
@@ -18,10 +16,13 @@ namespace ClrKernel.Language.UnitTest;
 /// </summary>
 [TestClass]
 public class LanguageDescriptorTest {
-    private static CellLanguageSet AllLanguages() => new(new ICellLanguage[] {
-        new HttpCellLanguage(), new MermaidCellLanguage(), new PowerShellCellLanguage(),
-        new ShellCellLanguage(), new SqlCellLanguage(), new DaxCellLanguage(),
-    });
+    /// <summary>
+    /// The shipped set, from the registry the suite's composition root filled —
+    /// not a list rebuilt here. A second copy of "what ships" is a copy that can
+    /// disagree with the first, and the language a test forgot to add is exactly
+    /// the language whose descriptor nobody checked.
+    /// </summary>
+    private static CellLanguageSet AllLanguages() => CellLanguageRegistry.Default.CreateSet();
 
     [TestMethod]
     public void A_selector_is_just_a_directive_name() {
@@ -42,10 +43,10 @@ public class LanguageDescriptorTest {
     [TestMethod]
     public void Describe_carries_identity_tags_and_capabilities() {
         var descriptors = AllLanguages().Describe();
-        Assert.AreEqual(6, descriptors.Count);
+        Assert.AreEqual(8, descriptors.Count, "six languages, and SQL is three of them");
 
         var sql = descriptors.Single(d => d.Id == "sql");
-        Assert.AreEqual("SQL", sql.DisplayName);
+        Assert.AreEqual("T-SQL", sql.DisplayName, "the button says which dialect, now that there are three");
         Assert.AreEqual("#!sql", sql.DefaultSelector);
         CollectionAssert.AreEqual(new[] { "sql", "tsql" }, sql.LanguageTags.ToList());
         Assert.IsTrue(sql.HasConnections);
@@ -64,6 +65,41 @@ public class LanguageDescriptorTest {
         Assert.IsTrue(descriptors.Single(d => d.Id == "dax").ConfigBacked);
         Assert.IsTrue(descriptors.Single(d => d.Id == "powershell").Directives
             .Any(d => d.Selector == "#!pwsh-connect"));
+    }
+
+    [TestMethod]
+    public void The_sql_dialects_describe_themselves_as_dialects() {
+        var descriptors = AllLanguages().Describe();
+        var dialects = descriptors.Where(d => d.Category == "SQL").ToList();
+
+        CollectionAssert.AreEquivalent(
+            new[] { "sql", "oraclesql", "ansisql" }, dialects.Select(d => d.Id).ToList(),
+            "the three cluster under one heading in a picker");
+        Assert.IsTrue(dialects.All(d => d.EditorLanguageId == "sql"),
+            "three languages to the kernel, one highlighter to an editor");
+
+        // The compatibility declaration: which connection types can carry each
+        // dialect's statements. Providers, not dialects — a cell does not change
+        // language when it is pointed at a different connection.
+        CollectionAssert.AreEqual(new[] { "SqlServer", "Odbc", "Jdbc" },
+            descriptors.Single(d => d.Id == "sql").SupportedProviders.ToList());
+        CollectionAssert.AreEqual(new[] { "Oracle", "Odbc", "Jdbc" },
+            descriptors.Single(d => d.Id == "oraclesql").SupportedProviders.ToList());
+        CollectionAssert.AreEqual(new[] { "Odbc", "Jdbc" },
+            descriptors.Single(d => d.Id == "ansisql").SupportedProviders.ToList());
+    }
+
+    [TestMethod]
+    public void A_language_that_is_not_a_dialect_needed_no_change_to_say_so() {
+        // The point of defaulting every new member: HTTP, Mermaid and the shells
+        // were not edited, and they answer sensibly anyway.
+        foreach (var id in new[] { "http", "mermaid", "shellscript", "powershell" }) {
+            var descriptor = AllLanguages().Describe().Single(d => d.Id == id);
+            Assert.IsNull(descriptor.Category, $"{id} belongs to no group");
+            Assert.AreEqual(0, descriptor.SupportedProviders.Count,
+                $"{id} is not provider-bound, which is not the same as running on anything");
+            Assert.AreEqual(id, descriptor.EditorLanguageId, $"{id} is its own editor language");
+        }
     }
 
     [TestMethod]
