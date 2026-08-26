@@ -77,7 +77,10 @@
     <Watch Remove="webapp/**" />
     <Watch Remove="wwwroot/**" />
     <!-- CopyToOutputDirectory is what carries it into the tool package too: a tool
-         packs its publish output, so wwwroot lands beside the binary. -->
+         packs its publish output, so wwwroot lands beside the binary. It is also
+         why `dotnet run --no-build` after an `npm run build` serves the *previous*
+         bundle: the copy happens at build time, and skipping the build skips it.
+         That looks exactly like a UI fix that did not work. -->
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

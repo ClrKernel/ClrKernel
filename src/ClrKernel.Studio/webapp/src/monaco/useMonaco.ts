@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import { bindCell } from './language';
 import { toMonacoMarker, type LspDiagnostic } from './lsp';
 import { getCellModel } from './models';
+import { textToRun } from './runTarget';
 import { cellEditorOptions, monaco } from './setup';
 import { bindSqlEditor, unbindSqlEditor } from './sqlSchema';
 
@@ -255,9 +256,7 @@ export function useFillEditor(
       latestOnChange.current(created.getValue()),
     );
     function run() {
-      const selection = created.getSelection();
-      const selected = selection == null ? '' : (created.getModel()?.getValueInRange(selection) ?? '');
-      latestOnRun.current?.(selected.trim().length > 0 ? selected : created.getValue());
+      latestOnRun.current?.(textToRun(created));
     }
     // Both, because both are already in people's fingers: Ctrl+Enter from the
     // notebook, F5 from every query tool there has ever been. addCommand rather

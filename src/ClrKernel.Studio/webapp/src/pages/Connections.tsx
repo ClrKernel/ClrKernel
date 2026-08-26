@@ -30,6 +30,7 @@ import { ErrorBanner, usePolling } from '../components/common';
 import { ResultGrid } from '../components/ResultGrid';
 import { Splitter } from '../components/Splitter';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { textToRun } from '../monaco/runTarget';
 import { useFillEditor } from '../monaco/useMonaco';
 import { clamp, loadLayout, saveLayout, DEFAULT_LAYOUT, MAX_TREE, MIN_TREE } from '../prefs';
 import { connectionsPath } from '../routes';
@@ -478,7 +479,9 @@ export function Connections() {
               size="sm"
               className="h-7 px-2 text-sm"
               disabled={selected == null || !selected.canExecute}
-              onClick={() => void run(sql)}
+              // The editor, not the `sql` state: the button has to mean exactly
+              // what the key means, and the state has no idea what is selected.
+              onClick={() => void run(textToRun(editorHandle.current) || sql)}
               title="Ctrl+Enter or F5 — runs the selection when there is one"
             >
               ▶ Run
