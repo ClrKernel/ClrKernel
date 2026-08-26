@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Accent } from '../theme/palette';
+import type { Accent, ThemeName } from '../theme/palette';
 import { useAccent } from '../theme/accent';
-import { FONT_MONO, FONT_SANS, GRID, NEUTRAL } from '../theme/palette';
+import { useTheme } from '../theme/theme';
+import { FONT_MONO, FONT_SANS, paletteFor } from '../theme/palette';
 
 /**
  * Kernel output that needs its own scripts to run — the interactive grid builds
@@ -24,6 +25,7 @@ export function SandboxedHtml({ html }: { html: string }) {
   const token = useRef(`ck-${Math.random().toString(36).slice(2)}`);
 
   const accent = useAccent();
+  const theme = useTheme();
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       const data = event.data;
@@ -44,7 +46,7 @@ export function SandboxedHtml({ html }: { html: string }) {
       title="Notebook output"
       sandbox="allow-scripts"
       style={{ height }}
-      srcDoc={document_(html, token.current, accent)}
+      srcDoc={document_(html, token.current, accent, theme)}
     />
   );
 }
@@ -56,35 +58,42 @@ export function SandboxedHtml({ html }: { html: string }) {
  *
  * The frame is a separate document and cannot see the app's tokens, so the
  * values are interpolated from the same palette module instead of being a second
- * hand-written copy. Light only, matching the app — a frame that followed the OS
- * would render dark output inside a light page.
+ * hand-written copy. It follows the *app's* theme rather than the OS: a frame
+ * that read `prefers-color-scheme` itself would render dark output inside a
+ * light page for anyone who had overridden the OS.
+ *
+ * This is also why dark mode needed no change in the kernel. The formatters
+ * write their HTML against `--vscode-*` variables with fallbacks, and this is
+ * where those variables get their values — so a dark grid is a matter of passing
+ * different ones, not of touching a single line of C#.
  */
-function document_(html: string, token: string, accent: Accent): string {
+function document_(html: string, token: string, accent: Accent, theme: ThemeName): string {
+  const { neutral, grid } = paletteFor(theme);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 :root {
-  color-scheme: light;
+  color-scheme: ${theme};
   --vscode-font-family: ${FONT_SANS};
   --vscode-font-size: 13px;
   --vscode-editor-font-family: ${FONT_MONO};
-  --vscode-foreground: ${NEUTRAL.foreground};
-  --vscode-editor-background: ${NEUTRAL.card};
+  --vscode-foreground: ${neutral.foreground};
+  --vscode-editor-background: ${neutral.card};
   /* The grid's sticky header and filter row read this one. A step darker than
      the panel colour so a scrolled header stays distinct from the cell chrome
      around it. */
-  --vscode-editorWidget-background: ${GRID.header};
-  --vscode-panel-border: ${NEUTRAL.border};
-  --vscode-input-background: ${NEUTRAL.card};
-  --vscode-input-foreground: ${NEUTRAL.foreground};
-  --vscode-input-border: ${NEUTRAL.border};
+  --vscode-editorWidget-background: ${grid.header};
+  --vscode-panel-border: ${neutral.border};
+  --vscode-input-background: ${neutral.card};
+  --vscode-input-foreground: ${neutral.foreground};
+  --vscode-input-border: ${neutral.border};
   --vscode-button-background: ${accent.primary};
   --vscode-button-foreground: ${accent.primaryForeground};
-  --vscode-button-secondaryBackground: ${NEUTRAL.panel};
-  --vscode-button-secondaryForeground: ${NEUTRAL.foreground};
-  --vscode-list-hoverBackground: ${NEUTRAL.hover};
-  --vscode-toolbar-hoverBackground: ${NEUTRAL.panel};
+  --vscode-button-secondaryBackground: ${neutral.panel};
+  --vscode-button-secondaryForeground: ${neutral.foreground};
+  --vscode-list-hoverBackground: ${neutral.hover};
+  --vscode-toolbar-hoverBackground: ${neutral.panel};
   --vscode-textLink-foreground: ${accent.primary};
-  --vscode-descriptionForeground: ${NEUTRAL.mutedForeground};
+  --vscode-descriptionForeground: ${neutral.mutedForeground};
 }
 html, body { margin: 0; background: transparent; }
 body {

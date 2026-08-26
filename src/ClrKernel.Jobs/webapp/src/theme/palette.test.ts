@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ACCENTS, EDITOR, ENV, FILE, GRID, NEUTRAL, ROW, STATUS, isAccentName } from './palette';
+import {
+  ACCENTS, DARK_ACCENTS, DARK_EDITOR, DARK_ENV, DARK_FILE, DARK_GRID, DARK_NEUTRAL, DARK_ROW,
+  DARK_STATUS, EDITOR, ENV, FILE, GRID, NEUTRAL, ROW, STATUS, accentsFor, isAccentName,
+  paletteFor,
+} from './palette';
 
 // Read, not import: vitest stubs CSS imports to an empty string, so `?raw`
 // would silently hand this test nothing to check.
@@ -169,5 +173,160 @@ describe('tokens.css mirrors palette.ts', () => {
 
   it('keeps a selected row readable', () => {
     expect(contrast(NEUTRAL.foreground, NEUTRAL.panelStrong)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+const DARK_BLOCK = ":root[data-theme='dark'] {";
+
+/**
+ * Dark is the same design inverted, not a second one — so it gets the same
+ * guarantees rather than a smaller set of them.
+ */
+describe('dark accent contrast', () => {
+  it.each(DARK_ACCENTS)('$label reaches 4.5:1 on a primary button', (accent) => {
+    expect(contrast(accent.primary, accent.primaryForeground)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('reads as the accent against the dark canvas', () => {
+    // The failure this catches: reusing the light primaries, which are chosen to
+    // sit on cream and vanish into near-black.
+    for (const accent of DARK_ACCENTS) {
+      expect(
+        contrast(accent.primary, DARK_NEUTRAL.background),
+        `${accent.label} on the dark canvas`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('takes a dark foreground, which is why the field is per-accent', () => {
+    for (const accent of DARK_ACCENTS) {
+      expect(luminance(accent.primaryForeground)).toBeLessThan(luminance(accent.primary));
+    }
+  });
+
+  it('offers the same five, so switching theme never changes your accent', () => {
+    expect(DARK_ACCENTS.map((a) => a.name)).toEqual(ACCENTS.map((a) => a.name));
+    expect(accentsFor('dark')).toBe(DARK_ACCENTS);
+    expect(accentsFor('light')).toBe(ACCENTS);
+  });
+});
+
+describe('tokens.css mirrors the dark palette', () => {
+  it.each([
+    ['background', DARK_NEUTRAL.background],
+    ['foreground', DARK_NEUTRAL.foreground],
+    ['card', DARK_NEUTRAL.card],
+    ['popover', DARK_NEUTRAL.popover],
+    ['muted', DARK_NEUTRAL.panel],
+    ['muted-foreground', DARK_NEUTRAL.mutedForeground],
+    ['border', DARK_NEUTRAL.border],
+    ['border-subtle', DARK_NEUTRAL.borderSubtle],
+    ['input', DARK_NEUTRAL.input],
+    ['accent', DARK_NEUTRAL.hover],
+    ['muted-subtle', DARK_NEUTRAL.mutedSubtle],
+    ['surface-panel', DARK_NEUTRAL.panel],
+    ['surface-panel-strong', DARK_NEUTRAL.panelStrong],
+    ['destructive', DARK_NEUTRAL.destructive],
+    ['env-test', DARK_ENV.test.fg],
+    ['env-test-bg', DARK_ENV.test.bg],
+    ['env-test-border', DARK_ENV.test.border],
+    ['env-prod', DARK_ENV.prod.fg],
+    ['env-prod-bg', DARK_ENV.prod.bg],
+    ['env-prod-border', DARK_ENV.prod.border],
+    ['file-notebook', DARK_FILE.notebook],
+    ['file-code', DARK_FILE.code],
+    ['file-config', DARK_FILE.config],
+    ['code-fg', DARK_EDITOR.foreground],
+    ['line-number', DARK_EDITOR.lineNumber],
+    ['syntax-keyword', DARK_EDITOR.keyword],
+    ['syntax-string', DARK_EDITOR.string],
+    ['syntax-number', DARK_EDITOR.number],
+    ['syntax-directive', DARK_EDITOR.directive],
+    ['grid-header', DARK_GRID.header],
+    ['row-failed', DARK_ROW.failed],
+    ['row-failed-border', DARK_ROW.failedBorder],
+    ['status-idle', DARK_STATUS.idle],
+    ['status-running', DARK_STATUS.running],
+    ['status-error', DARK_STATUS.error],
+    ['status-warning', DARK_STATUS.warning],
+    ['status-success', DARK_STATUS.success],
+  ])('dark --%s', (name, expected) => {
+    expect(token(DARK_BLOCK, name)).toBe(expected);
+  });
+
+  it('--code-bg is exactly the editor background Monaco paints in dark', () => {
+    expect(token(DARK_BLOCK, 'code-bg')).toBe(DARK_EDITOR.background);
+  });
+
+  /**
+   * The drift this is really guarding.
+   *
+   * `:root` still applies under `[data-theme='dark']` — the dark block only
+   * overrides. So a colour token added to light and forgotten in dark does not
+   * fail, break or warn: it silently keeps its light value, and one cream
+   * rectangle appears in a dark app. Fonts and radii are excluded by looking at
+   * the value: only things that are colours have to be answered twice.
+   */
+  it('overrides every colour the light theme defines', () => {
+    const light = tokensCss.split(':root {')[1].slice(0, tokensCss.split(':root {')[1].indexOf('}'));
+    const dark = tokensCss.split(DARK_BLOCK)[1];
+    const darkBody = dark.slice(0, dark.indexOf('}'));
+
+    const colours = [...light.matchAll(/--([\w-]+):\s*([^;]+);/g)]
+      .filter(([, , value]) => /^(#|rgb)/.test(value.trim()))
+      .map(([, name]) => name);
+
+    expect(colours.length).toBeGreaterThan(30);
+    for (const name of colours) {
+      expect(darkBody, `--${name} has no dark value, so it stays light`)
+        .toContain(`--${name}:`);
+    }
+  });
+});
+
+describe('dark surfaces', () => {
+  /**
+   * The same stacking rule as light — card above canvas above panel — checked as
+   * a contrast *ratio* rather than a luminance delta.
+   *
+   * At the dark end luminance values are hundredths, so the light theme's
+   * "differ by 0.02" would be unsatisfiable by anything that still looked like
+   * one palette. A ratio says the same thing in a way that holds at both ends.
+   */
+  it('stacks card above canvas above panel', () => {
+    const surfaces = [
+      DARK_NEUTRAL.card, DARK_NEUTRAL.background, DARK_NEUTRAL.panel, DARK_NEUTRAL.panelStrong,
+    ];
+    for (let i = 1; i < surfaces.length; i++) {
+      expect(luminance(surfaces[i - 1])).toBeGreaterThan(luminance(surfaces[i]));
+      expect(
+        contrast(surfaces[i - 1], surfaces[i]),
+        `${surfaces[i - 1]} should sit visibly above ${surfaces[i]}`,
+      ).toBeGreaterThan(1.025);
+    }
+  });
+
+  it('reads text comfortably on every surface', () => {
+    for (const surface of [DARK_NEUTRAL.card, DARK_NEUTRAL.background, DARK_NEUTRAL.panel]) {
+      expect(contrast(DARK_NEUTRAL.foreground, surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(DARK_NEUTRAL.mutedForeground, surface)).toBeGreaterThanOrEqual(4.5);
+      // The faintest label colour. Light's equivalent manages 3.65, so holding
+      // dark to the same bar is not a lowered one.
+      expect(contrast(DARK_NEUTRAL.mutedSubtle, surface)).toBeGreaterThanOrEqual(3.6);
+    }
+  });
+
+  it('is a genuinely dark palette, not a dimmed light one', () => {
+    expect(luminance(DARK_NEUTRAL.background)).toBeLessThan(0.05);
+    expect(luminance(NEUTRAL.background)).toBeGreaterThan(0.5);
+  });
+});
+
+describe('paletteFor', () => {
+  it('hands out the set an editor or the output frame needs', () => {
+    expect(paletteFor('light').editor).toBe(EDITOR);
+    expect(paletteFor('dark').editor).toBe(DARK_EDITOR);
+    expect(paletteFor('dark').neutral.card).toBe(DARK_NEUTRAL.card);
+    expect(paletteFor('light').grid).toBe(GRID);
   });
 });

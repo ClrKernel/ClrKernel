@@ -113,6 +113,80 @@ export const EDITOR = {
   comment: '#8a8577',
 } as const;
 
+/* --- dark ----------------------------------------------------------------
+ *
+ * The same design, not a second one. Warm Paper's rule in light is that the
+ * canvas is cream and cards sit *above* it, lighter, with hierarchy carried by
+ * borders rather than shadows. Dark keeps both: a warm near-black canvas, cards
+ * a step lighter, panels a step darker, and the same borders doing the work.
+ *
+ * Every value below was measured rather than picked. Body text is 12.7:1 on a
+ * card, the faintest label 4.3:1 (the light theme's equivalent is 3.7:1, so this
+ * is the better of the two), and each accent clears 4.5:1 against its own
+ * foreground — which is why the foregrounds here are dark: a light accent fill
+ * under white text is nowhere near it.
+ */
+
+export const DARK_NEUTRAL = {
+  background: '#191a16',
+  foreground: '#e8e6df',
+  card: '#212320',
+  popover: '#282a26',
+  panel: '#131410',
+  panelStrong: '#0e0f0c',
+  mutedForeground: '#a8a294',
+  mutedSubtle: '#8b8577',
+  border: '#33352f',
+  borderSubtle: '#2a2c26',
+  input: '#414339',
+  hover: '#2a2c27',
+  destructive: '#f2777a',
+} as const;
+
+export const DARK_GRID = {
+  header: '#1b1c18',
+} as const;
+
+export const DARK_ROW = {
+  failed: '#2a1a19',
+  failedBorder: '#5c3330',
+} as const;
+
+export const DARK_STATUS = {
+  idle: '#757063',
+  running: '#8ab4f8',
+  error: '#f2777a',
+  warning: '#e0a458',
+  success: '#5fd39b',
+} as const;
+
+export const DARK_ENV = {
+  test: { fg: '#e0a458', bg: '#2c2214', border: '#4a3a20' },
+  prod: { fg: '#5fd39b', bg: '#16251c', border: '#27452f' },
+} as const;
+
+export const DARK_FILE = {
+  notebook: '#c4a2f7',
+  code: '#8ab4f8',
+  config: '#5eead4',
+} as const;
+
+export const DARK_EDITOR = {
+  background: DARK_NEUTRAL.card,
+  foreground: '#d8d5ca',
+  lineHighlight: '#282a26',
+  lineNumber: '#5c594f',
+  indentGuide: '#33352f',
+  selection: '#2f3d37',
+  widgetBackground: DARK_NEUTRAL.popover,
+  widgetBorder: DARK_NEUTRAL.border,
+  keyword: '#8ab4f8',
+  string: '#e0a458',
+  number: '#7ddba6',
+  directive: '#f2989a',
+  comment: '#7f7a6c',
+} as const;
+
 export type AccentName = 'green' | 'blue' | 'violet' | 'amber' | 'rose';
 
 export interface Accent {
@@ -175,6 +249,85 @@ export const ACCENTS: readonly Accent[] = [
     primaryForeground: '#ffffff',
   },
 ] as const;
+
+/**
+ * The same five, lightened to sit on a dark canvas.
+ *
+ * `primaryForeground` is dark here rather than white, and that is the whole
+ * reason the field is per-accent: a fill light enough to read as "the accent"
+ * against near-black is far too light to carry white text. Amber was already
+ * the accent that proved the point in light.
+ */
+export const DARK_ACCENTS: readonly Accent[] = [
+  {
+    name: 'green',
+    label: 'Green',
+    primary: '#3fb27f',
+    primaryHover: '#57c193',
+    primarySoft: '#16241d',
+    primaryForeground: '#0c1a13',
+  },
+  {
+    name: 'blue',
+    label: 'Blue',
+    primary: '#8ab4f8',
+    primaryHover: '#a3c4fa',
+    primarySoft: '#182234',
+    primaryForeground: '#0d1526',
+  },
+  {
+    name: 'violet',
+    label: 'Violet',
+    primary: '#b18cf0',
+    primaryHover: '#c3a5f4',
+    primarySoft: '#221a33',
+    primaryForeground: '#150e24',
+  },
+  {
+    name: 'amber',
+    label: 'Amber',
+    primary: '#e0a458',
+    primaryHover: '#ecb877',
+    primarySoft: '#2c2214',
+    primaryForeground: '#241703',
+  },
+  {
+    name: 'rose',
+    label: 'Rose',
+    primary: '#f0748f',
+    primaryHover: '#f591a6',
+    primarySoft: '#31191f',
+    primaryForeground: '#25090f',
+  },
+] as const;
+
+/** Which of the two palettes is in force. `system` resolves to one of these. */
+export type ThemeName = 'light' | 'dark';
+
+/**
+ * Everything Monaco and the sandboxed output frame need as literal values.
+ *
+ * Those two are the only places that cannot read a CSS variable — Monaco's theme
+ * API takes hex, and the frame is a separate document with no access to the
+ * app's tokens. Everything else in the app reads the token layer and gets the
+ * right values by having `data-theme` on `<html>`.
+ */
+export function paletteFor(theme: ThemeName) {
+  return theme === 'dark'
+    ? {
+      neutral: DARK_NEUTRAL, grid: DARK_GRID, row: DARK_ROW, status: DARK_STATUS,
+      env: DARK_ENV, file: DARK_FILE, editor: DARK_EDITOR, accents: DARK_ACCENTS,
+    }
+    : {
+      neutral: NEUTRAL, grid: GRID, row: ROW, status: STATUS,
+      env: ENV, file: FILE, editor: EDITOR, accents: ACCENTS,
+    };
+}
+
+/** The accent swatches for a theme — the picker shows the colours you will get. */
+export function accentsFor(theme: ThemeName): readonly Accent[] {
+  return paletteFor(theme).accents;
+}
 
 export const DEFAULT_ACCENT: AccentName = 'green';
 

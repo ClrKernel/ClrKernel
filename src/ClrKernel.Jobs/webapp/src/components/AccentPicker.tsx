@@ -44,7 +44,7 @@ export function AccentPicker({
           >
             <span
               aria-hidden="true"
-              className="size-3.5 shrink-0 rounded-full border border-black/10"
+              className="size-3.5 shrink-0 rounded-full border border-border"
               style={{ background: option.primary }}
             />
             <span className="flex-1">{option.label}</span>

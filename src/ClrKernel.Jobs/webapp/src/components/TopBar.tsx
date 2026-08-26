@@ -15,8 +15,10 @@ import { usePolling } from './common';
 import { useProjects } from '../projectContext';
 import { editPath, pathFromSplat, sectionOf, switchProject, type NotebookView } from '../routes';
 import { showsSearch, withQuery } from '../search';
-import type { AccentName } from '../theme/palette';
+import type { AccentName, ThemeName } from '../theme/palette';
+import type { ThemeMode } from '../theme/theme';
 import { AccentPicker } from './AccentPicker';
+import { ThemePicker } from './ThemePicker';
 import { EnvBadge } from './common';
 
 /**
@@ -156,9 +158,15 @@ function BranchSwitcher({ project, branch: current, path, view }: {
 export function TopBar({
   accent,
   onAccent,
+  mode,
+  theme,
+  onMode,
 }: {
   accent: AccentName;
   onAccent: (accent: AccentName) => void;
+  mode: ThemeMode;
+  theme: ThemeName;
+  onMode: (mode: ThemeMode) => void;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -246,6 +254,7 @@ export function TopBar({
             />
           </label>
         )}
+        <ThemePicker mode={mode} theme={theme} onMode={onMode} />
         <AccentPicker accent={accent} onAccent={onAccent} />
       </div>
     </header>

@@ -20,12 +20,16 @@ import { NOTEBOOK_VIEWS, filesPath, isFullBleed, jobsPath, legacyEditPath } from
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
-import { ACCENTS } from './theme/palette';
+import { accentsFor } from './theme/palette';
+import { ThemeContext, applyThemeMode, loadThemeMode, resolveTheme } from './theme/theme';
+import { applyEditorTheme } from './monaco/setup';
 
 export function App() {
-  // The inline script in index.html already put the accent on <html> before
-  // first paint; this only mirrors it so the picker can show a tick.
+  // The inline script in index.html already put both of these on <html> before
+  // first paint; these only mirror them so the pickers can show a tick.
   const [accent, setAccent] = useState(loadAccent);
+  const [mode, setMode] = useState(loadThemeMode);
+  const [theme, setTheme] = useState(() => resolveTheme(loadThemeMode()));
   const location = useLocation();
   const navigate = useNavigate();
   // Pages that own their own panes and gutters: the notebook editor, and the
@@ -50,7 +54,29 @@ export function App() {
     refresh();
   }, [refresh]);
 
-  const accentValue = ACCENTS.find((a) => a.name === accent) ?? ACCENTS[0];
+  // Monaco's theme is global rather than per-editor, so one call re-themes every
+  // editor on the page — including ones that were created before the switch.
+  useEffect(() => applyEditorTheme(theme), [theme]);
+
+  // On `system`, the OS can change under a running app — at sunset, or when
+  // somebody flips the setting in another window. Without this the app would
+  // keep the theme it started with and only agree again after a reload.
+  useEffect(() => {
+    if (mode !== 'system' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const follow = () => setTheme(applyThemeMode('system'));
+    query.addEventListener('change', follow);
+    // And once now: the OS may have changed while another mode was selected.
+    follow();
+    return () => query.removeEventListener('change', follow);
+  }, [mode]);
+
+  // The swatches show the colours you will actually get, which differ by theme:
+  // the accents are lightened for dark, or they disappear into the canvas.
+  const accents = accentsFor(theme);
+  const accentValue = accents.find((a) => a.name === accent) ?? accents[0];
 
   // The server redirects a signed-out browser here, so these routes render
   // without the app shell — there is no breadcrumb to show and no rail to
@@ -71,6 +97,9 @@ export function App() {
       refresh().then(() => navigate('/', { replace: true }));
     };
     return (
+      // The signed-out pages get both providers too: a sign-in screen that
+      // ignores the theme is the first thing anybody sees.
+      <ThemeContext.Provider value={theme}>
       <AccentContext.Provider value={accentValue}>
         <Routes>
           {/* Claimed already: /setup is not a page any more, and the server 404s
@@ -99,6 +128,7 @@ export function App() {
         </Routes>
         <Toaster position="bottom-right" richColors closeButton />
       </AccentContext.Provider>
+      </ThemeContext.Provider>
     );
   }
 
@@ -110,6 +140,7 @@ export function App() {
 
   return (
     <SessionContext.Provider value={session}>
+    <ThemeContext.Provider value={theme}>
     <AccentContext.Provider value={accentValue}>
     <ProjectProvider>
     <TooltipProvider delayDuration={300}>
@@ -128,6 +159,12 @@ export function App() {
             onAccent={(next) => {
               applyAccent(next);
               setAccent(next);
+            }}
+            mode={mode}
+            theme={theme}
+            onMode={(next) => {
+              setMode(next);
+              setTheme(applyThemeMode(next));
             }}
           />
           <main
@@ -205,6 +242,7 @@ export function App() {
     </TooltipProvider>
     </ProjectProvider>
     </AccentContext.Provider>
+    </ThemeContext.Provider>
     </SessionContext.Provider>
   );
 }

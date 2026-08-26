@@ -1,6 +1,6 @@
 import * as monaco from 'monaco-editor';
 import EditorWorker from './editor.worker?worker';
-import { EDITOR, FONT_MONO, NEUTRAL } from '../theme/palette';
+import { FONT_MONO, paletteFor, type ThemeName } from '../theme/palette';
 
 /**
  * Monaco, bundled locally. The worker is resolved through `new URL(…,
@@ -19,60 +19,82 @@ self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
  * same value as the `--code-bg` token — anything else leaves a visible seam at
  * the cell's edge.
  *
- * Light only, on purpose. `defineTheme`/`setTheme` are global rather than
- * per-editor anyway, so there is nothing here to vary per cell. The accent
- * never appears inside the editor (cursor and selection stay neutral), so
- * changing themes needs no re-theme.
+ * Two themes, built from the same shape by the function below, so the dark one
+ * cannot be missing a rule the light one has. `defineTheme`/`setTheme` are
+ * global rather than per-editor, which is why there is nothing here to vary per
+ * cell — and why switching is one call rather than a walk over every editor.
+ *
+ * The accent still never appears inside the editor (cursor and selection stay
+ * neutral), so changing accent needs no re-theme. Changing *theme* does.
  */
-monaco.editor.defineTheme('clrkernel-light', {
-  base: 'vs',
-  inherit: true,
-  /* Warm Paper gives four syntax hues. Monaco's `vs` base assigns its own, so
-     these are re-stated against the standard token scopes rather than left to
-     inherit — otherwise a C# cell renders in VS blue-and-red on cream. */
-  rules: [
-    /* The catch-all first: `vs` paints anything it has no rule for — operators,
-       delimiters, punctuation — in pure black, which is neither the code colour
-       nor anything in this palette. Later rules win, so the specific hues below
-       still apply. */
-    { token: '', foreground: EDITOR.foreground.slice(1) },
-    { token: 'delimiter', foreground: EDITOR.foreground.slice(1) },
-    { token: 'operator', foreground: EDITOR.foreground.slice(1) },
-    { token: 'identifier', foreground: EDITOR.foreground.slice(1) },
-    { token: 'keyword', foreground: EDITOR.keyword.slice(1) },
-    { token: 'string', foreground: EDITOR.string.slice(1) },
-    { token: 'number', foreground: EDITOR.number.slice(1) },
-    { token: 'comment', foreground: EDITOR.comment.slice(1) },
-    { token: 'annotation', foreground: EDITOR.directive.slice(1) },
-    { token: 'metatag', foreground: EDITOR.directive.slice(1) },
-    { token: 'keyword.directive', foreground: EDITOR.directive.slice(1) },
-    { token: 'type', foreground: EDITOR.keyword.slice(1) },
-  ],
-  colors: {
-    'editor.background': EDITOR.background,
-    'editor.foreground': EDITOR.foreground,
-    'editor.lineHighlightBackground': EDITOR.lineHighlight,
-    'editorLineNumber.foreground': EDITOR.lineNumber,
-    'editorIndentGuide.background1': EDITOR.indentGuide,
-    'editor.selectionBackground': EDITOR.selection,
-    'editorWidget.background': EDITOR.widgetBackground,
-    'editorWidget.border': EDITOR.widgetBorder,
-    /* Bracket-pair colourization ships on, and its defaults are Monaco's own
-       hard-coded blue/orange/purple — three more hues than this palette has,
-       and they clash on cream. Neutralised here rather than through the
-       `bracketPairColorization` editor option, which is per-editor and did not
-       take; the theme is global and does. */
-    'editorBracketHighlight.foreground1': EDITOR.foreground,
-    'editorBracketHighlight.foreground2': EDITOR.foreground,
-    'editorBracketHighlight.foreground3': EDITOR.foreground,
-    'editorBracketHighlight.foreground4': EDITOR.foreground,
-    'editorBracketHighlight.foreground5': EDITOR.foreground,
-    'editorBracketHighlight.foreground6': EDITOR.foreground,
-    'editorBracketHighlight.unexpectedBracket.foreground': NEUTRAL.destructive,
-  },
-});
+function defineEditorTheme(name: string, theme: ThemeName): void {
+  const editor = paletteFor(theme).editor;
+  const neutral = paletteFor(theme).neutral;
+  monaco.editor.defineTheme(name, {
+    base: theme === 'dark' ? 'vs-dark' : 'vs',
+    inherit: true,
+    /* Warm Paper gives four syntax hues. Monaco's base themes assign their own,
+       so these are re-stated against the standard token scopes rather than left
+       to inherit — otherwise a C# cell renders in VS blue-and-red on cream. */
+    rules: [
+      /* The catch-all first: the base paints anything it has no rule for —
+         operators, delimiters, punctuation — in its own foreground, which is
+         neither the code colour nor anything in this palette. Later rules win,
+         so the specific hues below still apply. */
+      { token: '', foreground: editor.foreground.slice(1) },
+      { token: 'delimiter', foreground: editor.foreground.slice(1) },
+      { token: 'operator', foreground: editor.foreground.slice(1) },
+      { token: 'identifier', foreground: editor.foreground.slice(1) },
+      { token: 'keyword', foreground: editor.keyword.slice(1) },
+      { token: 'string', foreground: editor.string.slice(1) },
+      { token: 'number', foreground: editor.number.slice(1) },
+      { token: 'comment', foreground: editor.comment.slice(1) },
+      { token: 'annotation', foreground: editor.directive.slice(1) },
+      { token: 'metatag', foreground: editor.directive.slice(1) },
+      { token: 'keyword.directive', foreground: editor.directive.slice(1) },
+      { token: 'type', foreground: editor.keyword.slice(1) },
+    ],
+    colors: {
+      'editor.background': editor.background,
+      'editor.foreground': editor.foreground,
+      'editor.lineHighlightBackground': editor.lineHighlight,
+      'editorLineNumber.foreground': editor.lineNumber,
+      'editorIndentGuide.background1': editor.indentGuide,
+      'editor.selectionBackground': editor.selection,
+      'editorWidget.background': editor.widgetBackground,
+      'editorWidget.border': editor.widgetBorder,
+      /* Bracket-pair colourization ships on, and its defaults are Monaco's own
+         hard-coded blue/orange/purple — three more hues than this palette has,
+         and they clash on cream. Neutralised here rather than through the
+         `bracketPairColorization` editor option, which is per-editor and did not
+         take; the theme is global and does. */
+      'editorBracketHighlight.foreground1': editor.foreground,
+      'editorBracketHighlight.foreground2': editor.foreground,
+      'editorBracketHighlight.foreground3': editor.foreground,
+      'editorBracketHighlight.foreground4': editor.foreground,
+      'editorBracketHighlight.foreground5': editor.foreground,
+      'editorBracketHighlight.foreground6': editor.foreground,
+      'editorBracketHighlight.unexpectedBracket.foreground': neutral.destructive,
+    },
+  });
+}
 
-monaco.editor.setTheme('clrkernel-light');
+defineEditorTheme('clrkernel-light', 'light');
+defineEditorTheme('clrkernel-dark', 'dark');
+
+/** The Monaco theme name for a resolved app theme. Exported because the
+ *  thumbnail colorizer keys its cache on it: the colours are baked into the
+ *  HTML `colorize` returns, so a theme change has to bust that cache. */
+export function monacoThemeFor(theme: ThemeName): string {
+  return theme === 'dark' ? 'clrkernel-dark' : 'clrkernel-light';
+}
+
+/** Global, like `defineTheme` — one call re-themes every editor on the page. */
+export function applyEditorTheme(theme: ThemeName): void {
+  monaco.editor.setTheme(monacoThemeFor(theme));
+}
+
+applyEditorTheme('light');
 
 /** Editor options shared by every cell — a notebook cell is not a file window. */
 export const cellEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
