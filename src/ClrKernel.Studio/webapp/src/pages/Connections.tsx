@@ -13,7 +13,7 @@ import {
   type ApiSavedQuery,
 } from '../api';
 import { editPath } from '../routes';
-import { FileOutput } from 'lucide-react';
+import { SavePlus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -458,7 +458,7 @@ export function Connections() {
                 aria-label="File"
                 title="Keep this query as a notebook on your branch"
               >
-                <FileOutput className="size-3.5" aria-hidden="true" />
+                <SavePlus className="size-3.5" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
