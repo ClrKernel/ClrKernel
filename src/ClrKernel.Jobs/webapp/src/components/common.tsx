@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { SelectGroup, SelectItem, SelectLabel, SelectSeparator } from '@/components/ui/select';
-import type { BranchTree, CellStatus, RunStatus } from '../api';
+import type { ApiLanguage, BranchTree, CellStatus, RunStatus } from '../api';
+import { languageGroups, languageOptions, runsOnProvider } from '../notebook';
 
 /**
  * The reveal handle a collapsed sidebar leaves behind.
@@ -105,6 +106,73 @@ const STATUS_TOKEN: Record<string, string> = {
  * dot falls back to idle for anything unrecognised rather than rendering
  * nothing, so an unknown status still shows its name.
  */
+/**
+ * The cell language picker's contents: what the kernel offers, grouped the way
+ * the kernel says to group it.
+ *
+ * Two rules from the spec, both about where information belongs. The dropdown
+ * carries each language's provider list as secondary text — that is the answer
+ * to "can this cell run on my connection", and it is only wanted while choosing.
+ * The <em>button</em> shows the display name alone, which is why the trigger
+ * renders its own label rather than letting the selected item's markup mirror
+ * into it: a cell footer reading "T-SQL SqlServer · Odbc · Jdbc" would spend a
+ * line of every cell on something you read once.
+ */
+export function LanguageOptions({
+  languages, providerType,
+}: {
+  languages: ApiLanguage[];
+  /** The `$type` of the connection this notebook queries, when it names one.
+   *  Options that cannot run on it are marked rather than hidden: a language you
+   *  cannot see teaches nothing about why. */
+  providerType?: string | null;
+}) {
+  const groups = languageGroups(languages);
+  return (
+    <>
+      {groups.map((group, index) => (
+        // A group, not a bare heading: Radix throws outright if a SelectLabel has
+        // no SelectGroup around it — the same trap BranchOptions documents above.
+        <SelectGroup key={group.label ?? '\u0000ungrouped'}>
+          {group.label != null && (
+            <>
+              {index > 0 && <SelectSeparator />}
+              <SelectLabel className="text-xs font-normal text-muted-subtle">
+                {group.label}
+              </SelectLabel>
+            </>
+          )}
+          {group.options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              <span className="flex flex-col items-start gap-0.5">
+                <span>{option.label}</span>
+                {option.detail != null && (
+                  <span
+                    className={`font-mono text-xs ${
+                      runsOnProvider(option.value, providerType, languages)
+                        ? 'text-muted-subtle'
+                        : 'text-status-warning'
+                    }`}
+                  >
+                    {option.detail}
+                    {!runsOnProvider(option.value, providerType, languages)
+                      && ` — not ${providerType}`}
+                  </span>
+                )}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      ))}
+    </>
+  );
+}
+
+/** What the picker's button says: the display name, and never the provider list. */
+export function languageLabelFor(value: string, languages: ApiLanguage[]): string {
+  return languageOptions(languages).find((o) => o.value === value)?.label ?? value;
+}
+
 export function StatusBadge({ status }: { status: RunStatus | CellStatus | string }) {
   const key = status.toLowerCase();
   return (

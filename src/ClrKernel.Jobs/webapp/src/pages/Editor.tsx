@@ -97,6 +97,10 @@ export function Editor() {
    * when it is somebody else's private one.
    */
   const [connectionId, setConnectionId] = useState<string | null>(null);
+  /** Its `$type`, which decides which dialects can run on it. Separate from the
+   *  id because the id is only useful for a connection this server can open, and
+   *  compatibility is a fact about the connection either way. */
+  const [connectionType, setConnectionType] = useState<string | null>(null);
   const [saved, setSaved] = useState<ApiCell[]>([]);
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
@@ -249,8 +253,12 @@ export function Editor() {
           setUndoStack([]);
           setLanguages(result.languages ?? []);
           setPrivateConnections(result.privateConnections ?? []);
-          void resolveConnection(result.connections ?? []).then(
-            (id) => live && setConnectionId(id));
+          void resolveConnection(result.connections ?? []).then((found) => {
+            if (live) {
+              setConnectionId(found.id);
+              setConnectionType(found.providerType);
+            }
+          });
           setReloads((n) => n + 1);
         })
         .catch((e) => live && setError((e as Error).message));
@@ -901,6 +909,7 @@ export function Editor() {
                 canRun={canRun}
                 busy={running}
                 cleared={cleared}
+                connectionType={connectionType}
                 layout={layout}
                 onActivate={activate}
                 onChange={(cellId, value) =>
@@ -948,6 +957,7 @@ export function Editor() {
                   path={path}
                   diagnostics={session?.diagnostics?.[cell.id]}
                   connectionId={connectionId}
+                  connectionType={connectionType}
                   run={runState[cell.id] ?? null}
                   canRun={canRun}
                   busy={running}
@@ -1070,22 +1080,33 @@ function DiffView({
  * can see resolves to nothing and the cells simply complete against the kernel
  * alone, which is what they did before.
  */
-async function resolveConnection(names: string[]): Promise<string | null> {
+async function resolveConnection(
+  names: string[],
+): Promise<{ id: string | null; providerType: string | null }> {
+  const nothing = { id: null, providerType: null };
   if (names.length === 0) {
-    return null;
+    return nothing;
   }
   try {
     const { connections } = await api.connections();
     for (const name of names) {
-      const found = connections.find(
-        (c) => c.name.toLowerCase() === name.toLowerCase() && c.queryable);
-      if (found != null) {
-        return found.id;
+      const matches = connections.filter((c) => c.name.toLowerCase() === name.toLowerCase());
+      if (matches.length === 0) {
+        continue;
       }
+      // Two different questions about the same connection. Schema completion
+      // needs one this server can open, so it keeps the `queryable` filter. Which
+      // dialect may run on it is a fact about the connection either way — a
+      // notebook's Oracle connection is an Oracle connection whether or not this
+      // server has the driver — so the type is taken from any match.
+      return {
+        id: matches.find((c) => c.queryable)?.id ?? null,
+        providerType: matches[0].type ?? null,
+      };
     }
   } catch {
     // Completion is a convenience; failing to find a connection is not an error
     // worth putting on screen.
   }
-  return null;
+  return nothing;
 }

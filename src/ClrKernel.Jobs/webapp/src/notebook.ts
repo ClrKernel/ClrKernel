@@ -35,9 +35,23 @@ export function withIds(cells: ApiCell[]): EditorCell[] {
  * The Monaco language for a cell. Cell language ids are the kernel's
  * (`shellscript`, `csharp-script`); Monaco has its own names, and for languages
  * it has no grammar for, plain text beats a wrong highlighter.
+ *
+ * `languages` is the kernel's descriptor list. A language that says which editor
+ * language it wants is believed: that is how three SQL dialects share one
+ * highlighter without this file learning their names. The table below it is the
+ * fallback for the kernel languages that predate the field, and for the moment
+ * before any descriptor has arrived.
  */
-export function monacoLanguage(languageId: string | null | undefined, tag?: string | null): string {
+export function monacoLanguage(
+  languageId: string | null | undefined,
+  tag?: string | null,
+  languages: ApiLanguage[] = [],
+): string {
   const id = (languageId ?? '').toLowerCase();
+  const declared = languages.find((l) => l.id.toLowerCase() === id)?.editorLanguageId;
+  if (declared != null && KNOWN_TO_MONACO.has(declared)) {
+    return declared;
+  }
   if (id === 'sql') {
     return 'sql';
   }
@@ -57,6 +71,17 @@ export function monacoLanguage(languageId: string | null | undefined, tag?: stri
   }
   return 'plaintext';
 }
+
+/**
+ * The Monaco languages this app is prepared to hand a cell model to.
+ *
+ * A gate rather than a list of what Monaco knows: `monaco/language.ts` registers
+ * our LSP providers for exactly these ids, so a language asking for one outside
+ * it would get a model with no completion, no hover and no diagnostics — worse
+ * than the plaintext it would otherwise have fallen back to. A future dialect
+ * that wants its own highlighter is added here and there together.
+ */
+const KNOWN_TO_MONACO = new Set(['csharp', 'sql', 'powershell', 'shell', 'plaintext', 'markdown']);
 
 /**
  * The cells to keep open on the kernel, for completion and hover.
@@ -141,13 +166,88 @@ export function connectableLanguage(
   return language?.hasConnections ? language : null;
 }
 
-/** Picker options: Markdown, C#, then every language the kernel declared. */
-export function languageOptions(languages: ApiLanguage[]): { value: string; label: string }[] {
+/** One entry in the cell language picker. */
+export interface LanguageOption {
+  value: string;
+  label: string;
+  /** Secondary text under the label — the connection types this language's cells
+   *  can run on. Absent for a language that is not provider-bound. */
+  detail?: string;
+}
+
+/** Picker options, flat: Markdown, C#, then every language the kernel declared.
+ *  Still the lookup everything uses to turn a cell's language into its label. */
+export function languageOptions(languages: ApiLanguage[]): LanguageOption[] {
   return [
     { value: 'markdown', label: 'Markdown' },
     { value: 'csharp', label: 'C#' },
-    ...languages.map((l) => ({ value: l.id, label: l.displayName })),
+    ...languages.map((l) => ({
+      value: l.id,
+      label: l.displayName,
+      detail: (l.supportedProviders ?? []).join(' · ') || undefined,
+    })),
   ];
+}
+
+/** A heading in the picker and the options under it. `label` is null for the
+ *  ones that belong to no group, which come first. */
+export interface LanguageGroup {
+  label: string | null;
+  options: LanguageOption[];
+}
+
+/**
+ * The same options, clustered the way the kernel says to.
+ *
+ * Grouping comes from each language's `category`, so three SQL dialects sit
+ * together under one heading rather than scattered between C# and HTTP — and a
+ * fourth arrives in the right place without this file being edited. Ungrouped
+ * languages keep their order and come first, because Markdown and C# are what
+ * most cells are.
+ */
+export function languageGroups(languages: ApiLanguage[]): LanguageGroup[] {
+  const options = languageOptions(languages);
+  const categoryOf = new Map(languages.map((l) => [l.id, l.category ?? null] as const));
+  const groups: LanguageGroup[] = [{ label: null, options: [] }];
+
+  for (const option of options) {
+    const category = categoryOf.get(option.value) ?? null;
+    if (category == null) {
+      groups[0].options.push(option);
+      continue;
+    }
+    const existing = groups.find((g) => g.label === category);
+    if (existing == null) {
+      groups.push({ label: category, options: [option] });
+    } else {
+      existing.options.push(option);
+    }
+  }
+  return groups.filter((g) => g.options.length > 0);
+}
+
+/**
+ * Whether a cell in this language can run on a connection of this `$type`.
+ *
+ * Unknown either way is not a refusal: a language whose descriptor has not
+ * arrived, or a connection whose type nobody has said, is a question this cannot
+ * answer — and answering "no" would put a warning on a cell that is perfectly
+ * fine. The kernel refuses for real at run time and warns through diagnostics;
+ * this only decides whether the picker marks the option.
+ */
+export function runsOnProvider(
+  languageId: string | null | undefined,
+  providerType: string | null | undefined,
+  languages: ApiLanguage[],
+): boolean {
+  if (!languageId || !providerType) {
+    return true;
+  }
+  const supported = languages.find((l) => l.id === languageId)?.supportedProviders;
+  if (supported == null || supported.length === 0) {
+    return true;
+  }
+  return supported.some((p) => p.toLowerCase() === providerType.toLowerCase());
 }
 
 /**

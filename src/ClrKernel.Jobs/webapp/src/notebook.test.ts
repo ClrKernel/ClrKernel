@@ -17,6 +17,8 @@ import {
   restoreCells,
   setCellLanguage,
   toApiCells,
+  languageGroups,
+  runsOnProvider,
   toRunCells,
   toSyncCells,
   withIds,
@@ -33,6 +35,31 @@ const languages: ApiLanguage[] = [
 
 const cell = (over: Partial<ApiCell> = {}): ApiCell => ({
   kind: 'code', tag: 'csharp', languageId: null, source: '', ...over,
+});
+
+describe('monacoLanguage with descriptors', () => {
+  it('believes a language that says which highlighter it wants', () => {
+    // Three kernel languages, one Monaco language — and this file never learns
+    // their names to do it.
+    expect(monacoLanguage('oraclesql', null, dialects)).toBe('sql');
+    expect(monacoLanguage('ansisql', null, dialects)).toBe('sql');
+  });
+
+  it('falls back to plaintext for one asking for a highlighter we do not wire', () => {
+    // The gate: our LSP providers are registered for a fixed set of Monaco ids,
+    // so honouring an id outside it would hand back a model with no completion,
+    // no hover and no diagnostics.
+    const exotic = [{
+      id: 'pgsql', displayName: 'PostgreSQL', defaultSelector: '#!pgsql', selectors: ['#!pgsql'],
+      languageTags: ['pgsql'], editorLanguageId: 'pgsql',
+    }];
+    expect(monacoLanguage('pgsql', null, exotic)).toBe('plaintext');
+  });
+
+  it('and needs no descriptors at all for the languages that predate the field', () => {
+    expect(monacoLanguage('sql')).toBe('sql');
+    expect(monacoLanguage('shellscript')).toBe('shell');
+  });
 });
 
 describe('monacoLanguage', () => {
@@ -295,6 +322,82 @@ describe('setCellLanguage', () => {
     expect(languageOptions(languages).map((o) => o.value)).toEqual([
       'markdown', 'csharp', 'sql', 'shellscript', 'dax',
     ]);
+  });
+});
+
+/** The kernel's SQL dialects, as the descriptors arrive on the wire. */
+const dialects: ApiLanguage[] = [
+  {
+    id: 'sql', displayName: 'T-SQL', defaultSelector: '#!sql', selectors: ['#!sql'],
+    languageTags: ['sql', 'tsql'], category: 'SQL', editorLanguageId: 'sql',
+    supportedProviders: ['SqlServer', 'Odbc', 'Jdbc'],
+  },
+  {
+    id: 'oraclesql', displayName: 'Oracle SQL', defaultSelector: '#!oraclesql',
+    selectors: ['#!oraclesql'], languageTags: ['oraclesql', 'plsql'], category: 'SQL',
+    editorLanguageId: 'sql', supportedProviders: ['Oracle', 'Odbc', 'Jdbc'],
+  },
+  {
+    id: 'ansisql', displayName: 'SQL (Generic)', defaultSelector: '#!ansisql',
+    selectors: ['#!ansisql'], languageTags: ['ansisql'], category: 'SQL',
+    editorLanguageId: 'sql', supportedProviders: ['Odbc', 'Jdbc'],
+  },
+  { id: 'http', displayName: 'HTTP', defaultSelector: '#!http', selectors: ['#!http'], languageTags: ['http'] },
+];
+
+describe('the language picker', () => {
+  it('clusters the dialects and leaves everything else where it was', () => {
+    const groups = languageGroups(dialects);
+
+    expect(groups.map((g) => g.label)).toEqual([null, 'SQL']);
+    // Markdown and C# first, because that is what most cells are — and HTTP with
+    // them, because it belongs to no group.
+    expect(groups[0].options.map((o) => o.value)).toEqual(['markdown', 'csharp', 'http']);
+    expect(groups[1].options.map((o) => o.value)).toEqual(['sql', 'oraclesql', 'ansisql']);
+  });
+
+  it('puts the provider list under the option and not in its label', () => {
+    // The button shows the display name alone; this is the text the dropdown
+    // carries under it. A label with the providers in it would end up on every
+    // cell's footer, which is where you read it once and then never again.
+    const oracle = languageGroups(dialects)[1].options.find((o) => o.value === 'oraclesql');
+    expect(oracle?.label).toBe('Oracle SQL');
+    expect(oracle?.detail).toBe('Oracle · Odbc · Jdbc');
+  });
+
+  it('gives a language with no providers no secondary text at all', () => {
+    const http = languageGroups(dialects)[0].options.find((o) => o.value === 'http');
+    expect(http?.detail).toBeUndefined();
+  });
+
+  it('needs no change here when a fourth dialect arrives', () => {
+    const withPostgres = [...dialects, {
+      id: 'pgsql', displayName: 'PostgreSQL', defaultSelector: '#!pgsql', selectors: ['#!pgsql'],
+      languageTags: ['pgsql'], category: 'SQL', supportedProviders: ['Odbc'],
+    }];
+    const sql = languageGroups(withPostgres).find((g) => g.label === 'SQL');
+    expect(sql?.options.map((o) => o.value)).toContain('pgsql');
+  });
+});
+
+describe('runsOnProvider', () => {
+  it('answers from the language’s own declaration', () => {
+    expect(runsOnProvider('sql', 'SqlServer', dialects)).toBe(true);
+    expect(runsOnProvider('sql', 'Oracle', dialects)).toBe(false);
+    expect(runsOnProvider('oraclesql', 'Oracle', dialects)).toBe(true);
+    expect(runsOnProvider('oraclesql', 'SqlServer', dialects)).toBe(false);
+    expect(runsOnProvider('ansisql', 'Odbc', dialects)).toBe(true);
+    expect(runsOnProvider('sql', 'sqlserver', dialects)).toBe(true);
+  });
+
+  it('says yes to a question it cannot answer', () => {
+    // Unknown is not a refusal. A descriptor that has not arrived, a connection
+    // with no type, or a language that is not provider-bound at all would
+    // otherwise put a warning on a cell that is perfectly fine.
+    expect(runsOnProvider('sql', null, dialects)).toBe(true);
+    expect(runsOnProvider(null, 'Oracle', dialects)).toBe(true);
+    expect(runsOnProvider('sql', 'Oracle', [])).toBe(true);
+    expect(runsOnProvider('http', 'Oracle', dialects)).toBe(true);
   });
 });
 

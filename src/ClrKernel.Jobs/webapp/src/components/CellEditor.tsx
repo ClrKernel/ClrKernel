@@ -12,11 +12,10 @@ import {
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { StatusBadge } from './common';
+import { LanguageOptions, StatusBadge, languageLabelFor } from './common';
 import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import type { LspDiagnostic } from '../monaco/lsp';
@@ -25,7 +24,6 @@ import { useCanRun, useCanWrite } from '../sessionContext';
 import {
   connectableLanguage,
   hasEditorServices,
-  languageOptions,
   monacoLanguage,
   type CellRunState,
   type EditorCell,
@@ -47,6 +45,9 @@ interface Props {
   /** The saved connection this notebook queries, for schema completion in SQL
    *  cells. Null when it names none this reader can see. */
   connectionId?: string | null;
+  /** That connection's `$type`, so the language picker can mark the dialects
+   *  that cannot run on it. */
+  connectionType?: string | null;
   /** What this cell did in the session, if it has run. */
   run: CellRunState | null;
   /** False when this deployment cannot execute — no git workflow, or a server
@@ -77,14 +78,15 @@ interface Props {
  * other. A markdown cell shows its rendered prose until you click into it.
  */
 export function CellEditor({
-  cell, index, count, languages, path, diagnostics, connectionId, run, canRun, busy, cleared,
-  clipboard, onChange, onLanguage, onMove, onDelete, onCut, onCopy, onPaste, onRun,
+  cell, index, count, languages, path, diagnostics, connectionId, connectionType, run, canRun,
+  busy, cleared, clipboard, onChange, onLanguage, onMove, onDelete, onCut, onCopy, onPaste, onRun,
   onClearOutput, onConnect,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
   const [editing, setEditing] = useState(false);
   const showPreview = isMarkdown && !editing && cell.source.trim().length > 0;
   const connectable = connectableLanguage(cell.languageId, languages);
+  const picked = isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp');
   const outputs = cleared ? [] : (run?.outputs ?? []);
   // Viewers get the same notebook without the levers. The server refuses these
   // routes anyway; hiding them is so nobody reaches for something that will fail.
@@ -200,27 +202,21 @@ export function CellEditor({
               </Button>
             )}
             {canWrite ? (
-              <Select
-                value={isMarkdown ? 'markdown' : (cell.languageId ?? 'csharp')}
-                onValueChange={onLanguage}
-              >
+              <Select value={picked} onValueChange={onLanguage}>
                 <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
-                  <SelectValue />
+                  {/* Its own label rather than the selected item's markup: the
+                      dropdown carries each language's provider list and the
+                      button must not. */}
+                  <SelectValue>{languageLabelFor(picked, languages)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {languageOptions(languages).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
+                  <LanguageOptions languages={languages} providerType={connectionType} />
                 </SelectContent>
               </Select>
             ) : (
               // A viewer sees which language a cell is, but cannot change it.
               <span className="px-1.5 text-sm text-muted-subtle">
-                {languageOptions(languages).find(
-                  (o) => o.value === (isMarkdown ? 'markdown' : cell.languageId ?? 'csharp'),
-                )?.label ?? cell.languageId}
+                {languageLabelFor(picked, languages)}
               </span>
             )}
             {/* The tag as written, when it differs from the language's own name —
@@ -376,7 +372,7 @@ function CellBody({
   onChange: (source: string) => void;
   onBlur: () => void;
 }) {
-  const language = isMarkdown ? 'markdown' : monacoLanguage(cell.languageId, cell.tag);
+  const language = isMarkdown ? 'markdown' : monacoLanguage(cell.languageId, cell.tag, languages);
   // Markdown cells get no binding at all, so completion never fires on prose.
   // For the rest, the id the kernel knows the language by — never Monaco's, which
   // calls a C# cell "csharp" and would reach no language service at all.

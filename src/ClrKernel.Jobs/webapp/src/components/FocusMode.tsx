@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -15,7 +14,6 @@ import { useFocusEditor } from '../monaco/useMonaco';
 import { useCanRun, useCanWrite } from '../sessionContext';
 import {
   hasEditorServices,
-  languageOptions,
   monacoLanguage,
   type CellRunState,
   type EditorCell,
@@ -23,6 +21,7 @@ import {
 import { clamp, MAX_SIDEBAR, MIN_SIDEBAR, type LayoutPrefs } from '../prefs';
 import { buildToc, sectionIds, stepCell, visibleLeaves } from '../toc';
 import { CellMenu } from './CellEditor';
+import { LanguageOptions, languageLabelFor } from './common';
 import { Output } from './NotebookView';
 import { Splitter } from './Splitter';
 import { TocTree } from './TocTree';
@@ -58,6 +57,7 @@ const MIN_PANE = 80;
  */
 export function FocusMode({
   cells, path, languages, runState, activeId, canRun, busy, cleared, layout, clipboard,
+  connectionType,
   onActivate, onChange, onLanguage, onRun, onClearOutput, onLayout, onDelete, onInsert,
   onCut, onCopy, onPaste,
 }: {
@@ -69,6 +69,8 @@ export function FocusMode({
   canRun: boolean;
   busy: boolean;
   cleared: ReadonlySet<string>;
+  /** The notebook's connection type, for marking dialects that cannot run on it. */
+  connectionType?: string | null;
   layout: LayoutPrefs;
   onActivate: (cellId: string) => void;
   onChange: (cellId: string, source: string) => void;
@@ -92,6 +94,7 @@ export function FocusMode({
   const activeRun = active == null ? null : (runState[active.id] ?? null);
   const outputs = active == null || cleared.has(active.id) ? [] : (activeRun?.outputs ?? []);
   const isMarkdown = active?.kind === 'markdown';
+  const picked = isMarkdown ? 'markdown' : (active?.languageId ?? 'csharp');
 
   // A section that appears while collapsed state is keyed by cell id needs no
   // migration: unknown ids are simply expanded, which is the right default.
@@ -125,7 +128,7 @@ export function FocusMode({
       languageId: active.languageId ?? 'csharp-script',
       enabled: hasEditorServices(active.languageId, languages),
     },
-    language: isMarkdown ? 'markdown' : monacoLanguage(active?.languageId, active?.tag),
+    language: isMarkdown ? 'markdown' : monacoLanguage(active?.languageId, active?.tag, languages),
     value: active?.source ?? '',
     onChange: (source) => {
       if (active != null) {
@@ -351,26 +354,17 @@ export function FocusMode({
               </Button>
               )}
               {canWrite ? (
-              <Select
-                value={isMarkdown ? 'markdown' : (active.languageId ?? 'csharp')}
-                onValueChange={(value) => onLanguage(active.id, value)}
-              >
+              <Select value={picked} onValueChange={(value) => onLanguage(active.id, value)}>
                 <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
-                  <SelectValue />
+                  <SelectValue>{languageLabelFor(picked, languages)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {languageOptions(languages).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
+                  <LanguageOptions languages={languages} providerType={connectionType} />
                 </SelectContent>
               </Select>
               ) : (
                 <span className="px-1.5 text-sm text-muted-subtle">
-                  {languageOptions(languages).find(
-                    (o) => o.value === (isMarkdown ? 'markdown' : active.languageId ?? 'csharp'),
-                  )?.label ?? active.languageId}
+                  {languageLabelFor(picked, languages)}
                 </span>
               )}
               {canWrite && (

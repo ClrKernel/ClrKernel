@@ -242,6 +242,15 @@ export interface ApiLanguage {
   directives?: ApiDirective[];
   hasEditorServices?: boolean;
   hasConnections?: boolean;
+  /** What a picker groups this under — 'SQL' clusters the dialects. */
+  category?: string | null;
+  /** The connections.json `$type`s this language's cells can run on. A
+   *  compatibility declaration, not part of the language's identity: a cell does
+   *  not change language when it is pointed at a different connection. */
+  supportedProviders?: string[];
+  /** The id an editor knows this language by. Several kernel languages can share
+   *  one — the SQL dialects are three languages and one highlighter. */
+  editorLanguageId?: string;
 }
 
 /** What one cell did in an interactive session. Outputs are nbformat shapes —
