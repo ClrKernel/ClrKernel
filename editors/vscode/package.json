@@ -37,11 +37,15 @@
           "C# Script",
           "csharp-script"
         ],
-        "configuration": "./language-configuration.csharp.json",
+        "extensions": [
+          ".cs",
+          ".csx"
+        ],
         "icon": {
-          "light": "./images/csharp.svg",
-          "dark": "./images/csharp.svg"
-        }
+          "light": "./images/csharp2.svg",
+          "dark": "./images/csharp2.svg"
+        },
+        "configuration": "./language-configuration.csharp.json"
       },
       {
         "id": "http",
@@ -53,6 +57,10 @@
           ".http",
           ".rest"
         ],
+        "icon": {
+          "light": "./images/http.svg",
+          "dark": "./images/http.svg"
+        },
         "configuration": "./language-configuration.http.json"
       },
       {
@@ -65,6 +73,10 @@
           ".mmd",
           ".mermaid"
         ],
+        "icon": {
+          "light": "./images/mermaid.svg",
+          "dark": "./images/mermaid.svg"
+        },
         "configuration": "./language-configuration.mermaid.json"
       },
       {
@@ -76,6 +88,10 @@
         "extensions": [
           ".dax"
         ],
+        "icon": {
+          "light": "./images/dax.svg",
+          "dark": "./images/dax.svg"
+        },
         "configuration": "./language-configuration.dax.json"
       },
       {
@@ -86,8 +102,13 @@
           "plsql"
         ],
         "extensions": [
-          ".oraclesql"
+          ".oraclesql",
+          ".sql"
         ],
+        "icon": {
+          "light": "./images/plsql.svg",
+          "dark": "./images/plsql.svg"
+        },
         "configuration": "./language-configuration.sql-dialect.json"
       },
       {
@@ -97,8 +118,13 @@
           "ansisql"
         ],
         "extensions": [
-          ".ansisql"
+          ".ansisql",
+          ".sql"
         ],
+        "icon": {
+          "light": "./images/sql-light.svg",
+          "dark": "./images/sql-dark.svg"
+        },
         "configuration": "./language-configuration.sql-dialect.json"
       },
       {
@@ -108,8 +134,13 @@
           "clr-sql"
         ],
         "extensions": [
-          ".tsql"
+          ".tsql",
+          ".sql"
         ],
+        "icon": {
+          "light": "./images/tsql.svg.png",
+          "dark": "./images/tsql.svg.png"
+        },
         "configuration": "./language-configuration.sql-dialect.json"
       }
     ],
