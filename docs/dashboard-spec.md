@@ -110,8 +110,13 @@ tab, Saved status, Push to test, Promote — is shared chrome if possible.
 > goes through `jobsFile.ts` and comes back as YAML, so autosave, diff, push and
 > promote are unchanged and a comment you wrote survives a checkbox. `parameters:`
 > and `notify:` are named on each card and left to the YAML tab rather than given
-> a half-editor. **Still to do:** the cron pills, field highlighting and wizard
-> below.
+> a half-editor.
+>
+> **Done:** the cron pills, the field highlighting and the wizard. One note on the
+> second: an `<input>` cannot highlight inside itself without an overlay, and an
+> overlay over a text box is a reliable way to end up a pixel out at some font
+> size — so the help line under the field picks out the name of the field the
+> caret is in, which answers the same question.
 
  - use current Overview forms intially, but want to add following:
     - Cron scheduler helper text should have:

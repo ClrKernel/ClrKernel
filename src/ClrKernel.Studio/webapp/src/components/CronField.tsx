@@ -1,3 +1,4 @@
+import { Wand2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +9,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { api, type CronPreview } from '../api';
+import { CRON_FIELDS, fieldAt } from '../cron';
+import { CronWizard } from './CronWizard';
 
 /**
  * Schedules worth having without writing any cron at all. Most jobs are one of
@@ -65,6 +68,11 @@ export function CronField({
   onChange: (cron: string) => void;
 }) {
   const [preview, setPreview] = useState<CronPreview | null>(null);
+  const [wizard, setWizard] = useState(false);
+  // Which of the five fields the caret is in, so the help line can point at the
+  // one being typed. Null when the field is not focused — a highlight on a field
+  // nobody is in is just a bolded word.
+  const [field, setField] = useState<number | null>(null);
 
   useEffect(() => {
     const expression = value.trim();
@@ -91,6 +99,18 @@ export function CronField({
         </span>
         <span className="flex-1" />
         {!disabled && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-sm"
+            onClick={() => setWizard(true)}
+          >
+            <Wand2 className="size-3.5" aria-hidden="true" />
+            Build one
+          </Button>
+        )}
+        {!disabled && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-sm">
@@ -115,25 +135,61 @@ export function CronField({
         value={value}
         placeholder="0 2 * * *"
         aria-describedby="cron-help"
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setField(fieldAt(e.target.value, e.target.selectionStart ?? 0));
+        }}
+        // Every way the caret can move: typing, arrows, clicking, tabbing in.
+        // `selectionchange` on the document would catch them all in one, but it
+        // fires for every selection on the page and this is one input.
+        onSelect={(e) => setField(
+          fieldAt(value, (e.target as HTMLInputElement).selectionStart ?? 0))}
+        onKeyUp={(e) => setField(
+          fieldAt(value, (e.target as HTMLInputElement).selectionStart ?? 0))}
+        onFocus={(e) => setField(fieldAt(value, e.target.selectionStart ?? 0))}
+        onBlur={() => setField(null)}
       />
+      {/* The five names, with the one you are in picked out. An input cannot
+          highlight inside itself without an overlay, and an overlay over a text
+          box is a well-known way to end up one pixel out at some font size — so
+          the help line does the pointing instead. */}
       <span id="cron-help" className="block font-mono text-code text-muted-subtle">
-        minute hour day-of-month month day-of-week
+        {CRON_FIELDS.map((name, index) => (
+          <span
+            key={name}
+            className={index === field ? 'font-semibold text-foreground' : undefined}
+          >
+            {name}{index < CRON_FIELDS.length - 1 ? ' ' : ''}
+          </span>
+        ))}
       </span>
       {preview && !preview.valid && (
         <span className="block text-base text-destructive">
           Not a schedule this server can run: {preview.error}
         </span>
       )}
-      {preview?.valid && (
-        <span className="block text-base text-muted-foreground">
+      {preview?.valid && preview.next.length > 0 && (
+        <div className="block text-base text-muted-foreground">
           Next:{' '}
-          <span className="font-mono text-code text-foreground">
-            {preview.next.slice(0, 3).map(when).join('  ·  ')}
+          {/* One pill per run rather than a run-on line. Three instants separated
+              by dots read as one string of characters; boxed, they read as three
+              times, which is the question being answered. */}
+          <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+            {preview.next.slice(0, 3).map((iso) => (
+              <span
+                key={iso}
+                className="rounded-full border border-border bg-surface-panel-strong px-2 py-px font-mono text-code text-foreground"
+              >
+                {when(iso)}
+              </span>
+            ))}
           </span>{' '}
           — times are <strong>UTC</strong>
           {offset && `, and you are on ${offset}`}.
-        </span>
+        </div>
+      )}
+      {wizard && (
+        <CronWizard current={value} onUse={onChange} onClose={() => setWizard(false)} />
       )}
       {preview?.valid && preview.next.length === 0 && (
         <span className="block text-base text-status-warning">
