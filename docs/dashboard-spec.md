@@ -113,9 +113,15 @@ tab, Saved status, Push to test, Promote — is shared chrome if possible.
 
 ## Editing job in YAML view
 
-- Use **`monaco-yaml`** for schema validation and completion. Plain Monaco's YAML
-  support is syntax highlighting only; it will not tell anyone that
-  `scedule:` is misspelled.
+- ~~Use **`monaco-yaml`**~~ — **it does not work with this Monaco.** It reaches the
+  editor through `monaco-worker-manager`, which calls
+  `createWebWorker({ moduleId, label })`; monaco-editor 0.56 replaced that with
+  `{ worker }`, so the worker is never created and every request fails with
+  "Missing requestHandler". 5.5.1 is the latest release and its `>=0.36` peer
+  range is simply wrong. Completion is instead a small provider driven by the
+  published schema, and errors come from the server — which builds that same
+  schema and is the authority the push gate uses anyway. What is lost is that
+  errors arrive on save rather than on keystroke, about a second behind.
 - **Validate server-side too, on save and on push.** The client schema is
   convenience, not enforcement.
 - Autosaving syntactically invalid YAML on a user branch is fine — it's just a
@@ -209,9 +215,11 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
       file level — not duplicated in the notebook and YAML editors. *(It already
       was: the editor page is keyed on the path, and only the Notebook tab is
       notebook-specific.)*
-- [ ] YAML editing offers schema-driven completion and inline errors, from a schema
-      published by the kernel.
-- [ ] Invalid YAML can be autosaved on a user branch but cannot be pushed to `test`.
+- [x] YAML editing offers schema-driven completion and inline errors, from a schema
+      published by the kernel. *(`GET /api/jobs/schema`, built from the same
+      `JobsSchema` the server validates with. Completion is ours, not
+      `monaco-yaml` — see below. Errors arrive on save rather than on keystroke.)*
+- [x] Invalid YAML can be autosaved on a user branch but cannot be pushed to `test`.
 - [ ] User branches never schedule anything; `test` and `prod` do. (Today only
       `prod`; decided to add `test` — see Decision.)
 - [x] Promoting a changed job definition requires a successful `test` run at the

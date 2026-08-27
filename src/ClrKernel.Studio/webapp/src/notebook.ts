@@ -127,6 +127,11 @@ export function hasEditorServices(
   return descriptor == null || descriptor.hasEditorServices !== false;
 }
 
+/** A job definition, which gets schema completion and inline errors. */
+export function isJobsFile(path: string): boolean {
+  return (path ?? '').toLowerCase().endsWith('.jobs.yaml');
+}
+
 /**
  * Whether this path may be written on your own branch.
  *

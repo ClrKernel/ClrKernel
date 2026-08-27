@@ -792,4 +792,86 @@ public class NotebookCellsApiTest {
             "once it has a name it is a notebook like any other, and pushes like one");
     }
 
+    private Task<HttpResponseMessage> PutTextAsync(string path, string content) =>
+        _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={path}",
+            new StringContent(content));
+
+    private const string _brokenJobs = "jobs:\n  - name: daily\n    scedule: \"0 6 * * *\"\n";
+    private const string _goodJobs = "jobs:\n  - name: daily\n    cron: \"0 6 * * *\"\n";
+
+    /// <summary>
+    /// The rule the spec asks for: a jobs file mid-edit is a buffer and saves
+    /// fine; the same file reaching test is a job the scheduler will not run.
+    /// </summary>
+    [TestMethod]
+    public async Task An_invalid_jobs_file_saves_but_cannot_be_pushed() {
+        var saved = await PutTextAsync("reports/daily.jobs.yaml", _brokenJobs);
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode, "autosave must never lose what you typed");
+        var body = JsonSerializer.Deserialize<JsonElement>(await saved.Content.ReadAsStringAsync(), _json);
+        var problems = body.GetProperty("problems").EnumerateArray().ToList();
+        Assert.AreEqual(1, problems.Count, "and it says what is wrong, so the editor can underline it");
+        StringAssert.Contains(problems[0].GetProperty("message").GetString(), "scedule");
+        Assert.AreEqual(3, problems[0].GetProperty("line").GetInt32());
+
+        var push = await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "x" });
+        Assert.AreEqual(HttpStatusCode.Conflict, push.StatusCode);
+        var refusal = JsonSerializer.Deserialize<JsonElement>(await push.Content.ReadAsStringAsync(), _json);
+        StringAssert.Contains(refusal.GetProperty("error").GetString(), "reports/daily.jobs.yaml");
+        Assert.AreEqual("reports/daily.jobs.yaml",
+            refusal.GetProperty("invalid")[0].GetProperty("path").GetString());
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "reports", "daily.jobs.yaml")),
+            "and nothing reached test");
+    }
+
+    [TestMethod]
+    public async Task Fixing_it_lets_the_push_through() {
+        await PutTextAsync("reports/daily.jobs.yaml", _brokenJobs);
+        Assert.AreEqual(HttpStatusCode.Conflict,
+            (await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "x" })).StatusCode);
+
+        var saved = await PutTextAsync("reports/daily.jobs.yaml", _goodJobs);
+        var body = JsonSerializer.Deserialize<JsonElement>(await saved.Content.ReadAsStringAsync(), _json);
+        Assert.AreEqual(0, body.GetProperty("problems").GetArrayLength(), "nothing left to say");
+
+        var push = await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "x" });
+        Assert.AreEqual(HttpStatusCode.OK, push.StatusCode, await push.Content.ReadAsStringAsync());
+        Assert.AreEqual(_goodJobs, File.ReadAllText(Path.Combine(_git.TestPath, "reports", "daily.jobs.yaml")));
+    }
+
+    /// <summary>
+    /// One broken jobs file must not hold a notebook hostage in a way nobody can
+    /// diagnose — but it does hold the push, because a push is the whole branch.
+    /// The message names the file so there is something to go and fix.
+    /// </summary>
+    [TestMethod]
+    public async Task The_refusal_names_every_file_that_is_wrong() {
+        await PutTextAsync("reports/daily.jobs.yaml", _brokenJobs);
+        await PutTextAsync("other.jobs.yaml", "jobs: []\n");
+
+        var push = await _client.PostAsJsonAsync("/api/projects/default/branch/push", new { message = "x" });
+        Assert.AreEqual(HttpStatusCode.Conflict, push.StatusCode);
+        var refusal = JsonSerializer.Deserialize<JsonElement>(await push.Content.ReadAsStringAsync(), _json);
+        var named = refusal.GetProperty("invalid").EnumerateArray()
+            .Select(f => f.GetProperty("path").GetString()).OrderBy(p => p).ToArray();
+        CollectionAssert.AreEqual(new[] { "other.jobs.yaml", "reports/daily.jobs.yaml" }, named);
+        StringAssert.Contains(refusal.GetProperty("error").GetString(), "2 jobs files");
+    }
+
+    /// <summary>A notebook is not a jobs file: saving one reports nothing.</summary>
+    [TestMethod]
+    public async Task A_notebook_save_carries_no_jobs_problems() {
+        var saved = await PutTextAsync(_notebook, "# still a notebook\n");
+        var body = JsonSerializer.Deserialize<JsonElement>(await saved.Content.ReadAsStringAsync(), _json);
+        Assert.AreEqual(JsonValueKind.Null, body.GetProperty("problems").ValueKind);
+    }
+
+    [TestMethod]
+    public async Task The_schema_the_editor_uses_is_published() {
+        var schema = await _client.GetFromJsonAsync<JsonElement>("/api/jobs/schema");
+        Assert.IsFalse(schema.GetProperty("additionalProperties").GetBoolean());
+        Assert.IsTrue(schema.GetProperty("properties").TryGetProperty("jobs", out _));
+    }
+
+
 }

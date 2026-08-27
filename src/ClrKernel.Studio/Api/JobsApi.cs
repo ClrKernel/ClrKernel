@@ -311,7 +311,15 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "File too large (2 MB limit)." });
                 }
                 using var reader = new StreamReader(context.Request.Body);
-                return SaveToBranch(context, scope, branch, target, path, await reader.ReadToEndAsync());
+                var content = await reader.ReadToEndAsync();
+                // A jobs file mid-edit is allowed to be wrong — it is a buffer on
+                // your own branch, and refusing the autosave would mean losing what
+                // you typed. The problems ride back with the save so the editor can
+                // underline them; the push is where they actually stop something.
+                var problems = target.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)
+                    ? JobsFileValidation.Check(content)
+                    : null;
+                return SaveToBranch(context, scope, branch, target, path, content, problems);
             }).RequiresProject(ProjectRole.ProjectMember);
 
         // The notebook as editable cells, with the languages the kernel can run —
@@ -845,6 +853,18 @@ public static class JobsApi {
                 if (string.IsNullOrWhiteSpace(message)) {
                     message = $"changes from {user?.DisplayName}";
                 }
+                // Every jobs file on the branch, before anything is committed. A
+                // broken one on your own branch is a file mid-edit; the same file in
+                // test is a job the scheduler will not run and nobody will notice.
+                // This is the moment it stops being yours.
+                if (InvalidJobsFiles(scope, user.Id) is { Count: > 0 } invalid) {
+                    return Results.Json(new {
+                        error = invalid.Count == 1
+                            ? $"{invalid[0].Path} has a problem — fix it before pushing to test."
+                            : $"{invalid.Count} jobs files have problems — fix them before pushing to test.",
+                        invalid,
+                    }, statusCode: 409);
+                }
                 var result = scope.Git.PushToTest(user.Id, message, user?.DisplayName, EmailFor(user));
                 if (!result.Pushed) {
                     return Results.Json(
@@ -1097,6 +1117,13 @@ public static class JobsApi {
             }
             return Results.Ok(new { valid = true, error = (string)null, next });
         });
+
+        // The jobs-file schema, for the editor's completion and inline errors. Same
+        // definition the server validates with (JobsSchema), so the two cannot come
+        // to different conclusions about a file. Constant for the life of the
+        // process — it is derived from types, not from anything on disk.
+        api.MapGet("/jobs/schema", () =>
+            Results.Text(JobsSchema.Json, "application/schema+json"));
 
         api.MapGet("/runs", async (
             HttpContext context, ProjectRegistry projects, IRunStore store,
@@ -1575,8 +1602,42 @@ public static class JobsApi {
     /// bury the one message anybody wrote under a hundred nobody did.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Every <c>*.jobs.yaml</c> on a person's branch that would not load, with the
+    /// problems positioned so the editor can point at them.
+    /// <para>
+    /// Walks the worktree rather than the catalog: the catalog only ever loads test
+    /// and prod, which is exactly the set this needs to keep a broken file out of.
+    /// Dot-directories are skipped for the same reasons the file tree skips them.
+    /// </para>
+    /// </summary>
+    private static List<InvalidJobsFile> InvalidJobsFiles(Scope scope, Guid userId) {
+        var invalid = new List<InvalidJobsFile>();
+        var root = scope.Git?.UserPath(userId.ToString("D"));
+        if (root == null || !Directory.Exists(root)) {
+            return invalid;
+        }
+        foreach (var file in Directory.EnumerateFiles(root, "*.jobs.yaml", SearchOption.AllDirectories)) {
+            var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (relative.Split('/').Any(segment => segment.StartsWith('.'))) {
+                continue;
+            }
+            string content;
+            try {
+                content = File.ReadAllText(file);
+            } catch (IOException) {
+                continue;
+            }
+            if (JobsFileValidation.Check(content) is { Count: > 0 } problems) {
+                invalid.Add(new InvalidJobsFile(relative, problems));
+            }
+        }
+        return invalid;
+    }
+
     private static IResult SaveToBranch(
-        HttpContext context, Scope scope, string branch, string resolved, string path, string content) {
+        HttpContext context, Scope scope, string branch, string resolved, string path, string content,
+        IReadOnlyList<JobsProblem> problems = null) {
         scope.Git.WithLock(() => {
             var directory = Path.GetDirectoryName(resolved)!;
             Directory.CreateDirectory(directory);
@@ -1589,7 +1650,7 @@ public static class JobsApi {
             File.WriteAllText(staging, content);
             File.Move(staging, resolved, overwrite: true);
         });
-        return Results.Ok(new { saved = true, branch });
+        return Results.Ok(new { saved = true, branch, problems });
     }
 
     /// <summary>
@@ -1924,6 +1985,9 @@ public sealed class LanguageRequest {
 }
 
 /// <summary>The editor's save: the whole notebook, as cells.</summary>
+/// <summary>A jobs file that would not load, and why. Returned by a refused push.</summary>
+public sealed record InvalidJobsFile(string Path, IReadOnlyList<JobsProblem> Problems);
+
 /// <summary>Where a notebook is being moved to, relative to the same branch.</summary>
 public sealed class MoveWrite {
     public string To { get; set; }

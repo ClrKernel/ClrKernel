@@ -224,6 +224,15 @@ export function useFillEditor(
    * editor is created once.
    */
   connection?: () => string | null,
+  /**
+   * The file this editor is showing, as a path.
+   *
+   * Only to give the model a URI that ends in the real filename, which is how
+   * `monaco-yaml` decides a buffer is a `*.jobs.yaml` and not somebody's
+   * docker-compose. Without it Monaco names models `inmemory://model/1` and every
+   * yaml file would get the jobs schema, or none would.
+   */
+  modelPath?: string,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -238,10 +247,27 @@ export function useFillEditor(
     if (!container.current) {
       return;
     }
+    // A named model when the caller says which file this is, an anonymous one
+    // otherwise. `getModel` first because a model URI is global and creating a
+    // second one for the same path throws — two tabs on one file, or a remount.
+    const uri = modelPath ? monaco.Uri.parse(`file:///${modelPath}`) : undefined;
+    let named: monaco.editor.ITextModel | null = null;
+    if (uri) {
+      named = monaco.editor.getModel(uri);
+      // A model that survived — a remount, or two editors on one file. Its
+      // contents are whatever the last one left, so seed it rather than showing
+      // a stale buffer that autosave would then write back over the real file.
+      if (named) {
+        if (named.getValue() !== value) {
+          named.setValue(value);
+        }
+      } else {
+        named = monaco.editor.createModel(value, language, uri);
+      }
+    }
     const created = monaco.editor.create(container.current, {
       ...focusEditorOptions,
-      value,
-      language,
+      ...(named ? { model: named } : { value, language }),
       readOnly,
     });
     editor.current = created;

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ApiError, api, projectSlug, setBranch, type ApiCell, type ApiLanguage } from '../api';
+import {
+  ApiError, api, projectSlug, setBranch,
+  type ApiCell, type ApiJobsProblem, type ApiLanguage,
+} from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,6 +15,8 @@ import { NotebookToolbar } from '../components/NotebookToolbar';
 import { moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
+import { monaco } from '../monaco/setup';
+import { enableJobsSchema } from '../monaco/yamlSchema';
 import { releaseCellModels } from '../monaco/models';
 import {
   DEFAULT_LAYOUT,
@@ -36,6 +41,7 @@ import {
   emptyCell,
   fileEditable,
   fileLanguage,
+  isJobsFile,
   insertCell,
   isDirty,
   keepIds,
@@ -128,6 +134,9 @@ export function Editor() {
       navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
     }
   }, [tab, asked, branch, path, navigate]);
+  // What the server said about this file when it was last saved. Jobs files only;
+  // it stays empty for everything else.
+  const [jobsProblems, setJobsProblems] = useState<ApiJobsProblem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -403,6 +412,19 @@ export function Editor() {
   }, [cells]);
   useEffect(() => () => releaseCellModels([]), [path]);
 
+  // Schema completion and inline errors for jobs files, fetched from the server
+  // the first time one is opened rather than on every page load — it is a
+  // language service and a worker, and most files here are not YAML.
+  useEffect(() => {
+    if (isJobsFile(path)) {
+      void enableJobsSchema();
+    }
+  }, [path]);
+
+  // A file that is not a jobs file has no jobs problems, and stale ones from the
+  // last file would otherwise underline lines in this one.
+  useEffect(() => setJobsProblems([]), [path]);
+
   // Opening a notebook starts its kernel, the way opening one in VS Code starts the
   // language server. Without this a session appears only on the first run, and
   // completion would be dead until then — which is the wrong way round, since the
@@ -582,8 +604,11 @@ export function Editor() {
   const saveNow = useCallback(async (keepalive = false) => {
     if (editingText) {
       const text = source ?? '';
-      await api.saveNotebookContent(path, text, keepalive);
+      const written = await api.saveNotebookContent(path, text, keepalive);
       setSavedSource(text);
+      // The server's verdict on the bytes it just wrote. Null for anything that
+      // is not a jobs file, which is why this clears rather than only sets.
+      setJobsProblems(written.problems ?? []);
     } else {
       await api.saveNotebookCells(path, toApiCells(cells ?? []), keepalive);
       setSaved(cells ?? []);
@@ -1043,6 +1068,8 @@ export function Editor() {
               language={fileLanguage(path)}
               onChange={setSource}
               resetKey={reloads}
+              path={path}
+              problems={jobsProblems}
             />
           )}
         </div>
@@ -1094,15 +1121,43 @@ export function Editor() {
 /** The whole file as one editor — the fallback for non-notebooks, and the escape
  *  hatch when you want to see exactly what is on disk. */
 function SourceEditor({
-  value, language, onChange, resetKey,
+  value, language, onChange, resetKey, path, problems,
 }: {
   value: string;
   language: string;
   onChange: (value: string) => void;
   /** Changes when the file was replaced under the editor rather than typed into. */
   resetKey: number;
+  /** The file, so the model's URI ends in its real name — see `modelPath`. */
+  path: string;
+  /** What the server said about this file when it was last saved. */
+  problems: ApiJobsProblem[];
 }) {
-  const container = useFillEditor(language, value, onChange, !useCanWrite(), resetKey);
+  const handle = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const container = useFillEditor(
+    language, value, onChange, !useCanWrite(), resetKey, undefined, handle, undefined, path);
+
+  // The server's problems as markers, in their own owner so they sit alongside
+  // monaco-yaml's rather than replacing them. The two overlap and that is fine:
+  // the schema catches shape, the server catches what only it knows — a cron that
+  // is not a schedule, two jobs with one name.
+  useEffect(() => {
+    const model = handle.current?.getModel();
+    if (model == null) {
+      return;
+    }
+    monaco.editor.setModelMarkers(model, 'clrkernel-jobs', problems.map((problem) => ({
+      severity: monaco.MarkerSeverity.Error,
+      message: problem.message,
+      startLineNumber: problem.line,
+      startColumn: problem.column,
+      // To the end of the line: the server reports where a problem starts, and
+      // guessing where it ends would underline the wrong half of it.
+      endLineNumber: problem.line,
+      endColumn: model.getLineMaxColumn(Math.min(problem.line, model.getLineCount())),
+    })));
+  }, [problems, value]);
+
   return <div className="source-editor" ref={container} />;
 }
 

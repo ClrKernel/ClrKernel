@@ -327,6 +327,14 @@ export interface ApiConnectionProvider {
   allowExtraSettings?: boolean;
 }
 
+/** One problem with a `*.jobs.yaml`, positioned so the editor can underline it. */
+export interface ApiJobsProblem {
+  /** 1-based, as editors count. */
+  line: number;
+  column: number;
+  message: string;
+}
+
 export interface TreeNode {
   name: string;
   path: string;
@@ -526,7 +534,7 @@ export const api = {
    * a 64 KB body cap the browser enforces.
    */
   saveNotebookContent: (path: string, content: string, keepalive = false) =>
-    request<{ saved: boolean; branch: string }>(
+    request<{ saved: boolean; branch: string; problems: ApiJobsProblem[] | null }>(
       `${scope('mine')}/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' }, keepalive },
     ),
