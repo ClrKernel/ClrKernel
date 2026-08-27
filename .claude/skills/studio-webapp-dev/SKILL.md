@@ -42,6 +42,21 @@ The symptom when a path resolves two ways is a front end that comes up fine and
 returns 500s, because the API exited at startup and Vite is proxying to nothing.
 **Read `$S/dev.log` first** — the reason is a sentence at the top of it.
 
+## Vite up, API dead: check for state `T` before anything else
+
+`ps -o stat` on the children. `T` means **stopped**, not crashed — a background
+process group that reads the controlling terminal is suspended with SIGTTIN, and
+both `dotnet watch` (Ctrl+R) and Vite (its shortcuts) read it. The script
+redirects both from `/dev/null` for this reason; if that is ever removed, the API
+never binds, waiting does not help, and nothing appears in any log because
+nothing is running.
+
+This only happens under a **real terminal**, so it is invisible to a harness that
+backgrounds the script with `nohup`. To test terminal behaviour you have to
+allocate a pty (`pty.fork` in Python; `script` needs a tty to inherit and will
+not always have one) and write `\x03` to the master for a true Ctrl+C. Anything
+less tests a different thing than the one that broke.
+
 Read `$S/dev.log` when something does not come up. It is where the API's refusals
 land, and they are usually sentences rather than stack traces.
 
