@@ -13,7 +13,15 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NOTEBOOKS="$(cd "${1:-$REPO/dev/notebooks}" && pwd)"
+# Absolute, for the same reason the notebooks root is, and this one is easy to
+# miss: `dotnet run --project` runs the app from the *project* folder, so a
+# relative --data-dir lands under src/ClrKernel.Studio. The store test below then
+# reads settings.json from your shell's directory while the app reads a different
+# one entirely — you get "serve needs an explicit run-history store", no backend,
+# and a front end returning 500s. Made before the mkdir because it may not exist.
 DATA="${DATA_DIR:-$REPO/dev/data}"
+mkdir -p "$DATA"
+DATA="$(cd "$DATA" && pwd)"
 API_PORT="${API_PORT:-5000}"
 UI_PORT="${UI_PORT:-5173}"
 
@@ -24,8 +32,6 @@ if [ ! -x "$KERNEL" ]; then
     echo "Building the kernel once (so cells run against this checkout)…"
     dotnet build "$REPO/src/ClrKernel/ClrKernel.csproj" -v quiet --nologo
 fi
-
-mkdir -p "$DATA"
 
 cleanup() {
     # dotnet watch spawns the app as a child; kill the whole group or the app

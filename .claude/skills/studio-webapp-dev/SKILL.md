@@ -33,6 +33,15 @@ Then drive **`http://localhost:5181`**. Teardown: `kill -- -$(cat $S/pid)` — t
 process group, because `dotnet watch` spawns the app as a child and killing only
 the parent leaves the port held.
 
+**Absolute paths.** `dotnet run --project` runs the app from the project folder,
+so a relative `--data-dir` or notebooks root lands under `src/ClrKernel.Studio`
+rather than where you meant. The script absolutises both now; keep it that way,
+and pass absolute paths from a harness regardless.
+
+The symptom when a path resolves two ways is a front end that comes up fine and
+returns 500s, because the API exited at startup and Vite is proxying to nothing.
+**Read `$S/dev.log` first** — the reason is a sentence at the top of it.
+
 Read `$S/dev.log` when something does not come up. It is where the API's refusals
 land, and they are usually sentences rather than stack traces.
 
