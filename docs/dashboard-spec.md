@@ -105,6 +105,14 @@ Everything wrapping the editor — breadcrumb, branch switcher, page toolbar, di
 tab, Saved status, Push to test, Promote — is shared chrome if possible.
 
 ## Editing job in "Overview" or wizard
+
+> **Done:** the Overview tab. It is a form over the file's *text* — every edit
+> goes through `jobsFile.ts` and comes back as YAML, so autosave, diff, push and
+> promote are unchanged and a comment you wrote survives a checkbox. `parameters:`
+> and `notify:` are named on each card and left to the YAML tab rather than given
+> a half-editor. **Still to do:** the cron pills, field highlighting and wizard
+> below.
+
  - use current Overview forms intially, but want to add following:
     - Cron scheduler helper text should have:
     - put pills around next runs in cron,
@@ -207,10 +215,9 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
 
 ## Acceptance criteria
 
-- [~] Job definitions are edited as `.yml` files in Files, with autosave, diff,
-      Push to test, and Promote working identically to notebooks. *(Phase 1: the
-      tree lists every file and a `*.jobs.yaml` opens in the shared editor and
-      autosaves. The Overview/YAML tab split is still to come.)*
+- [x] Job definitions are edited as `.yml` files in Files, with autosave, diff,
+      Push to test, and Promote working identically to notebooks. *(Overview |
+      YAML | Diff, both editing the same text buffer.)*
 - [x] Branch, worktree, autosave, and promotion logic is implemented once at the
       file level — not duplicated in the notebook and YAML editors. *(It already
       was: the editor page is keyed on the path, and only the Notebook tab is

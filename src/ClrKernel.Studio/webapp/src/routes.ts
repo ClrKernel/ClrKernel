@@ -9,14 +9,18 @@
  */
 
 /**
- * How a notebook is being looked at. Three readings of one file, so they are
- * three URLs — the same rule the Settings tabs follow, and it is what makes a
- * view something you can link to, reload into, and go back from.
+ * How a file is being looked at. Readings of one file, so they are separate URLs
+ * — the same rule the Settings tabs follow, and it is what makes a view something
+ * you can link to, reload into, and go back from.
+ *
+ * `edit` is the notebook editor and `overview` is the jobs form; each belongs to
+ * one kind of file, and the toolbar offers whichever fits. `source` and `diff`
+ * are the two every file has.
  *
  * Not to be confused with read-only, which is not a view: that comes from the
  * branch, and every one of these is read-only on a branch that is not yours.
  */
-export const NOTEBOOK_VIEWS = ['edit', 'source', 'diff'] as const;
+export const NOTEBOOK_VIEWS = ['edit', 'overview', 'source', 'diff'] as const;
 export type NotebookView = (typeof NOTEBOOK_VIEWS)[number];
 
 /** The sections whose URL names a project. Everything else is server-wide. */

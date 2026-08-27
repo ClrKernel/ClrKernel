@@ -75,6 +75,8 @@ export interface NotebookToolbarProps {
   onTab: (tab: string) => void;
   /** Only a .nb.md has a Notebook tab; anything else opens straight to Source. */
   isNotebook: boolean;
+  /** Only a *.jobs.yaml has an Overview tab — the form over the same file. */
+  isJobsFile: boolean;
   canRun: boolean;
   running: boolean;
   session: { started?: boolean; kernel?: string | null; version?: string | null } | null;
@@ -365,7 +367,8 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
         <TabsList variant="line">
           {props.isNotebook && <TabsTrigger value="edit">Notebook</TabsTrigger>}
-          <TabsTrigger value="source">Source</TabsTrigger>
+          {props.isJobsFile && <TabsTrigger value="overview">Overview</TabsTrigger>}
+          <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
           <TabsTrigger value="diff">Diff vs production</TabsTrigger>
         </TabsList>
       </Tabs>

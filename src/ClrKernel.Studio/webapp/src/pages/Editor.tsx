@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
+import { JobsOverview } from '../components/JobsOverview';
 import { NotebookToolbar } from '../components/NotebookToolbar';
 import { moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
@@ -42,6 +43,7 @@ import {
   fileEditable,
   fileLanguage,
   isJobsFile,
+  notebookPaths,
   insertCell,
   isDirty,
   keepIds,
@@ -128,7 +130,12 @@ export function Editor() {
   // Only a `.nb.md` parses into cells, so `edit` on anything else is a view that
   // cannot render; the URL is corrected to match what is actually shown.
   const asked = viewOf(pathname) ?? 'edit';
-  const tab: NotebookView = !isNotebook && asked === 'edit' ? 'source' : asked;
+  // A view that does not belong to this kind of file falls back to the one every
+  // file has. Arriving at `/edit/` on a jobs file, or `/overview/` on a notebook,
+  // is a link from elsewhere rather than a choice — Source is the honest answer.
+  const jobsFile = isJobsFile(path);
+  const tab: NotebookView =
+    (asked === 'edit' && !isNotebook) || (asked === 'overview' && !jobsFile) ? 'source' : asked;
   useEffect(() => {
     if (tab !== asked) {
       navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
@@ -232,7 +239,9 @@ export function Editor() {
 
   // Source is the buffer on the Source tab and on anything that is not a
   // notebook; everywhere else the cells are.
-  const editingText = tab === 'source' || !isNotebook;
+  // Overview edits the same text `source` holds — it is a form over the file, not
+  // a second model — so it saves, diffs and dirties through exactly this path.
+  const editingText = tab === 'source' || tab === 'overview' || !isNotebook;
   const dirty = editingText
     ? source != null && source !== savedSource
     : cells != null && isDirty(cells, saved);
@@ -411,6 +420,14 @@ export function Editor() {
     }
   }, [cells]);
   useEffect(() => () => releaseCellModels([]), [path]);
+
+  // The branch's notebooks, so the Overview form can say when a job names one
+  // that is not here yet — the failure that otherwise surfaces as a scheduled run
+  // dying at midnight. Only fetched on that tab; nothing else needs the tree.
+  const { data: trees } = usePolling(
+    () => (tab === 'overview' ? api.notebooks() : Promise.resolve(null)), null);
+  const branchNotebooks = notebookPaths(
+    trees?.environments.find((e) => e.name === branch)?.tree);
 
   // Schema completion and inline errors for jobs files, fetched from the server
   // the first time one is opened rather than on every page load — it is a
@@ -872,6 +889,7 @@ export function Editor() {
           navigate(editPath(projectSlug(), branch, path, next as NotebookView));
         }}
         isNotebook={isNotebook}
+        isJobsFile={jobsFile}
         canRun={canRun}
         running={running}
         session={session}
@@ -1057,6 +1075,19 @@ export function Editor() {
             )}
           </div>
         ))}
+
+      {tab === 'overview' && (
+        source == null ? (
+          <p className="px-4 text-base text-muted-foreground">Loading…</p>
+        ) : (
+          <JobsOverview
+            text={source}
+            onChange={setSource}
+            readOnly={!canWrite}
+            notebooks={branchNotebooks}
+          />
+        )
+      )}
 
       {tab === 'source' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
