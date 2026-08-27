@@ -63,7 +63,18 @@ set -m
 # Two branches rather than an unquoted "$STORE_ARGS": word splitting an empty
 # variable is a different thing in bash and in zsh, and a dev loop that depends
 # on which one you invoked it with is a bug waiting for a Tuesday.
-if [ -f "$DATA/settings.json" ]; then
+#
+# The test is whether settings.json names a *store*, not whether it exists.
+# SettingsRegistry.Write merges only the keys that changed, so changing any one
+# thing on the Settings page leaves a settings.json holding, say, just
+# maxParallelism — and the next start of this script then trusted that file to
+# answer a question it says nothing about, passed no --store, and died on "serve
+# needs an explicit run-history store". Use the app, restart the loop, no server.
+#
+# ponytail: a grep, not a JSON parse. It answers "did somebody choose a store on
+# purpose", and being wrong costs a flag that loses to the file it was guessing
+# about anyway.
+if [ -f "$DATA/settings.json" ] && grep -q '"store"' "$DATA/settings.json"; then
     serve_api &
 else
     serve_api --store "${STORE:-sqlite}" &
