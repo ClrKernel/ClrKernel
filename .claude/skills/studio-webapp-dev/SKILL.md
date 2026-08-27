@@ -121,9 +121,28 @@ fails as `Login failed for user ''`. The password comes from
 `CLRKERNEL_SECRET_DEMO` in the server's environment; passwords are never stored
 in notebooks or config. Stop the container when finished.
 
-## Before committing UI work
+## Never silence a build in a harness
 
-`npx tsc --noEmit -p tsconfig.json` and `npx vitest run` from
-`src/ClrKernel.Studio/webapp`, plus `./build.sh Test` and
-`dotnet format ClrKernel.slnx --verify-no-changes` if any C# moved. CI runs
-format **first**, so unformatted code never reaches the build.
+A reset script that runs `dotnet build ... >/dev/null` and then starts the app
+with a no-build `dotnet run` will keep serving the **last binary that compiled**.
+Every check goes on passing while the tree does not build at all. That has
+already happened here — a broken `.csproj` shipped in a commit because the only
+thing that would have complained had its output sent to `/dev/null`.
+
+Let build output through, or check the exit status. On the dev loop this is free:
+`dotnet watch` prints failures into `$S/dev.log` and refuses to restart the app,
+so a broken build shows up as a server that never comes back.
+
+## Before committing
+
+From `src/ClrKernel.Studio/webapp`: `npx tsc --noEmit -p tsconfig.json` and
+`npx vitest run`.
+
+Then `./build.sh Test`, and `dotnet format ClrKernel.slnx --verify-no-changes`
+if any C# moved. CI runs format **first**, so unformatted code never reaches the
+build.
+
+**Touching a `.csproj`, `.props` or `.targets` means building before committing**
+— even for a comment. XML comments cannot contain `--`, so writing a CLI flag
+into one makes the project unloadable, and nothing in the TypeScript or test
+tooling will tell you.
