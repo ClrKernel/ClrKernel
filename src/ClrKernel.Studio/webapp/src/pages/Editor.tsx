@@ -1137,10 +1137,11 @@ function SourceEditor({
   const container = useFillEditor(
     language, value, onChange, !useCanWrite(), resetKey, undefined, handle, undefined, path);
 
-  // The server's problems as markers, in their own owner so they sit alongside
-  // monaco-yaml's rather than replacing them. The two overlap and that is fine:
-  // the schema catches shape, the server catches what only it knows — a cron that
-  // is not a schedule, two jobs with one name.
+  // The server's problems as markers. Its own owner string, so setting these
+  // never clears markers somebody else put on the model — today nothing else
+  // does, and the day a real YAML language service works here, both should show.
+  // The server is the one that knows the things a schema cannot: a cron that is
+  // not a schedule, two jobs sharing a name.
   useEffect(() => {
     const model = handle.current?.getModel();
     if (model == null) {

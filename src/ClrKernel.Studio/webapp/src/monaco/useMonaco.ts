@@ -227,10 +227,10 @@ export function useFillEditor(
   /**
    * The file this editor is showing, as a path.
    *
-   * Only to give the model a URI that ends in the real filename, which is how
-   * `monaco-yaml` decides a buffer is a `*.jobs.yaml` and not somebody's
-   * docker-compose. Without it Monaco names models `inmemory://model/1` and every
-   * yaml file would get the jobs schema, or none would.
+   * Only to give the model a URI that ends in the real filename, which is how the
+   * jobs-file completion provider tells a `*.jobs.yaml` from somebody's
+   * docker-compose. Monaco otherwise names models `inmemory://model/1`, and a
+   * provider registered for `yaml` would then answer for every yaml file or none.
    */
   modelPath?: string,
 ) {
