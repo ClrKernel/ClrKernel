@@ -128,6 +128,23 @@ export function hasEditorServices(
 }
 
 /**
+ * Whether this path may be written on your own branch.
+ *
+ * Mirrors `NotebookTree.IsEditable`, which is the authority — the server refuses
+ * the save either way. This exists so the editor can open a file read-only
+ * instead of offering a Save that will be rejected.
+ *
+ * Everything else is browsable and readable. Widening it is a trust-boundary
+ * decision rather than a convenience: a worktree contains its own `.git`, and
+ * `.scratch` holds the query editor's buffer.
+ */
+export function fileEditable(path: string): boolean {
+  const name = (path ?? '').toLowerCase();
+  return name.endsWith('.jobs.yaml')
+    || ['.nb.md', '.ipynb', '.dib', '.csx'].some((e) => name.endsWith(e));
+}
+
+/**
  * The Monaco language for a whole file — the Source tab and the production diff,
  * where there are no cells to ask. A notebook that is not `.nb.md` (`.ipynb`,
  * `.dib`, `.csx`) opens as source, so those need an answer too.

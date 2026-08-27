@@ -97,6 +97,8 @@ export interface NotebookToolbarProps {
   onUpdate: () => void;
   /** Which branch is open — `mine`, `test`, `prod`, or `user-<id>`. */
   branch: string;
+  /** False for a file Files lists but nobody may write — a `.txt`, a plain yaml. */
+  fileEditable: boolean;
   /** Copies what is on screen onto your own branch and opens it there. */
   onCopyToMine: () => void;
   /** Writes a copy at a path you pick, and opens that. */
@@ -471,6 +473,16 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
+      )}
+
+      {/* Readable, not writable. Said out loud, because the alternative is a
+          toolbar that quietly has no Save on it and an editor that ignores your
+          typing. Only on your own branch — on test or prod the branch note below
+          is the more important of the two, and two notes is noise. */}
+      {props.branch === 'mine' && !props.fileEditable && (
+        <span className="whitespace-nowrap text-xs text-muted-subtle">
+          read-only — only notebooks and <code className="font-mono">*.jobs.yaml</code> are editable
+        </span>
       )}
 
       {/* Not your branch: say so, and offer the legitimate place to make the

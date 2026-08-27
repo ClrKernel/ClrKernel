@@ -11,8 +11,14 @@ public sealed class TreeNode {
     /// <summary>Path relative to the notebooks root, '/'-separated.</summary>
     public string Path { get; set; }
     public bool IsDirectory { get; set; }
-    /// <summary>notebook | jobs | null (for directories).</summary>
+    /// <summary>notebook | jobs | file | null (for directories).</summary>
     public string Kind { get; set; }
+    /// <summary>
+    /// Whether a write to this path would be accepted on your own branch. The
+    /// server's answer, not a guess from the extension — the UI opens everything
+    /// and has to know which ones it may offer to change.
+    /// </summary>
+    public bool Editable { get; set; }
     /// <summary>Job names defined for this notebook (notebook nodes only).</summary>
     public List<string> Jobs { get; set; }
     public List<TreeNode> Children { get; set; }
@@ -73,6 +79,20 @@ public static class NotebookTree {
         _notebookExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// What may be written on your own branch. The one definition: the tree reports
+    /// it per node and <c>EditableTarget</c> enforces it, so the UI cannot come to a
+    /// different conclusion from the route that refuses the save.
+    /// <para>
+    /// Everything else is browsable and readable but not writable. Widening this to
+    /// arbitrary files is a trust-boundary decision, not a convenience: paths under
+    /// a worktree include its <c>.git</c> file, and `.scratch` holds the query
+    /// editor's buffer.
+    /// </para>
+    /// </summary>
+    public static bool IsEditable(string path) =>
+        IsNotebook(path) || path.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// The notebooks/jobs-files tree under the root, with each notebook annotated
     /// with the jobs that run it. Directories with no notebooks are pruned.
     /// </summary>
@@ -105,16 +125,23 @@ public static class NotebookTree {
         }
 
         foreach (var file in Directory.EnumerateFiles(directory).OrderBy(f => f, StringComparer.OrdinalIgnoreCase)) {
-            var isJobsFile = file.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase);
-            if (!isJobsFile && !IsNotebook(file)) {
+            var name = Path.GetFileName(file);
+            // Every file, not only notebooks and jobs files: this is a browser over
+            // the project now. Dot-files stay out — .DS_Store, and the `.*.saving`
+            // staging file a save leaves behind if it crashes mid-write, are noise
+            // rather than things anyone came here to open.
+            if (name.StartsWith('.')) {
                 continue;
             }
+            var isJobsFile = name.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase);
+            var isNotebook = IsNotebook(file);
             children.Add(new TreeNode {
-                Name = Path.GetFileName(file),
+                Name = name,
                 Path = Relative(root, file),
                 IsDirectory = false,
-                Kind = isJobsFile ? "jobs" : "notebook",
-                Jobs = !isJobsFile && jobsByNotebook.TryGetValue(file, out var jobs) ? jobs : null,
+                Kind = isJobsFile ? "jobs" : isNotebook ? "notebook" : "file",
+                Editable = IsEditable(file),
+                Jobs = isNotebook && jobsByNotebook.TryGetValue(file, out var jobs) ? jobs : null,
             });
         }
 

@@ -201,10 +201,14 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
 
 ## Acceptance criteria
 
-- [ ] Job definitions are edited as `.yml` files in Files, with autosave, diff,
-      Push to test, and Promote working identically to notebooks.
-- [ ] Branch, worktree, autosave, and promotion logic is implemented once at the
-      file level — not duplicated in the notebook and YAML editors.
+- [~] Job definitions are edited as `.yml` files in Files, with autosave, diff,
+      Push to test, and Promote working identically to notebooks. *(Phase 1: the
+      tree lists every file and a `*.jobs.yaml` opens in the shared editor and
+      autosaves. The Overview/YAML tab split is still to come.)*
+- [x] Branch, worktree, autosave, and promotion logic is implemented once at the
+      file level — not duplicated in the notebook and YAML editors. *(It already
+      was: the editor page is keyed on the path, and only the Notebook tab is
+      notebook-specific.)*
 - [ ] YAML editing offers schema-driven completion and inline errors, from a schema
       published by the kernel.
 - [ ] Invalid YAML can be autosaved on a user branch but cannot be pushed to `test`.

@@ -4,6 +4,7 @@ import {
   UNDO_DEPTH,
   cellsToRun,
   copyOfCell,
+  fileEditable,
   fileLanguage,
   isDirty,
   keepIds,
@@ -445,3 +446,22 @@ describe('notebookPaths', () => {
     expect(notebookPaths(undefined)).toEqual([]);
   });
 });
+
+describe('fileEditable', () => {
+  it('is true for notebooks and jobs files', () => {
+    expect(fileEditable('reports/daily.nb.md')).toBe(true);
+    expect(fileEditable('old.ipynb')).toBe(true);
+    expect(fileEditable('scratch.csx')).toBe(true);
+    expect(fileEditable('reports/daily.JOBS.YAML')).toBe(true);
+  });
+
+  it('and false for everything else Files now lists', () => {
+    // The reason this exists: the tree shows the whole project, so the editor has
+    // to open a .txt read-only rather than offering a Save the server refuses.
+    expect(fileEditable('readme.txt')).toBe(false);
+    expect(fileEditable('docker-compose.yaml')).toBe(false);
+    expect(fileEditable('notes.md')).toBe(false);
+    expect(fileEditable('')).toBe(false);
+  });
+});
+

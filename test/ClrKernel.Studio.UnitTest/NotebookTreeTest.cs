@@ -69,7 +69,7 @@ public class NotebookTreeTest {
     }
 
     [TestMethod]
-    public void The_tree_lists_notebooks_with_their_jobs_and_skips_other_files() {
+    public void The_tree_lists_notebooks_with_their_jobs() {
         var tree = NotebookTree.Build(_root, new JobCatalog(_root).Load());
 
         var etl = tree.Children.Single(c => c.IsDirectory);
@@ -81,6 +81,55 @@ public class NotebookTreeTest {
         var notebook = etl.Children.Single(c => c.Kind == "notebook");
         Assert.AreEqual("etl/nightly.nb.md", notebook.Path);
         CollectionAssert.AreEquivalent(new[] { "nightly-eu", "nightly-us" }, notebook.Jobs.ToArray());
-        Assert.IsFalse(tree.Children.Any(c => c.Name == "readme.txt"), "non-notebooks are skipped");
+    }
+
+    /// <summary>
+    /// It is a browser over the project now, not a notebook list. Everything shows;
+    /// what differs is whether it can be changed.
+    /// </summary>
+    [TestMethod]
+    public void Every_file_is_listed_and_says_whether_it_can_be_edited() {
+        File.WriteAllText(Path.Combine(_root, "etl", "query.sql"), "SELECT 1");
+        var tree = NotebookTree.Build(_root, new JobCatalog(_root).Load());
+
+        var readme = tree.Children.Single(c => c.Name == "readme.txt");
+        Assert.AreEqual("file", readme.Kind);
+        Assert.IsFalse(readme.Editable, "a .txt is browsable, not writable");
+
+        var etl = tree.Children.Single(c => c.IsDirectory);
+        Assert.AreEqual("file", etl.Children.Single(c => c.Name == "query.sql").Kind);
+        Assert.IsTrue(etl.Children.Single(c => c.Name == "nightly.nb.md").Editable);
+        Assert.IsTrue(etl.Children.Single(c => c.Name == "nightly.jobs.yaml").Editable,
+            "the whole point of the change: a jobs file is reachable and writable");
+        Assert.AreEqual("jobs", etl.Children.Single(c => c.Name == "nightly.jobs.yaml").Kind);
+    }
+
+    /// <summary>
+    /// The tree and the route that refuses the save have to agree, or the UI offers
+    /// an edit the server will reject.
+    /// </summary>
+    [TestMethod]
+    public void Editable_is_the_same_rule_the_write_route_enforces() {
+        Assert.IsTrue(NotebookTree.IsEditable("a/b.nb.md"));
+        Assert.IsTrue(NotebookTree.IsEditable("a/b.ipynb"));
+        Assert.IsTrue(NotebookTree.IsEditable("a/b.JOBS.YAML"));
+        Assert.IsFalse(NotebookTree.IsEditable("a/b.yaml"), "a plain yaml is not a jobs file");
+        Assert.IsFalse(NotebookTree.IsEditable("a/b.txt"));
+        Assert.IsFalse(NotebookTree.IsEditable("a/b.md"), "only .nb.md is a notebook");
+    }
+
+    /// <summary>
+    /// Dot-files are noise: .DS_Store, and the `.*.saving` staging file a crash
+    /// mid-write leaves behind — which is half a notebook and must not look like one.
+    /// </summary>
+    [TestMethod]
+    public void Dot_files_stay_out_of_the_tree() {
+        File.WriteAllText(Path.Combine(_root, ".DS_Store"), "junk");
+        File.WriteAllText(Path.Combine(_root, "etl", ".nightly.nb.md.saving"), "half a fi");
+        var tree = NotebookTree.Build(_root, new JobCatalog(_root).Load());
+
+        Assert.IsFalse(tree.Children.Any(c => c.Name.StartsWith('.')));
+        var etl = tree.Children.Single(c => c.IsDirectory);
+        Assert.IsFalse(etl.Children.Any(c => c.Name.StartsWith('.')));
     }
 }

@@ -1,4 +1,4 @@
-import { KeyRound } from 'lucide-react';
+import { BookOpenCheck, KeyRound } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,11 +28,14 @@ export function AuthShell({
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
       <div className="w-full max-w-[420px]">
         <div className="mb-5 flex items-center gap-2.5">
+          {/* The same mark as the rail and the browser tab. It was a `>_` prompt,
+              which the rename left behind on the one page you meet before any
+              of the others. */}
           <span
             aria-hidden="true"
-            className="flex size-[28px] items-center justify-center rounded-lg bg-primary font-mono text-[14px] font-semibold text-primary-foreground"
+            className="flex size-[28px] items-center justify-center rounded-lg bg-primary text-primary-foreground"
           >
-            &gt;_
+            <BookOpenCheck className="size-[17px]" />
           </span>
           <span className="font-semibold">ClrKernel Studio</span>
         </div>

@@ -32,9 +32,9 @@ interface Row {
   key: string;
   name: string;
   depth: number;
-  /** Set on files that can be opened; folders and jobs files leave it null. */
+  /** Set on every file; folders leave it null. */
   path: string | null;
-  kind: 'folder' | 'notebook' | 'jobs';
+  kind: 'folder' | 'notebook' | 'jobs' | 'file';
   open?: boolean;
 }
 
@@ -53,12 +53,14 @@ function flatten(nodes: TreeNode[], collapsed: Set<string>, depth = 0): Row[] {
         rows.push(...flatten(node.children ?? [], collapsed, depth + 1));
       }
     } else {
+      // Every file opens. A jobs file used to be a dead grey row here, which is
+      // why editing one meant knowing its URL.
       rows.push({
         key: node.path,
         name: node.name,
         depth,
-        path: node.kind === 'notebook' ? node.path : null,
-        kind: node.kind === 'jobs' ? 'jobs' : 'notebook',
+        path: node.path,
+        kind: (node.kind ?? 'file') as Row['kind'],
       });
     }
   }
@@ -184,7 +186,6 @@ export function NotebookExplorer({
             <button
               key={row.key}
               type="button"
-              disabled={row.kind === 'jobs'}
               onClick={() =>
                 row.kind === 'folder'
                   ? setShut((current) => {
@@ -200,7 +201,6 @@ export function NotebookExplorer({
               className={[
                 'flex w-full items-center gap-1.5 border-l-2 py-[3px] pr-2.5 text-left outline-none',
                 row.kind === 'folder' ? 'text-base font-medium' : 'font-mono text-xs',
-                row.kind === 'jobs' ? 'text-muted-subtle' : '',
                 active
                   ? 'border-l-primary bg-surface-panel-strong font-semibold text-foreground'
                   : 'border-l-transparent hover:bg-surface-panel-strong',

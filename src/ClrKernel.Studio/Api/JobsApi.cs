@@ -1382,9 +1382,7 @@ public static class JobsApi {
         if (resolved == null) {
             return null;
         }
-        return NotebookTree.IsNotebook(resolved) || resolved.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)
-            ? resolved
-            : null;
+        return NotebookTree.IsEditable(resolved) ? resolved : null;
     }
 
     private static IResult TestWriteError(

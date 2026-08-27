@@ -34,6 +34,7 @@ import {
   connectableLanguage,
   copyOfCell,
   emptyCell,
+  fileEditable,
   fileLanguage,
   insertCell,
   isDirty,
@@ -77,7 +78,10 @@ export function Editor() {
   // at cell seven is finished by hand, not by editing production.
   const branch = params.branch ?? 'mine';
   const allows = {
-    write: branch === 'mine',
+    // The file type as well as the branch: Files lists everything in the project
+    // now, and a `.txt` opens to be read. Offering Save on one would be offering
+    // a write the server refuses — `NotebookTree.IsEditable` is the same rule.
+    write: branch === 'mine' && fileEditable(path),
     run: branch === 'mine' || branch === 'test' || branch === 'prod',
   };
   // Mirrored into the API client rather than threaded through every call: the
@@ -861,6 +865,7 @@ export function Editor() {
         onPush={push}
         onUpdate={updateFromTest}
         branch={branch}
+        fileEditable={fileEditable(path)}
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
         onMove={move}

@@ -73,16 +73,6 @@ function Node({
     );
   }
 
-  if (node.kind === 'jobs') {
-    return (
-      <div className={`${row} font-mono text-code text-muted-subtle`} style={indent}>
-        <span aria-hidden="true" className="size-3 shrink-0" />
-        <FileBadge name={node.name} />
-        {node.name}
-      </div>
-    );
-  }
-
   // The project and the branch are in the path for the same reason the project
   // is in a job's: a shared link has to open the notebook it was shared for, on
   // the branch it was shared from.
@@ -108,7 +98,10 @@ function Node({
           {job}
         </Link>
       ))}
-      {mayEdit && (
+      {/* A job runs a notebook, so this belongs on notebooks and nowhere else —
+          now that every file is listed, `mayEdit` alone would offer to hang a job
+          off a .txt. */}
+      {mayEdit && node.kind === 'notebook' && (
         <button
           type="button"
           className="text-xs text-muted-subtle outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"

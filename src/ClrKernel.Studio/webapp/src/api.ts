@@ -331,7 +331,9 @@ export interface TreeNode {
   name: string;
   path: string;
   isDirectory: boolean;
-  kind: 'notebook' | 'jobs' | null;
+  kind: 'notebook' | 'jobs' | 'file' | null;
+  /** Whether a write to this path would be accepted — the server's answer. */
+  editable?: boolean;
   jobs: string[] | null;
   children: TreeNode[] | null;
 }
