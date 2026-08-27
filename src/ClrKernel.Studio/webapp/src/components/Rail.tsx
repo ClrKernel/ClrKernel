@@ -74,19 +74,6 @@ export function Rail() {
       // is not 16px, leaving a strip of page showing down the left edge.
       className="flex w-full flex-col items-center gap-1 border-r border-border bg-card py-2.5"
     >
-      {/* <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            to="/"
-            aria-label="ClrKernel Studio — go to dashboard"
-            className="mb-1 flex size-7 items-center justify-center rounded-lg bg-primary font-mono text-[14px] font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-          >
-            <span aria-hidden="true">&gt;_</span>
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="right">ClrKernel Studio</TooltipContent>
-      </Tooltip> */}
-
       {/* Keyed by label, not by `to`: the logo and Dashboard both point at `/`,
           and two children with the same key is a React warning and a row that
           can vanish on a re-render. */}
