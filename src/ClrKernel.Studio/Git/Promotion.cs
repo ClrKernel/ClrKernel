@@ -137,9 +137,12 @@ public static class Promotion {
             if (needsRun) {
                 foreach (var job in testJobs.Where(j => j.Enabled)) {
                     var latest = (await store.QueryRunsAsync(new RunQuery {
-                        Project = project.Slug,
+                        Projects = new[] { project.Slug },
                         Environment = GitService.TestBranch,
                         JobName = job.Name,
+                        // The gate means the most recently *recorded* run, which is
+                        // not quite "most recently started" for anything that queued.
+                        Sort = RunSort.Created,
                         Limit = 1,
                     })).FirstOrDefault();
 

@@ -36,11 +36,17 @@ a job definition from any other YAML once the route shows every file. No rename.
 
 ### Wrong in this document
 
-- **There is no run-mode field.** `Run.Trigger` is
-  `Manual | Schedule | Dependency | Retry`; cell-level manual runs live in a
-  separate `ManualRun` table with no foreign key to `Run`. The Monitoring grid's
-  headline column is a schema change plus a migration across sqlite, postgres and
-  sqlserver.
+- **There is no run-mode field — and it turned out not to need one.** `Run.Trigger`
+  is `Manual | Schedule | Dependency | Retry`, and that already *is* the run mode:
+  `scheduled` is `Trigger.Schedule`, `manual-all` is `Trigger.Manual`, and
+  `manual-cell` is not in `runs` at all — it is a `ManualRun`, kept in its own
+  table so nothing can mistake it for promotion evidence. A `RunMode` column would
+  have restated the first two and still not covered the third. **Built without
+  one.**
+
+  The migration the grid did need was **the actor**: `Run` recorded no one, so
+  "manual, by whom" and the actor filter were both unanswerable. `actor_id` /
+  `actor_name`, across all three providers.
 - **`.yml` is not read-only — it is unreachable.** `Files.tsx` renders a jobs row
   as plain text with no link. Opened by URL, the editor already gives it Source,
   autosave, Push and Promote. The missing piece is the tree and the route, not the
@@ -77,7 +83,8 @@ at a sha); no run-history retention; notification rules live inside each job's
 yaml and no delivery is recorded. In the Monitoring grid, project visibility is
 filtered **after** the query (`runs.Where(visible.ContainsKey)`), so cross-project
 paging returns short pages — that has to move into the query before paging can be
-correct.
+correct. **Done:** `RunQuery.Projects` is a `required` member, so a route that
+forgets to say whose history it is asking for does not compile.
 
 ### Decision: `test` schedules
 
@@ -247,8 +254,11 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
       but only reachable notebook-first; see blockers 1 and 2.
 - [x] Promoting a deleted `.yml` stops its schedule, naming each schedule it
       switches off and when it would next have fired.
-- [ ] The Monitoring grid shows Project first, filters and sorts server-side, and
-      shows only accessible projects.
+- [x] The Monitoring grid shows Project first, filters and sorts server-side, and
+      shows only accessible projects. *(Scoping moved **into** the query, which is
+      what makes a page of fifty fifty rows. Sorting is a whitelist, and duration
+      is not on it: it is `FinishedAt - StartedAt`, null in flight, and subtracted
+      differently by each provider.)*
 - [ ] Rerun defaults to branch HEAD, offers exact-version rerun, respects role and
       concurrency rules, and is audited.
 - [ ] Bulk rerun is throttled.

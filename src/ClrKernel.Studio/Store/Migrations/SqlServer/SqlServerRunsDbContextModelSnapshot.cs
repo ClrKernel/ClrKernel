@@ -404,6 +404,15 @@ namespace ClrKernel.Studio.Store.Migrations.SqlServer
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("actor_name");
+
                     b.Property<string>("ArtifactPath")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("artifact_path");

@@ -54,6 +54,12 @@ public sealed class Run {
     public bool WasDirty { get; set; }
     /// <summary>Ran with ad-hoc parameter overrides — proves nothing about the yaml as written.</summary>
     public bool HadOverrides { get; set; }
+    /// <summary>Who pressed run. Null for a scheduled run — nobody did — and null
+    /// for any manual run recorded before this column existed; the two are not
+    /// distinguishable, so read it beside <see cref="Trigger"/> or not at all.</summary>
+    public Guid? ActorId { get; set; }
+    /// <summary>Denormalised beside the id: the account may be gone by the time anyone asks.</summary>
+    public string ActorName { get; set; }
 }
 
 /// <summary>Live per-cell progress for a run's code cells, in execution order.</summary>
@@ -256,13 +262,51 @@ public sealed class JobTriggerState {
     public DateTime LastTriggerAt { get; set; }
 }
 
+/// <summary>
+/// What the monitoring grid may sort on. A whitelist rather than a column name off
+/// the wire, because this reaches an ORDER BY.
+/// <para>
+/// Duration is deliberately absent: it is <c>FinishedAt - StartedAt</c>, null while a
+/// run is in flight, and subtracted differently by each provider. Sorting by "took
+/// longest" is worth doing when somebody asks, as a computed column, not as a
+/// translation gamble.
+/// </para>
+/// </summary>
+public enum RunSort {
+    /// <summary>When it started — or, for a run that never did, when it was created.</summary>
+    Started,
+    Created,
+    Project,
+    JobName,
+    Environment,
+    Status,
+    Trigger,
+}
+
 public sealed class RunQuery {
-    /// <summary>null = all projects.</summary>
-    public string Project { get; set; }
+    /// <summary>
+    /// The projects these rows may come from. Required, and there is no "all":
+    /// history belongs to its project the same way the project does, and a route
+    /// that forgot to say whose history it was asking for is how that leaks. An
+    /// empty set matches nothing, which is the correct answer for somebody who can
+    /// see no projects.
+    /// </summary>
+    public required IReadOnlyCollection<string> Projects { get; init; }
     /// <summary>null = all environments.</summary>
     public string Environment { get; set; }
     public string JobName { get; set; }
+    /// <summary>The notebook, as stored — the grid's File filter.</summary>
+    public string NotebookPath { get; set; }
     public RunStatus? Status { get; set; }
+    public RunTrigger? Trigger { get; set; }
+    /// <summary>Who pressed run. Only ever matches manual runs.</summary>
+    public Guid? ActorId { get; set; }
+    /// <summary>Inclusive lower bound on the run's start (or creation).</summary>
+    public DateTime? Since { get; set; }
+    /// <summary>Exclusive upper bound on the run's start (or creation).</summary>
+    public DateTime? Until { get; set; }
+    public RunSort Sort { get; set; } = RunSort.Started;
+    public bool Ascending { get; set; }
     public int Limit { get; set; } = 50;
     public int Offset { get; set; }
 }

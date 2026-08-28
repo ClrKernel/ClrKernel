@@ -15,9 +15,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  * The activity bar. Icons only, always — it does not expand or collapse, so
  * there is one width to lay out against and no state to persist.
  */
-const NAV: { to: string; label: string; icon: LucideIcon; end: boolean; isSpecial?: boolean }[] = [
+const NAV: {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end: boolean;
+  /** A second route this entry owns, for a section whose views are separate
+   *  top-level paths — the Dashboard's Monitoring grid is still the Dashboard. */
+  also?: string;
+  isSpecial?: boolean;
+}[] = [
   { to: '/', label: 'ClrKernel Studio', icon: BookOpenCheck, end: true, isSpecial: true },
-  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
+  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true, also: '/monitoring' },
   { to: '/jobs', label: 'Jobs', icon: Play, end: false },
   // Files, not Notebooks: what is under here is notebooks *and* the jobs files
   // beside them, and a folder tree is what you are looking at either way.
@@ -33,8 +42,12 @@ const NAV: { to: string; label: string; icon: LucideIcon; end: boolean; isSpecia
  * `NavLink` className *function* passed through it lands on the element as its
  * own source text and none of the classes apply.
  */
-function RailLink({ to, label, icon: Icon, end, isSpecial }: (typeof NAV)[number]) {
-  const active = useMatch({ path: to, end }) != null;
+function RailLink({ to, label, icon: Icon, end, also, isSpecial }: (typeof NAV)[number]) {
+  // Both hooks run every render — a `useMatch` behind a condition is a hook
+  // whose position moves, which is the one thing React cannot survive.
+  const here = useMatch({ path: to, end }) != null;
+  const nearby = useMatch({ path: also ?? to, end: false }) != null;
+  const active = here || (also != null && nearby);
 
   return (
     <div className={["w-48px", active ? "bg-primary-soft" : "hover:bg-primary-soft", "p-2.5"].join(" ")}>

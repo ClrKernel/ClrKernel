@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -99,10 +100,164 @@ public class RunStoreContractTest {
         Assert.AreEqual(RunStatus.Succeeded, (await store.GetRunAsync(run.Id)).Status);
 
         await store.CreateRunAsync(NewRun("b", RunStatus.Failed, DateTime.UtcNow));
-        Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { JobName = "a" })).Count);
-        Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { Status = RunStatus.Failed })).Count);
-        Assert.AreEqual(2, (await store.QueryRunsAsync(new RunQuery())).Count);
+        Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, JobName = "a" })).Count);
+        Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Status = RunStatus.Failed })).Count);
+        Assert.AreEqual(2, (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" } })).Count);
         Assert.IsNull(await store.GetRunAsync(Guid.NewGuid()), "an unknown id is null, not an error");
+    }
+
+    /// <summary>
+    /// The monitoring grid asks the store for one page of an unbounded table, so
+    /// every filter, the order and the paging have to be the store's — and have to
+    /// mean the same thing on all four backends, or "sorted by job" reads differently
+    /// depending on what somebody configured.
+    /// <para>
+    /// The project scope is in the same list on purpose. It is not one filter among
+    /// several: a page filtered after the query comes back short, and a short page is
+    /// how a permissions bug hides as a paging bug.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [DataRow("sqlite")]
+    [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
+    public async Task Runs_are_filtered_ordered_and_scoped_by_the_store(string kind) {
+        var store = StoreFor(kind);
+        var ada = Guid.NewGuid();
+        var start = new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+
+        async Task<Run> Add(
+            string project, string environment, string job, DateTime at,
+            RunTrigger trigger = RunTrigger.Schedule, Guid? actor = null, string notebook = "nb.nb.md") =>
+            await store.CreateRunAsync(new Run {
+                Id = Guid.NewGuid(),
+                Project = project,
+                Environment = environment,
+                JobName = job,
+                NotebookPath = notebook,
+                Status = RunStatus.Succeeded,
+                Trigger = trigger,
+                CreatedAt = at,
+                StartedAt = at,
+                FinishedAt = at.AddMinutes(1),
+                ActorId = actor,
+                ActorName = actor == null ? null : "Ada Lovelace",
+            });
+
+        var oldest = await Add("default", "test", "alpha", start);
+        var middle = await Add("default", "prod", "beta", start.AddHours(1),
+            RunTrigger.Manual, ada, "other.nb.md");
+        var newest = await Add("default", "prod", "gamma", start.AddHours(2));
+        var elsewhere = await Add("secret", "prod", "delta", start.AddHours(3));
+
+        // A project you cannot see contributes no rows — not even the newest one,
+        // which is exactly the row a post-query filter would have paged in and
+        // dropped.
+        var mine = await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" } });
+        Assert.AreEqual(3, mine.Count);
+        Assert.AreEqual(newest.Id, mine[0].Id, "newest first by default");
+        Assert.AreEqual(oldest.Id, mine[2].Id);
+        CollectionAssert.DoesNotContain(mine.Select(r => r.Id).ToList(), elsewhere.Id);
+
+        Assert.AreEqual(4,
+            (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default", "secret" } })).Count,
+            "and every row of every project that is named");
+        Assert.AreEqual(0,
+            (await store.QueryRunsAsync(new RunQuery { Projects = Array.Empty<string>() })).Count,
+            "somebody who can see no projects sees no runs, not all of them");
+
+        // Each filter on its own.
+        Assert.AreEqual(2, (await store.QueryRunsAsync(
+            new RunQuery { Projects = new[] { "default" }, Environment = "prod" })).Count);
+        Assert.AreEqual(middle.Id, (await store.QueryRunsAsync(
+            new RunQuery { Projects = new[] { "default" }, Trigger = RunTrigger.Manual })).Single().Id);
+        Assert.AreEqual(middle.Id, (await store.QueryRunsAsync(
+            new RunQuery { Projects = new[] { "default" }, ActorId = ada })).Single().Id);
+        Assert.AreEqual(middle.Id, (await store.QueryRunsAsync(
+            new RunQuery { Projects = new[] { "default" }, NotebookPath = "other.nb.md" })).Single().Id);
+        Assert.AreEqual(2, (await store.QueryRunsAsync(
+            new RunQuery { Projects = new[] { "default" }, Since = start.AddMinutes(30) })).Count,
+            "Since is inclusive of everything at or after it");
+        Assert.AreEqual(oldest.Id, (await store.QueryRunsAsync(
+            new RunQuery { Projects = new[] { "default" }, Until = start.AddMinutes(30) })).Single().Id);
+
+        // Order, both ways, on a column that is not the default.
+        var byJob = await store.QueryRunsAsync(new RunQuery {
+            Projects = new[] { "default" },
+            Sort = RunSort.JobName,
+            Ascending = true,
+        });
+        CollectionAssert.AreEqual(
+            new[] { "alpha", "beta", "gamma" }, byJob.Select(r => r.JobName).ToArray());
+        var oldestFirst = await store.QueryRunsAsync(new RunQuery {
+            Projects = new[] { "default" },
+            Ascending = true,
+        });
+        Assert.AreEqual(oldest.Id, oldestFirst[0].Id);
+
+        // Paging is the store's too, and the pages have to partition the rows —
+        // a row on both pages, or on neither, is the bug this is here to catch.
+        var page1 = await store.QueryRunsAsync(new RunQuery {
+            Projects = new[] { "default" },
+            Limit = 2,
+        });
+        var page2 = await store.QueryRunsAsync(new RunQuery {
+            Projects = new[] { "default" },
+            Limit = 2,
+            Offset = 2,
+        });
+        Assert.AreEqual(2, page1.Count);
+        Assert.AreEqual(1, page2.Count);
+        CollectionAssert.AreEqual(
+            new[] { newest.Id, middle.Id, oldest.Id },
+            page1.Concat(page2).Select(r => r.Id).ToArray());
+    }
+
+    /// <summary>
+    /// Runs that tie on the sort key keep one order across requests. Without a
+    /// tiebreaker the database is free to return them in either, and a row that
+    /// shifts between two Skip/Take pages is a row nobody ever sees.
+    /// </summary>
+    [TestMethod]
+    [DataRow("sqlite")]
+    [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
+    public async Task Ties_page_in_a_stable_order(string kind) {
+        var store = StoreFor(kind);
+        var at = new DateTime(2026, 3, 2, 8, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < 6; i++) {
+            await store.CreateRunAsync(new Run {
+                Id = Guid.NewGuid(),
+                Project = "default",
+                Environment = "prod",
+                JobName = "same",
+                NotebookPath = "nb.nb.md",
+                Status = RunStatus.Succeeded,
+                Trigger = RunTrigger.Schedule,
+                CreatedAt = at,
+                StartedAt = at,
+                FinishedAt = at,
+            });
+        }
+
+        var paged = new List<Guid>();
+        for (var offset = 0; offset < 6; offset += 2) {
+            paged.AddRange((await store.QueryRunsAsync(new RunQuery {
+                Projects = new[] { "default" },
+                Limit = 2,
+                Offset = offset,
+            })).Select(r => r.Id));
+        }
+        CollectionAssert.AllItemsAreUnique(paged, "every run appears on exactly one page");
+        Assert.AreEqual(6, paged.Count);
+
+        var again = (await store.QueryRunsAsync(new RunQuery {
+            Projects = new[] { "default" },
+            Limit = 6,
+        })).Select(r => r.Id).ToList();
+        CollectionAssert.AreEqual(paged, again, "and in the same order as one unpaged read");
     }
 
     [TestMethod]
@@ -177,7 +332,7 @@ public class RunStoreContractTest {
         Assert.AreEqual(1, stats.Failed);
 
         Assert.AreEqual(1, await store.MarkOrphansFailedAsync(), "only the Running row is an orphan");
-        var orphan = (await store.QueryRunsAsync(new RunQuery { JobName = "b" })).Single();
+        var orphan = (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, JobName = "b" })).Single();
         Assert.AreEqual(RunStatus.Failed, orphan.Status);
         StringAssert.Contains(orphan.ErrorSummary, "Orphaned");
         Assert.AreEqual(0, await store.MarkOrphansFailedAsync(), "cleanup is idempotent");

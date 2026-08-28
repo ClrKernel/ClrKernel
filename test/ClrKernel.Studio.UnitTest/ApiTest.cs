@@ -262,7 +262,8 @@ public class ApiTest {
         });
 
         var runs = await _client.GetFromJsonAsync<JsonElement>("/api/runs");
-        Assert.AreEqual(1, runs.GetArrayLength());
+        Assert.AreEqual(1, runs.GetProperty("runs").GetArrayLength());
+        Assert.IsFalse(runs.GetProperty("hasMore").GetBoolean());
 
         var detail = await _client.GetFromJsonAsync<JsonElement>($"/api/runs/{runId}");
         Assert.AreEqual("Succeeded", detail.GetProperty("run").GetProperty("status").GetString());
@@ -278,6 +279,60 @@ public class ApiTest {
 
         Assert.AreEqual(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/runs?status=nonsense")).StatusCode);
         Assert.AreEqual(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/runs/{Guid.NewGuid()}")).StatusCode);
+    }
+
+    /// <summary>
+    /// The monitoring grid's filters, at the route. A filter the server does not
+    /// understand is a 400 naming what it would have understood — never a silently
+    /// unfiltered page, which answers a question nobody asked and looks like data.
+    /// </summary>
+    [TestMethod]
+    public async Task The_run_grid_filters_pages_and_rejects_a_filter_it_does_not_know() {
+        var start = DateTime.UtcNow.AddHours(-3);
+        for (var i = 0; i < 3; i++) {
+            await _store.CreateRunAsync(new Run {
+                Id = Guid.NewGuid(),
+                JobName = i == 0 ? "nightly" : "hourly",
+                NotebookPath = i == 0 ? "etl/nightly.nb.md" : "etl/hourly.nb.md",
+                Status = i == 2 ? RunStatus.Failed : RunStatus.Succeeded,
+                Trigger = i == 2 ? RunTrigger.Manual : RunTrigger.Schedule,
+                CreatedAt = start.AddHours(i),
+                StartedAt = start.AddHours(i),
+                FinishedAt = start.AddHours(i).AddMinutes(1),
+            });
+        }
+
+        async Task<JsonElement> Grid(string query) =>
+            await _client.GetFromJsonAsync<JsonElement>($"/api/runs?{query}");
+
+        Assert.AreEqual(1, (await Grid("job=nightly")).GetProperty("runs").GetArrayLength());
+        Assert.AreEqual(2, (await Grid("path=etl/hourly.nb.md")).GetProperty("runs").GetArrayLength());
+        Assert.AreEqual(1, (await Grid("status=failed")).GetProperty("runs").GetArrayLength());
+        Assert.AreEqual(2, (await Grid("trigger=schedule")).GetProperty("runs").GetArrayLength());
+        Assert.AreEqual(2,
+            (await Grid($"since={Uri.EscapeDataString(start.AddMinutes(30).ToString("o"))}"))
+                .GetProperty("runs").GetArrayLength());
+
+        // hasMore is what the Next button reads, so it has to be true when there is
+        // a next page and false on the last one — off by one here means a button
+        // that leads nowhere.
+        var page = await Grid("limit=2");
+        Assert.AreEqual(2, page.GetProperty("runs").GetArrayLength());
+        Assert.IsTrue(page.GetProperty("hasMore").GetBoolean());
+        var last = await Grid("limit=2&offset=2");
+        Assert.AreEqual(1, last.GetProperty("runs").GetArrayLength());
+        Assert.IsFalse(last.GetProperty("hasMore").GetBoolean());
+
+        // Ascending flips the order rather than being ignored.
+        var ascending = await Grid("asc=true&sort=started");
+        Assert.AreEqual("nightly",
+            ascending.GetProperty("runs")[0].GetProperty("jobName").GetString());
+
+        foreach (var bad in new[] { "status=nonsense", "trigger=nonsense", "sort=nonsense" }) {
+            var response = await _client.GetAsync($"/api/runs?{bad}");
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, bad);
+            StringAssert.Contains(await response.Content.ReadAsStringAsync(), "Expected one of");
+        }
     }
 
     [TestMethod]

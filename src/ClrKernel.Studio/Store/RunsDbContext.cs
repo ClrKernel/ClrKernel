@@ -55,6 +55,8 @@ public abstract class RunsDbContext : DbContext {
             run.Property(r => r.CommitSha).HasColumnName("commit_sha").HasMaxLength(64);
             run.Property(r => r.WasDirty).HasColumnName("was_dirty");
             run.Property(r => r.HadOverrides).HasColumnName("had_overrides");
+            run.Property(r => r.ActorId).HasColumnName("actor_id");
+            run.Property(r => r.ActorName).HasColumnName("actor_name").HasMaxLength(120);
             run.HasIndex(r => new { r.Project, r.Environment, r.JobName });
             run.HasIndex(r => r.CreatedAt);
         });

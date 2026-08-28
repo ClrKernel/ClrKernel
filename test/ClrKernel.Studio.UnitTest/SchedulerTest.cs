@@ -137,7 +137,7 @@ public class SchedulerTest {
         await TickAsync(window.Item1, window.Item2);
         var fired = _launched.Single();
         Assert.AreEqual(("b", RunTrigger.Dependency, 1), fired);
-        var bRun = (await _store.QueryRunsAsync(new RunQuery { JobName = "b" })).Single();
+        var bRun = (await _store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, JobName = "b" })).Single();
         Assert.AreEqual(a2.Id, bRun.CausedByRunId);
 
         // Nothing new upstream: b does not fire again.

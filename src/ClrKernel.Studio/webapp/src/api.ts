@@ -167,6 +167,17 @@ export interface Run {
   errorSummary: string | null;
   artifactPath: string | null;
   logPath: string | null;
+  /** Who pressed run. Null for a scheduled run, and null for any manual run
+   *  recorded before the column existed — read it beside `trigger`, never alone. */
+  actorId: string | null;
+  actorName: string | null;
+}
+
+/** One page of the monitoring grid. `hasMore` costs a row, where a total would
+ *  cost a COUNT(*) over the whole history on every poll. */
+export interface RunPage {
+  runs: Run[];
+  hasMore: boolean;
 }
 
 export interface RunCell {
@@ -505,7 +516,12 @@ export const api = {
   // Scoped to the selected project: the breadcrumb says which project you are
   // in, so a list that quietly spanned all of them would be saying otherwise.
   runs: (limit = 25) =>
-    request<Run[]>(`/runs?limit=${limit}&project=${encodeURIComponent(currentProject)}`),
+    request<RunPage>(`/runs?limit=${limit}&project=${encodeURIComponent(currentProject)}`),
+
+  // The monitoring grid, which is the one view that is deliberately *not* scoped
+  // to the selected project — Project is its first column. `query` comes from
+  // runFilters.runsQuery, and the server applies all of it; the page is a page.
+  runGrid: (query: string) => request<RunPage>(`/runs?${query}`),
   run: (id: string) => request<{ run: Run; cells: RunCell[] }>(`/runs/${id}`),
   artifact: (id: string) => request<unknown>(`/runs/${id}/artifact`),
   log: (id: string) =>

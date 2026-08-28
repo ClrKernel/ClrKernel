@@ -322,7 +322,7 @@ public class PromotionTest {
         Assert.AreEqual(before.Eligible, after.Eligible);
         CollectionAssert.AreEqual(before.Reasons.ToList(), after.Reasons.ToList(),
             "an interactive run must be invisible to the promotion gate");
-        Assert.AreEqual(0, (await _store.QueryRunsAsync(new RunQuery { Environment = "test" })).Count,
+        Assert.AreEqual(0, (await _store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Environment = "test" })).Count,
             "and must leave no run history at all");
     }
 

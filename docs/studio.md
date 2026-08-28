@@ -572,7 +572,8 @@ the theme picker. What you can *do* lives on the page, not in the chrome.
 
 | | |
 |---|---|
-| `/` | the dashboard — every project's jobs, grouped, and the recent runs |
+| `/` | the dashboard's Overview — every project's jobs, grouped, and the recent runs |
+| `/monitoring` | the dashboard's Monitoring grid — every project's runs, filtered and sorted by the server |
 | `/jobs/<project>` | that project's jobs |
 | `/jobs/<project>/<branch>/<name>` | one job |
 | `/files/<project>` | that project's files, on one branch |
@@ -610,6 +611,40 @@ The search box filters what is in front of you — the run table and the job lis
 the Dashboard, the job table on Jobs — and it keeps the query in the URL as `?q=`,
 so a filtered view is something you can bookmark or paste to someone else. It only
 appears on those two pages; elsewhere there is nothing for it to filter.
+
+### Monitoring
+
+One grid over every project's runs, with **Project as the first column** — the one
+view in the app that deliberately ignores the project you have selected, because
+"what is failing right now" is a question about the whole install.
+
+Every filter, the sort and the paging are the **server's**. Run history grows
+without bound, and a grid that sorted a page it had already fetched would work
+right up until the day it very suddenly didn't. The filters live in the query
+string, so a filtered grid is a link: `/monitoring?status=Failed&env=prod` is a
+thing to paste into a conversation.
+
+Which projects it may show is decided **inside the query**, not afterwards. That
+is a paging fix as much as a permissions one: filtered after the fact, asking for
+fifty rows returns however many of the fifty you were allowed to see, and "page 2
+has four rows" is not a bug anybody reports as a permissions bug.
+
+Project, file and actor are narrowed by **clicking the cell**, not by typing.
+The server matches them exactly, and a text box that looks like search but wants
+the whole string is a worse offer than no text box. Status, branch, trigger and
+the date range are dropdowns and two native date fields; every chip has an ×.
+
+The Trigger column says how a run started and, for a manual one, who started it.
+There is no separate "run mode" column: `scheduled` and `manual` *are* the
+trigger, and a cell-by-cell run driven from the editor is not a job run at all —
+it is audited in `manual_runs`, deliberately somewhere nothing can mistake it for
+promotion evidence. Runs recorded before the actor column existed show no name,
+which is indistinguishable from a scheduled run having none; read the name beside
+the trigger rather than on its own.
+
+Paging is Previous/Next rather than "1–50 of 1,240": the page asks for one row
+more than it shows and reports whether it got it, where a total would be a
+`COUNT(*)` over the whole history on every poll.
 
 The theme picker offers five accents on one shared neutral base — green (the default),
 blue, violet, amber, rose. Only the accent changes, so the app does not look like five

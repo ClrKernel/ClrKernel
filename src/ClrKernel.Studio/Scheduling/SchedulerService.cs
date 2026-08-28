@@ -56,19 +56,25 @@ public sealed class SchedulerService : BackgroundService {
         _parallelism = new SemaphoreSlim(Math.Max(1, options.MaxParallelism));
         RunJob = (request, ct) => executor.ExecuteAsync(
             request.Job, request.Trigger, request.CausedByRunId, request.Attempt, request.RunId,
-            request.HadOverrides, ct);
+            request.HadOverrides, request.ActorId, request.ActorName, ct);
     }
 
     /// <summary>
     /// Fires a job now (the API's run button). Returns the pre-assigned run id, or
     /// null when the job already has an active run launched by this process.
     /// </summary>
-    public Guid? TriggerManual(JobDefinition job, bool hadOverrides = false) {
+    public Guid? TriggerManual(
+        JobDefinition job, bool hadOverrides = false, Guid? actorId = null, string actorName = null) {
         if (_activeJobs.ContainsKey(KeyOf(job))) {
             return null;
         }
         var runId = Guid.NewGuid();
-        Launch(new RunRequest(job, RunTrigger.Manual, null, runId) { HadOverrides = hadOverrides },
+        Launch(
+            new RunRequest(job, RunTrigger.Manual, null, runId) {
+                HadOverrides = hadOverrides,
+                ActorId = actorId,
+                ActorName = actorName,
+            },
             _stoppingToken);
         return runId;
     }
@@ -274,4 +280,7 @@ public sealed class SchedulerService : BackgroundService {
 internal sealed record RunRequest(JobDefinition Job, RunTrigger Trigger, Guid? CausedByRunId, Guid? RunId) {
     public int Attempt { get; init; } = 1;
     public bool HadOverrides { get; init; }
+    /// <summary>Who pressed run. Null for everything the scheduler starts by itself.</summary>
+    public Guid? ActorId { get; init; }
+    public string ActorName { get; init; }
 }

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { api, isActive, type Job, type Run, type Stats } from '../api';
 import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../components/common';
+import { TabNav } from '../components/TabNav';
 import { duration, timeAgo } from '../ipynb';
 import { useProjects } from '../projectContext';
 import { jobPath, jobsPath } from '../routes';
@@ -213,11 +214,34 @@ function JobsByProject({ jobs, lastRun }: { jobs: Job[]; lastRun: Map<string, st
   );
 }
 
+/**
+ * The Dashboard's views, as routes.
+ *
+ * Overview answers "is everything alright"; Monitoring is the grid you go to
+ * when it isn't. Separate paths rather than component state, so a filtered grid
+ * is a link and the back button does what it looks like it does.
+ *
+ * Notifications is the third view in the spec and is not built yet, so it is not
+ * a tab: a tab that leads nowhere is worse than one that is not there.
+ */
+export function DashboardTabs() {
+  return (
+    <TabNav
+      label="Dashboard views"
+      className="mb-4"
+      items={[
+        { to: '/', label: 'Overview' },
+        { to: '/monitoring', label: 'Monitoring' },
+      ]}
+    />
+  );
+}
+
 export function Dashboard() {
   const { data, error } = usePolling<{ stats: Stats; runs: Run[]; jobs: Job[] }>(
     async () => ({
       stats: await api.stats(7),
-      runs: await api.runs(25),
+      runs: (await api.runs(25)).runs,
       jobs: (await api.jobs()).jobs,
     }),
     3000,
@@ -246,6 +270,7 @@ export function Dashboard() {
   return (
     <div>
       <PageHeader title="Dashboard" />
+      <DashboardTabs />
       <ErrorBanner error={error} />
 
       {/* The cards state the health of the whole install, so they do not follow

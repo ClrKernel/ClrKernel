@@ -48,7 +48,8 @@ public sealed class JobExecutor {
 
     public async Task<Run> ExecuteAsync(
         JobDefinition job, RunTrigger trigger, Guid? causedByRunId = null, int attempt = 1,
-        Guid? runId = null, bool hadOverrides = false, CancellationToken cancellationToken = default) {
+        Guid? runId = null, bool hadOverrides = false, Guid? actorId = null, string actorName = null,
+        CancellationToken cancellationToken = default) {
         var git = _projects?.Find(job.Project) is { } project ? _projects.GitFor(project) : null;
         var run = new Run {
             Id = runId ?? Guid.NewGuid(),
@@ -62,6 +63,8 @@ public sealed class JobExecutor {
             Attempt = attempt,
             CreatedAt = DateTime.UtcNow,
             StartedAt = DateTime.UtcNow,
+            ActorId = actorId,
+            ActorName = actorName,
         };
 
         // Promotion evidence, captured BEFORE the notebook is parsed: a save that

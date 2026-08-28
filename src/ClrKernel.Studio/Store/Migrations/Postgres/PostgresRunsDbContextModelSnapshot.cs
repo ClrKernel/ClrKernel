@@ -404,6 +404,15 @@ namespace ClrKernel.Studio.Store.Migrations.Postgres
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("actor_name");
+
                     b.Property<string>("ArtifactPath")
                         .HasColumnType("text")
                         .HasColumnName("artifact_path");

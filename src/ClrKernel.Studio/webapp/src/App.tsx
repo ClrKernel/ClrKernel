@@ -7,6 +7,7 @@ import { TopBar } from './components/TopBar';
 import { Channels } from './pages/Channels';
 import { Connections } from './pages/Connections';
 import { Dashboard } from './pages/Dashboard';
+import { Monitoring } from './pages/Monitoring';
 import { Editor } from './pages/Editor';
 import { JobDetail } from './pages/JobDetail';
 import { Jobs } from './pages/Jobs';
@@ -179,6 +180,10 @@ export function App() {
             <Routes>
               {/* The dashboard is the whole server, so it names no project. */}
               <Route path="/" element={<Dashboard />} />
+              {/* A view of the Dashboard, not a section of its own — it is off the
+                  root because its filters live in the query string, and nesting
+                  it would have put a project in the path it deliberately spans. */}
+              <Route path="/monitoring" element={<Monitoring />} />
 
               {/* Everything about a project has that project in its path: a link
                   to a job or a file has to mean one job or one file, and two

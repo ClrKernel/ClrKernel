@@ -24,7 +24,7 @@ export function Jobs() {
   // list: newest first, so the first sighting of a job is its latest run.
   // Slower than the catalog poll on purpose — this is 200 runs on the wire for
   // one pill per row, and a pill that is fifteen seconds stale costs nothing.
-  const { data: runs } = usePolling<Run[]>(() => api.runs(200), 15000);
+  const { data: runs } = usePolling<Run[]>(async () => (await api.runs(200)).runs, 15000);
   const lastRun = new Map<string, string>();
   for (const run of runs ?? []) {
     const key = `${run.environment}/${run.jobName}`;

@@ -1073,7 +1073,9 @@ public static class JobsApi {
                     }
                     job = job.With(merged);
                 }
-                var runId = scheduler.TriggerManual(job, overrides?.Parameters is { Count: > 0 });
+                var user = context.CurrentUser();
+                var runId = scheduler.TriggerManual(
+                    job, overrides?.Parameters is { Count: > 0 }, user?.Id, user?.DisplayName);
                 return runId == null
                     ? Results.Conflict(new { error = $"{job.Name} already has a run in flight." })
                     : Results.Accepted($"/api/runs/{runId}", new { runId });
@@ -1095,7 +1097,7 @@ public static class JobsApi {
             projects.Find(project) is not { } found
                 ? NoProject(project)
                 : Results.Ok(await store.QueryRunsAsync(new RunQuery {
-                    Project = found.Slug,
+                    Projects = new[] { found.Slug },
                     Environment = branch,
                     JobName = name,
                     Limit = Clamp(limit),
@@ -1174,33 +1176,56 @@ public static class JobsApi {
         api.MapGet("/jobs/schema", () =>
             Results.Text(JobsSchema.Json, "application/schema+json"));
 
+        // The monitoring grid. Every filter and the sort are applied by the store,
+        // because run history grows without bound and a page assembled from rows the
+        // client then throws away is a page that gets shorter as history gets longer.
+        //
+        // Project visibility is one of those filters rather than a pass over the
+        // result: filtering after the query returns short pages — ask for fifty and
+        // get the eleven of them you may see — and "page 2 has four rows" is not a
+        // bug anyone reports as a permissions bug.
         api.MapGet("/runs", async (
             HttpContext context, ProjectRegistry projects, IRunStore store,
-            string status, string project, string env, int? limit, int? offset) => {
+            string status, string project, string env, string job, string path, string trigger,
+            Guid? actor, DateTime? since, DateTime? until, string sort, bool? asc,
+            int? limit, int? offset) => {
                 var visible = await context.VisibleProjectsAsync(projects);
                 if (project != null && !visible.ContainsKey(project)) {
                     return NoProject(project);
                 }
-                RunStatus? parsed = null;
-                if (!string.IsNullOrEmpty(status)) {
-                    if (!Enum.TryParse<RunStatus>(status, ignoreCase: true, out var value)) {
-                        return Results.BadRequest(new { error = $"Unknown status '{status}'." });
-                    }
-                    parsed = value;
+                if (!TryParseEnum<RunStatus>(status, out var parsedStatus, out var statusError)) {
+                    return statusError;
                 }
+                if (!TryParseEnum<RunTrigger>(trigger, out var parsedTrigger, out var triggerError)) {
+                    return triggerError;
+                }
+                if (!TryParseEnum<RunSort>(sort, out var parsedSort, out var sortError)) {
+                    return sortError;
+                }
+                var take = Clamp(limit);
                 var runs = await store.QueryRunsAsync(new RunQuery {
-                    Project = project,
+                    // One named project is intersected with what the caller can see,
+                    // above; none named means all of them, which is the same rule.
+                    Projects = project != null ? new[] { project } : visible.Keys.ToList(),
                     Environment = env,
-                    Status = parsed,
-                    Limit = Clamp(limit),
+                    JobName = job,
+                    NotebookPath = path,
+                    Status = parsedStatus,
+                    Trigger = parsedTrigger,
+                    ActorId = actor,
+                    Since = since,
+                    Until = until,
+                    Sort = parsedSort ?? RunSort.Started,
+                    Ascending = asc ?? false,
+                    // One more than asked for, so "is there another page" costs a row
+                    // rather than a COUNT(*) over the whole table on every poll.
+                    Limit = take + 1,
                     Offset = offset ?? 0,
                 });
-                // Named one project: checked above. Named none: the history of a
-                // project you cannot see is part of what you cannot see.
-                return Results.Ok(project != null
-                    ? runs
-                    : runs.Where(r => visible.ContainsKey(r.Project ?? ProjectRegistry.DefaultSlug))
-                        .ToList());
+                return Results.Ok(new {
+                    runs = runs.Take(take),
+                    hasMore = runs.Count > take,
+                });
             });
 
         // A run is part of its project, and so is the fact that it happened: these
@@ -1300,6 +1325,29 @@ public static class JobsApi {
     }
 
     private static int Clamp(int? limit) => Math.Clamp(limit ?? 50, 1, 500);
+
+    /// <summary>
+    /// Parses an optional enum off the query string: absent is null and fine, present
+    /// and unknown is 400 naming what was allowed. A silently-ignored filter is worse
+    /// than a rejected one — it answers with rows that do not match what was asked.
+    /// </summary>
+    private static bool TryParseEnum<T>(string value, out T? parsed, out IResult error)
+        where T : struct, Enum {
+        parsed = null;
+        error = null;
+        if (string.IsNullOrEmpty(value)) {
+            return true;
+        }
+        if (!Enum.TryParse<T>(value, ignoreCase: true, out var result)) {
+            error = Results.BadRequest(new {
+                error = $"Unknown {typeof(T).Name.Replace("Run", "").ToLowerInvariant()} "
+                    + $"'{value}'. Expected one of: {string.Join(", ", Enum.GetNames<T>())}.",
+            });
+            return false;
+        }
+        parsed = result;
+        return true;
+    }
 
     /// <summary>
     /// A slug nobody registered is 404, never 403: a project you have no access to

@@ -62,12 +62,12 @@ public class EnvironmentMigrationTest {
 
         var store = RunStoreFactory.Create(options);   // applies the rest, rename included
 
-        var underTest = await store.QueryRunsAsync(new RunQuery { Environment = "test" });
+        var underTest = await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Environment = "test" });
         Assert.AreEqual(1, underTest.Count, "the dev run answers to test now");
         Assert.AreEqual("nightly", underTest[0].JobName);
-        Assert.AreEqual(0, (await store.QueryRunsAsync(new RunQuery { Environment = "dev" })).Count,
+        Assert.AreEqual(0, (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Environment = "dev" })).Count,
             "and to nothing under the old name");
-        Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { Environment = "prod" })).Count,
+        Assert.AreEqual(1, (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Environment = "prod" })).Count,
             "prod is untouched");
         Assert.IsNotNull(await store.GetLastTriggerAsync("default", "test", "nightly"),
             "the fan-in clock travels too");
@@ -96,7 +96,7 @@ public class EnvironmentMigrationTest {
 
         var store = RunStoreFactory.Create(options);
 
-        var runs = await store.QueryRunsAsync(new RunQuery { Project = ProjectRegistry.DefaultSlug });
+        var runs = await store.QueryRunsAsync(new RunQuery { Projects = new[] { ProjectRegistry.DefaultSlug } });
         Assert.AreEqual(1, runs.Count, "the run belongs to the default project");
         Assert.AreEqual("test", runs[0].Environment);
         Assert.IsNotNull(
@@ -124,10 +124,10 @@ public class EnvironmentMigrationTest {
 
         var store = RunStoreFactory.Create(options);
 
-        var underTest = await store.QueryRunsAsync(new RunQuery { Environment = "test" });
+        var underTest = await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Environment = "test" });
         Assert.AreEqual(1, underTest.Count);
         Assert.AreEqual(id, underTest[0].Id);
-        Assert.AreEqual(0, (await store.QueryRunsAsync(new RunQuery { Environment = "dev" })).Count);
+        Assert.AreEqual(0, (await store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Environment = "dev" })).Count);
         Assert.IsTrue(Directory.Exists(Path.Combine(options.ArtifactsDir, "test", "nightly")),
             "the artifacts moved with the record");
         Assert.IsNotNull(await store.GetLastTriggerAsync("default", "test", "nightly"));

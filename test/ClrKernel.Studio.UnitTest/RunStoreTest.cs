@@ -63,9 +63,9 @@ public class RunStoreTest {
         await _store.CreateRunAsync(NewRun("a", RunStatus.Failed));
         await _store.CreateRunAsync(NewRun("b", RunStatus.Succeeded));
 
-        Assert.AreEqual(2, (await _store.QueryRunsAsync(new RunQuery { JobName = "a" })).Count);
-        Assert.AreEqual(1, (await _store.QueryRunsAsync(new RunQuery { Status = RunStatus.Failed })).Count);
-        Assert.AreEqual(3, (await _store.QueryRunsAsync(new RunQuery())).Count);
+        Assert.AreEqual(2, (await _store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, JobName = "a" })).Count);
+        Assert.AreEqual(1, (await _store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, Status = RunStatus.Failed })).Count);
+        Assert.AreEqual(3, (await _store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" } })).Count);
 
         var stats = await _store.GetStatsAsync(TimeSpan.FromHours(1));
         Assert.AreEqual(3, stats.Total);
@@ -110,7 +110,7 @@ public class RunStoreTest {
         await _store.CreateRunAsync(NewRun("done", RunStatus.Succeeded));
 
         Assert.AreEqual(1, await _store.MarkOrphansFailedAsync());
-        var stuck = (await _store.QueryRunsAsync(new RunQuery { JobName = "stuck" })).Single();
+        var stuck = (await _store.QueryRunsAsync(new RunQuery { Projects = new[] { "default" }, JobName = "stuck" })).Single();
         Assert.AreEqual(RunStatus.Failed, stuck.Status);
         StringAssert.Contains(stuck.ErrorSummary, "Orphaned");
     }

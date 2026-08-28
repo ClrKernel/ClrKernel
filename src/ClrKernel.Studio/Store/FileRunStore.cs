@@ -148,22 +148,60 @@ public sealed class FileRunStore : IRunStore {
     public Task<Run> GetRunAsync(Guid id) => Task.FromResult(Find(id)?.Run);
 
     public Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
-        var runs = AllRecords().Select(r => r.Run);
-        if (!string.IsNullOrEmpty(query.Project)) {
-            runs = runs.Where(r => string.Equals(r.Project ?? "default", query.Project, StringComparison.OrdinalIgnoreCase));
-        }
+        var runs = AllRecords().Select(r => r.Run)
+            .Where(r => query.Projects.Contains(r.Project ?? "default", StringComparer.OrdinalIgnoreCase));
         if (!string.IsNullOrEmpty(query.Environment)) {
             runs = runs.Where(r => string.Equals(r.Environment, query.Environment, StringComparison.OrdinalIgnoreCase));
         }
         if (!string.IsNullOrEmpty(query.JobName)) {
             runs = runs.Where(r => string.Equals(r.JobName, query.JobName, StringComparison.OrdinalIgnoreCase));
         }
+        if (!string.IsNullOrEmpty(query.NotebookPath)) {
+            runs = runs.Where(r => string.Equals(r.NotebookPath, query.NotebookPath, StringComparison.OrdinalIgnoreCase));
+        }
         if (query.Status is { } status) {
             runs = runs.Where(r => r.Status == status);
         }
+        if (query.Trigger is { } trigger) {
+            runs = runs.Where(r => r.Trigger == trigger);
+        }
+        if (query.ActorId is { } actor) {
+            runs = runs.Where(r => r.ActorId == actor);
+        }
+        if (query.Since is { } since) {
+            runs = runs.Where(r => (r.StartedAt ?? r.CreatedAt) >= since);
+        }
+        if (query.Until is { } until) {
+            runs = runs.Where(r => (r.StartedAt ?? r.CreatedAt) < until);
+        }
         return Task.FromResult<IReadOnlyList<Run>>(
-            runs.Skip(query.Offset).Take(query.Limit).ToList());
+            Ordered(runs, query).Skip(query.Offset).Take(query.Limit).ToList());
     }
+
+    /// <summary>The same order <see cref="EfRunStore"/> produces — see the note there.</summary>
+    private static IEnumerable<Run> Ordered(IEnumerable<Run> runs, RunQuery query) {
+        var ascending = query.Ascending;
+        IOrderedEnumerable<Run> sorted = query.Sort switch {
+            RunSort.Created => By(runs, r => r.CreatedAt, ascending),
+            RunSort.Project => By(runs, r => r.Project ?? "default", ascending),
+            RunSort.JobName => By(runs, r => r.JobName ?? "", ascending),
+            RunSort.Environment => By(runs, r => r.Environment ?? "", ascending),
+            // ToString, not the enum's number: the relational stores keep these as
+            // text and ORDER BY sorts them alphabetically, and the two backends
+            // returning different orders for the same query is the bug this file
+            // exists to not have.
+            RunSort.Status => By(runs, r => r.Status.ToString(), ascending),
+            RunSort.Trigger => By(runs, r => r.Trigger.ToString(), ascending),
+            _ => By(runs, r => r.StartedAt ?? r.CreatedAt, ascending),
+        };
+        return query.Sort == RunSort.Created
+            ? sorted.ThenByDescending(r => r.Id)
+            : sorted.ThenByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id);
+    }
+
+    private static IOrderedEnumerable<Run> By<TKey>(
+        IEnumerable<Run> runs, Func<Run, TKey> key, bool ascending) =>
+        ascending ? runs.OrderBy(key) : runs.OrderByDescending(key);
 
     public Task<RunStats> GetStatsAsync(
         TimeSpan window, IReadOnlyCollection<string> projects = null) {

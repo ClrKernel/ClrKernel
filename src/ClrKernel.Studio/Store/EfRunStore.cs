@@ -68,22 +68,70 @@ public sealed class EfRunStore : IRunStore {
 
     public async Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
         using var db = _contextFactory();
-        var runs = db.Runs.AsNoTracking();
-        if (!string.IsNullOrEmpty(query.Project)) {
-            runs = runs.Where(r => r.Project == query.Project);
-        }
+        var projects = query.Projects;
+        var runs = db.Runs.AsNoTracking().Where(r => projects.Contains(r.Project));
         if (!string.IsNullOrEmpty(query.Environment)) {
             runs = runs.Where(r => r.Environment == query.Environment);
         }
         if (!string.IsNullOrEmpty(query.JobName)) {
             runs = runs.Where(r => r.JobName == query.JobName);
         }
+        if (!string.IsNullOrEmpty(query.NotebookPath)) {
+            runs = runs.Where(r => r.NotebookPath == query.NotebookPath);
+        }
         if (query.Status is { } status) {
             runs = runs.Where(r => r.Status == status);
         }
-        return await runs.OrderByDescending(r => r.CreatedAt)
-            .Skip(query.Offset).Take(query.Limit).ToListAsync();
+        if (query.Trigger is { } trigger) {
+            runs = runs.Where(r => r.Trigger == trigger);
+        }
+        if (query.ActorId is { } actor) {
+            runs = runs.Where(r => r.ActorId == actor);
+        }
+        // Against the same instant the grid sorts on, so "runs since 9am" and
+        // "sorted by started" cannot disagree about which column they mean.
+        if (query.Since is { } since) {
+            runs = runs.Where(r => (r.StartedAt ?? r.CreatedAt) >= since);
+        }
+        if (query.Until is { } until) {
+            runs = runs.Where(r => (r.StartedAt ?? r.CreatedAt) < until);
+        }
+        return await Ordered(runs, query).Skip(query.Offset).Take(query.Limit).ToListAsync();
     }
+
+    /// <summary>
+    /// Applies the sort, always ending on CreatedAt.
+    /// <para>
+    /// The tiebreaker is not decoration. Paging is Skip/Take over a fresh query per
+    /// page, so any two rows the sort calls equal may come back in either order — and
+    /// a row that moves between page 1 and page 2 is a row the reader never sees.
+    /// </para>
+    /// <para>
+    /// Started coalesces to CreatedAt rather than sorting nulls, because where a NULL
+    /// lands in an ORDER BY is a per-provider decision (PostgreSQL puts them last
+    /// ascending, SQL Server puts them first) and a grid whose pending runs jump ends
+    /// to end when you change database is a bug nobody would think to look for.
+    /// </para>
+    /// </summary>
+    private static IOrderedQueryable<Run> Ordered(IQueryable<Run> runs, RunQuery query) {
+        var ascending = query.Ascending;
+        IOrderedQueryable<Run> sorted = query.Sort switch {
+            RunSort.Created => By(runs, r => r.CreatedAt, ascending),
+            RunSort.Project => By(runs, r => r.Project, ascending),
+            RunSort.JobName => By(runs, r => r.JobName, ascending),
+            RunSort.Environment => By(runs, r => r.Environment, ascending),
+            RunSort.Status => By(runs, r => r.Status, ascending),
+            RunSort.Trigger => By(runs, r => r.Trigger, ascending),
+            _ => By(runs, r => r.StartedAt ?? r.CreatedAt, ascending),
+        };
+        return query.Sort == RunSort.Created
+            ? sorted.ThenByDescending(r => r.Id)
+            : sorted.ThenByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id);
+    }
+
+    private static IOrderedQueryable<Run> By<TKey>(
+        IQueryable<Run> runs, System.Linq.Expressions.Expression<Func<Run, TKey>> key, bool ascending) =>
+        ascending ? runs.OrderBy(key) : runs.OrderByDescending(key);
 
     public async Task<RunStats> GetStatsAsync(
         TimeSpan window, IReadOnlyCollection<string> projects = null) {

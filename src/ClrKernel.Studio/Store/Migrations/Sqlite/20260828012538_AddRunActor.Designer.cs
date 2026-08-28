@@ -3,6 +3,7 @@ using System;
 using ClrKernel.Studio;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ClrKernel.Studio.Store.Migrations.Sqlite
 {
     [DbContext(typeof(SqliteRunsDbContext))]
-    partial class SqliteRunsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828012538_AddRunActor")]
+    partial class AddRunActor
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
