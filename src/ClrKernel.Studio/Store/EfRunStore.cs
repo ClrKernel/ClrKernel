@@ -83,6 +83,9 @@ public sealed class EfRunStore : IRunStore {
         if (query.Status is { } status) {
             runs = runs.Where(r => r.Status == status);
         }
+        if (query.ActiveOnly) {
+            runs = runs.Where(r => r.Status == RunStatus.Pending || r.Status == RunStatus.Running);
+        }
         if (query.Trigger is { } trigger) {
             runs = runs.Where(r => r.Trigger == trigger);
         }

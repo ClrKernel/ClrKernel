@@ -694,6 +694,11 @@ public class NotebookCellsApiTest {
 
         var moved = await MoveAsync(_notebook, "archive/2026/old.nb.md");
         Assert.AreEqual(HttpStatusCode.OK, moved.StatusCode, await moved.Content.ReadAsStringAsync());
+        // The answer says whether a warm kernel went with the file, so the editor
+        // can say so too. Nothing is warm here — there is no kernel in this fixture —
+        // but the field has to be there, and asking for it exercises the wiring.
+        Assert.IsFalse(
+            (await moved.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sessionDropped").GetBoolean());
 
         Assert.AreEqual("moved me\n", File.ReadAllText(Path.Combine(MinePath, "archive", "2026", "old.nb.md")),
             "the folders on the way are made, the way a save makes them");
@@ -873,5 +878,57 @@ public class NotebookCellsApiTest {
         Assert.IsTrue(schema.GetProperty("properties").TryGetProperty("jobs", out _));
     }
 
+
+    /// <summary>
+    /// The editor's "a scheduled run of this notebook is in flight" warning.
+    /// <para>
+    /// Asked of the run store rather than the catalog: going via the catalog meant
+    /// re-reading every jobs file under the git lock — the lock saves, commits and
+    /// promotion take — on a route the editor polls a few times a second while a
+    /// cell runs. This pins the answer, which is the part that had to survive the
+    /// swap; in particular that the path the executor records and the path the
+    /// editor asks about are the same string.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task The_editor_is_told_when_a_scheduled_run_of_this_notebook_is_in_flight() {
+        const string notebook = "etl.nb.md";
+        var url = $"/api/projects/default/branches/{GitService.TestBranch}"
+            + $"/notebooks/session/status?path={notebook}";
+
+        var quiet = await _client.GetFromJsonAsync<JsonElement>(url);
+        Assert.IsFalse(quiet.GetProperty("scheduledRunActive").GetBoolean(), "nothing is running");
+
+        // Exactly what the executor writes: the notebook path relative to the root.
+        var run = await _store.CreateRunAsync(new Run {
+            Id = Guid.NewGuid(),
+            Project = "default",
+            Environment = GitService.TestBranch,
+            JobName = "nightly",
+            NotebookPath = notebook,
+            Status = RunStatus.Running,
+            Trigger = RunTrigger.Schedule,
+            CreatedAt = DateTime.UtcNow,
+            StartedAt = DateTime.UtcNow,
+        });
+
+        Assert.IsTrue(
+            (await _client.GetFromJsonAsync<JsonElement>(url)).GetProperty("scheduledRunActive").GetBoolean(),
+            "a run of this notebook is in flight");
+
+        // A different notebook's run is not this notebook's business.
+        Assert.IsFalse(
+            (await _client.GetFromJsonAsync<JsonElement>(
+                $"/api/projects/default/branches/{GitService.TestBranch}"
+                + "/notebooks/session/status?path=other.nb.md"))
+                .GetProperty("scheduledRunActive").GetBoolean());
+
+        run.Status = RunStatus.Succeeded;
+        run.FinishedAt = DateTime.UtcNow;
+        await _store.UpdateRunAsync(run);
+        Assert.IsFalse(
+            (await _client.GetFromJsonAsync<JsonElement>(url)).GetProperty("scheduledRunActive").GetBoolean(),
+            "a finished run is not in flight");
+    }
 
 }

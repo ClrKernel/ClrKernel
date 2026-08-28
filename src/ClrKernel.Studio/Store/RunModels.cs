@@ -335,6 +335,9 @@ public sealed class RunQuery {
     /// <summary>The notebook, as stored — the grid's File filter.</summary>
     public string NotebookPath { get; set; }
     public RunStatus? Status { get; set; }
+    /// <summary>Pending or Running — "is something happening right now", which is
+    /// two statuses and so cannot be asked with <see cref="Status"/>.</summary>
+    public bool ActiveOnly { get; set; }
     public RunTrigger? Trigger { get; set; }
     /// <summary>Who pressed run. Only ever matches manual runs.</summary>
     public Guid? ActorId { get; set; }

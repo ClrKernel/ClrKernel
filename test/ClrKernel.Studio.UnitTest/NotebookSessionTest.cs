@@ -95,6 +95,20 @@ public class NotebookSessionTest {
                     transient = new Dictionary<string, object> { ["display_id"] = "bar" },
                 });
             }
+            if (code.Contains("late")) {
+                // A display the client sees *after* the reply — which is what the
+                // real race produces: the kernel sends it first (measured on the
+                // wire), but StreamJsonRpc completes the reply's awaiter without
+                // waiting for the notification to be dispatched, and the first
+                // execution in a session lost that every time.
+                _ = Task.Run(async () => {
+                    await Task.Delay(50);
+                    await Rpc.NotifyWithParameterObjectAsync("clrkernel/display", new {
+                        cellId,
+                        data = new Dictionary<string, object> { ["text/plain"] = "printed first" },
+                    });
+                });
+            }
             if (code.Contains("flood")) {
                 for (var i = 0; i < 260; i++) {
                     await Rpc.NotifyWithParameterObjectAsync("clrkernel/display", new {
@@ -568,6 +582,32 @@ public class NotebookSessionTest {
         Assert.AreEqual("failed", state["c1"].Status);
         Assert.AreEqual("skipped", state["c2"].Status, "papermill semantics, same as a scheduled run");
         StringAssert.Contains(state["c1"].Outputs.ToJsonString(), "kaboom");
+    }
+
+    /// <summary>
+    /// A cell's result goes last, whatever order the two arrived in.
+    /// <para>
+    /// The kernel sends stdout before the reply — that is the order on the wire —
+    /// but the reply's awaiter completes independently of the notification being
+    /// dispatched, and the first execution in a session lost that race every single
+    /// time: `1+1` after a Console.WriteLine rendered the 2 above the text.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task A_cells_result_stays_last_even_when_its_output_arrives_after_it() {
+        var (session, _) = NewSession();
+        await RunAsync(session, "late");
+
+        await SettleAsync(
+            () => session.Snapshot()["c0"].Outputs.ToJsonString().Contains("printed first"),
+            "the display never arrived");
+
+        var outputs = session.Snapshot()["c0"].Outputs;
+        Assert.AreEqual(2, outputs.Count);
+        Assert.AreEqual("display_data", outputs[0]["output_type"].GetValue<string>(),
+            "the printed line comes first, as the kernel sent it");
+        Assert.AreEqual("execute_result", outputs[1]["output_type"].GetValue<string>(),
+            "and the cell's value is its last output");
     }
 
     [TestMethod]

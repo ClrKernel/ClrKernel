@@ -186,6 +186,9 @@ public sealed class FileRunStore : IRunStore {
         if (query.Status is { } status) {
             runs = runs.Where(r => r.Status == status);
         }
+        if (query.ActiveOnly) {
+            runs = runs.Where(r => r.Status is RunStatus.Pending or RunStatus.Running);
+        }
         if (query.Trigger is { } trigger) {
             runs = runs.Where(r => r.Trigger == trigger);
         }

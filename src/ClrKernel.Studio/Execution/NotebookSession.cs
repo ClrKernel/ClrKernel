@@ -520,9 +520,32 @@ public sealed class NotebookSession : IDisposable {
                 "… output truncated: this cell produced more than the editor keeps.\n"));
             return false;
         }
+        // A cell's result goes last, whatever order the two arrived in.
+        //
+        // The kernel sends every display *before* the reply — that is the order on
+        // the wire, measured with the RPC harness — but StreamJsonRpc completes the
+        // reply's awaiter independently of dispatching the notification, and the
+        // first execution in a session lost that race every single time: `1+1` after
+        // a Console.WriteLine rendered the 2 above the text. Sorting by a sequence
+        // number would mean putting one on a wire that is already ordered; keeping
+        // the result last says the same thing with an invariant Jupyter already has.
+        //
+        // The cost is a genuinely late display — new output from background work the
+        // cell started, after it returned — landing above the result instead of
+        // below. That is rare, and it is a smaller wrong than the first cell of every
+        // notebook printing its lines in the wrong order. `updateDisplay` is
+        // unaffected: it replaces in place and never comes through here.
+        var last = cell.Outputs.Count - 1;
+        if (last >= 0 && !IsResult(output) && IsResult(cell.Outputs[last])) {
+            cell.Outputs.Insert(last, output);
+            return true;
+        }
         cell.Outputs.Add(output);
         return true;
     }
+
+    private static bool IsResult(JsonNode output) =>
+        output?["output_type"]?.GetValue<string>() == "execute_result";
 
     private static int Size(SessionCellState cell) => cell.Outputs.ToJsonString().Length;
 

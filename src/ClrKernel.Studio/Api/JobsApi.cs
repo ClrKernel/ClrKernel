@@ -399,8 +399,8 @@ public static class JobsApi {
         // Renaming, and moving out of the scratch folder — one operation, because
         // they are one operation: a notebook's path is its name.
         scoped.MapPost("/notebooks/move", async (
-            ProjectRegistry projects, string project, string branch, string path,
-            HttpContext context) => {
+            ProjectRegistry projects, NotebookSessionManager sessions,
+            string project, string branch, string path, HttpContext context) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -428,10 +428,20 @@ public static class JobsApi {
                     }
                     Directory.CreateDirectory(Path.GetDirectoryName(to)!);
                     File.Move(from, to);
-                    // ponytail: a warm kernel session keyed on the old path is left
-                    // to idle out, so a move loses the variables in it. Hand the
-                    // session manager the rename if that ever bites.
-                    return Results.Ok(new { moved = true, path = move.To, branch });
+                    // The warm kernel for the old path goes with the file.
+                    //
+                    // Not re-keyed to the new one: the kernel's working directory was
+                    // set from the old folder when it started, so after a move across
+                    // folders its `#!import "../lib/x.dib"` would resolve against
+                    // where the notebook used to be. Keeping the variables would mean
+                    // keeping a kernel that reads the wrong files.
+                    //
+                    // Dropping it is strictly better than what happened before, which
+                    // was leaving it to idle out for half an hour: the variables were
+                    // lost either way, and a process was held open for a file that no
+                    // longer existed. The answer says so, so the editor can too.
+                    var dropped = sessions.Restart(SessionFor(context, scope, branch, from).Key);
+                    return Results.Ok(new { moved = true, path = move.To, branch, sessionDropped = dropped });
                 });
             }).RequiresProject(ProjectRole.ProjectMember);
 
@@ -638,14 +648,20 @@ public static class JobsApi {
                 // the editor says so rather than leaving the file changing unexplained.
                 // Checked before the session lookup, because the warning is most useful
                 // when you open the file — which is before any kernel of yours exists.
-                // ponytail: Load() re-reads the jobs yaml under the git lock, and the
-                // editor polls this ~2.5×/s while a cell runs. Fine for one person's
-                // handful of files; cache it per notebook if that ever shows up.
-                var scheduled = false;
-                foreach (var job in scope.Catalog.Load().In(scope.Project.Slug, branch).Where(j =>
-                    string.Equals(j.NotebookPath, resolved, StringComparison.OrdinalIgnoreCase))) {
-                    scheduled |= await store.HasActiveRunAsync(job.Project, job.Environment, job.Name);
-                }
+                //
+                // Asked of the run store, not of the catalog. Going via the catalog
+                // meant re-reading every jobs file *under the git lock* — the same
+                // lock saves, commits and promotion take — on a route the editor
+                // polls ~2.5×/s while a cell runs. The store already indexes runs by
+                // notebook path, and "is a run of this notebook in flight" is the
+                // question, so it is now one query and no lock.
+                var scheduled = (await store.QueryRunsAsync(new RunQuery {
+                    Projects = new[] { scope.Project.Slug },
+                    Environment = branch,
+                    NotebookPath = path,
+                    ActiveOnly = true,
+                    Limit = 1,
+                })).Count > 0;
                 var session = sessions.Find(SessionFor(context, scope, branch, resolved).Key);
                 return session == null
                     ? Results.Ok(new { running = false, started = false, scheduledRunActive = scheduled })
