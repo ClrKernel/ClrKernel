@@ -3,6 +3,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Select,
@@ -146,7 +147,10 @@ export function Files() {
     setNotice(null);
     try {
       const result = await api.initProject(projectSlug());
-      setNotice(result.message);
+      // A toast, not the notice line: that renders through ErrorBanner, so this
+      // said "initialized; adopted 3 existing item(s)" in red with an error icon
+      // — a success that reads as a failure is worse than no message.
+      toast.success(result.message);
       reload();
       reloadHealth();
     } catch (e) {
@@ -187,15 +191,20 @@ export function Files() {
   // remembered branch can be one that no longer exists, and a Select whose value
   // matches no option renders blank.
   useEffect(() => {
-    if (!env && environments.length > 0) {
-      const remembered = loadBranch(projectSlug());
-      setEnv(
-        environments.find((e) => e.name === remembered)?.name
-          ?? environments.find((e) => e.name === 'mine')?.name
-          ?? environments[0].name,
-      );
+    if (environments.length === 0 || environments.some((e) => e.name === env)) {
+      return;
     }
-  }, [environments.length]);
+    // Not only when `env` is empty: setting up the git workflow replaces
+    // `default` with mine/test/prod under a selection that was valid a moment
+    // ago, and a Select whose value matches no option renders blank — which
+    // looked like the setup had half worked until you reloaded the page.
+    const remembered = loadBranch(projectSlug());
+    setEnv(
+      environments.find((e) => e.name === remembered)?.name
+        ?? environments.find((e) => e.name === 'mine')?.name
+        ?? environments[0].name,
+    );
+  }, [environments.map((e) => e.name).join(), env]);
 
   /** Remembered on change, so nobody re-picks their branch on every visit. */
   function pick(branch: string) {
