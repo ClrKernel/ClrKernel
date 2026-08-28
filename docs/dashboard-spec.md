@@ -46,7 +46,15 @@ a job definition from any other YAML once the route shows every file. No rename.
   autosave, Push and Promote. The missing piece is the tree and the route, not the
   editor.
 
-### Blockers
+### Blockers — both resolved
+
+> **Resolved.** A jobs file is now named for the notebook it schedules
+> (`etl.jobs.yaml` ↔ `etl.nb.md`), the per-job `notebook:` is gone, and the
+> promotion unit is the pair — promoted together, from either half. `isDeletion`
+> is per file, so deleting a jobs file unschedules a notebook that survives.
+> Gating is by what changed: a notebook edit needs a green run at the current sha,
+> a schedule edit needs the file to be structurally sound. Parameters count as a
+> notebook edit — they are inputs to it.
 
 1. **One `.yml` can name several notebooks.** `JobsFile.Flatten` takes
    `entry.Notebook ?? sharedNotebook`, so each job entry may point at its own.
@@ -237,7 +245,8 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
 - [x] Promoting a changed job definition requires a successful `test` run at the
       current sha, not a stale run of the previous definition. **Already true** —
       but only reachable notebook-first; see blockers 1 and 2.
-- [ ] Promoting a deleted `.yml` stops its schedule.
+- [x] Promoting a deleted `.yml` stops its schedule, naming each schedule it
+      switches off and when it would next have fired.
 - [ ] The Monitoring grid shows Project first, filters and sorts server-side, and
       shows only accessible projects.
 - [ ] Rerun defaults to branch HEAD, offers exact-version rerun, respects role and

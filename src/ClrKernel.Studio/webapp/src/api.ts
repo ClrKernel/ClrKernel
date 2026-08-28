@@ -615,6 +615,8 @@ export const api = {
       reasons: string[];
       paths: string[];
       isDeletion: boolean;
+      /** Schedules this promotion switches off, so the confirmation can name them. */
+      unscheduling: { name: string; cron: string | null; nextRun: string | null }[];
     }>(`${scope('test')}/notebooks/promotion?path=${encodeURIComponent(path)}`),
   promote: (path: string) =>
     request<{ promoted: boolean; commitSha: string }>(

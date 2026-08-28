@@ -325,4 +325,163 @@ public class PromotionTest {
         Assert.AreEqual(0, (await _store.QueryRunsAsync(new RunQuery { Environment = "test" })).Count,
             "and must leave no run history at all");
     }
+
+    private Task<PromotionEligibility> Check(string path = "etl.nb.md") =>
+        Promotion.CheckAsync(_projects.Default, _projects, _store, path);
+
+    /// <summary>
+    /// Either half resolves the same pair, so it does not matter which one the
+    /// Promote button was pressed on.
+    /// </summary>
+    [TestMethod]
+    public async Task Promoting_from_the_jobs_file_is_promoting_the_pair() {
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+
+        var fromNotebook = await Check("etl.nb.md");
+        var fromYaml = await Check("etl.jobs.yaml");
+
+        CollectionAssert.AreEquivalent(fromNotebook.Paths, fromYaml.Paths);
+        CollectionAssert.AreEquivalent(new[] { "etl.nb.md", "etl.jobs.yaml" }, fromYaml.Paths);
+        Assert.AreEqual(fromNotebook.Eligible, fromYaml.Eligible);
+        Assert.IsTrue(fromYaml.Eligible, string.Join("; ", fromYaml.Reasons));
+    }
+
+    /// <summary>
+    /// A schedule change needs the file to be sound, not a fresh run. Re-running a
+    /// notebook to prove a cron is valid proves nothing about the cron.
+    /// </summary>
+    [TestMethod]
+    public async Task Changing_only_the_schedule_needs_no_new_run() {
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+
+        // The green run is now stale by sha, but nothing about the notebook moved.
+        CommitDev("etl.jobs.yaml", "jobs:\n  - name: etl\n    cron: \"0 5 * * *\"\n");
+
+        var result = await Check();
+        Assert.IsTrue(result.Eligible, string.Join("; ", result.Reasons));
+        Assert.AreEqual(0, result.EvidenceRuns.Count, "no run was needed, so none is cited");
+    }
+
+    [TestMethod]
+    public async Task A_schedule_change_that_is_not_sound_is_refused() {
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+
+        CommitDev("etl.jobs.yaml", "jobs:\n  - name: etl\n    cron: \"every tuesday\"\n");
+        var result = await Check();
+        Assert.IsFalse(result.Eligible);
+        Assert.IsTrue(result.Reasons.Any(r => r.Contains("not a schedule")),
+            string.Join("; ", result.Reasons));
+    }
+
+    /// <summary>
+    /// Parameters are inputs to the notebook, so changing them changes what runs
+    /// even though only the yaml moved — the same reason the gate refuses a run
+    /// that used ad-hoc overrides.
+    /// </summary>
+    [TestMethod]
+    public async Task Changing_parameters_still_needs_a_green_run() {
+        CommitDev("etl.nb.md", "```csharp\n1+1\n```\n");
+        CommitDev("etl.jobs.yaml", "jobs:\n  - name: etl\n    parameters: {region: us}\n");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+
+        CommitDev("etl.jobs.yaml", "jobs:\n  - name: etl\n    parameters: {region: eu}\n");
+        var result = await Check();
+        Assert.IsFalse(result.Eligible, "prod would run inputs nothing has ever tried");
+        Assert.IsTrue(result.Reasons.Any(r => r.Contains("changed since its green run")),
+            string.Join("; ", result.Reasons));
+    }
+
+    [TestMethod]
+    public async Task Changing_the_notebook_still_needs_a_green_run() {
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+
+        CommitDev("etl.nb.md", "```csharp\n2+2\n```\n");
+        var result = await Check();
+        Assert.IsFalse(result.Eligible);
+        Assert.IsTrue(result.Reasons.Any(r => r.Contains("changed since its green run")),
+            string.Join("; ", result.Reasons));
+    }
+
+    /// <summary>
+    /// Deleting the jobs file unschedules the notebook and leaves it runnable by
+    /// hand. It was refused outright before — isDeletion keyed on the notebook
+    /// being gone, so this landed on "No jobs are defined for this notebook in
+    /// test" and stayed there forever.
+    /// </summary>
+    [TestMethod]
+    public async Task Deleting_the_jobs_file_unschedules_and_names_what_it_switches_off() {
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+
+        _git.WithLock(() => {
+            File.Delete(Path.Combine(_git.TestPath, "etl.jobs.yaml"));
+            _git.Commit("test", "unschedule", "etl.jobs.yaml");
+        });
+
+        var result = await Check("etl.jobs.yaml");
+        Assert.IsTrue(result.Eligible, string.Join("; ", result.Reasons));
+        Assert.IsTrue(result.IsDeletion);
+        Assert.AreEqual(1, result.Unscheduling.Count);
+        Assert.AreEqual("etl", result.Unscheduling[0].Name);
+        Assert.AreEqual("0 2 * * *", result.Unscheduling[0].Cron);
+        Assert.IsNotNull(result.Unscheduling[0].NextRun, "the confirmation says when it would have fired");
+
+        Promotion.Apply(_git, result, "etl.jobs.yaml");
+        Assert.IsFalse(File.Exists(Path.Combine(_git.ProdPath, "etl.jobs.yaml")), "the schedule is gone");
+        Assert.IsTrue(File.Exists(Path.Combine(_git.ProdPath, "etl.nb.md")),
+            "and the notebook stays, runnable by hand");
+    }
+
+    [TestMethod]
+    public async Task Deleting_the_jobs_file_is_refused_while_a_prod_run_is_in_flight() {
+        // Promotion rewrites the prod worktree, and doing that underneath a running
+        // job is how a run finishes against files it did not start with.
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+        _git.WithLock(() => {
+            File.Delete(Path.Combine(_git.TestPath, "etl.jobs.yaml"));
+            _git.Commit("test", "unschedule", "etl.jobs.yaml");
+        });
+        await _store.CreateRunAsync(new Run {
+            Id = Guid.NewGuid(), Project = ProjectRegistry.DefaultSlug, Environment = "prod",
+            JobName = "etl", NotebookPath = "etl.nb.md", Status = RunStatus.Running,
+            Trigger = RunTrigger.Schedule, CreatedAt = DateTime.UtcNow, StartedAt = DateTime.UtcNow,
+        });
+
+        var result = await Check("etl.jobs.yaml");
+        Assert.IsFalse(result.Eligible);
+        Assert.IsTrue(result.Reasons.Any(r => r.Contains("in flight")), string.Join("; ", result.Reasons));
+    }
+
+    /// <summary>
+    /// The state the pairing rule exists to prevent: prod holding a schedule whose
+    /// notebook is not there.
+    /// </summary>
+    [TestMethod]
+    public async Task A_jobs_file_whose_notebook_is_gone_is_refused() {
+        SeedNotebookAndJob("0 2 * * *");
+        await RecordRunAsync();
+        Promotion.Apply(_git, await Check(), "etl.nb.md");
+
+        _git.WithLock(() => {
+            File.Delete(Path.Combine(_git.TestPath, "etl.nb.md"));
+            _git.Commit("test", "remove the notebook only", "etl.nb.md");
+        });
+
+        var result = await Check("etl.jobs.yaml");
+        Assert.IsFalse(result.Eligible);
+        Assert.IsTrue(result.Reasons.Any(r => r.Contains("no notebook in test")),
+            string.Join("; ", result.Reasons));
+    }
+
 }

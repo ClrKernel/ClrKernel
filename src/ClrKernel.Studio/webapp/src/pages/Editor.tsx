@@ -733,7 +733,24 @@ export function Editor() {
   }, [tab, path]);
 
   async function promote() {
-    if (!confirm(`Promote ${path} to production?`)) {
+    // Switching a schedule off is not the same act as shipping a change, and a
+    // bare "Promote?" reads identically for both. Name each job and say when it
+    // would next have fired, so the confirmation carries the consequence.
+    const stopping = (promotion?.unscheduling ?? []).map((job) => {
+      const next = job.nextRun
+        ? `next ${new Date(job.nextRun).toLocaleString('en-GB', {
+            timeZone: 'UTC', weekday: 'short', day: '2-digit', month: 'short',
+            hour: '2-digit', minute: '2-digit', hour12: false,
+          })} UTC`
+        : 'no schedule';
+      return `  • ${job.name}${job.cron ? ` (${job.cron})` : ''} — ${next}`;
+    });
+    const question = stopping.length > 0
+      ? `Promote ${path} to production?\n\nThis stops ${
+          stopping.length === 1 ? 'this schedule' : `these ${stopping.length} schedules`
+        }:\n${stopping.join('\n')}`
+      : `Promote ${path} to production?`;
+    if (!confirm(question)) {
       return;
     }
     setError(null);
