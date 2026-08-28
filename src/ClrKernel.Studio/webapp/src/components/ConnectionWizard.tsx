@@ -3,6 +3,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { api, type ApiConnection, type ApiConnectionProvider, type ApiConnectionSetting, type ApiLanguage } from '../api';
 import { composeConnectDirective, isSecret, sameKind } from '../connectionDirective';
+import {
+  filled, label, membersOf, unmet, type SettingValues,
+} from '../connectionFields';
 import { ErrorBanner } from './common';
 import { Modal } from './Modal';
 
@@ -88,10 +91,7 @@ export function ConnectionWizard({
     return composeConnectDirective(provider, definition, values);
   }, [provider, language.directives, values]);
 
-  const missing = provider
-    ? provider.settings.filter((s) => s.required && !s.runtimeOnly && !filled(values[s.name]))
-        .filter((s) => !satisfiedByGroup(s, provider, values))
-    : [];
+  const missing = provider ? unmet(provider, values) : [];
 
   return (
     <Modal title={`${language.displayName} connection`} onClose={onClose}>
@@ -161,16 +161,11 @@ export function ConnectionWizard({
         <>
           {provider.description && <p className="text-base text-muted-foreground">{provider.description}</p>}
           <div className="wizard-fields">
-            {provider.settings
-              .filter((setting) => !setting.runtimeOnly)
-              .map((setting) => (
-                <Field
-                  key={setting.name}
-                  setting={setting}
-                  value={values[setting.name]}
-                  onChange={(v) => setValues((current) => ({ ...current, [setting.name]: v }))}
-                />
-              ))}
+            <Fields
+              provider={provider}
+              values={values}
+              onChange={(name, v) => setValues((current) => ({ ...current, [name]: v }))}
+            />
           </div>
 
           <p className="text-base text-muted-foreground">
@@ -181,7 +176,7 @@ export function ConnectionWizard({
 
           {missing.length > 0 && (
             <p className="text-base text-muted-foreground">
-              Still needed: {missing.map((s) => s.displayName ?? s.name).join(', ')}
+              Still needed: {missing.join(', ')}
             </p>
           )}
 
@@ -203,22 +198,94 @@ export function ConnectionWizard({
   );
 }
 
-export function filled(value: string | boolean | undefined): boolean {
-  return typeof value === 'boolean' ? true : (value ?? '').trim().length > 0;
+/**
+ * Every setting a provider declares, with each one-of group rendered as a choice
+ * rather than as all of its alternatives at once. "Server" and "Connection
+ * string" are two ways to say the same thing, and a form that shows both invites
+ * filling in both — which the descriptor says is not a thing ("exactly one of the
+ * group applies").
+ */
+export function Fields({
+  provider, values, onChange,
+}: {
+  provider: ApiConnectionProvider;
+  values: SettingValues;
+  onChange: (name: string, value: string | boolean | undefined) => void;
+}) {
+  const shown = provider.settings.filter((s) => !s.runtimeOnly);
+  // One entry per row: a plain setting, or a group at the position of its first
+  // member — so the chooser lands where "Server" used to be.
+  const rows = shown
+    .filter((s) => !s.oneOfGroup || membersOf(provider, s.oneOfGroup)[0] === s)
+    .map((s) => (s.oneOfGroup ? { group: s.oneOfGroup } : { setting: s }));
+
+  return (
+    <>
+      {rows.map((row) => (row.group != null ? (
+        <OneOf
+          key={row.group}
+          // Remounts when the connection type changes, so a choice made for one
+          // provider is not still in force for the next.
+          group={row.group}
+          members={membersOf(provider, row.group)}
+          values={values}
+          onChange={onChange}
+        />
+      ) : (
+        <Field
+          key={row.setting.name}
+          setting={row.setting}
+          value={values[row.setting.name]}
+          onChange={(v) => onChange(row.setting.name, v)}
+        />
+      )))}
+    </>
+  );
 }
 
-/** A setting in a one-of group is satisfied when any member of the group is set —
- *  "server or connection string", not both. */
-export function satisfiedByGroup(
-  setting: ApiConnectionSetting,
-  provider: ApiConnectionProvider,
-  values: Record<string, string | boolean | undefined>,
-): boolean {
-  if (!setting.oneOfGroup) {
-    return false;
+/** One alternative from a group, with a picker for which alternative it is. */
+function OneOf({
+  group, members, values, onChange,
+}: {
+  group: string;
+  members: ApiConnectionSetting[];
+  values: SettingValues;
+  onChange: (name: string, value: string | boolean | undefined) => void;
+}) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const chosen = members.find((m) => m.name === picked)
+    ?? members.find((m) => filled(values[m.name]))
+    ?? members[0];
+
+  if (members.length === 1) {
+    return <Field setting={chosen} value={values[chosen.name]}
+      onChange={(v) => onChange(chosen.name, v)} />;
   }
-  return provider.settings.some(
-    (other) => other.oneOfGroup === setting.oneOfGroup && filled(values[other.name]),
+  return (
+    <>
+      <label className="form-field">
+        <span>{group.charAt(0).toUpperCase() + group.slice(1)}</span>
+        <select
+          value={chosen.name}
+          onChange={(e) => {
+            // Exactly one applies, so choosing one drops what the others held —
+            // otherwise a value nobody can see any more is still submitted.
+            members.forEach((other) => {
+              if (other.name !== e.target.value) {
+                onChange(other.name, undefined);
+              }
+            });
+            setPicked(e.target.value);
+          }}
+        >
+          {members.map((m) => (
+            <option key={m.name} value={m.name}>{label(m)}</option>
+          ))}
+        </select>
+      </label>
+      <Field setting={chosen} value={values[chosen.name]}
+        onChange={(v) => onChange(chosen.name, v)} />
+    </>
   );
 }
 

@@ -128,6 +128,22 @@ public sealed class ConnectionStore {
     public bool HasSecret(string secretRef) =>
         !string.IsNullOrEmpty(secretRef) && _secrets.TryResolve(secretRef, out _);
 
+    /// <summary>
+    /// Whether this connection has a usable read-only login — both halves of one.
+    /// <para>
+    /// A password with no user name is opened as user <c>''</c>, and SQL Server
+    /// answers that with "Login failed for user ''", which reads like a wrong
+    /// password rather than like a field nobody filled in. Asked in one place
+    /// because the view that draws the Run button and the route that honours it
+    /// have to agree; when they did not, the button said "add a read-only login"
+    /// and the route dialled anyway.
+    /// </para>
+    /// </summary>
+    public bool HasReadOnlyLogin(StoredConnection connection) =>
+        connection != null
+        && !string.IsNullOrWhiteSpace(connection.ReadOnlyUser)
+        && HasSecret(connection.ReadOnlySecretRef);
+
     // --- validation ---------------------------------------------------------
 
     private StoredConnection Normalize(StoredConnection entry, StoredConnection existing) {

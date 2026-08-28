@@ -11,9 +11,10 @@ import {
   type ConnectionScope,
 } from '../api';
 import { isSecret } from '../connectionDirective';
+import { unmet } from '../connectionFields';
 import { useIsServerAdmin } from '../sessionContext';
 import { ErrorBanner } from './common';
-import { Field } from './ConnectionWizard';
+import { Fields } from './ConnectionWizard';
 import { Modal } from './Modal';
 
 /**
@@ -75,7 +76,10 @@ export function ConnectionForm({
   // The credential settings are rendered by the block below, which knows about
   // storing a password; the descriptor only knows it is a secret reference.
   const plain = useMemo(
-    () => provider?.settings.filter((s) => !isSecret(s.kind)) ?? [],
+    () => (provider == null ? null : {
+      ...provider,
+      settings: provider.settings.filter((s) => !isSecret(s.kind)),
+    }),
     [provider]);
   const integrated = String(values.auth ?? '') === 'integrated';
 
@@ -128,6 +132,14 @@ export function ConnectionForm({
    * only the server can resolve.
    */
   async function test() {
+    // Before the round trip: an empty field is not something a database can
+    // answer, and its answer to one is misleading — a missing user comes back as
+    // "Login failed for user ''", which reads like a wrong password.
+    const gaps = unmet(provider, values);
+    if (gaps.length > 0) {
+      setTesting(`Still needed: ${gaps.join(', ')}.`);
+      return;
+    }
     setSaving(true);
     setTesting('Connecting…');
     try {
@@ -200,14 +212,13 @@ export function ConnectionForm({
           </label>
         )}
 
-        {plain.map((setting) => (
-          <Field
-            key={setting.name}
-            setting={setting}
-            value={values[setting.name]}
-            onChange={(v) => setValues((current) => ({ ...current, [setting.name]: v }))}
+        {plain != null && (
+          <Fields
+            provider={plain}
+            values={values}
+            onChange={(name, v) => setValues((current) => ({ ...current, [name]: v }))}
           />
-        ))}
+        )}
       </div>
 
       {provider != null && provider.queryable === false && (

@@ -431,7 +431,7 @@ public static class ConnectionsApi {
             refusal = NotOpenedHere(connection.Type);
             return false;
         }
-        if (Restricted(context, options, connection) && !store.HasSecret(connection.ReadOnlySecretRef)) {
+        if (Restricted(context, options, connection) && !store.HasReadOnlyLogin(connection)) {
             refusal = Results.Json(new {
                 error = connection.Scope == ConnectionScope.Private
                     ? "This server requires a read-only login on every connection. Add one to this "
@@ -605,7 +605,7 @@ public sealed class ConnectionView {
         StoredConnection c, ConnectionStore store, HttpContext context, JobsOptions options) {
         var admin = context.IsAdmin();
         var mine = c.Scope == ConnectionScope.Private;
-        var readOnlyConfigured = !string.IsNullOrEmpty(c.ReadOnlyUser) && store.HasSecret(c.ReadOnlySecretRef);
+        var readOnlyConfigured = store.HasReadOnlyLogin(c);
         // The same rules the execution routes apply, asked here so the button agrees
         // with the server rather than being disabled by a second opinion.
         var queryable = ConnectionProviderCatalog.IsQueryable(c.Type);
