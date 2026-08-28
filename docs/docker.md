@@ -122,7 +122,7 @@ proxy, for the same reason.
 So ask the container for an invite:
 
 ```bash
-docker exec clrkernel-studio /app/studio/ClrKernel.Studio new-admin-invite
+docker exec clrkernel-studio clrkernel-studio new-admin-invite
 ```
 
 ```
@@ -142,9 +142,11 @@ people actually use and it prints that instead (the compose files do).
 Open it, register a passkey, and you are the admin. The same command is the way
 back in if every admin loses their device.
 
-The full path is needed because the image's `ENTRYPOINT` **is** the application —
-`docker exec clrkernel-studio new-admin-invite` would look for a program called
-`new-admin-invite`. For the same reason, a shell needs `--entrypoint`:
+`clrkernel-studio` here is a small wrapper on the image's PATH, not the server
+binary directly. It joins the session the entrypoint set up, which is what lets a
+one-shot command resolve the same saved passwords the scheduler resolves; running
+`/app/studio/ClrKernel.Studio` yourself skips that and cannot read them. And a
+shell needs `--entrypoint`, because the image's is the startup script:
 
 ```bash
 docker run --rm --interactive --tty --entrypoint sh clrkernel-studio
@@ -257,7 +259,7 @@ fix](#creating-the-first-account), with compose:
 
 ```bash
 docker compose --file docs/examples/docker/compose.nginx.yaml \
-  exec studio /app/studio/ClrKernel.Studio new-admin-invite
+  exec studio clrkernel-studio new-admin-invite
 ```
 
 This compose file sets `CLRKERNEL_STUDIO_ORIGINS` to the proxied URL, so here the
@@ -359,7 +361,9 @@ Everything is an environment variable; the image sets the first five itself.
 | `CLRKERNEL_STUDIO_MAX_PARALLELISM` | concurrent runs (default 4) |
 | `CLRKERNEL_STUDIO_RUN_RETENTION_DAYS` | delete runs older than this; `0` keeps everything |
 | `CLRKERNEL_STUDIO_WORKTREE_IDLE_DAYS` | prune untouched personal worktrees (default 30) |
-| `CLRKERNEL_SECRETS_FILE` | where saved passwords live — `/data/secrets.json` |
+| `CLRKERNEL_STUDIO_KEYRING_PASSWORD_FILE` | a file holding the keyring's password — no keyring without it |
+| `CLRKERNEL_STUDIO_KEYRING_PASSWORD` | the same, as a variable; prefer the file |
+| `CLRKERNEL_SECRETS_FILE` | a plaintext secrets file. Not set by the image; see [Passwords](#passwords) |
 | `CLRKERNEL_SECRET_*` | secret *references* — channel tokens, database passwords |
 
 **There is no API key.** The server is guarded by accounts and passkeys, and
@@ -374,24 +378,55 @@ Passwords are never written into a notebook or into config. A channel or a
 connection holds a *reference* — a name like `sql:analytics` — and the value is
 looked up at the moment it is needed. There are two places it can come from.
 
-**From the web app.** The connection editor's password field saves into
-`CLRKERNEL_SECRETS_FILE`, which the image points at `/data/secrets.json`. That
-is what makes a container usable without a redeploy per credential: add a
-connection, type the password, done. Both processes read it — the web app and
-the kernel that runs your notebooks — so a `#!sql-connect` referring to
-`sql:analytics` resolves the same value.
+**From the web app, into a keyring.** The image carries gnome-keyring, and the
+connection editor's password field saves into it. The keyring lives on the data
+volume at `/data/keyring` and is **encrypted with a password you supply at
+start** — so give it one:
 
-The file holds the passwords **in plain text**, with owner-only permissions and
-nothing else. Encrypting them with a key kept beside them would be the same
-threat model with more moving parts, so it does not pretend to. Treat `/data`
-like a private key: it is exactly as protected as the volume, whoever can read
-the volume can read the passwords, and it must never live inside a git worktree.
-Unset `CLRKERNEL_SECRETS_FILE` and nothing can be saved from the UI — the field
-disappears and the app says so.
+```bash
+printf '%s' 'a long random string' > ./keyring.pw
+chmod 600 ./keyring.pw
 
-On a laptop this file is not used at all: macOS Keychain, Windows Credential
-Manager and Linux libsecret come first in the chain and are better. The file is
-the fallback for machines that have none of them, which is every container.
+docker run --detach --name clrkernel-studio \
+  --publish 8080:5000 \
+  --volume "$PWD/notebooks:/notebooks" \
+  --volume clrkernel-studio-data:/data \
+  --volume "$PWD/keyring.pw:/run/secrets/keyring:ro" \
+  --env CLRKERNEL_STUDIO_KEYRING_PASSWORD_FILE=/run/secrets/keyring \
+  clrkernel-studio
+```
+
+A file, not a variable, because that is the shape docker and kubernetes secrets
+already have — and because an environment variable is visible in `docker inspect`
+and in `/proc/<pid>/environ` for every process the server starts, the notebook
+kernel included. `CLRKERNEL_STUDIO_KEYRING_PASSWORD` works if you insist.
+
+Startup says which way it went:
+
+```
+clrkernel-studio: keyring unlocked; saved passwords are kept in it.
+```
+
+**What this does and does not protect.** Nothing in the volume is readable
+without that password: copy `/data` somewhere else and the passwords are
+ciphertext, and starting with the wrong password fails rather than quietly
+opening an empty keyring. It is not protection against someone who can read the
+running container's memory or environment — they have the password too. Keep the
+password file out of the image, out of the volume, and out of git.
+
+**No password, no store.** Without one the server starts fine and simply has
+nowhere to save a password: the connection editor's field is gone and it says
+why. That is deliberate. Generating a key and leaving it on the same volume
+would look like encryption while protecting nothing.
+
+On a laptop none of this applies — macOS Keychain, Windows Credential Manager and
+Linux libsecret come first in the chain and are already there.
+
+> **Upgrading.** An earlier image kept saved passwords in a plaintext
+> `/data/secrets.json`. Start the new one with a keyring password and it moves
+> them in and deletes the file, saying so in the log. Start it without one and the
+> file keeps working exactly as before — nothing breaks, and nothing is silently
+> re-encrypted either.
 
 **From the environment.** A value can also arrive as `CLRKERNEL_SECRET_<REF>`,
 upper-cased with non-alphanumerics as `_`. This wins over nothing — it is

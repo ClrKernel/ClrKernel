@@ -507,12 +507,18 @@ Nothing writes a token to this file.
 ### Where a saved password goes
 
 The connection editor can only save a password where one can be kept. On a laptop
-that is the OS credential store. A server without one — a container, most
-obviously — has nowhere to put it, and the field says so; point
-`CLRKERNEL_SECRETS_FILE` at a path on that server and it can. The file is plain
-text with owner-only permissions and is exactly as protected as the volume it
-sits on, so keep it out of any git worktree. The Docker image sets it to
-`/data/secrets.json`; see [docker.md](docker.md#passwords).
+that is the OS credential store — Keychain, Credential Manager, or libsecret —
+and it is already there. In the container image it is a gnome-keyring on the data
+volume, unlocked at start with a password you supply as a file
+(`CLRKERNEL_STUDIO_KEYRING_PASSWORD_FILE`); without one the server has nowhere to
+save a password, says so, and takes them as `CLRKERNEL_SECRET_*` variables
+instead. See [docker.md](docker.md#passwords).
+
+`CLRKERNEL_SECRETS_FILE` names a plain JSON file as a last resort for a machine
+with no credential store at all. It is owner-only and unencrypted — as protected
+as the disk it sits on, so keep it out of any git worktree. Nothing sets it for
+you, and a server that gains a real store moves the file's contents into it on
+the next start and deletes it.
 
 ## Test → prod with git
 

@@ -267,7 +267,18 @@ public static class Program {
             return 2;
         }
 
-        var app = BuildApp(options, projects, store);
+        // Before anything reads a connection: a server upgraded from an image whose
+        // only writable store was a plaintext file gets those passwords moved into
+        // the real one, and the file removed. Doing it here rather than lazily means
+        // it happens once, on a start, with the outcome in the log.
+        var secrets = new Core.Secrets.SecretStore();
+        if (secrets.AdoptFileSecrets() is > 0 and var moved) {
+            Console.Error.WriteLine(
+                $"Moved {moved} saved password(s) out of the plaintext secrets file and into " +
+                $"{secrets.ProviderNames.FirstOrDefault(n => n != "memory")}. The file is gone.");
+        }
+
+        var app = BuildApp(options, projects, store, secrets: secrets);
         var urls = options.Urls ?? "http://localhost:5000";
         if (!JobsApi.IsLocalOnly(urls) && options.RelyingPartyId == "localhost") {
             Console.Error.WriteLine(
@@ -280,7 +291,7 @@ public static class Program {
             Console.Error.WriteLine(
                 "  ! No accounts yet. Open /setup in a browser on this machine. In a container that "
                 + "will not work — a published port arrives from the docker bridge, not from "
-                + "localhost — so run `docker exec <container> /app/studio/ClrKernel.Studio "
+                + "localhost — so run `docker exec <container> clrkernel-studio "
                 + "new-admin-invite` and open the /invite/<code> path it prints.");
         }
         await app.RunAsync(urls);

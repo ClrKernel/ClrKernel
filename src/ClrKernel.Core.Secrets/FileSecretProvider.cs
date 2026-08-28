@@ -71,6 +71,31 @@ public sealed class FileSecretProvider : ISecretProvider {
         }
     }
 
+    /// <summary>The file's path, so a migration can say what it emptied. Not
+    /// <c>Path</c>: that name would shadow <see cref="System.IO.Path"/> in here.</summary>
+    public string FilePath => _path;
+
+    /// <summary>
+    /// Everything in the file, for moving it somewhere better. Returns an empty set
+    /// for a file that is not there — the ordinary case, and not an error.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> All() {
+        lock (_gate) {
+            return Read();
+        }
+    }
+
+    /// <summary>Deletes the file. Used once its contents live in a real store.</summary>
+    public void Discard() {
+        lock (_gate) {
+            try {
+                File.Delete(_path);
+            } catch (Exception e) when (e is IOException or UnauthorizedAccessException) {
+                Console.Error.WriteLine($"{_path}: could not remove it ({e.Message}).");
+            }
+        }
+    }
+
     private Dictionary<string, string> Read() {
         try {
             return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(_path))

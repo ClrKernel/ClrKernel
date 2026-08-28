@@ -13,7 +13,7 @@
 # There is no API key — the server is guarded by accounts and passkeys. The first
 # account cannot be created through the published port: setup insists the caller
 # is on loopback, and docker forwards through the bridge. Ask for an invite:
-#   docker exec <container> /app/studio/ClrKernel.Studio new-admin-invite
+#   docker exec <container> clrkernel-studio new-admin-invite
 # then open the /invite/<code> path it prints on the port you published. See
 # docs/docker.md, including the reverse-proxy setup (passkeys need the real
 # hostname in CLRKERNEL_STUDIO_RPID and HTTPS at the edge).
@@ -49,9 +49,14 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 
 # curl serves the health check below; git powers the dev→prod workflow
-# (`clrkernel-studio git init` on the mounted workspace).
+# (`clrkernel-studio git init` on the mounted workspace). The other three give the
+# server a credential store: gnome-keyring holds the saved passwords encrypted,
+# dbus is how anything reaches it, and secret-tool (libsecret-tools) is what the
+# secret chain in ClrKernel.Core.Secrets drives. About 35 MB, and it is what keeps
+# passwords off the volume in the clear.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends curl git \
+    && apt-get install --yes --no-install-recommends \
+        curl git dbus gnome-keyring libsecret-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Two applications, two publish directories: /app/studio (scheduler + web app)
@@ -59,20 +64,23 @@ RUN apt-get update \
 # resolved independently and some shared assemblies land on different versions,
 # so publishing both into one directory would give one of them the other's copy.
 COPY --from=build /app/ ./
+COPY src/ClrKernel.Studio/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
+COPY src/ClrKernel.Studio/docker-run.sh /usr/local/bin/clrkernel-studio
+RUN chmod +x /usr/local/bin/docker-entrypoint /usr/local/bin/clrkernel-studio
 
 # /data holds the run history and artifacts. Notebooks can be mounted read-only
 # for plain scheduling; the git workflow needs /notebooks writable (and owned by
 # uid 1654) since edits and promotions commit there.
 # The store must be explicit for serve — the image says sqlite; override the env
 # (e.g. in compose) for postgres/sqlserver, together with CLRKERNEL_STUDIO_CONNECTION.
-# CLRKERNEL_SECRETS_FILE is what makes the connection editor able to save a
-# password at all: a container has no Keychain / Credential Manager, and without
-# it every password has to arrive as a CLRKERNEL_SECRET_* variable. The file
-# holds them in plain text with owner-only permissions — as protected as /data,
-# so treat that volume like a private key. Unset it to go back to env vars only.
+# Saved passwords go into a gnome-keyring on /data, encrypted with a password you
+# supply at start — CLRKERNEL_STUDIO_KEYRING_PASSWORD_FILE (a docker/kubernetes
+# secret) or CLRKERNEL_STUDIO_KEYRING_PASSWORD. Deliberately not defaulted: a key
+# stored beside what it locks is decoration, so without one this server simply has
+# nowhere to save a password and says so, and passwords arrive as
+# CLRKERNEL_SECRET_* variables instead.
 ENV CLRKERNEL_STUDIO_NOTEBOOKS=/notebooks \
     CLRKERNEL_STUDIO_DATA=/data \
-    CLRKERNEL_SECRETS_FILE=/data/secrets.json \
     CLRKERNEL_STUDIO_CLRKERNEL=/app/kernel/ClrKernel \
     CLRKERNEL_STUDIO_URLS=http://0.0.0.0:5000 \
     CLRKERNEL_STUDIO_STORE=sqlite
@@ -89,5 +97,8 @@ USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     CMD curl --fail --silent http://localhost:5000/api/health || exit 1
 
-ENTRYPOINT ["/app/studio/ClrKernel.Studio"]
+# The entrypoint starts the session bus and unlocks the keyring, then execs the
+# server so it is PID 1 and `docker stop` reaches it. `clrkernel-studio` on PATH is
+# the same thing for `docker exec`, which starts outside that session.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 CMD ["serve"]

@@ -129,7 +129,7 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
           not count — the request arrives from the docker bridge. Get in with an invite instead:
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm">
-          docker exec &lt;container&gt; /app/studio/ClrKernel.Studio new-admin-invite
+          docker exec &lt;container&gt; clrkernel-studio new-admin-invite
         </pre>
         <p className="mt-3 text-sm text-muted-subtle">
           It prints a single-use link. Open the <code className="font-mono">/invite/&lt;code&gt;</code>{' '}

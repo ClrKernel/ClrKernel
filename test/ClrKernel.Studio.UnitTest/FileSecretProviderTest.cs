@@ -87,6 +87,51 @@ public class FileSecretProviderTest {
     }
 
     /// <summary>
+    /// The way out of the file. A container that gains a real credential store must
+    /// not keep its passwords in plain text beside the encrypted ones — and must not
+    /// lose them either, since nobody can retype what they cannot read.
+    /// </summary>
+    [TestMethod]
+    public void Adopting_moves_every_secret_into_the_real_store_and_removes_the_file() {
+        var file = new FileSecretProvider(_path);
+        file.Set("sql:analytics", "hunter2");
+        file.Set("slack-hook", "xoxb-token");
+
+        var keyring = new InMemorySecretProvider();
+        var store = SecretStore.ForProviders(keyring, file, new EnvironmentSecretProvider());
+
+        Assert.AreEqual(2, store.AdoptFileSecrets());
+        Assert.IsTrue(keyring.TryGet("sql:analytics", out var moved));
+        Assert.AreEqual("hunter2", moved);
+        Assert.IsTrue(keyring.TryGet("slack-hook", out _));
+        Assert.IsFalse(File.Exists(_path), "the plaintext file is the thing being removed");
+        // Still resolvable, which is the point: the connections that named these keep working.
+        Assert.IsTrue(store.TryResolve("sql:analytics", out var after));
+        Assert.AreEqual("hunter2", after);
+    }
+
+    /// <summary>
+    /// Nowhere better to put them is not a reason to delete them. A server with no
+    /// credential store keeps the file it has, exactly as it was.
+    /// </summary>
+    [TestMethod]
+    public void Adopting_leaves_the_file_alone_when_there_is_nowhere_to_move_it() {
+        var file = new FileSecretProvider(_path);
+        file.Set("sql:analytics", "hunter2");
+
+        var store = SecretStore.ForProviders(file, new EnvironmentSecretProvider());
+        Assert.AreEqual(0, store.AdoptFileSecrets());
+        Assert.IsTrue(File.Exists(_path));
+        Assert.IsTrue(store.TryResolve("sql:analytics", out _));
+
+        // And an empty file is not deleted either — there is nothing to have moved.
+        new FileSecretProvider(_path).Delete("sql:analytics");
+        var withKeyring = SecretStore.ForProviders(
+            new InMemorySecretProvider(), new FileSecretProvider(_path));
+        Assert.AreEqual(0, withKeyring.AdoptFileSecrets());
+    }
+
+    /// <summary>
     /// The whole point of the variable: with it set, a machine with no OS
     /// credential store can still be told a password. Without it, nothing changes.
     /// </summary>

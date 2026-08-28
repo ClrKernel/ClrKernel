@@ -105,7 +105,7 @@ public sealed class SecretStore {
                 ? "Store one from the SQL connection panel, or set the "
                 : "Nothing here can store one: set the ") +
             $"{EnvironmentSecretProvider.EnvName(key)} environment variable" +
-            (CanPersist ? "." : $", or point {FileSecretProvider.PathVariable} at a file."));
+            (CanPersist ? "." : ", or give this machine a credential store."));
     }
 
     /// <summary>Stores a secret in the first store-capable provider and caches it.</summary>
@@ -118,6 +118,36 @@ public sealed class SecretStore {
             _cache.Set(key, secret);
         }
         return target.Name;
+    }
+
+    /// <summary>
+    /// Moves a plaintext secrets file's contents into a real credential store and
+    /// deletes it. Returns how many were moved; 0 when there is nothing to move or
+    /// nowhere better to put them, and the file is then left exactly as it was.
+    /// <para>
+    /// This exists because the file was the only writable store a container had
+    /// before it could be given a keyring. Leaving it behind after the upgrade would
+    /// be the worst of both: the passwords still readable to anyone with the volume,
+    /// and no longer the ones in use.
+    /// </para>
+    /// </summary>
+    public int AdoptFileSecrets() {
+        var file = _providers.OfType<FileSecretProvider>().FirstOrDefault();
+        var target = _providers.FirstOrDefault(
+            p => p.CanStore && !ReferenceEquals(p, _cache) && !ReferenceEquals(p, file));
+        if (file == null || target == null) {
+            return 0;
+        }
+        var all = file.All();
+        foreach (var entry in all) {
+            target.Set(entry.Key, entry.Value);
+        }
+        if (all.Count > 0) {
+            // Only once every one of them is somewhere else: a half-moved file that
+            // is then deleted loses passwords nobody can retype.
+            file.Discard();
+        }
+        return all.Count;
     }
 
     public void Delete(string key) {

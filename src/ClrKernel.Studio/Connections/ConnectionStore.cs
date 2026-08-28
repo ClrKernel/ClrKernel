@@ -47,10 +47,10 @@ public sealed class ConnectionStore {
         CanPersistSecrets = _secrets.CanPersist;
         if (!CanPersistSecrets) {
             _logger?.LogInformation(
-                "No OS credential store is available and {Variable} does not name a file, so " +
-                "connection passwords cannot be saved here. Connections take a secret reference " +
-                "and the value comes from CLRKERNEL_SECRET_*.",
-                FileSecretProvider.PathVariable);
+                "No credential store is available, so connection passwords cannot be saved here. " +
+                "Connections take a secret reference and the value comes from CLRKERNEL_SECRET_*. " +
+                "In the container image, supplying a keyring password at start gives this server " +
+                "somewhere to save one.");
         }
     }
 
@@ -219,7 +219,7 @@ public sealed class ConnectionStore {
             throw new ConnectionException(
                 "This server has nowhere to keep a password, so one cannot be saved here. " +
                 $"Set the {EnvironmentSecretProvider.EnvName(secretRef)} environment variable instead, " +
-                $"or point {FileSecretProvider.PathVariable} at a file on this server and try again.");
+                "or give this server a keyring and try again.");
         }
         _secrets.Store(secretRef, password);
     }
