@@ -145,11 +145,28 @@ public sealed class EfRunStore : IRunStore {
             .GroupBy(r => r.Status)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync();
+        // One more grouped pass rather than pulling every row back to count them
+        // here: the window is a day or a year, and "a year" is the whole table.
+        var perProject = await runs
+            .GroupBy(r => new { r.Project, r.Status })
+            .Select(g => new { g.Key.Project, g.Key.Status, Count = g.Count() })
+            .ToListAsync();
         return new RunStats {
             Total = counts.Sum(c => c.Count),
             Succeeded = counts.Where(c => c.Key == RunStatus.Succeeded).Sum(c => c.Count),
             Failed = counts.Where(c => c.Key is RunStatus.Failed or RunStatus.TimedOut).Sum(c => c.Count),
             ByStatus = counts.ToDictionary(c => c.Key.ToString(), c => c.Count),
+            ByProject = perProject
+                .GroupBy(r => r.Project ?? ProjectRegistry.DefaultSlug)
+                .Select(g => new ProjectRunStats {
+                    Project = g.Key,
+                    Total = g.Sum(r => r.Count),
+                    Succeeded = g.Where(r => r.Status == RunStatus.Succeeded).Sum(r => r.Count),
+                    Failed = g.Where(r => r.Status is RunStatus.Failed or RunStatus.TimedOut)
+                        .Sum(r => r.Count),
+                })
+                .OrderByDescending(p => p.Total)
+                .ToList(),
         };
     }
 

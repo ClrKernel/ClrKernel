@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Badge } from '@/components/ui/badge';
-import { api, isActive, type Job, type Run, type Stats } from '../api';
+import { api, isActive, type Run, type Stats, type UpcomingRun } from '../api';
 import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../components/common';
 import { TabNav } from '../components/TabNav';
-import { duration, timeAgo } from '../ipynb';
+import { duration, timeAgo, timeUntil } from '../ipynb';
 import { useProjects } from '../projectContext';
-import { filesPath, jobRunsPath, jobsFilePath } from '../routes';
+import { jobRunsPath, jobsFilePath } from '../routes';
 import { matchesQuery } from '../search';
 
 /**
@@ -98,127 +97,6 @@ function StatCard({ value, label, tone }: { value: string; label: string; tone?:
 }
 
 /**
- * Every project's jobs, grouped.
- *
- * The dashboard is the one page that is about the whole server rather than about
- * one project, so this is where the shape of the install is legible: which
- * projects there are, what each one runs, and what happened last time. Every row
- * goes to that job in its own project — the project is in the path, so the link
- * means one job and not "whichever project happens to be selected".
- */
-function JobsByProject({ jobs, lastRun }: { jobs: Job[]; lastRun: Map<string, string> }) {
-  const { projects } = useProjects();
-  const navigate = useNavigate();
-  const [shut, setShut] = useState<Set<string>>(new Set());
-
-  // In the registry's order, so the list does not reshuffle as jobs come and go.
-  // A project with nothing in it is still worth a line: "no jobs yet" is an
-  // answer, and leaving it out looks like the project is missing.
-  const groups = projects.map((project) => ({
-    project,
-    jobs: jobs.filter((job) => job.project === project.slug),
-  }));
-
-  if (groups.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mb-5">
-      {groups.map(({ project, jobs: theirs }) => {
-        const open = !shut.has(project.slug);
-        return (
-          <div key={project.slug} className="mb-3">
-            <div className="mb-1.5 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShut((current) => {
-                  const next = new Set(current);
-                  next.has(project.slug) ? next.delete(project.slug) : next.add(project.slug);
-                  return next;
-                })}
-                aria-expanded={open}
-                className="flex items-center gap-1.5 rounded-sm text-lg font-semibold outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span aria-hidden="true" className="w-3 text-[10px] text-muted-subtle">
-                  {open ? '▾' : '▸'}
-                </span>
-                {project.name}
-              </button>
-              <span className="text-base text-muted-subtle">
-                {theirs.length === 1 ? '1 job' : `${theirs.length} jobs`}
-              </span>
-              <Link
-                className="text-base text-primary hover:underline"
-                to={filesPath(project.slug)}
-              >
-                open
-              </Link>
-            </div>
-            {open && (theirs.length === 0 ? (
-              <p className="pl-5 text-base text-muted-foreground">No jobs yet.</p>
-            ) : (
-              <div className="table-box">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Job</th>
-                      <th>Notebook</th>
-                      <th>Schedule</th>
-                      <th>Last run</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {theirs.map((job) => (
-                      <tr
-                        key={`${job.environment}/${job.name}`}
-                        className="cursor-pointer"
-                        // The job is an entry in this file, so that is where it
-                        // opens. Its runs are one column over.
-                        onClick={() =>
-                          navigate(jobsFilePath(job.project, job.environment, job.jobsFile))
-                        }
-                      >
-                        <td className="whitespace-nowrap">
-                          <span className="font-semibold text-primary">{job.name}</span>
-                          {job.environment !== 'default' && (
-                            <EnvBadge env={job.environment} className="ml-1.5" />
-                          )}
-                          {/* Yours and not yet anybody's: it is on this list
-                              because you wrote it, not because it runs. */}
-                          {job.environment === 'mine' && (
-                            <Badge variant="outline" className="ml-1.5 font-normal">
-                              not pushed
-                            </Badge>
-                          )}
-                          {!job.enabled && (
-                            <Badge variant="outline" className="ml-1.5 font-normal">disabled</Badge>
-                          )}
-                        </td>
-                        <td className="font-mono text-code text-muted-foreground">{job.notebook}</td>
-                        <td className="font-mono text-code text-muted-foreground">
-                          {job.cron || (job.dependsOn.length > 0 ? `after ${job.dependsOn[0]}` : 'manual')}
-                        </td>
-                        <td>
-                          {(() => {
-                            const status = lastRun.get(`${job.environment}/${job.name}`);
-                            return status ? <StatusBadge status={status} /> : '—';
-                          })()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
  * The Dashboard's views, as routes.
  *
  * Overview answers "is everything alright"; Monitoring is the grid you go to
@@ -241,35 +119,136 @@ export function DashboardTabs() {
   );
 }
 
+/** A heading with the link that opens the same thing in full. */
+function Section({
+  title, to, more, children,
+}: {
+  title: string;
+  to: string;
+  more: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mb-5">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <Link className="text-base text-primary hover:underline" to={to}>{more}</Link>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * How each project has been doing, as one bar per project.
+ *
+ * A bar rather than a percentage on its own: 100% of two runs and 100% of two
+ * thousand are the same number and not the same fact, and the width says which
+ * you are looking at. Only projects that ran something appear — a row of zeroes
+ * for one nobody scheduled is noise.
+ */
+function ProjectHealth({ stats, days }: { stats: Stats | undefined; days: number }) {
+  const { projects } = useProjects();
+  const rows = stats?.byProject ?? [];
+  if (rows.length === 0) {
+    return (
+      <p className="text-base text-muted-foreground">
+        Nothing has run in the last {days} days.
+      </p>
+    );
+  }
+  const busiest = Math.max(...rows.map((r) => r.total));
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((row) => {
+        const rate = row.total > 0 ? Math.round((row.succeeded / row.total) * 100) : 0;
+        const name = projects.find((p) => p.slug === row.project)?.name ?? row.project;
+        return (
+          <Link
+            key={row.project}
+            to={`/monitoring?project=${encodeURIComponent(row.project)}`}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 hover:no-underline hover:border-primary"
+          >
+            <span className="w-40 shrink-0 truncate font-semibold">{name}</span>
+            <span className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted"
+                  style={{ maxWidth: `${Math.max(8, (row.total / busiest) * 100)}%` }}>
+              <span className="bg-status-success" style={{ width: `${rate}%` }} />
+              <span className="flex-1 bg-status-error" />
+            </span>
+            <span className="w-28 shrink-0 text-right text-base text-muted-foreground">
+              {rate}% of {row.total}
+            </span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** What the crons say happens next. */
+function Upcoming({ runs }: { runs: UpcomingRun[] }) {
+  const navigate = useNavigate();
+  if (runs.length === 0) {
+    return <p className="text-base text-muted-foreground">Nothing is scheduled.</p>;
+  }
+  return (
+    <div className="table-box">
+      <table className="table">
+        <tbody>
+          {runs.map((run) => (
+            <tr
+              key={`${run.project}/${run.environment}/${run.job}`}
+              className="cursor-pointer"
+              onClick={() => navigate(jobsFilePath(run.project, run.environment, run.jobsFile))}
+            >
+              <td className="whitespace-nowrap font-semibold">{run.job}</td>
+              <td><EnvBadge env={run.environment} /></td>
+              <td className="font-mono text-code text-muted-foreground">{run.cron}</td>
+              <td className="whitespace-nowrap text-right text-muted-foreground">
+                {timeUntil(run.at)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const WINDOW_DAYS = 7;
+
+/**
+ * Is everything alright?
+ *
+ * Four questions and a link out of each: what is running now, what broke, what
+ * happens next, and how each project has been doing. It deliberately does not
+ * reproduce the monitoring grid — every section here is a handful of rows and a
+ * way to see the rest of them where the filtering and the paging actually live.
+ */
 export function Dashboard() {
-  const { data, error } = usePolling<{ stats: Stats; runs: Run[]; jobs: Job[] }>(
+  const { data, error } = usePolling<{
+    stats: Stats;
+    runs: Run[];
+    failures: Run[];
+    upcoming: UpcomingRun[];
+  }>(
     async () => ({
-      stats: await api.stats(7),
+      stats: await api.stats(WINDOW_DAYS),
       runs: (await api.runs(25)).runs,
-      jobs: (await api.jobs()).jobs,
+      failures: (await api.runGrid('status=Failed&limit=5')).runs,
+      upcoming: (await api.upcoming(5)).upcoming,
     }),
-    3000,
+    5000,
   );
   const query = new URLSearchParams(useLocation().search).get('q') ?? '';
 
   const stats = data?.stats;
   const runs = data?.runs ?? [];
   const rate = stats && stats.total > 0 ? Math.round((stats.succeeded / stats.total) * 100) : null;
-  const running = runs.filter((r) => isActive(r.status)).length;
-  const shown = runs.filter((run) =>
+  const live = runs.filter((r) => isActive(r.status));
+  const shown = live.filter((run) =>
     matchesQuery(query, run.jobName, run.environment, run.notebookPath, run.status, run.trigger),
   );
-  const jobs = (data?.jobs ?? []).filter((job) =>
-    matchesQuery(query, job.name, job.environment, job.notebook, job.cron, ...job.dependsOn),
-  );
-  // The last run of each job, newest first, so the first sighting is the latest.
-  const lastRun = new Map<string, string>();
-  for (const run of runs) {
-    const key = `${run.environment}/${run.jobName}`;
-    if (!lastRun.has(key)) {
-      lastRun.set(key, run.status);
-    }
-  }
 
   return (
     <div>
@@ -280,7 +259,7 @@ export function Dashboard() {
       {/* The cards state the health of the whole install, so they do not follow
           the filter — only the table below does. */}
       <div className="mb-5 grid max-w-[820px] grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard value={`${stats?.total ?? '—'}`} label="runs · 7 days" />
+        <StatCard value={`${stats?.total ?? '—'}`} label={`runs · ${WINDOW_DAYS} days`} />
         <StatCard
           value={rate == null ? '—' : `${rate}%`}
           label="success rate"
@@ -292,20 +271,39 @@ export function Dashboard() {
           tone={stats?.failed ? 'text-status-error' : undefined}
         />
         <StatCard
-          value={`${running}`}
+          value={`${live.length}`}
           label="in flight"
-          tone={running ? 'text-status-running' : undefined}
+          tone={live.length ? 'text-status-running' : undefined}
         />
       </div>
 
-      <JobsByProject jobs={jobs} lastRun={lastRun} />
+      <Section title="Running now" to="/monitoring?status=Running" more="in the grid">
+        {live.length === 0 ? (
+          <p className="text-base text-muted-foreground">Nothing is running.</p>
+        ) : query && shown.length === 0 ? (
+          <p className="text-base text-muted-foreground">Nothing running matches “{query}”.</p>
+        ) : (
+          <RunTable runs={shown} showNotebook />
+        )}
+      </Section>
 
-      <h2 className="mb-1.5 text-lg font-semibold">Recent runs</h2>
-      {query && shown.length === 0 ? (
-        <p className="text-base text-muted-foreground">No runs match “{query}”.</p>
-      ) : (
-        <RunTable runs={shown} showNotebook />
-      )}
+      <Section title="Recent failures" to="/monitoring?status=Failed" more="all failures">
+        {(data?.failures ?? []).length === 0 ? (
+          <p className="text-base text-muted-foreground">
+            Nothing has failed{stats?.total ? ` in the last ${WINDOW_DAYS} days` : ''}.
+          </p>
+        ) : (
+          <RunTable runs={data!.failures} showNotebook />
+        )}
+      </Section>
+
+      <Section title="Up next" to="/files" more="the files that schedule them">
+        <Upcoming runs={data?.upcoming ?? []} />
+      </Section>
+
+      <Section title="By project" to="/monitoring" more="every run">
+        <ProjectHealth stats={stats} days={WINDOW_DAYS} />
+      </Section>
     </div>
   );
 }

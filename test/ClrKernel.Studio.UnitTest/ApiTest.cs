@@ -282,6 +282,43 @@ public class ApiTest {
     }
 
     /// <summary>
+    /// What is about to run. Computed from the crons rather than stored, so the
+    /// only way it can disagree with the scheduler is by using a different parser —
+    /// which is why it uses the same one.
+    /// </summary>
+    [TestMethod]
+    public async Task Upcoming_runs_come_from_the_crons_and_skip_what_will_not_fire() {
+        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", NewJob("nightly"));
+        var hourly = NewJob("hourly");
+        hourly.Cron = "0 * * * *";
+        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", hourly);
+        var off = NewJob("disabled-one");
+        off.Enabled = false;
+        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", off);
+        var manual = NewJob("on-demand");
+        manual.Cron = null;
+        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", manual);
+
+        var body = await _client.GetFromJsonAsync<JsonElement>("/api/schedule/upcoming");
+        var names = body.GetProperty("upcoming").EnumerateArray()
+            .Select(u => u.GetProperty("job").GetString()).ToList();
+
+        CollectionAssert.AreEquivalent(new[] { "nightly", "hourly" }, names,
+            "a job with no cron never fires, and neither does a disabled one");
+        // Soonest first: the dashboard's answer to "what is next" is the first row.
+        Assert.AreEqual("hourly", names[0], "hourly comes before a 02:00 daily");
+
+        var first = body.GetProperty("upcoming")[0];
+        Assert.IsTrue(DateTime.Parse(first.GetProperty("at").GetString()).ToUniversalTime()
+            > DateTime.UtcNow, "an occurrence that has not happened yet");
+        Assert.AreEqual("0 * * * *", first.GetProperty("cron").GetString());
+
+        Assert.AreEqual(1,
+            (await _client.GetFromJsonAsync<JsonElement>("/api/schedule/upcoming?limit=1"))
+                .GetProperty("upcoming").GetArrayLength());
+    }
+
+    /// <summary>
     /// The rerun route's shape. What it means to rerun is
     /// <see cref="RerunTest"/>'s subject; this is what the request is allowed to say.
     /// </summary>

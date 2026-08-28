@@ -316,4 +316,19 @@ public sealed class RunStats {
     public int Succeeded { get; set; }
     public int Failed { get; set; }
     public Dictionary<string, int> ByStatus { get; set; } = new();
+    /// <summary>
+    /// The same counts per project, for the Overview's success rates. A list rather
+    /// than a map so the order is the store's and not the serialiser's, and only for
+    /// projects that ran something in the window — a row of zeroes for a project
+    /// nobody scheduled is noise, not information.
+    /// </summary>
+    public List<ProjectRunStats> ByProject { get; set; } = new();
+}
+
+/// <summary>One project's share of a window.</summary>
+public sealed class ProjectRunStats {
+    public string Project { get; set; }
+    public int Total { get; set; }
+    public int Succeeded { get; set; }
+    public int Failed { get; set; }
 }

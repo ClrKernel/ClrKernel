@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { duration, joinSource, isInjectedParameters, parseAnsi, renderOutput, timeAgo } from './ipynb';
+import {
+  duration, joinSource, isInjectedParameters, parseAnsi, renderOutput, timeAgo, timeUntil,
+} from './ipynb';
 
 describe('joinSource', () => {
   it('accepts both nbformat source shapes', () => {
@@ -103,6 +105,20 @@ describe('timeAgo and duration', () => {
     expect(timeAgo('2026-01-01T09:00:00Z', now)).toBe('3h ago');
     expect(timeAgo('2025-12-30T12:00:00Z', now)).toBe('2d ago');
     expect(timeAgo(null, now)).toBe('—');
+  });
+
+  // timeAgo clamps at zero, so a scheduled run three hours out would read
+  // "0s ago" — not merely imprecise, the opposite of true.
+  it('counts forwards for something that has not happened yet', () => {
+    expect(timeUntil('2026-01-01T12:00:30Z', now)).toBe('in 30s');
+    expect(timeUntil('2026-01-01T14:00:00Z', now)).toBe('in 2h');
+    expect(timeUntil('2026-01-03T12:00:00Z', now)).toBe('in 2d');
+    expect(timeAgo('2026-01-01T15:00:00Z', now)).toBe('0s ago');
+  });
+
+  it('says due rather than counting backwards past the moment', () => {
+    expect(timeUntil('2026-01-01T11:59:55Z', now)).toBe('due');
+    expect(timeUntil(null, now)).toBe('—');
   });
 
   it('formats elapsed time', () => {

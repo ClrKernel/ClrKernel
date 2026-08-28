@@ -159,6 +159,36 @@ export function timeAgo(iso: string | null | undefined, now = Date.now()): strin
   return `${Math.round(seconds / 86400)}d ago`;
 }
 
+/**
+ * How long until something happens.
+ *
+ * Its own function rather than a sign flip inside `timeAgo`, which clamps at zero
+ * — a scheduled run three hours out would read "0s ago", which is not merely
+ * imprecise but the opposite of true.
+ */
+export function timeUntil(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) {
+    return '—';
+  }
+  const stamp = /(Z|[+-]\d\d:\d\d)$/.test(iso) ? iso : `${iso}Z`;
+  const seconds = Math.round((Date.parse(stamp) - now) / 1000);
+  if (seconds <= 0) {
+    // Due, and the scheduler ticks every few seconds. "Any moment" is honest
+    // where "in -4s" is arithmetic leaking onto the screen.
+    return 'due';
+  }
+  if (seconds < 60) {
+    return `in ${seconds}s`;
+  }
+  if (seconds < 3600) {
+    return `in ${Math.round(seconds / 60)}m`;
+  }
+  if (seconds < 86400) {
+    return `in ${Math.round(seconds / 3600)}h`;
+  }
+  return `in ${Math.round(seconds / 86400)}d`;
+}
+
 /** Elapsed time between two timestamps, for a run or a cell. */
 export function duration(start: string | null, end: string | null): string {
   if (!start || !end) {

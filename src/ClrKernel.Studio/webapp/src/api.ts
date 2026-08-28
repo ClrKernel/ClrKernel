@@ -404,6 +404,26 @@ export interface Stats {
   succeeded: number;
   failed: number;
   byStatus: Record<string, number>;
+  /** Only projects that ran something in the window — a row of zeroes for a
+   *  project nobody scheduled is noise, not information. */
+  byProject: ProjectStats[];
+}
+
+export interface ProjectStats {
+  project: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+/** One scheduled occurrence that has not happened yet. */
+export interface UpcomingRun {
+  project: string;
+  environment: string;
+  job: string;
+  jobsFile: string;
+  cron: string;
+  at: string;
 }
 
 export class ApiError extends Error {
@@ -455,6 +475,10 @@ export const api = {
       errors: string[];
     }>('/health'),
   stats: (days = 7) => request<Stats>(`/stats?days=${days}`),
+
+  /** What the crons say is next, across every project you can see. */
+  upcoming: (limit = 8) =>
+    request<{ upcoming: UpcomingRun[] }>(`/schedule/upcoming?limit=${limit}`),
 
   projects: () => request<{ projects: Project[] }>('/projects'),
   /** `createdRoot` says the folder was made rather than adopted. */

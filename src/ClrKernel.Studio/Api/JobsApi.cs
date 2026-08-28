@@ -1178,6 +1178,56 @@ public static class JobsApi {
                 });
             });
 
+        // What is about to run, across every project the caller can see.
+        //
+        // Computed rather than stored: the schedule is the cron in the file, and a
+        // table of "next runs" would be a copy of it that goes stale the moment
+        // somebody edits one. Cronos, the same parser the scheduler compares
+        // against and the same one /cron/preview answers with — three readings of
+        // one expression is how the dashboard ends up promising an hour the
+        // scheduler does not agree with.
+        api.MapGet("/schedule/upcoming", async (
+            HttpContext context, ProjectRegistry projects, int? limit) => {
+                var visible = await context.VisibleProjectsAsync(projects);
+                var now = DateTime.UtcNow;
+                var upcoming = new List<UpcomingRun>();
+                foreach (var job in projects.LoadAll().Jobs) {
+                    if (!job.Enabled
+                        || job.Cron == null
+                        || !visible.ContainsKey(job.Project ?? ProjectRegistry.DefaultSlug)
+                        // A job in a branch nothing schedules has no next run, and
+                        // saying otherwise is the dashboard promising something that
+                        // will not happen.
+                        || !SchedulerService.Schedules(job.Environment)) {
+                        continue;
+                    }
+                    DateTime? next;
+                    try {
+                        next = Cronos.CronExpression.Parse(job.Cron).GetNextOccurrence(now, inclusive: false);
+                    } catch (Cronos.CronFormatException) {
+                        // A cron the catalog already reported as an error. It is not
+                        // this route's job to say so twice.
+                        continue;
+                    }
+                    if (next is not { } at) {
+                        continue;
+                    }
+                    upcoming.Add(new UpcomingRun {
+                        Project = job.Project,
+                        Environment = job.Environment,
+                        Job = job.Name,
+                        JobsFile = job.SourceFileRelative,
+                        Cron = job.Cron,
+                        At = at,
+                    });
+                }
+                return Results.Ok(new {
+                    upcoming = upcoming
+                        .OrderBy(u => u.At)
+                        .Take(Math.Clamp(limit ?? 10, 1, 50)),
+                });
+            });
+
         api.MapGet("/jobs/schema", () =>
             Results.Text(JobsSchema.Json, "application/schema+json"));
 
@@ -2143,6 +2193,16 @@ public sealed class JobView {
 /// <summary>Optional body for an ad-hoc run: parameters for this run only.</summary>
 public sealed class RunOverrides {
     public Dictionary<string, object> Parameters { get; set; }
+}
+
+/// <summary>One scheduled occurrence that has not happened yet.</summary>
+public sealed class UpcomingRun {
+    public string Project { get; set; }
+    public string Environment { get; set; }
+    public string Job { get; set; }
+    public string JobsFile { get; set; }
+    public string Cron { get; set; }
+    public DateTime At { get; set; }
 }
 
 /// <summary>Which recorded runs to run again, and which version of them.</summary>

@@ -175,6 +175,11 @@ the previous definition.
 
 ### Overview
 
+> **Done.** Four sections, each with a link into the grid: running now, recent
+> failures, up next, and a success-rate bar per project over seven days. *Up next*
+> is computed from the crons by the same Cronos the scheduler uses — a stored table
+> of next runs would go stale the moment somebody edited a schedule.
+
 A summary that links into Monitoring rather than duplicating it: what's running
 right now, recent failures, upcoming scheduled runs, per-project success rate over
 a chosen window. Scoped to the projects the viewer can access.

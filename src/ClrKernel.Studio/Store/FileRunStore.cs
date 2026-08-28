@@ -239,6 +239,16 @@ public sealed class FileRunStore : IRunStore {
             Succeeded = runs.Count(r => r.Status == RunStatus.Succeeded),
             Failed = runs.Count(r => r.Status is RunStatus.Failed or RunStatus.TimedOut),
             ByStatus = runs.GroupBy(r => r.Status).ToDictionary(g => g.Key.ToString(), g => g.Count()),
+            ByProject = runs
+                .GroupBy(r => r.Project ?? "default", StringComparer.OrdinalIgnoreCase)
+                .Select(g => new ProjectRunStats {
+                    Project = g.Key,
+                    Total = g.Count(),
+                    Succeeded = g.Count(r => r.Status == RunStatus.Succeeded),
+                    Failed = g.Count(r => r.Status is RunStatus.Failed or RunStatus.TimedOut),
+                })
+                .OrderByDescending(p => p.Total)
+                .ToList(),
         });
     }
 

@@ -656,6 +656,25 @@ the Dashboard, the job table on Jobs — and it keeps the query in the URL as `?
 so a filtered view is something you can bookmark or paste to someone else. It only
 appears on those two pages; elsewhere there is nothing for it to filter.
 
+### Overview
+
+Four questions, and a link out of each: **what is running now**, **what broke**,
+**what happens next**, and **how each project has been doing** over the last seven
+days. It does not reproduce the grid — every section is a handful of rows and a
+way to see the rest where the filtering and the paging actually live.
+
+*Up next* is computed from the crons rather than stored, by the same parser the
+scheduler compares against and the same one the cron field previews with. A stored
+table of next runs would be a copy of the schedule that goes stale the moment
+somebody edits one, and three readings of one expression is how a dashboard ends
+up promising an hour the scheduler does not agree with. A job with no cron, a
+disabled one, and one on a branch that never schedules are all absent — saying
+otherwise would be promising something that will not happen.
+
+*By project* is a bar rather than a bare percentage. 100% of two runs and 100% of
+two thousand are the same number and not the same fact; the width of the bar says
+which one you are reading. Only projects that ran something in the window appear.
+
 ### Monitoring
 
 One grid over every project's runs, with **Project as the first column** — the one
