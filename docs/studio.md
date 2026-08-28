@@ -157,8 +157,8 @@ also get a cell editor that runs cells against a live kernel — see
 
 Channels live in `notifications.yaml` at the notebooks root; jobs reference them by
 name. **Passwords and tokens are never stored here** — only a *reference* resolved at
-send time from the OS credential store or a `CLRKERNEL_SECRET_*` environment
-variable, so this file is safe to commit.
+send time from the OS credential store, the file `CLRKERNEL_SECRETS_FILE` names, or a
+`CLRKERNEL_SECRET_*` environment variable, so this file is safe to commit.
 
 ```yaml
 channels:
@@ -498,8 +498,19 @@ two projects may each have a job called `nightly` and they never collide, becaus
 the project is part of every key.
 
 `remoteSecret` is the **name** of a secret, never a credential: it resolves at use
-time from the OS credential store or `CLRKERNEL_SECRET_*`, the same rule every
-connection in this repo follows. Nothing writes a token to this file.
+time from the secret chain — OS credential store, then `CLRKERNEL_SECRETS_FILE`,
+then `CLRKERNEL_SECRET_*` — the same rule every connection in this repo follows.
+Nothing writes a token to this file.
+
+### Where a saved password goes
+
+The connection editor can only save a password where one can be kept. On a laptop
+that is the OS credential store. A server without one — a container, most
+obviously — has nowhere to put it, and the field says so; point
+`CLRKERNEL_SECRETS_FILE` at a path on that server and it can. The file is plain
+text with owner-only permissions and is exactly as protected as the volume it
+sits on, so keep it out of any git worktree. The Docker image sets it to
+`/data/secrets.json`; see [docker.md](docker.md#passwords).
 
 ## Test → prod with git
 

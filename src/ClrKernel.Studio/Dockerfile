@@ -65,8 +65,14 @@ COPY --from=build /app/ ./
 # uid 1654) since edits and promotions commit there.
 # The store must be explicit for serve — the image says sqlite; override the env
 # (e.g. in compose) for postgres/sqlserver, together with CLRKERNEL_STUDIO_CONNECTION.
+# CLRKERNEL_SECRETS_FILE is what makes the connection editor able to save a
+# password at all: a container has no Keychain / Credential Manager, and without
+# it every password has to arrive as a CLRKERNEL_SECRET_* variable. The file
+# holds them in plain text with owner-only permissions — as protected as /data,
+# so treat that volume like a private key. Unset it to go back to env vars only.
 ENV CLRKERNEL_STUDIO_NOTEBOOKS=/notebooks \
     CLRKERNEL_STUDIO_DATA=/data \
+    CLRKERNEL_SECRETS_FILE=/data/secrets.json \
     CLRKERNEL_STUDIO_CLRKERNEL=/app/kernel/ClrKernel \
     CLRKERNEL_STUDIO_URLS=http://0.0.0.0:5000 \
     CLRKERNEL_STUDIO_STORE=sqlite

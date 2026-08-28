@@ -359,6 +359,7 @@ Everything is an environment variable; the image sets the first five itself.
 | `CLRKERNEL_STUDIO_MAX_PARALLELISM` | concurrent runs (default 4) |
 | `CLRKERNEL_STUDIO_RUN_RETENTION_DAYS` | delete runs older than this; `0` keeps everything |
 | `CLRKERNEL_STUDIO_WORKTREE_IDLE_DAYS` | prune untouched personal worktrees (default 30) |
+| `CLRKERNEL_SECRETS_FILE` | where saved passwords live — `/data/secrets.json` |
 | `CLRKERNEL_SECRET_*` | secret *references* — channel tokens, database passwords |
 
 **There is no API key.** The server is guarded by accounts and passkeys, and
@@ -367,8 +368,35 @@ nothing else. An earlier version of the Dockerfile's comments suggested setting
 nothing. If the port is reachable, what protects it is that an admin already
 claimed the server — which is why doing setup before exposing it matters.
 
-Passwords are never written into notebooks or config. A channel or a connection
-holds a *reference*, and the value arrives as `CLRKERNEL_SECRET_<REF>`:
+### Passwords
+
+Passwords are never written into a notebook or into config. A channel or a
+connection holds a *reference* — a name like `sql:analytics` — and the value is
+looked up at the moment it is needed. There are two places it can come from.
+
+**From the web app.** The connection editor's password field saves into
+`CLRKERNEL_SECRETS_FILE`, which the image points at `/data/secrets.json`. That
+is what makes a container usable without a redeploy per credential: add a
+connection, type the password, done. Both processes read it — the web app and
+the kernel that runs your notebooks — so a `#!sql-connect` referring to
+`sql:analytics` resolves the same value.
+
+The file holds the passwords **in plain text**, with owner-only permissions and
+nothing else. Encrypting them with a key kept beside them would be the same
+threat model with more moving parts, so it does not pretend to. Treat `/data`
+like a private key: it is exactly as protected as the volume, whoever can read
+the volume can read the passwords, and it must never live inside a git worktree.
+Unset `CLRKERNEL_SECRETS_FILE` and nothing can be saved from the UI — the field
+disappears and the app says so.
+
+On a laptop this file is not used at all: macOS Keychain, Windows Credential
+Manager and Linux libsecret come first in the chain and are better. The file is
+the fallback for machines that have none of them, which is every container.
+
+**From the environment.** A value can also arrive as `CLRKERNEL_SECRET_<REF>`,
+upper-cased with non-alphanumerics as `_`. This wins over nothing — it is
+consulted last — but it needs no writable volume, which is what you want when
+something else already manages the secret:
 
 ```bash
 docker run --detach --name clrkernel-studio \
@@ -378,6 +406,9 @@ docker run --detach --name clrkernel-studio \
   --env CLRKERNEL_SECRET_SLACK_HOOK=xoxb-your-token-here \
   clrkernel-studio
 ```
+
+So `slack-hook` in a channel, or `sql:analytics` in a connection, resolves from
+the OS store if there is one, then `/data/secrets.json`, then the environment.
 
 ## When it does not come up
 

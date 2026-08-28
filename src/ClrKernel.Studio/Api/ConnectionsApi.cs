@@ -42,8 +42,11 @@ public static class ConnectionsApi {
                     canPersistSecrets = store.CanPersistSecrets,
                     secretHelp = store.CanPersistSecrets
                         ? null
-                        : "This server has no OS credential store, so passwords cannot be saved here. "
-                            + "Give the name of a secret and set the matching CLRKERNEL_SECRET_* variable.",
+                        : "This server has nowhere to keep a password: it has no OS credential "
+                            + $"store, and {FileSecretProvider.PathVariable} does not name a file. "
+                            + "Give the name of a secret and set the matching CLRKERNEL_SECRET_* "
+                            + "variable, or point that file at somewhere on this server's data "
+                            + "volume and passwords can be saved from here.",
                 }));
 
         api.MapGet("/", (HttpContext context, ConnectionStore store, JobsOptions options) => {

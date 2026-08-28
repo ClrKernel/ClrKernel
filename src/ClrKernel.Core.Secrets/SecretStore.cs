@@ -8,7 +8,9 @@ namespace ClrKernel.Core.Secrets;
 /// <see cref="ISecretProvider"/>s and resolves a key against them in turn.
 /// <para>
 /// Default chain: an optional in-memory cache, the OS-native credential store
-/// (Keychain / Credential Manager / libsecret), then environment variables.
+/// (Keychain / Credential Manager / libsecret), a <see cref="FileSecretProvider"/>
+/// when <c>CLRKERNEL_SECRETS_FILE</c> names one — the only writable store a
+/// container has — then environment variables.
 /// Reads stop at the first hit and are cached; writes go to the first
 /// store-capable provider (the OS store by default). Enterprise PAM providers
 /// (Vault, Key Vault, CyberArk) can be inserted with <see cref="AddProvider"/>
@@ -31,6 +33,12 @@ public sealed class SecretStore {
         var os = OsSecretProvider.TryCreate();
         if (os != null) {
             _providers.Add(os);
+        }
+        // After the OS store, so a laptop keeps using the Keychain; before the
+        // environment, so a server that has neither can still be written to.
+        var file = FileSecretProvider.TryCreate();
+        if (file != null) {
+            _providers.Add(file);
         }
         _providers.Add(new EnvironmentSecretProvider());
     }
@@ -93,8 +101,11 @@ public sealed class SecretStore {
         }
         throw new SecretNotFoundException(
             $"No secret found for '{key}'. Looked in: {string.Join(", ", ProviderNames)}. " +
-            "Store one from the SQL connection panel, or set the " +
-            $"{EnvironmentSecretProvider.EnvName(key)} environment variable.");
+            (CanPersist
+                ? "Store one from the SQL connection panel, or set the "
+                : "Nothing here can store one: set the ") +
+            $"{EnvironmentSecretProvider.EnvName(key)} environment variable" +
+            (CanPersist ? "." : $", or point {FileSecretProvider.PathVariable} at a file."));
     }
 
     /// <summary>Stores a secret in the first store-capable provider and caches it.</summary>
