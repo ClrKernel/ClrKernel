@@ -377,8 +377,11 @@ plain files, with optional retention that never removes a job's most recent run.
 Notification rules bind events — a job failed, recovered, ran long, or something
 reached production — to webhook or SMTP channels, and the delivery feed records
 what failed to send as well as what arrived. Passwords are always resolved from
-secret references, never stored in a notebook or a config file. Also ships as a
-Docker image.
+secret references, never stored in a notebook or a config file.
+
+It also ships as a Docker image — see **[docs/docker.md](docs/docker.md)** for
+one-shot runs, compose with PostgreSQL, and running behind an nginx reverse
+proxy, with copy-paste files in [docs/examples/docker/](docs/examples/docker/).
 
 See [docs/studio.md](docs/studio.md).
 

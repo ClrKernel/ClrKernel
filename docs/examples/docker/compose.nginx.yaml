@@ -1,0 +1,62 @@
+# ClrKernel Studio behind nginx, on http://localhost:8080.
+#
+#   docker compose -f docs/examples/docker/compose.nginx.yaml up --build
+#
+# Studio's own port is NOT published: nginx is the only way in, which is the
+# arrangement you actually want in front of a real network. Everything else is
+# the same as compose.yaml.
+
+services:
+  proxy:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      studio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  studio:
+    build:
+      context: ../../..
+      dockerfile: src/ClrKernel.Studio/Dockerfile
+    # No `ports:` — reachable only from the compose network, through nginx.
+    expose:
+      - "5000"
+    volumes:
+      - ./notebooks:/notebooks
+      - studio-data:/data
+    environment:
+      CLRKERNEL_STUDIO_STORE: postgres
+      CLRKERNEL_STUDIO_CONNECTION: >-
+        Host=db;Port=5432;Database=clrkernel_studio;Username=studio;Password=compose-only
+      # The hostname and URL the *browser* uses — nginx's, not Studio's. This is
+      # the setting people get wrong behind a proxy: passkeys are bound to the
+      # domain in the address bar, and Studio has no way to know what that is.
+      CLRKERNEL_STUDIO_RPID: localhost
+      CLRKERNEL_STUDIO_ORIGINS: http://localhost:8080
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: clrkernel_studio
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: compose-only
+    volumes:
+      - studio-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studio -d clrkernel_studio"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  studio-data:
+  studio-db:

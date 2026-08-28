@@ -10,9 +10,15 @@
 #     -v clrkernel-studio-data:/data \
 #     clrkernel-studio
 #
-# Then open http://localhost:5000. Add -e CLRKERNEL_STUDIO_APIKEY=… whenever the
-# port is reachable from anywhere but the host. Secrets for notification
-# channels arrive the same way: -e CLRKERNEL_SECRET_MY_TOKEN=…
+# Then open http://localhost:5000 and create the first account. There is no API
+# key — the server is guarded by accounts and passkeys, and a fresh data
+# directory shows a setup screen to whoever reaches it first. So do that setup
+# before the port is reachable from anywhere but the host, and see
+# docs/docker.md for putting it behind a reverse proxy (passkeys need the real
+# hostname in CLRKERNEL_STUDIO_RPID and HTTPS at the edge).
+#
+# Secrets for notification channels and database passwords arrive as
+# environment variables: -e CLRKERNEL_SECRET_MY_TOKEN=…
 
 # --- the web UI ------------------------------------------------------------
 FROM node:20-alpine AS webapp

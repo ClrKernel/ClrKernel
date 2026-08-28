@@ -930,6 +930,11 @@ It runs as the non-root `app` user (uid 1654). A named volume picks up that
 ownership automatically; if you bind-mount a host directory at `/data` instead,
 either `chown 1654` it first or pass `--user`.
 
+**[docs/docker.md](docker.md)** has the rest: one-shot runs, compose with
+PostgreSQL, running behind nginx, the git workflow in a container, and why
+first-run setup is refused through a reverse proxy. Ready-made compose files and
+an nginx config are in [docs/examples/docker/](examples/docker/).
+
 ## Local development
 
 One command brings up both halves with live reload:
