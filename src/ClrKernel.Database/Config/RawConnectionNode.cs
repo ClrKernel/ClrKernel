@@ -37,6 +37,37 @@ public sealed class RawConnectionNode {
             values ?? new Dictionary<string, string>(),
             secretRefs ?? new Dictionary<string, string>());
 
+    /// <summary>
+    /// A copy with one value replaced (or removed, for null). How a caller points the
+    /// same saved connection at another database, or swaps in a second login, without
+    /// knowing which connection-string keyword either becomes — that stays the
+    /// provider's business.
+    /// </summary>
+    public RawConnectionNode With(string key, string value) {
+        var values = new Dictionary<string, string>(Values, StringComparer.OrdinalIgnoreCase);
+        if (value == null) {
+            values.Remove(key);
+        } else {
+            values[key] = value;
+        }
+        // A secret reference for the same key would win over the value being set here,
+        // which is never what the caller meant.
+        var secretRefs = new Dictionary<string, string>(SecretRefs, StringComparer.OrdinalIgnoreCase);
+        secretRefs.Remove(key);
+        return new RawConnectionNode(Name, Type, SourceFile, values, secretRefs);
+    }
+
+    /// <summary>A copy with one secret reference replaced (or removed, for null).</summary>
+    public RawConnectionNode WithSecret(string key, string secretRef) {
+        var secretRefs = new Dictionary<string, string>(SecretRefs, StringComparer.OrdinalIgnoreCase);
+        if (secretRef == null) {
+            secretRefs.Remove(key);
+        } else {
+            secretRefs[key] = secretRef;
+        }
+        return new RawConnectionNode(Name, Type, SourceFile, Values, secretRefs);
+    }
+
     /// <summary>The node name (the key in the config file).</summary>
     public string Name { get; }
 

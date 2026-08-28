@@ -18,6 +18,7 @@
   <Project Path="src/ClrKernel.Database/ClrKernel.Database.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.Oracle/ClrKernel.Database.Provider.Oracle.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj" />
+  <Project Path="src/ClrKernel.Database.Provider.Postgres/ClrKernel.Database.Provider.Postgres.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.Jdbc/ClrKernel.Database.Provider.Jdbc.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.SqlServer/ClrKernel.Database.Provider.SqlServer.csproj" />
   <Project Path="src/ClrKernel.Language.Shell/ClrKernel.Language.Shell.csproj" />

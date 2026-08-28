@@ -206,8 +206,7 @@ public static class ConnectionsApi {
                 if (Executable(context, store, options, id, out var connection, out var refusal) is false) {
                     return refusal;
                 }
-                if (!ConnectionProviderCatalog.IsQueryable(connection.Type)
-                || !SqlServerMetadata.Supports(connection.Type)) {
+                if (ConnectionDialects.For(connection.Type) is not { } dialect) {
                     // Degrade rather than error: a provider this process cannot open is
                     // still a connection worth having in the list, and the tree shows it as
                     // a leaf instead of a folder that opens onto nothing.
@@ -218,24 +217,23 @@ public static class ConnectionsApi {
                 }
                 var leastPrivilege = LeastPrivilege(context, options, connection);
                 var level = (body?.Level ?? "databases").ToLowerInvariant();
+                // The database is part of opening rather than a step afterwards: a
+                // second database is a second connection on PostgreSQL, and one shape
+                // for every provider beats SQL Server's extra option.
                 var (payload, error) = await runner.BrowseAsync<object>(
-                    connection, leastPrivilege, body?.Password,
+                    connection, leastPrivilege, body?.Password, body?.Database,
                     async (live, token) => level switch {
-                        "databases" => new { nodes = await SqlServerMetadata.DatabasesAsync(live, token) },
-                        "schemas" => new {
-                            nodes = await SqlServerMetadata.SchemasAsync(live, body.Database, token),
-                        },
+                        "databases" => new { nodes = await dialect.DatabasesAsync(live, token) },
+                        "schemas" => new { nodes = await dialect.SchemasAsync(live, token) },
                         "objects" => new {
-                            nodes = await SqlServerMetadata.ObjectsAsync(live, body.Database, body.Schema, token),
+                            nodes = await dialect.ObjectsAsync(live, body.Schema, token),
                         },
-                        "detail" => (object)await SqlServerMetadata.DetailAsync(
-                            live, body.Database, body.Schema, body.Object, token),
-                        "completions" => (object)await SqlServerMetadata.CompletionsAsync(
-                            live, body.Database, token),
+                        "detail" => (object)await dialect.DetailAsync(
+                            live, body.Schema, body.Object, token),
+                        "completions" => (object)await dialect.CompletionsAsync(live, token),
                         "script" => new {
-                            script = await SqlServerMetadata.ScriptAsync(
-                                live, body.Database, body.Schema, body.Object, body.Kind, body.Variant,
-                                token),
+                            script = await dialect.ScriptAsync(
+                                live, body.Schema, body.Object, body.Kind, body.Variant, token),
                         },
                         _ => throw new ConnectionException($"No metadata level '{level}'."),
                     },

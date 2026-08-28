@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Database.Provider.Postgres;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Extensions.Logging;
 
@@ -34,14 +35,17 @@ public sealed class ConnectionProviderCatalog {
     /// <summary>
     /// What is available before the kernel has been asked, and if it cannot be.
     /// <para>
-    /// SQL Server, because this process references the provider itself: the
-    /// Connections area can open one whether or not a kernel is installed, and a
-    /// server whose kernel is missing should still be able to save and query the
+    /// Every type this process can open itself, because it references those provider
+    /// packages: the Connections area works whether or not a kernel is installed, and
+    /// a server whose kernel is missing should still be able to save and query the
     /// connections it already has.
     /// </para>
     /// </summary>
     private static readonly IReadOnlyList<ConnectionProviderDescriptor> _builtIn =
-        new[] { SqlServerConnectionProvider.Descriptor };
+        new[] {
+            SqlServerConnectionProvider.Descriptor,
+            PostgresConnectionProvider.Descriptor,
+        };
 
     private readonly JobsOptions _options;
     private readonly ILogger _logger;
@@ -86,11 +90,13 @@ public sealed class ConnectionProviderCatalog {
     public ConnectionProviderDescriptor Find(string type) =>
         _known.FirstOrDefault(p => string.Equals(p.Type, type, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Whether this process can itself open a connection of this type —
-    /// which is what decides if it can be browsed and queried rather than only
-    /// saved.</summary>
-    public static bool IsQueryable(string type) =>
-        _builtIn.Any(p => string.Equals(p.Type, type, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Whether this process can itself open a connection of this type — which is what
+    /// decides if it can be browsed and queried rather than only saved. Asked of the
+    /// dialects rather than of a second list, so "we know its settings" and "we can
+    /// open it" cannot drift apart.
+    /// </summary>
+    public static bool IsQueryable(string type) => ConnectionDialects.Supports(type);
 
     private async Task<IReadOnlyList<ConnectionProviderDescriptor>> ProbeAsync() {
         try {

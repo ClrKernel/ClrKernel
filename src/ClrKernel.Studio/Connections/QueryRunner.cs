@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database;
-using ClrKernel.Database.Provider.SqlServer;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Studio;
@@ -57,13 +56,13 @@ public sealed class QueryRunner {
     /// <summary>A query in flight. <see cref="Cancelled"/> is set by the cancel route
     /// and is what the outcome is decided from — see <see cref="RunAsync"/>.</summary>
     private sealed class Active {
-        public Active(Guid actor, SqlCommand command) {
+        public Active(Guid actor, DbCommand command) {
             Actor = actor;
             Command = command;
         }
 
         public Guid Actor { get; }
-        public SqlCommand Command { get; }
+        public DbCommand Command { get; }
         public volatile bool Cancelled;
     }
 
@@ -77,30 +76,38 @@ public sealed class QueryRunner {
     }
 
     /// <summary>
-    /// Builds the live spec for a connection.
+    /// The saved connection as a node its provider can map.
+    /// <para>
     /// <paramref name="leastPrivilege"/> swaps in the read-only login — the actual
     /// read-only boundary, since no amount of statement inspection makes a writable
-    /// login safe.
+    /// login safe. It is done by rewriting the node rather than a provider spec,
+    /// which is what makes it mean the same thing for every provider: none of them
+    /// has to be told what "the user" is called in its own connection string.
+    /// </para>
     /// </summary>
-    public SqlConnectionSpec SpecFor(StoredConnection connection, bool leastPrivilege) {
+    public RawConnectionNode NodeFor(StoredConnection connection, bool leastPrivilege) {
         // Through the provider's own mapping rather than field by field, so aliases,
         // defaults and the raw-connection-string inference stay in one place.
-        var spec = SqlConnectionConfig.FromNode(RawConnectionNode.FromValues(
+        var node = RawConnectionNode.FromValues(
             connection.Name, connection.Type, connection.Settings,
             connection.SecretRef == null
                 ? null
-                : new Dictionary<string, string> { ["password"] = connection.SecretRef }));
-        if (leastPrivilege) {
-            spec.User = connection.ReadOnlyUser;
-            spec.SecretRef = connection.ReadOnlySecretRef;
-            // A least-privilege login is a login: whatever the connection's own auth
-            // mode was, this one signs in with a name and a password.
-            if (!spec.NeedsSecret) {
-                spec.Auth = SqlAuthMode.SqlPassword;
-            }
+                : new Dictionary<string, string> { ["password"] = connection.SecretRef });
+        if (!leastPrivilege) {
+            return node;
         }
-        return spec;
+        // A least-privilege login is a login: whatever the connection's own auth mode
+        // was, this one signs in with a name and a password.
+        return node
+            .With("user", connection.ReadOnlyUser)
+            .With("auth", "sql")
+            .WithSecret("password", connection.ReadOnlySecretRef);
     }
+
+    /// <summary>The secret reference a connection opens with, which is what a typed
+    /// one-off password has to be supplied under.</summary>
+    private static string SecretRefFor(StoredConnection connection, bool leastPrivilege) =>
+        leastPrivilege ? connection.ReadOnlySecretRef : connection.SecretRef;
 
     /// <summary>
     /// Closes the pooled sockets for a connection — what Disconnect actually does.
@@ -113,8 +120,9 @@ public sealed class QueryRunner {
     /// </summary>
     public void Disconnect(StoredConnection connection, bool leastPrivilege) {
         try {
-            using var live = new SqlConnection(SpecFor(connection, leastPrivilege).BuildConnectionString(_secrets));
-            SqlConnection.ClearPool(live);
+            var dialect = Dialect(connection);
+            using var live = dialect.Open(NodeFor(connection, leastPrivilege), _secrets, database: null);
+            dialect.ClearPool(live);
         } catch (Exception e) {
             // A connection whose credential no longer resolves has no pool to clear.
             _logger?.LogDebug("Clearing the pool for '{Connection}' did nothing: {Error}",
@@ -127,7 +135,8 @@ public sealed class QueryRunner {
     public async Task<string> TestAsync(
         StoredConnection connection, bool leastPrivilege, string password, CancellationToken cancellationToken) {
         try {
-            using var live = await OpenAsync(connection, leastPrivilege, password, cancellationToken)
+            using var live = await OpenAsync(
+                connection, leastPrivilege, password, database: null, cancellationToken)
                 .ConfigureAwait(false);
             return null;
         } catch (Exception e) {
@@ -142,10 +151,11 @@ public sealed class QueryRunner {
     /// to show, not a fault of this server.
     /// </summary>
     public async Task<(T Value, string Error)> BrowseAsync<T>(
-        StoredConnection connection, bool leastPrivilege, string password,
-        Func<SqlConnection, CancellationToken, Task<T>> read, CancellationToken cancellationToken) {
+        StoredConnection connection, bool leastPrivilege, string password, string database,
+        Func<DbConnection, CancellationToken, Task<T>> read, CancellationToken cancellationToken) {
         try {
-            using var live = await OpenAsync(connection, leastPrivilege, password, cancellationToken)
+            using var live = await OpenAsync(
+                connection, leastPrivilege, password, database, cancellationToken)
                 .ConfigureAwait(false);
             return (await read(live, cancellationToken).ConfigureAwait(false), null);
         } catch (Exception e) {
@@ -171,18 +181,17 @@ public sealed class QueryRunner {
         Active active = null;
 
         try {
-            using var live = await OpenAsync(connection, leastPrivilege, password, cancellationToken)
+            using var live = await OpenAsync(
+                connection, leastPrivilege, password, database: null, cancellationToken)
                 .ConfigureAwait(false);
-            // PRINT and RAISERROR(…, 0, …) arrive here, not in the reader.
-            live.InfoMessage += (_, e) => {
-                foreach (SqlError message in e.Errors) {
-                    messages.Add(message.Message);
-                }
-            };
+            // PRINT, RAISERROR(…, 0, …) and PostgreSQL's RAISE NOTICE arrive here
+            // rather than in the reader. Both drivers raise it; the event is not on
+            // DbConnection, so it is subscribed per provider.
+            using var informational = Dialect(connection).OnInfoMessage(live, messages.Add);
 
-            using var command = new SqlCommand(sql, live) {
-                CommandTimeout = connection.TimeoutSeconds,
-            };
+            using var command = live.CreateCommand();
+            command.CommandText = sql;
+            command.CommandTimeout = connection.TimeoutSeconds;
             active = new Active(actor, command);
             _running[queryId] = active;
             try {
@@ -203,15 +212,15 @@ public sealed class QueryRunner {
             error = "Cancelled.";
         } catch (SecretNotFoundException e) {
             error = e.Message;
-        } catch (SqlException e) {
+        } catch (DbException e) {
             // A failing statement is an answer, not a server fault: it belongs in the
             // Messages tab beside the row counts, the way SSMS shows it. Only the
             // errors after the first — the first *is* e.Message, and adding it here
             // too printed every failure twice.
             error = e.Message;
-            foreach (SqlError sqlError in e.Errors) {
-                if (sqlError.Message != e.Message) {
-                    messages.Add(sqlError.Message);
+            foreach (var extra in Dialect(connection).ExtraErrors(e)) {
+                if (extra != e.Message) {
+                    messages.Add(extra);
                 }
             }
         } catch (Exception e) {
@@ -256,18 +265,29 @@ public sealed class QueryRunner {
 
     // --- the wire -----------------------------------------------------------
 
-    private async Task<SqlConnection> OpenAsync(
-        StoredConnection connection, bool leastPrivilege, string password, CancellationToken cancellationToken) {
-        var spec = SpecFor(connection, leastPrivilege);
+    /// <summary>The dialect for a connection this server can open, or a refusal that
+    /// names the type — the routes check first, so reaching this with an unknown one is
+    /// a bug rather than a user error.</summary>
+    private static IConnectionDialect Dialect(StoredConnection connection) =>
+        ConnectionDialects.For(connection.Type)
+        ?? throw new ConnectionException(
+            $"{connection.Type} connections are opened by the kernel, not by this server.");
+
+    private async Task<DbConnection> OpenAsync(
+        StoredConnection connection, bool leastPrivilege, string password, string database,
+        CancellationToken cancellationToken) {
+        var node = NodeFor(connection, leastPrivilege);
         // A prompt-every-session connection has no stored password by design, so the
-        // one typed for this session is handed to the same resolver the spec expects.
+        // one typed for this session is handed to the same resolver the mapping expects.
         var secrets = _secrets;
         if (!string.IsNullOrEmpty(password)) {
+            var reference = SecretRefFor(connection, leastPrivilege) ?? _typedPasswordRef;
+            node = node.WithSecret("password", reference);
             var supplied = new InMemorySecretProvider();
-            supplied.Set(spec.EffectiveSecretRef, password);
+            supplied.Set(reference, password);
             secrets = SecretStore.ForProviders(supplied);
         }
-        var live = new SqlConnection(Pooled(spec.BuildConnectionString(secrets)));
+        var live = Dialect(connection).Open(node, secrets, database);
         try {
             await live.OpenAsync(cancellationToken).ConfigureAwait(false);
             return live;
@@ -277,30 +297,9 @@ public sealed class QueryRunner {
         }
     }
 
-    /// <summary>How long a pooled connection may live before it is retired rather
-    /// than reused. Long enough that a session of query-and-look-and-query-again
-    /// never pays to reconnect; short enough that a browser tab left open overnight
-    /// is not still holding a socket in the morning.</summary>
-    internal const int PoolLifetimeSeconds = 300;
-
-    /// <summary>
-    /// Bounds how long the pool keeps a connection.
-    /// <para>
-    /// Without this, a connection opened for one query is kept for reuse and the
-    /// pool only reclaims it on its own schedule — "a session open per browser tab
-    /// forever" is exactly what that looks like from the database's side. Set only
-    /// when the connection has not already asked for something: a raw connection
-    /// string somebody pasted is theirs, and second-guessing what it says is how a
-    /// deliberate setting silently stops applying.
-    /// </para>
-    /// </summary>
-    private static string Pooled(string connectionString) {
-        var builder = new SqlConnectionStringBuilder(connectionString);
-        if (builder.LoadBalanceTimeout == 0) {
-            builder.LoadBalanceTimeout = PoolLifetimeSeconds;
-        }
-        return builder.ConnectionString;
-    }
+    /// <summary>Where a typed one-off password is put when the connection has no
+    /// reference of its own — a prompt-every-session one, which is the whole point.</summary>
+    private const string _typedPasswordRef = "clrkernel-studio:typed";
 
     /// <summary>
     /// Reads one grid, stopping at the cap.
@@ -311,7 +310,7 @@ public sealed class QueryRunner {
     /// </para>
     /// </summary>
     private static async Task<QueryResultSet> ReadSetAsync(
-        SqlDataReader reader, int cap, CancellationToken cancellationToken) {
+        DbDataReader reader, int cap, CancellationToken cancellationToken) {
         var columns = new List<string>(reader.FieldCount);
         var types = new List<string>(reader.FieldCount);
         for (var i = 0; i < reader.FieldCount; i++) {

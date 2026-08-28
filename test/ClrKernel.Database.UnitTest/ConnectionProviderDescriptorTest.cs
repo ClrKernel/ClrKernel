@@ -6,6 +6,7 @@ using ClrKernel.Core.Primitives;
 using ClrKernel.Database.Provider.AnalysisServices;
 using ClrKernel.Database.Provider.Odbc;
 using ClrKernel.Database.Provider.Oracle;
+using ClrKernel.Database.Provider.Postgres;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -54,6 +55,16 @@ public class ConnectionProviderDescriptorTest {
             "connectionString", "server", "port", "serviceName", "userId", "user", "password");
 
     [TestMethod]
+    public void Postgres_descriptor_covers_its_reader_and_allows_extras() {
+        // PostgresConnectionConfig.ToConnectionString's reserved keys; everything else
+        // passes through as an Npgsql keyword, which the descriptor must declare.
+        AssertCovers(PostgresConnectionProvider.Descriptor,
+            "connectionString", "server", "host", "port", "database", "user", "username",
+            "password", "sslMode");
+        Assert.IsTrue(PostgresConnectionProvider.Descriptor.AllowExtraSettings);
+    }
+
+    [TestMethod]
     public void Odbc_descriptor_covers_its_reader_and_allows_extras() {
         // Odbc.FromConfig reserved keys; everything else passes through, which the
         // descriptor must declare.
@@ -67,6 +78,7 @@ public class ConnectionProviderDescriptorTest {
         foreach (var descriptor in new[] {
             SqlServerConnectionProvider.Descriptor, SsasConnectionProvider.Descriptor,
             OracleConnectionProvider.Descriptor, OdbcConnectionProvider.Descriptor,
+            PostgresConnectionProvider.Descriptor,
         }) {
             var password = descriptor.Settings.Single(s => s.Name == "password");
             Assert.AreEqual(ConnectionSettingKind.SecretRef, password.Kind,
@@ -79,6 +91,7 @@ public class ConnectionProviderDescriptorTest {
         foreach (var descriptor in new[] {
             SqlServerConnectionProvider.Descriptor, SsasConnectionProvider.Descriptor,
             OracleConnectionProvider.Descriptor, OdbcConnectionProvider.Descriptor,
+            PostgresConnectionProvider.Descriptor,
         }) {
             var names = descriptor.Settings.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var setting in descriptor.Settings) {

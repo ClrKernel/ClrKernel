@@ -84,12 +84,19 @@ public class ConnectionsApiTest {
         await SignInAsync(UserRole.ServerAdmin);
         var body = await GetJsonAsync("/api/connections/providers");
         var providers = body.GetProperty("providers").EnumerateArray().ToList();
-        Assert.AreEqual(1, providers.Count);
-        Assert.AreEqual("SqlServer", providers[0].GetProperty("type").GetString());
-        var settings = providers[0].GetProperty("settings").EnumerateArray()
+        // Without a kernel to ask, the answer is what this server can open itself —
+        // which is exactly the set of dialects it carries.
+        CollectionAssert.AreEquivalent(
+            ConnectionDialects.Types.ToArray(),
+            providers.Select(p => p.GetProperty("type").GetString()).ToArray());
+
+        var sqlServer = providers.Single(p => p.GetProperty("type").GetString() == "SqlServer");
+        var settings = sqlServer.GetProperty("settings").EnumerateArray()
             .Select(s => s.GetProperty("name").GetString()).ToList();
         CollectionAssert.Contains(settings, "server");
         CollectionAssert.Contains(settings, "database");
+        Assert.IsTrue(providers.All(p => p.GetProperty("queryable").GetBoolean()),
+            "a dialect is what queryable means");
         // A fake in-memory provider does persist, so the form offers a password field.
         Assert.IsTrue(body.GetProperty("canPersistSecrets").GetBoolean());
     }
@@ -490,11 +497,18 @@ public class ConnectionsApiTest {
             ReadOnlySecretRef = "reader-secret",
         };
 
-        Assert.AreEqual("svc", runner.SpecFor(connection, leastPrivilege: false).User);
-        var restricted = runner.SpecFor(connection, leastPrivilege: true);
-        Assert.AreEqual("reader", restricted.User);
-        Assert.AreEqual("reader-secret", restricted.SecretRef,
+        Assert.AreEqual("svc", runner.NodeFor(connection, leastPrivilege: false).Get("user"));
+        Assert.AreEqual("primary",
+            runner.NodeFor(connection, leastPrivilege: false).SecretRef("password"));
+
+        // Swapped by rewriting the node rather than a provider's own spec, so it means
+        // the same thing for a provider that spells "the user" differently.
+        var restricted = runner.NodeFor(connection, leastPrivilege: true);
+        Assert.AreEqual("reader", restricted.Get("user"));
+        Assert.AreEqual("reader-secret", restricted.SecretRef("password"),
             "the second credential is the read-only boundary; the app-side check is only a message");
+        Assert.AreEqual("sql", restricted.Get("auth"),
+            "a least-privilege login signs in with a name and a password whatever the connection's own mode was");
     }
 
     // --- helpers ------------------------------------------------------------

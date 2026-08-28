@@ -60,8 +60,17 @@ public static class Odbc {
     /// (properties: <c>connectionString</c>, or <c>driver</c>/<c>dsn</c> plus keywords;
     /// <c>password</c> as a <c>{ "secret": "&lt;ref&gt;" }</c>).
     /// </summary>
-    public static DataSource FromConfig(string name, SecretStore secrets = null) {
-        var config = ConnectionConfig.Load(name, secrets).EnsureType("Odbc");
+    public static DataSource FromConfig(string name, SecretStore secrets = null) =>
+        Map(ConnectionConfig.Load(name, secrets).EnsureType("Odbc"));
+
+    /// <summary>
+    /// The same, from settings a caller already holds rather than from a file — how a
+    /// server opens a connection it saved. Same mapping, so the two cannot drift.
+    /// </summary>
+    public static DataSource FromNode(RawConnectionNode node, SecretStore secrets = null) =>
+        Map(ConnectionConfig.From(node, secrets).EnsureType("Odbc"));
+
+    private static DataSource Map(ConnectionConfig config) {
         if (config.Get("connectionString") is { Length: > 0 } cs) {
             return Build(config.Name, cs);
         }

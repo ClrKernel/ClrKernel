@@ -55,8 +55,17 @@ public static class Oracle {
     /// (properties: <c>server</c>, <c>port</c>, <c>serviceName</c>, <c>userId</c>,
     /// <c>password</c> — the password as a <c>{ "secret": "&lt;ref&gt;" }</c>).
     /// </summary>
-    public static DataSource FromConfig(string name, SecretStore secrets = null) {
-        var config = ConnectionConfig.Load(name, secrets).EnsureType("Oracle");
+    public static DataSource FromConfig(string name, SecretStore secrets = null) =>
+        Map(ConnectionConfig.Load(name, secrets).EnsureType("Oracle"));
+
+    /// <summary>
+    /// The same, from settings a caller already holds rather than from a file — how a
+    /// server opens a connection it saved. Same mapping, so the two cannot drift.
+    /// </summary>
+    public static DataSource FromNode(RawConnectionNode node, SecretStore secrets = null) =>
+        Map(ConnectionConfig.From(node, secrets).EnsureType("Oracle"));
+
+    private static DataSource Map(ConnectionConfig config) {
         if (config.Get("connectionString") is { Length: > 0 } cs) {
             return Build(config.Name, cs);
         }

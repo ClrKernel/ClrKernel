@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ClrKernel.Core.Secrets;
+using ClrKernel.Database;
+using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Data.SqlClient;
-
 namespace ClrKernel.Studio;
 
 /// <summary>One node in the object tree.</summary>
@@ -71,31 +74,82 @@ public sealed class ColumnDetail {
 /// What SQL Server can say about itself, at the four levels the tree walks:
 /// databases, schemas, the objects in a schema, and one object's columns and keys.
 /// <para>
-/// ponytail: no interface, because there is one implementation. The contract that
-/// matters is the route's — a connection type with nothing here answers an empty
-/// list, and the tree shows the connection as a leaf rather than as a folder that
-/// opens onto nothing. A second provider turns this class into the first
-/// implementation of one; adding the abstraction before that is inventing a shape
-/// nobody has pushed on yet.
+/// The second provider arrived, so this is now the first implementation of
+/// <see cref="IConnectionDialect"/> rather than the only thing there is. The
+/// connection string still comes from the provider package's own mapping; what is
+/// here is the catalog.
 /// </para>
 /// </summary>
-public static class SqlServerMetadata {
-    /// <summary>Whether this connection type can be browsed at all.</summary>
-    public static bool Supports(string type) =>
-        string.Equals(type, "SqlServer", StringComparison.OrdinalIgnoreCase);
+public sealed class SqlServerDialect : IConnectionDialect {
+    public string Type => "SqlServer";
+
+    /// <summary>
+    /// The database is put into the connection string rather than switched afterwards.
+    /// SQL Server would allow either; PostgreSQL allows only this, and one shape for
+    /// both is worth more than SQL Server's extra option.
+    /// </summary>
+    public DbConnection Open(RawConnectionNode node, SecretStore secrets, string database) {
+        var spec = SqlConnectionConfig.FromNode(node);
+        var builder = new SqlConnectionStringBuilder(
+            spec.BuildConnectionString(secrets ?? new SecretStore()));
+        // On the built string rather than on the node: a connection saved as a raw
+        // connection string is passed through untouched by the mapping, so a database
+        // set on the node would be dropped and the tree would browse whichever one the
+        // string happens to name.
+        if (!string.IsNullOrWhiteSpace(database)) {
+            builder.InitialCatalog = database;
+        }
+        // Only when the connection has not already asked for something: a raw
+        // connection string somebody pasted is theirs, and second-guessing what it
+        // says is how a deliberate setting silently stops applying.
+        if (builder.LoadBalanceTimeout == 0) {
+            builder.LoadBalanceTimeout = IConnectionDialect.PoolLifetimeSeconds;
+        }
+        return new SqlConnection(builder.ConnectionString);
+    }
+
+    /// <summary>PRINT and RAISERROR(…, 0, …) arrive here, not in the reader.</summary>
+    public IDisposable OnInfoMessage(DbConnection live, Action<string> message) {
+        if (live is not SqlConnection sql) {
+            return null;
+        }
+        void Handler(object _, SqlInfoMessageEventArgs e) {
+            foreach (SqlError error in e.Errors) {
+                message(error.Message);
+            }
+        }
+        sql.InfoMessage += Handler;
+        return new Unsubscribe(() => sql.InfoMessage -= Handler);
+    }
+
+    public IEnumerable<string> ExtraErrors(DbException error) =>
+        error is SqlException sql
+            ? sql.Errors.Cast<SqlError>().Select(e => e.Message)
+            : Array.Empty<string>();
+
+    public void ClearPool(DbConnection live) {
+        if (live is SqlConnection sql) {
+            SqlConnection.ClearPool(sql);
+        }
+    }
+
+    private sealed class Unsubscribe : IDisposable {
+        private readonly Action _off;
+        public Unsubscribe(Action off) => _off = off;
+        public void Dispose() => _off();
+    }
 
     /// <summary>Databases this login can actually open. A database it cannot reach is
     /// a folder that errors when clicked, so it is not offered.</summary>
-    public static Task<IReadOnlyList<MetadataNode>> DatabasesAsync(
-        SqlConnection live, CancellationToken cancellationToken) =>
-        NodesAsync(live,
+    public Task<IReadOnlyList<MetadataNode>> DatabasesAsync(
+        DbConnection live, CancellationToken cancellationToken) =>
+        Ado.NodesAsync(live,
             "SELECT name FROM sys.databases WHERE state = 0 AND HAS_DBACCESS(name) = 1 ORDER BY name",
             "database", cancellationToken);
 
-    public static async Task<IReadOnlyList<MetadataNode>> SchemasAsync(
-        SqlConnection live, string database, CancellationToken cancellationToken) {
-        await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
-        return await NodesAsync(live,
+    public Task<IReadOnlyList<MetadataNode>> SchemasAsync(
+        DbConnection live, CancellationToken cancellationToken) {
+        return Ado.NodesAsync(live,
             // The ones SQL Server ships with are noise in a tree somebody is looking
             // for their own tables in.
             @"SELECT s.name FROM sys.schemas s
@@ -104,24 +158,22 @@ public static class SqlServerMetadata {
                                    'db_backupoperator', 'db_datareader', 'db_datawriter',
                                    'db_denydatareader', 'db_denydatawriter')
               ORDER BY s.name",
-            "schema", cancellationToken).ConfigureAwait(false);
+            "schema", cancellationToken);
     }
 
     /// <summary>Every object in one schema in a single pass. The tree groups them into
     /// Tables, Views and Programmability itself — three round trips to fill three
     /// folders that are always opened together is three times the latency.</summary>
-    public static async Task<IReadOnlyList<MetadataNode>> ObjectsAsync(
-        SqlConnection live, string database, string schema, CancellationToken cancellationToken) {
-        await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
-        using var command = new SqlCommand(
+    public async Task<IReadOnlyList<MetadataNode>> ObjectsAsync(
+        DbConnection live, string schema, CancellationToken cancellationToken) {
+        using var command = Ado.Command(live,
             @"SELECT o.name,
                      CASE o.type WHEN 'U' THEN 'table' WHEN 'V' THEN 'view'
                                  WHEN 'P' THEN 'procedure' ELSE 'function' END AS kind
               FROM sys.objects o
               JOIN sys.schemas s ON s.schema_id = o.schema_id
               WHERE s.name = @schema AND o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF')
-              ORDER BY o.name", live);
-        command.Parameters.AddWithValue("@schema", schema);
+              ORDER BY o.name", ("@schema", schema));
         var nodes = new List<MetadataNode>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
@@ -130,9 +182,8 @@ public static class SqlServerMetadata {
         return nodes;
     }
 
-    public static async Task<ObjectDetail> DetailAsync(
-        SqlConnection live, string database, string schema, string obj, CancellationToken cancellationToken) {
-        await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
+    public async Task<ObjectDetail> DetailAsync(
+        DbConnection live, string schema, string obj, CancellationToken cancellationToken) {
         return new ObjectDetail {
             Columns = await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false),
             Keys = await KeysAsync(live, schema, obj, cancellationToken).ConfigureAwait(false),
@@ -154,7 +205,7 @@ public static class SqlServerMetadata {
     /// </para>
     /// </summary>
     private static async Task<IReadOnlyList<string>> KeysAsync(
-        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) {
+        DbConnection live, string schema, string obj, CancellationToken cancellationToken) {
         var keys = new List<string>();
         await ReadAsync(live,
             @"SELECT kc.name, kc.type_desc
@@ -185,7 +236,7 @@ public static class SqlServerMetadata {
     }
 
     private static async Task<IReadOnlyList<string>> IndexesAsync(
-        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) {
+        DbConnection live, string schema, string obj, CancellationToken cancellationToken) {
         var indexes = new List<string>();
         await ReadAsync(live,
             @"SELECT i.name, i.is_unique
@@ -212,10 +263,9 @@ public static class SqlServerMetadata {
     /// runs one by accident.
     /// </para>
     /// </summary>
-    public static async Task<string> ScriptAsync(
-        SqlConnection live, string database, string schema, string obj, string kind, string variant,
+    public async Task<string> ScriptAsync(
+        DbConnection live, string schema, string obj, string kind, string variant,
         CancellationToken cancellationToken) {
-        await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
         var name = Quote(schema) + "." + Quote(obj);
         var isTable = string.Equals(kind, "table", StringComparison.OrdinalIgnoreCase);
 
@@ -257,10 +307,9 @@ public static class SqlServerMetadata {
         }
 
         if (!isTable) {
-            using var command = new SqlCommand(
-                "SELECT OBJECT_DEFINITION(OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@object)))", live);
-            command.Parameters.AddWithValue("@schema", schema);
-            command.Parameters.AddWithValue("@object", obj);
+            using var command = Ado.Command(live,
+                "SELECT OBJECT_DEFINITION(OBJECT_ID(QUOTENAME(@schema) + '.' + QUOTENAME(@object)))",
+                ("@schema", schema), ("@object", obj));
             var definition = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return definition as string
                 ?? "-- No definition is available. It may be encrypted, or this login cannot see it.";
@@ -286,7 +335,7 @@ public static class SqlServerMetadata {
     /// <summary>The columns an INSERT or UPDATE may name — identity columns are the
     /// server's to fill, and listing them produces a statement that always fails.</summary>
     private static async Task<IReadOnlyList<ColumnDetail>> WritableAsync(
-        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) =>
+        DbConnection live, string schema, string obj, CancellationToken cancellationToken) =>
         (await ColumnsAsync(live, schema, obj, cancellationToken).ConfigureAwait(false))
             .Where(c => !c.Identity).ToList();
 
@@ -310,17 +359,16 @@ public static class SqlServerMetadata {
     /// complete and would only pad the payload.
     /// </para>
     /// </summary>
-    public static async Task<CompletionSchema> CompletionsAsync(
-        SqlConnection live, string database, CancellationToken cancellationToken) {
-        await UseAsync(live, database, cancellationToken).ConfigureAwait(false);
-        using var command = new SqlCommand(
+    public async Task<CompletionSchema> CompletionsAsync(
+        DbConnection live, CancellationToken cancellationToken) {
+        using var command = Ado.Command(live,
             @"SELECT s.name, o.name, CASE o.type WHEN 'V' THEN 'view' ELSE 'table' END, c.name
               FROM sys.objects o
               JOIN sys.schemas s ON s.schema_id = o.schema_id
               LEFT JOIN sys.columns c ON c.object_id = o.object_id
               WHERE o.type IN ('U', 'V')
                 AND s.name NOT IN ('sys', 'INFORMATION_SCHEMA')
-              ORDER BY s.name, o.name, c.column_id", live);
+              ORDER BY s.name, o.name, c.column_id");
 
         var objects = new List<CompletionObject>();
         var columns = new List<string>();
@@ -377,8 +425,8 @@ public static class SqlServerMetadata {
     // --- the queries --------------------------------------------------------
 
     private static async Task<IReadOnlyList<ColumnDetail>> ColumnsAsync(
-        SqlConnection live, string schema, string obj, CancellationToken cancellationToken) {
-        using var command = new SqlCommand(
+        DbConnection live, string schema, string obj, CancellationToken cancellationToken) {
+        using var command = Ado.Command(live,
             @"SELECT c.name, t.name AS type_name, c.max_length, c.precision, c.scale,
                      c.is_nullable, c.is_identity,
                      CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_key
@@ -393,9 +441,7 @@ public static class SqlServerMetadata {
                   WHERE i.is_primary_key = 1
               ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id
               WHERE s.name = @schema AND o.name = @object
-              ORDER BY c.column_id", live);
-        command.Parameters.AddWithValue("@schema", schema);
-        command.Parameters.AddWithValue("@object", obj);
+              ORDER BY c.column_id", ("@schema", schema), ("@object", obj));
 
         var columns = new List<ColumnDetail>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -413,51 +459,16 @@ public static class SqlServerMetadata {
 
     /// <summary>Runs a schema/object query and hands each row to <paramref name="row"/>.</summary>
     private static async Task ReadAsync(
-        SqlConnection live, string sql, string schema, string obj, CancellationToken cancellationToken,
-        Action<SqlDataReader> row) {
-        using var command = new SqlCommand(sql, live);
-        command.Parameters.AddWithValue("@schema", schema);
-        command.Parameters.AddWithValue("@object", obj);
+        DbConnection live, string sql, string schema, string obj, CancellationToken cancellationToken,
+        Action<DbDataReader> row) {
+        using var command = Ado.Command(live, sql, ("@schema", schema), ("@object", obj));
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
             row(reader);
         }
     }
 
-    /// <summary>A string column, or null — catalog views return null for anything this
-    /// login cannot resolve, and that is a label to write rather than a throw.</summary>
-    private static string Text(SqlDataReader reader, int ordinal) =>
-        reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
-
-    private static async Task<IReadOnlyList<MetadataNode>> NodesAsync(
-        SqlConnection live, string sql, string kind, CancellationToken cancellationToken) {
-        using var command = new SqlCommand(sql, live);
-        var nodes = new List<MetadataNode>();
-        using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
-            if (!reader.IsDBNull(0)) {
-                nodes.Add(new MetadataNode { Name = reader.GetString(0), Kind = kind });
-            }
-        }
-        return nodes;
-    }
-
-    /// <summary>
-    /// Switches the open connection to a database.
-    /// <para>
-    /// <see cref="SqlConnection.ChangeDatabase"/> rather than <c>USE</c> in the text:
-    /// the name arrives from the client, and a database name is an identifier that
-    /// cannot be parameterized — building <c>USE [</c> + name + <c>]</c> is the
-    /// injection this whole file otherwise avoids.
-    /// </para>
-    /// </summary>
-    private static Task UseAsync(SqlConnection live, string database, CancellationToken cancellationToken) {
-        if (!string.IsNullOrWhiteSpace(database)
-            && !string.Equals(live.Database, database, StringComparison.OrdinalIgnoreCase)) {
-            return live.ChangeDatabaseAsync(database, cancellationToken);
-        }
-        return Task.CompletedTask;
-    }
+    private static string Text(DbDataReader reader, int ordinal) => Ado.Text(reader, ordinal);
 
     /// <summary>The type as a script would write it, so the columns list and the
     /// generated CREATE TABLE agree.</summary>

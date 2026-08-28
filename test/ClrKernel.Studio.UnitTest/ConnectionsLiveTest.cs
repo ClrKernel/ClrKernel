@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,6 +54,7 @@ public class ConnectionsLiveTest {
     private static string _connectionString;
 
     private QueryRunner _runner;
+    private readonly IConnectionDialect _dialect = new SqlServerDialect();
     private StoredConnection _connection;
 
     [ClassInitialize]
@@ -245,11 +247,11 @@ public class ConnectionsLiveTest {
 
     [TestMethod]
     public async Task TheTreeFindsTheDatabaseAndItsSchema() {
-        var databases = await BrowseAsync((live, token) => SqlServerMetadata.DatabasesAsync(live, token));
+        var databases = await BrowseAsync((live, token) => _dialect.DatabasesAsync(live, token));
         CollectionAssert.Contains(databases.Select(d => d.Name).ToArray(), _database);
 
         var schemas = await BrowseAsync((live, token) =>
-            SqlServerMetadata.SchemasAsync(live, _database, token));
+            _dialect.SchemasAsync(live, token));
         CollectionAssert.Contains(schemas.Select(s => s.Name).ToArray(), _schema);
         CollectionAssert.DoesNotContain(schemas.Select(s => s.Name).ToArray(), "sys",
             "the shipped schemas are noise in a tree somebody is looking for their own tables in");
@@ -258,7 +260,7 @@ public class ConnectionsLiveTest {
     [TestMethod]
     public async Task ASchemaListsItsTablesViewsAndProgrammabilityInOnePass() {
         var objects = await BrowseAsync((live, token) =>
-            SqlServerMetadata.ObjectsAsync(live, _database, _schema, token));
+            _dialect.ObjectsAsync(live, _schema, token));
         var byName = objects.ToDictionary(o => o.Name, o => o.Kind, StringComparer.OrdinalIgnoreCase);
 
         Assert.AreEqual("table", byName["Orders"]);
@@ -270,7 +272,7 @@ public class ConnectionsLiveTest {
     [TestMethod]
     public async Task ATablesColumnsKeysAndIndexesComeBackTogether() {
         var detail = await BrowseAsync((live, token) =>
-            SqlServerMetadata.DetailAsync(live, _database, _schema, "Orders", token));
+            _dialect.DetailAsync(live, _schema, "Orders", token));
 
         var columns = detail.Columns.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
         Assert.AreEqual("int", columns["OrderId"].Type);
@@ -292,7 +294,7 @@ public class ConnectionsLiveTest {
     [TestMethod]
     public async Task AForeignKeyIsShownWithWhatItPointsAt() {
         var detail = await BrowseAsync((live, token) =>
-            SqlServerMetadata.DetailAsync(live, _database, _schema, "OrderLines", token));
+            _dialect.DetailAsync(live, _schema, "OrderLines", token));
         var foreignKey = detail.Keys.SingleOrDefault(k => k.Contains("FK_OrderLines_Orders"));
         Assert.IsNotNull(foreignKey, string.Join(" | ", detail.Keys));
         StringAssert.Contains(foreignKey, $"{_schema}.Orders");
@@ -301,7 +303,7 @@ public class ConnectionsLiveTest {
     [TestMethod]
     public async Task AViewHasColumnsToo() {
         var detail = await BrowseAsync((live, token) =>
-            SqlServerMetadata.DetailAsync(live, _database, _schema, "ActiveOrders", token));
+            _dialect.DetailAsync(live, _schema, "ActiveOrders", token));
         CollectionAssert.AreEquivalent(
             new[] { "OrderId", "Customer" }, detail.Columns.Select(c => c.Name).ToArray());
     }
@@ -311,7 +313,7 @@ public class ConnectionsLiveTest {
     [TestMethod]
     public async Task TheCompletionSchemaIsEveryTableAndViewWithItsColumns() {
         var schema = await BrowseAsync((live, token) =>
-            SqlServerMetadata.CompletionsAsync(live, _database, token));
+            _dialect.CompletionsAsync(live, token));
 
         Assert.AreEqual(_database, schema.Database);
         Assert.IsFalse(schema.Truncated, "a fixture this small is not near the cap");
@@ -331,7 +333,7 @@ public class ConnectionsLiveTest {
     [TestMethod]
     public async Task ItLeavesOutTheThingsThereIsNothingToCompleteAgainst() {
         var schema = await BrowseAsync((live, token) =>
-            SqlServerMetadata.CompletionsAsync(live, _database, token));
+            _dialect.CompletionsAsync(live, token));
 
         Assert.IsFalse(schema.Objects.Any(o => o.Schema == "sys"),
             "the shipped catalog is not what somebody is typing a query against");
@@ -344,7 +346,7 @@ public class ConnectionsLiveTest {
         // The LEFT JOIN is there so an object with no columns still appears; the
         // grouping is what must not drop or merge them.
         var schema = await BrowseAsync((live, token) =>
-            SqlServerMetadata.CompletionsAsync(live, _database, token));
+            _dialect.CompletionsAsync(live, token));
         Assert.IsTrue(schema.Objects.Count >= 3, schema.Objects.Count.ToString());
         foreach (var found in schema.Objects) {
             Assert.IsTrue(found.Columns.Count > 0, $"{found.Schema}.{found.Name}");
@@ -427,7 +429,7 @@ public class ConnectionsLiveTest {
         Assert.IsNull(result.Error, result.Error);
         try {
             var detail = await BrowseAsync((live, token) =>
-                SqlServerMetadata.DetailAsync(live, _database, _schema, "Orders_Copy", token));
+                _dialect.DetailAsync(live, _schema, "Orders_Copy", token));
             Assert.AreEqual(3, detail.Columns.Count);
         } finally {
             await RunAsync($"DROP TABLE {_schema}.Orders_Copy", _database);
@@ -449,12 +451,16 @@ public class ConnectionsLiveTest {
     }
 
     private Task<string> ScriptAsync(string obj, string kind, string variant) =>
-        BrowseAsync((live, token) => SqlServerMetadata.ScriptAsync(
-            live, _database, _schema, obj, kind, variant, token));
+        BrowseAsync((live, token) => _dialect.ScriptAsync(
+            live, _schema, obj, kind, variant, token));
 
-    private async Task<T> BrowseAsync<T>(Func<SqlConnection, CancellationToken, Task<T>> read) {
+    /// <summary>Browses inside <paramref name="database"/>, which is now part of
+    /// opening rather than a step afterwards — PostgreSQL has no other way.</summary>
+    private async Task<T> BrowseAsync<T>(
+        Func<DbConnection, CancellationToken, Task<T>> read, string database = null) {
         var (value, error) = await _runner.BrowseAsync(
-            _connection, leastPrivilege: false, password: null, read, CancellationToken.None);
+            _connection, leastPrivilege: false, password: null, database ?? _database,
+            read, CancellationToken.None);
         Assert.IsNull(error, error);
         return value;
     }
