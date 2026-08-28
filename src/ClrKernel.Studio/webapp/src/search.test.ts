@@ -36,12 +36,11 @@ describe('withQuery', () => {
 });
 
 describe('showsSearch', () => {
-  it('is on the two pages it filters and nowhere else', () => {
+  it('is on the one page it filters and nowhere else', () => {
     expect(showsSearch('/')).toBe(true);
-    expect(showsSearch('/jobs/default')).toBe(true);
-    expect(showsSearch('/jobs/finance')).toBe(true);
-    // One job is not a list, so there is nothing here to filter.
-    expect(showsSearch('/jobs/default/test/nightly')).toBe(false);
+    // The monitoring grid filters on the server, over history the page has never
+    // seen — a box that narrowed the rows already on screen would say otherwise.
+    expect(showsSearch('/monitoring')).toBe(false);
     expect(showsSearch('/files/default')).toBe(false);
     expect(showsSearch('/files/default/edit/mine/etl.nb.md')).toBe(false);
     expect(showsSearch('/settings')).toBe(false);

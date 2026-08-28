@@ -23,23 +23,27 @@
 export const NOTEBOOK_VIEWS = ['edit', 'overview', 'source', 'diff'] as const;
 export type NotebookView = (typeof NOTEBOOK_VIEWS)[number];
 
-/** The sections whose URL names a project. Everything else is server-wide. */
-export const PROJECT_SECTIONS = ['jobs', 'files'] as const;
+/**
+ * The sections whose URL names a project. Everything else is server-wide.
+ *
+ * `jobs` was one of them. A job is now an entry in a `*.jobs.yaml`, edited in
+ * Files like every other file and watched in Monitoring like every other run, so
+ * a section of its own was a second place to edit the same thing and a private
+ * run table beside the one that already shows every run.
+ */
+export const PROJECT_SECTIONS = ['files'] as const;
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number];
 
 const slug = encodeURIComponent;
 
-export function jobsPath(project: string): string {
-  return `/jobs/${slug(project)}`;
+/** One job's runs: the monitoring grid, filtered to it. */
+export function jobRunsPath(project: string, env: string, name: string): string {
+  return `/monitoring?project=${slug(project)}&env=${slug(env)}&job=${slug(name)}`;
 }
 
-export function jobPath(project: string, env: string, name: string): string {
-  return `/jobs/${slug(project)}/${slug(env)}/${slug(name)}`;
-}
-
-export function newJobPath(project: string, env: string, notebook?: string): string {
-  const to = `/jobs/${slug(project)}/${slug(env)}/new`;
-  return notebook ? `${to}?notebook=${encodeURIComponent(notebook)}` : to;
+/** The file a job is defined in, on the branch you are looking at. */
+export function jobsFilePath(project: string, env: string, jobsFile: string): string {
+  return editPath(project, env, jobsFile, 'overview');
 }
 
 /**

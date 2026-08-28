@@ -14,7 +14,7 @@ import { BranchOptions, ErrorBanner, PageHeader, usePolling } from '../component
 import { FileBadge } from '../components/FileBadge';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { loadBranch, saveBranch } from '../prefs';
-import { editPath, jobPath, newJobPath } from '../routes';
+import { editPath, jobsFilePath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 
 function Node({
@@ -92,7 +92,7 @@ function Node({
       {node.jobs?.map((job) => (
         <Link
           key={job}
-          to={jobPath(projectSlug(), env, job)}
+          to={jobsFilePath(projectSlug(), env, jobsFileFor(node.path))}
           className="rounded-full border border-env-prod-border bg-env-prod-bg px-2 py-px text-xs font-semibold text-env-prod hover:no-underline"
         >
           {job}
@@ -114,12 +114,44 @@ function Node({
   );
 }
 
+/**
+ * The jobs file paired with a notebook. Derived, not stored: `etl.nb.md` is
+ * scheduled by `etl.jobs.yaml` and by nothing else, which is what makes the pair
+ * one promotable unit.
+ */
+function jobsFileFor(notebook: string): string {
+  return notebook.replace(/\.nb\.md$/i, '') + '.jobs.yaml';
+}
+
 export function Files() {
   const navigate = useNavigate();
   const mayEdit = useIsProjectMember();
   const { data, error, reload } = usePolling(() => api.notebooks(), null);
   const { data: health } = usePolling(() => api.health(), null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * "+ job" writes the paired file on your own branch and opens it.
+   *
+   * A file rather than a form: the pairing is by name, so there is exactly one
+   * path this can be, and the Overview tab is already the form. Written on your
+   * branch whichever branch you were reading the notebook on — nothing schedules
+   * from a personal branch, so it starts running when you push it to test.
+   */
+  async function schedule(notebook: string) {
+    const path = jobsFileFor(notebook);
+    const name = (notebook.split('/').pop() ?? 'daily').replace(/\.nb\.md$/i, '');
+    try {
+      await createNotebook(path, `jobs:\n  - name: ${name}\n`);
+    } catch (e) {
+      // Already there is not an error — it is where you were going anyway.
+      if (!/already on your branch/i.test((e as Error).message)) {
+        setNotice((e as Error).message);
+        return;
+      }
+    }
+    navigate(jobsFilePath(projectSlug(), 'mine', path));
+  }
 
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
   const [env, setEnv] = useState<string>('');
@@ -239,12 +271,7 @@ export function Files() {
                 env={env}
                 depth={0}
                 mayEdit={mayWrite}
-                onCreate={(path) =>
-                  // A job is edited on your branch and starts running when you
-                  // push it, so a new one is written there whichever branch you
-                  // were reading the notebook on.
-                  navigate(newJobPath(projectSlug(), 'mine', path))
-                }
+                onCreate={(path) => schedule(path)}
               />
             ))}
           </div>

@@ -30,7 +30,6 @@ describe('breadcrumbFor', () => {
   });
 
   it.each([
-    ['/jobs/default', 'Jobs'],
     ['/files/default', 'Files'],
     ['/channels', 'Channels'],
     ['/settings', 'Settings'],
@@ -38,19 +37,22 @@ describe('breadcrumbFor', () => {
     expect(breadcrumbFor(pathname)).toEqual([{ label }]);
   });
 
-  it('puts the job under its own project’s jobs and badges its environment', () => {
-    expect(breadcrumbFor('/jobs/finance/test/nightly')).toEqual([
-      { label: 'Jobs', to: '/jobs/finance' },
-      { label: 'nightly', badge: 'test' },
+  // Monitoring is a view of the Dashboard, not a section, and the trail is where
+  // that is said — the rail has one entry for both.
+  it('puts monitoring under the dashboard', () => {
+    expect(breadcrumbFor('/monitoring')).toEqual([
+      { label: 'Dashboard', to: '/' },
+      { label: 'Monitoring' },
     ]);
   });
 
-  it('names an unsaved job rather than showing the literal route segment', () => {
-    expect(breadcrumbFor('/jobs/default/prod/new')[1].label).toBe('New job');
-  });
-
-  it('decodes an escaped job name', () => {
-    expect(breadcrumbFor('/jobs/default/test/nightly%20run')[1].label).toBe('nightly run');
+  // A job has no page of its own any more, so nothing here knows a project from
+  // a run id — the trail goes back to the grid that lists every run.
+  it('files a run under the grid rather than guessing a project', () => {
+    expect(breadcrumbFor('/runs/abc')).toEqual([
+      { label: 'Monitoring', to: '/monitoring' },
+      { label: 'Run abc' },
+    ]);
   });
 
   it('takes the editor’s subject from the path, and its badge is the branch switcher', () => {
@@ -79,13 +81,6 @@ describe('breadcrumbFor', () => {
     const crumb = breadcrumbFor(`/files/default/edit/mine/${long}`)[1];
     expect(crumb.full).toBe(long);
     expect(crumb.label).not.toBe(long);
-  });
-
-  it('files a run under the jobs you were last looking at', () => {
-    expect(breadcrumbFor('/runs/42')).toEqual([
-      { label: 'Jobs', to: '/jobs' },
-      { label: 'Run 42' },
-    ]);
   });
 
   it('says so when the route is unknown', () => {

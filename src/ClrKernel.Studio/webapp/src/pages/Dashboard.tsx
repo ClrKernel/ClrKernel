@@ -6,7 +6,7 @@ import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../c
 import { TabNav } from '../components/TabNav';
 import { duration, timeAgo } from '../ipynb';
 import { useProjects } from '../projectContext';
-import { jobPath, jobsPath } from '../routes';
+import { filesPath, jobRunsPath, jobsFilePath } from '../routes';
 import { matchesQuery } from '../search';
 
 /**
@@ -56,7 +56,7 @@ export function RunTable({
                 <td className="whitespace-nowrap">
                   <Link
                     className="font-semibold text-primary hover:underline"
-                    to={`/jobs/${run.project}/${run.environment}/${encodeURIComponent(run.jobName)}`}
+                    to={jobRunsPath(run.project, run.environment, run.jobName)}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {run.jobName}
@@ -150,7 +150,7 @@ function JobsByProject({ jobs, lastRun }: { jobs: Job[]; lastRun: Map<string, st
               </span>
               <Link
                 className="text-base text-primary hover:underline"
-                to={jobsPath(project.slug)}
+                to={filesPath(project.slug)}
               >
                 open
               </Link>
@@ -173,7 +173,11 @@ function JobsByProject({ jobs, lastRun }: { jobs: Job[]; lastRun: Map<string, st
                       <tr
                         key={`${job.environment}/${job.name}`}
                         className="cursor-pointer"
-                        onClick={() => navigate(jobPath(job.project, job.environment, job.name))}
+                        // The job is an entry in this file, so that is where it
+                        // opens. Its runs are one column over.
+                        onClick={() =>
+                          navigate(jobsFilePath(job.project, job.environment, job.jobsFile))
+                        }
                       >
                         <td className="whitespace-nowrap">
                           <span className="font-semibold text-primary">{job.name}</span>

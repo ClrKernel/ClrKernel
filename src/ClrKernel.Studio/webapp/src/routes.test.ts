@@ -4,9 +4,9 @@ import {
   editPath,
   isEditorPath,
   viewOf,
-  jobPath,
+  jobRunsPath,
   legacyEditPath,
-  newJobPath,
+  jobsFilePath,
   pathFromSplat,
   sectionOf,
   switchProject,
@@ -71,13 +71,12 @@ describe('the view is a URL', () => {
 
 describe('switchProject', () => {
   it('goes to the same section in the other project', () => {
-    expect(switchProject('/jobs/default/mine/nightly', 'finance')).toBe('/jobs/finance');
     expect(switchProject('/files/default/edit/mine/etl.nb.md', 'finance')).toBe('/files/finance');
     expect(switchProject('/files/default', 'finance')).toBe('/files/finance');
   });
 
   it('has nowhere to go from a page that is not about a project', () => {
-    for (const path of ['/', '/settings/accounts', '/channels', '/runs/abc']) {
+    for (const path of ['/', '/monitoring', '/settings/accounts', '/channels', '/runs/abc']) {
       expect(switchProject(path, 'finance')).toBeNull();
       expect(sectionOf(path)).toBeNull();
     }
@@ -88,7 +87,7 @@ describe('isEditorPath', () => {
   it('is the editor only where the editor is', () => {
     expect(isEditorPath('/files/default/edit/mine/etl.nb.md')).toBe(true);
     expect(isEditorPath('/files/default')).toBe(false);
-    expect(isEditorPath('/jobs/default/mine/nightly')).toBe(false);
+    expect(isEditorPath('/monitoring')).toBe(false);
   });
 });
 
@@ -108,11 +107,21 @@ describe('legacyEditPath', () => {
 });
 
 describe('job paths', () => {
+  // A job has no page. It is an entry in a file, so it opens as that file's
+  // Overview, and its history is the one grid filtered to it.
+  it('a job opens as the file that defines it', () => {
+    expect(jobsFilePath('default', 'test', 'etl.jobs.yaml'))
+      .toBe('/files/default/overview/test/etl.jobs.yaml');
+  });
+
+  it('its runs are the monitoring grid, filtered', () => {
+    expect(jobRunsPath('default', 'prod', 'nightly'))
+      .toBe('/monitoring?project=default&env=prod&job=nightly');
+  });
+
   it('escapes a job name that is not url-safe', () => {
-    expect(jobPath('default', 'test', 'nightly/close')).toBe('/jobs/default/test/nightly%2Fclose');
-    expect(newJobPath('default', 'mine', 'reports/monthly.nb.md'))
-      .toBe('/jobs/default/mine/new?notebook=reports%2Fmonthly.nb.md');
-    expect(newJobPath('default', 'mine')).toBe('/jobs/default/mine/new');
+    expect(jobRunsPath('default', 'test', 'nightly/close'))
+      .toBe('/monitoring?project=default&env=test&job=nightly%2Fclose');
   });
 });
 

@@ -9,15 +9,13 @@ import { Connections } from './pages/Connections';
 import { Dashboard } from './pages/Dashboard';
 import { Monitoring } from './pages/Monitoring';
 import { Editor } from './pages/Editor';
-import { JobDetail } from './pages/JobDetail';
-import { Jobs } from './pages/Jobs';
 import { Files } from './pages/Files';
 import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
 import { ProjectProvider, ProjectScope, useProjects } from './projectContext';
-import { NOTEBOOK_VIEWS, filesPath, isFullBleed, jobsPath, legacyEditPath } from './routes';
+import { NOTEBOOK_VIEWS, filesPath, isFullBleed, legacyEditPath } from './routes';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -194,12 +192,7 @@ export function App() {
 
                   The bare section is a door for the rail, a bookmark and a typed
                   URL; it opens on the project you were last in. */}
-              <Route path="/jobs" element={<LastProject section="jobs" />} />
-              <Route path="/jobs/:project" element={<ProjectScope><Jobs /></ProjectScope>} />
-              <Route path="/jobs/:project/:env/new" element={<ProjectScope><JobDetail /></ProjectScope>} />
-              <Route path="/jobs/:project/:env/:name" element={<ProjectScope><JobDetail /></ProjectScope>} />
-
-              <Route path="/files" element={<LastProject section="files" />} />
+              <Route path="/files" element={<LastProject />} />
               <Route path="/files/:project" element={<ProjectScope><Files /></ProjectScope>} />
               {/* The path goes last because it is the only variable-length part:
                   the view and the branch are one segment each, so
@@ -259,9 +252,9 @@ export function App() {
  * — see ProjectProvider, which renders nothing until that answer has arrived, so
  * this never redirects to a slug that no longer exists.
  */
-function LastProject({ section }: { section: 'jobs' | 'files' }) {
+function LastProject() {
   const { current } = useProjects();
-  return <Navigate to={section === 'jobs' ? jobsPath(current) : filesPath(current)} replace />;
+  return <Navigate to={filesPath(current)} replace />;
 }
 
 /** `/edit?project=…&path=…&branch=…`, as it is spelled now. */

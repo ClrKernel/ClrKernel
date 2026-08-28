@@ -68,6 +68,23 @@ public class SchedulerTest {
         Directory.Delete(_root, recursive: true);
     }
 
+    /// <summary>
+    /// Where the scheduler is allowed to fire on its own. The half that matters is
+    /// the refusal: a personal branch is a place to work, and work that scheduled
+    /// itself the moment you saved it would not be.
+    /// </summary>
+    [TestMethod]
+    public void Only_shared_branches_schedule_anything() {
+        foreach (var environment in new[] { "prod", "test", "default" }) {
+            Assert.IsTrue(SchedulerService.Schedules(environment), environment);
+        }
+        foreach (var environment in new[] {
+            "mine", GitService.BranchForUser(Guid.NewGuid()), "user/ada", "dev", "staging",
+        }) {
+            Assert.IsFalse(SchedulerService.Schedules(environment), environment);
+        }
+    }
+
     private void WriteJobs(string yaml) {
         File.WriteAllText(Path.Combine(_root, "nb.nb.md"), "```csharp\n1+1\n```\n");
         // Named for the notebook it schedules — the pairing every jobs file has.

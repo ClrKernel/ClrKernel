@@ -11,12 +11,12 @@
  * ignores what you type is worse than no search field.
  *
  * The dashboard and one project's job list — matched by shape rather than by a
- * literal, since the project is in the path now and `/jobs/finance` filters
- * exactly as `/jobs/default` does.
+ * literal: the dashboard is the whole server, and the monitoring grid does its
+ * own filtering on the server rather than over what is already on screen.
  */
 export function showsSearch(pathname: string): boolean {
   const segments = pathname.split('/').filter(Boolean);
-  return segments.length === 0 || (segments[0] === 'jobs' && segments.length === 2);
+  return segments.length === 0;
 }
 
 /**

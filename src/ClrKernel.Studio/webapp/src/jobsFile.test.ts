@@ -119,3 +119,28 @@ describe('addJob / removeJob', () => {
     expect(removeJob(broken, 0)).toBe(broken);
   });
 });
+
+describe('dependsOn', () => {
+  // The file wants a list. Writing the box's text straight in would make
+  // `dependsOn: "a, b"` — one job named "a, b", which is a job nobody has.
+  it('is a comma-separated box over a YAML list', () => {
+    const text = 'jobs:\n  - name: nightly\n    dependsOn:\n      - extract\n      - load\n';
+    expect(readJobsFile(text).jobs[0].dependsOn).toBe('extract, load');
+
+    const written = setJobField(text, 0, 'dependsOn', 'extract, transform , load');
+    expect(readJobsFile(written).jobs[0].dependsOn).toBe('extract, transform, load');
+    expect(written).toMatch(/- transform/);
+  });
+
+  it('is removed rather than emptied when the box is cleared', () => {
+    const text = 'jobs:\n  - name: nightly\n    dependsOn: [a]\n';
+    expect(setJobField(text, 0, 'dependsOn', '')).not.toMatch(/dependsOn/);
+  });
+
+  // It used to land in `extras`, which told the reader to go to the YAML tab for
+  // something the form now shows.
+  it('is no longer something the form hides', () => {
+    const text = 'jobs:\n  - name: nightly\n    dependsOn: [a]\n';
+    expect(readJobsFile(text).jobs[0].extras).toEqual([]);
+  });
+});

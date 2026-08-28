@@ -27,6 +27,8 @@ export interface JobView {
   enabled: boolean;
   timeoutSeconds: string;
   retryCount: string;
+  /** Comma-separated on the form, a YAML list in the file. */
+  dependsOn: string;
   /** Set when this job carries something the form does not show. */
   extras: string[];
 }
@@ -42,7 +44,20 @@ export interface JobsFileView {
 }
 
 /** Fields the Overview form knows how to show and write. */
-const SHOWN = ['name', 'notebook', 'cron', 'enabled', 'timeoutSeconds', 'retryCount'];
+const SHOWN = [
+  'name', 'notebook', 'cron', 'enabled', 'timeoutSeconds', 'retryCount', 'dependsOn',
+];
+
+/** `dependsOn` is a list in the file and one comma-separated box on the form. */
+function joinList(node: unknown): string {
+  return isSeq(node)
+    ? node.items.map((item) => (isScalar(item) ? String(item.value ?? '') : '')).filter(Boolean).join(', ')
+    : scalar(node);
+}
+
+function splitList(value: string): string[] {
+  return value.split(',').map((part) => part.trim()).filter(Boolean);
+}
 
 function scalar(node: unknown): string {
   return node == null || typeof node === 'object' ? '' : String(node);
@@ -83,6 +98,7 @@ export function readJobsFile(text: string): JobsFileView {
       enabled: document.getIn(['jobs', index, 'enabled']) !== false,
       timeoutSeconds: scalar(document.getIn(['jobs', index, 'timeoutSeconds'])),
       retryCount: scalar(document.getIn(['jobs', index, 'retryCount'])),
+      dependsOn: joinList(document.getIn(['jobs', index, 'dependsOn'], true)),
       // What this job has that the form does not show, so the UI can say the
       // YAML tab is where the rest of it lives rather than pretending there is
       // nothing else.
@@ -118,6 +134,10 @@ export function setJobField(
   const path = ['jobs', index, key];
   if (value === '' || value === true) {
     document.deleteIn(path);
+  } else if (key === 'dependsOn' && typeof value === 'string') {
+    // A list, not the string the box holds — `dependsOn: "a, b"` is one job
+    // called "a, b", which is a job that does not exist.
+    document.setIn(path, splitList(value));
   } else {
     document.setIn(path, value);
   }

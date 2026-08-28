@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -359,13 +359,17 @@ export function Monitoring() {
                     </button>
                   </td>
                   <td className="whitespace-nowrap">
-                    <Link
+                    <button
+                      type="button"
                       className="font-semibold text-primary hover:underline"
-                      to={`/jobs/${run.project}/${run.environment}/${encodeURIComponent(run.jobName)}`}
-                      onClick={(e) => e.stopPropagation()}
+                      title="Only this job"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        apply(withFilter(filters, 'job', run.jobName));
+                      }}
                     >
                       {run.jobName}
-                    </Link>
+                    </button>
                   </td>
                   <td className="font-mono text-code text-muted-foreground">
                     <button

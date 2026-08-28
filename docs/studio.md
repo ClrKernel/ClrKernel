@@ -129,6 +129,13 @@ also get a cell editor that runs cells against a live kernel — see
 
 - **Cron jobs** fire when their next occurrence falls inside a tick (every 10s).
   Occurrences missed while the scheduler was down are skipped, not backfilled.
+  The scheduler fires in **`test` and `prod`** (or `default` where there is no git
+  workflow) and **never on a personal branch** — a branch nobody else can see must
+  not be able to start anything on its own, which is what makes one safe to work
+  on. test was added so a job is tested the way it runs rather than only when
+  somebody presses a button; the cost is that test jobs take kernel slots from the
+  same `--max-parallelism` as prod, and every `notify:` rule now fires from test as
+  well, roughly doubling notification volume.
 - **Cron is read in UTC**, not the server's local time. The job form says so and
   lists the next three occurrences as you type — from the same parser the scheduler
   runs, so a schedule the field accepts is one that will actually fire. It also
@@ -563,7 +570,7 @@ when the volume is mounted at a different path.
 
 ## Getting around
 
-Navigation is a fixed 48px icon rail on the left — Dashboard, Jobs, Files,
+Navigation is a fixed 48px icon rail on the left — Dashboard, Files, Connections,
 Channels, and Settings at the foot — with the label on hover. The bar across the top is
 a context strip and nothing else: a breadcrumb saying where you are, a search box, and
 the theme picker. What you can *do* lives on the page, not in the chrome.
@@ -572,6 +579,17 @@ the theme picker. What you can *do* lives on the page, not in the chrome.
 
 | | |
 |---|---|
+**A job has no page of its own.** It is an entry in a `*.jobs.yaml`, so it opens
+as that file's Overview tab in Files, and its history is the monitoring grid
+filtered to it (`/monitoring?project=…&env=…&job=…`). A section of its own was a
+second place to edit the same thing and a private run table beside the one that
+already shows every run. **Run now**, **Cancel run** and the link to its runs are
+on the job's card, and only where jobs actually run: not on a personal branch,
+where there is a file describing a job but no job yet.
+
+`parameters:` and `notify:` stay on the YAML tab, which is where they have always
+been honest about living.
+
 | `/` | the dashboard's Overview — every project's jobs, grouped, and the recent runs |
 | `/monitoring` | the dashboard's Monitoring grid — every project's runs, filtered and sorted by the server |
 | `/jobs/<project>` | that project's jobs |
@@ -602,8 +620,8 @@ because the cells and the text go stale the moment you edit through the other
 one. A file that does not parse into cells — an `.ipynb`, a `.csx` — has no
 Notebook view and opens at Source.
 
-`/jobs` and `/files` on their own — what the rail links to, and what you get from
-a bookmark — open the project you were last in, remembered per browser. Links
+`/files` on its own — what the rail links to, and what you get from a bookmark —
+opens the project you were last in, remembered per browser. Links
 written against the old shape (`/notebooks`, `/edit?project=…&path=…&branch=…`)
 redirect to where those things live now.
 

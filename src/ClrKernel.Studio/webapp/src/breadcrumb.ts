@@ -56,22 +56,6 @@ export function breadcrumbFor(pathname: string): Crumb[] {
   }
 
   switch (segments[0]) {
-    case 'jobs': {
-      // /jobs/:project is the list; /jobs/:project/:env/:name is one job, and the
-      // env is part of its identity so it rides along as the badge. The project
-      // is the switcher at the root of the trail and is not repeated here.
-      if (segments.length < 2) {
-        return [leaf('Jobs')];
-      }
-      const to = `/jobs/${segments[1]}`;
-      return segments.length >= 4
-        ? [
-            { label: 'Jobs', to },
-            leaf(segments[3] === 'new' ? 'New job' : decodeURIComponent(segments[3]), segments[2]),
-          ]
-        : [leaf('Jobs')];
-    }
-
     case 'files': {
       if (segments.length < 2) {
         return [leaf('Files')];
@@ -109,12 +93,17 @@ export function breadcrumbFor(pathname: string): Crumb[] {
         ? [{ label: 'Settings', to: '/settings' }, leaf(titleCase(segments[1]))]
         : [leaf('Settings')];
 
+    case 'monitoring':
+      // A view of the Dashboard rather than a section of its own, so the trail
+      // says so: the tabs on the page are what move between the two.
+      return [{ label: 'Dashboard', to: '/' }, leaf('Monitoring')];
+
     case 'runs':
-      // A run belongs to a project, but the crumb only has the path to go on —
-      // so Jobs here means "the jobs you were last looking at", which /jobs
-      // resolves for itself.
+      // A run belongs to a project, but the crumb only has the path to go on, so
+      // it goes back to the grid that lists every run rather than guessing which
+      // project's anything.
       return [
-        { label: 'Jobs', to: '/jobs' },
+        { label: 'Monitoring', to: '/monitoring' },
         leaf(segments[1] ? `Run ${segments[1]}` : 'Run'),
       ];
 

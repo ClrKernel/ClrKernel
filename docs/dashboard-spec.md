@@ -228,6 +228,13 @@ per project is simpler and probably right for the first pass.
 
 ## Rail changes
 
+> **Done.** The rail is Dashboard, Files, Connections, Channels, Settings. `/jobs`
+> is gone rather than redirected, as asked. A job opens as the file that defines
+> it (Overview tab) and its history is the monitoring grid filtered to it; **Run
+> now**, **Cancel run** and that link moved onto the job's card. `dependsOn` moved
+> onto the card too — it is one value per job, which is the card's rule.
+> `parameters:` and `notify:` stay on the YAML tab.
+
 - Remove **Jobs**.
 - Resulting rail: Dashboard, Files, Connections, Channels, Settings(at bottom).
 
@@ -247,8 +254,9 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
       `JobsSchema` the server validates with. Completion is ours, not
       `monaco-yaml` — see below. Errors arrive on save rather than on keystroke.)*
 - [x] Invalid YAML can be autosaved on a user branch but cannot be pushed to `test`.
-- [ ] User branches never schedule anything; `test` and `prod` do. (Today only
-      `prod`; decided to add `test` — see Decision.)
+- [x] User branches never schedule anything; `test` and `prod` do. *(One named
+      predicate, `SchedulerService.Schedules`, so the rule can be tested rather
+      than read out of a `Where` clause.)*
 - [x] Promoting a changed job definition requires a successful `test` run at the
       current sha, not a stale run of the previous definition. **Already true** —
       but only reachable notebook-first; see blockers 1 and 2.

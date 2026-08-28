@@ -1102,6 +1102,8 @@ export function Editor() {
             onChange={setSource}
             readOnly={!canWrite}
             notebooks={branchNotebooks}
+            project={params.project ?? 'default'}
+            branch={branch}
           />
         )
       )}

@@ -200,7 +200,7 @@ public sealed class SchedulerService : BackgroundService {
         // Automatic triggers fire only where the scheduler owns execution: prod in
         // the git workflow, or the single default environment without it. Test runs
         // are always deliberate (manual / API).
-        foreach (var job in catalog.Jobs.Where(j => j.Enabled && j.Environment is "prod" or "default")) {
+        foreach (var job in catalog.Jobs.Where(j => j.Enabled && Schedules(j.Environment))) {
             if (_activeJobs.ContainsKey(KeyOf(job))) {
                 continue;
             }
@@ -223,6 +223,26 @@ public sealed class SchedulerService : BackgroundService {
             }
         }
     }
+
+    /// <summary>
+    /// Where the scheduler fires jobs by itself.
+    /// <para>
+    /// <c>prod</c> and <c>test</c>, and <c>default</c> where there is no git workflow
+    /// and those two names do not exist. <b>Never a personal branch</b> — a branch
+    /// nobody else can see must not be able to start anything on its own, and that
+    /// is what makes one safe to work on. The catalog does not even scan them, so
+    /// this is the second of two locks rather than the only one.
+    /// </para>
+    /// <para>
+    /// test was added deliberately: a job that only ran when somebody pressed a
+    /// button in test was not being tested the way it runs. Two consequences —
+    /// test jobs take kernel slots from the same <c>MaxParallelism</c> as prod, and
+    /// every <c>notify:</c> rule now fires from test as well, so notification
+    /// volume roughly doubles.
+    /// </para>
+    /// </summary>
+    internal static bool Schedules(string environment) =>
+        environment is "prod" or GitService.TestBranch or "default";
 
     /// <summary>True when the cron has an occurrence inside (from, to]. Times must be UTC.</summary>
     internal static bool IsDue(string cron, DateTime fromUtc, DateTime toUtc) {

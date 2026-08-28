@@ -4,7 +4,6 @@ import {
   FolderTree,
   LayoutGrid,
   Bell,
-  Play,
   Settings as SettingsIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -27,7 +26,6 @@ const NAV: {
 }[] = [
   { to: '/', label: 'ClrKernel Studio', icon: BookOpenCheck, end: true, isSpecial: true },
   { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true, also: '/monitoring' },
-  { to: '/jobs', label: 'Jobs', icon: Play, end: false },
   // Files, not Notebooks: what is under here is notebooks *and* the jobs files
   // beside them, and a folder tree is what you are looking at either way.
   { to: '/files', label: 'Files', icon: FolderTree, end: false },

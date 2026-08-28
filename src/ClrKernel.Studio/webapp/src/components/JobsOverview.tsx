@@ -1,7 +1,10 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Play, Plus, Square, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { api } from '../api';
 import { addJob, readJobsFile, removeJob, setJobField, type JobView } from '../jobsFile';
 import { CronField } from './CronField';
 
@@ -20,15 +23,21 @@ import { CronField } from './CronField';
  * offering a half-editor for them.
  */
 export function JobsOverview({
-  text, onChange, readOnly, notebooks,
+  text, onChange, readOnly, notebooks, project, branch,
 }: {
   text: string;
   onChange: (next: string) => void;
   readOnly: boolean;
   /** Notebooks on this branch, for the "not here yet" warning. */
   notebooks: string[];
+  project: string;
+  /** Which branch this file is open on — jobs only run on test and prod. */
+  branch: string;
 }) {
   const view = readJobsFile(text);
+  // Jobs run where they are scheduled. On your own branch there is no job to run
+  // yet, only a file describing one, so the card offers no button to press.
+  const runnable = branch === 'test' || branch === 'prod' || branch === 'default';
 
   if (view.error) {
     return (
@@ -126,6 +135,18 @@ export function JobsOverview({
             onChange={(cron) => set(index, 'cron', cron)}
           />
 
+          <label>
+            Depends on{' '}
+            <span className="text-base text-muted-foreground">
+              (job names, comma-separated — this one runs after they succeed)
+            </span>
+            <Input
+              value={job.dependsOn}
+              disabled={readOnly}
+              onChange={(e) => set(index, 'dependsOn', e.target.value)}
+            />
+          </label>
+
           <div className="form-row">
             <label>
               Timeout (seconds)
@@ -157,8 +178,14 @@ export function JobsOverview({
           {job.extras.length > 0 && (
             <p className="mt-2 text-base text-muted-foreground">
               Also sets <code className="font-mono text-code">{job.extras.join(', ')}</code>
-              {' '}— edit on the <strong>YAML</strong> tab.
+              {' '}— edit on the <strong>YAML</strong> tab. That is where{' '}
+              <code className="font-mono text-code">parameters</code> and{' '}
+              <code className="font-mono text-code">notify</code> live too.
             </p>
+          )}
+
+          {runnable && job.name !== '' && (
+            <JobActions project={project} branch={branch} name={job.name} />
           )}
         </div>
       ))}
@@ -180,6 +207,58 @@ export function JobsOverview({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Run it now, stop it, or go and look at what it has done.
+ *
+ * On the card rather than on a page of its own: the job *is* this entry in this
+ * file, and a second page that showed the same fields again was two places to
+ * edit one thing. Its history is the monitoring grid filtered to it — one grid
+ * over every run beats a private table per job.
+ */
+function JobActions({ project, branch, name }: { project: string; branch: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function press(what: 'run' | 'cancel') {
+    setNote(null);
+    setBusy(true);
+    try {
+      if (what === 'run') {
+        await api.runJob(branch, name);
+        setNote('Started.');
+      } else {
+        await api.cancelJob(branch, name);
+        setNote('Cancelling.');
+      }
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <Button variant="outline" size="sm" disabled={busy} onClick={() => press('run')}>
+        <Play className="size-3.5" aria-hidden="true" />
+        Run now
+      </Button>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={() => press('cancel')}>
+        <Square className="size-3.5" aria-hidden="true" />
+        Cancel run
+      </Button>
+      <Link
+        className="text-base text-primary hover:underline"
+        to={`/monitoring?project=${encodeURIComponent(project)}`
+          + `&env=${encodeURIComponent(branch)}&job=${encodeURIComponent(name)}`}
+      >
+        Its runs
+      </Link>
+      {note && <span className="text-base text-muted-foreground">{note}</span>}
     </div>
   );
 }
