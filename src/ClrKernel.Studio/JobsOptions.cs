@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace ClrKernel.Studio;
@@ -68,6 +69,20 @@ public sealed class JobsOptions {
     /// to be listed explicitly.
     /// </summary>
     public string[] Origins { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// A bind url made reachable. Nothing ever presents <c>http://0.0.0.0:5000</c>
+    /// as an Origin header and no browser can open it, so a wildcard bind becomes
+    /// localhost — which is both a real origin and a link somebody can click.
+    /// </summary>
+    internal static string Reachable(string url) {
+        foreach (var wildcard in new[] { "://0.0.0.0", "://[::]", "://*", "://+" }) {
+            if (url.Contains(wildcard, StringComparison.Ordinal)) {
+                return url.Replace(wildcard, "://localhost", StringComparison.Ordinal);
+            }
+        }
+        return url;
+    }
 
     /// <summary>How long a new invite stays usable.</summary>
     public int InviteLifetimeDays { get; set; } = 7;
@@ -229,7 +244,7 @@ public sealed class JobsOptions {
             ? SplitList(origins)
             // No explicit list: the origins are wherever this server listens. A
             // bind url is an origin already, minus any path.
-            : SplitList(options.Urls ?? "http://localhost:5000");
+            : SplitList(options.Urls ?? "http://localhost:5000").Select(Reachable).ToArray();
         options.InviteLifetimeDays = PositiveInt(Pick(
             "inviteLifetimeDays", "invite-days", "CLRKERNEL_STUDIO_INVITE_DAYS",
             Setting("inviteLifetimeDays"), null), 7);

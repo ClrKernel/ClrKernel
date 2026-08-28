@@ -189,6 +189,11 @@ public static class AuthApi {
             return Results.Ok(new {
                 authenticated = user != null,
                 needsSetup = await auth.UserCountAsync() == 0,
+                // Asked here and not only on submit: a container publishes its
+                // port through a bridge, so a browser on the server itself still
+                // arrives from a non-loopback address. The setup screen has to be
+                // able to explain that instead of rendering a form that 403s.
+                canSetUp = SetupAllowed(context),
                 // The browser refuses WebAuthn outside a secure context, and
                 // saying so beats letting the prompt fail with nothing to read.
                 secureContext = IsSecure(context),
@@ -489,17 +494,31 @@ public static class AuthApi {
         if (await auth.UserCountAsync() > 0) {
             return Results.NotFound();
         }
-        var remote = context.Connection.RemoteIpAddress;
-        // The *caller's* address, not the configured bind url: behind a proxy those
-        // are different, and the bind url would happily call the whole internet
-        // local.
-        if (remote != null && !IPAddress.IsLoopback(remote)) {
-            return Results.Json(new {
-                error = "First-run setup has to be done from the machine running the server.",
-            }, statusCode: 403);
+        if (!SetupAllowed(context)) {
+            return Results.Json(new { error = SetupElsewhere }, statusCode: 403);
         }
         return null;
     }
+
+    /// <summary>
+    /// The *caller's* address, not the configured bind url: behind a proxy those
+    /// are different, and the bind url would happily call the whole internet local.
+    /// </summary>
+    internal static bool SetupAllowed(HttpContext context) =>
+        context.Connection.RemoteIpAddress is not { } remote || IPAddress.IsLoopback(remote);
+
+    /// <summary>
+    /// What to do when the browser cannot be on the server. Names the container
+    /// case, because a published port is the way most people meet this refusal:
+    /// they *are* sitting at the machine, and the packets still arrive from the
+    /// docker bridge.
+    /// </summary>
+    internal const string SetupElsewhere =
+        "First-run setup only answers a browser on the server itself, and a container's "
+        + "published port does not count — the request arrives from the docker bridge, not from "
+        + "localhost. Run `clrkernel-studio new-admin-invite` on the server (in Docker: "
+        + "`docker exec <container> /app/studio/ClrKernel.Studio new-admin-invite`), then open the "
+        + "/invite/<code> path it prints on whatever address you reach this server at.";
 
     private static AuthenticatorAttestationRawResponse Attestation(RegisterBody body) =>
         body == null ? null

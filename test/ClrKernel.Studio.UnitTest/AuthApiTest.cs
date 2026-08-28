@@ -128,10 +128,33 @@ public class AuthApiTest {
         var session = await _anonymous.GetFromJsonAsync<JsonElement>("/api/auth/session");
         Assert.IsTrue(session.GetProperty("needsSetup").GetBoolean());
         Assert.IsFalse(session.GetProperty("authenticated").GetBoolean());
+        Assert.IsTrue(session.GetProperty("canSetUp").GetBoolean(),
+            "the SPA decides between the setup form and the invite instructions on this");
 
         await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
         session = await _anonymous.GetFromJsonAsync<JsonElement>("/api/auth/session");
         Assert.IsFalse(session.GetProperty("needsSetup").GetBoolean());
+    }
+
+    /// <summary>
+    /// The rule that decides whether the setup form is worth rendering. A published
+    /// container port arrives from the docker bridge, so "the browser is on this
+    /// machine" and "the request came from loopback" are not the same question —
+    /// which is how somebody gets walked through a form that then 403s.
+    /// </summary>
+    [TestMethod]
+    public void Setup_is_allowed_from_loopback_and_nowhere_else() {
+        static Microsoft.AspNetCore.Http.HttpContext From(string address) {
+            var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            context.Connection.RemoteIpAddress = address == null ? null : IPAddress.Parse(address);
+            return context;
+        }
+
+        Assert.IsTrue(AuthApi.SetupAllowed(From("127.0.0.1")));
+        Assert.IsTrue(AuthApi.SetupAllowed(From("::1")));
+        Assert.IsTrue(AuthApi.SetupAllowed(From(null)), "an in-memory host has no peer address");
+        Assert.IsFalse(AuthApi.SetupAllowed(From("172.17.0.1")), "the docker bridge gateway");
+        Assert.IsFalse(AuthApi.SetupAllowed(From("10.0.0.7")));
     }
 
     /// <summary>Not a redirect with a helpful message — the route stops existing.</summary>

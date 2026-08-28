@@ -10,11 +10,12 @@
 #     -v clrkernel-studio-data:/data \
 #     clrkernel-studio
 #
-# Then open http://localhost:5000 and create the first account. There is no API
-# key — the server is guarded by accounts and passkeys, and a fresh data
-# directory shows a setup screen to whoever reaches it first. So do that setup
-# before the port is reachable from anywhere but the host, and see
-# docs/docker.md for putting it behind a reverse proxy (passkeys need the real
+# There is no API key — the server is guarded by accounts and passkeys. The first
+# account cannot be created through the published port: setup insists the caller
+# is on loopback, and docker forwards through the bridge. Ask for an invite:
+#   docker exec <container> /app/studio/ClrKernel.Studio new-admin-invite
+# then open the /invite/<code> path it prints on the port you published. See
+# docs/docker.md, including the reverse-proxy setup (passkeys need the real
 # hostname in CLRKERNEL_STUDIO_RPID and HTTPS at the edge).
 #
 # Secrets for notification channels and database passwords arrive as
@@ -38,7 +39,7 @@ WORKDIR /src
 COPY . .
 # The SPA must be in place before the build so it is picked up as content.
 COPY --from=webapp /wwwroot/ src/ClrKernel.Studio/wwwroot/
-RUN dotnet publish src/ClrKernel.Studio/ClrKernel.Studio.csproj -c Release -o /app/jobs
+RUN dotnet publish src/ClrKernel.Studio/ClrKernel.Studio.csproj -c Release -o /app/studio
 # The kernel ships beside it rather than being installed from nuget, so the image
 # always runs the kernel this commit was built against.
 RUN dotnet publish src/ClrKernel/ClrKernel.csproj -c Release -o /app/kernel
@@ -53,6 +54,10 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends curl git \
     && rm -rf /var/lib/apt/lists/*
 
+# Two applications, two publish directories: /app/studio (scheduler + web app)
+# and /app/kernel (the kernel it spawns per run). Their dependency graphs are
+# resolved independently and some shared assemblies land on different versions,
+# so publishing both into one directory would give one of them the other's copy.
 COPY --from=build /app/ ./
 
 # /data holds the run history and artifacts. Notebooks can be mounted read-only
@@ -78,5 +83,5 @@ USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     CMD curl --fail --silent http://localhost:5000/api/health || exit 1
 
-ENTRYPOINT ["/app/jobs/ClrKernel.Studio"]
+ENTRYPOINT ["/app/studio/ClrKernel.Studio"]
 CMD ["serve"]

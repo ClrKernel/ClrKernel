@@ -114,6 +114,32 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The server refuses setup from anywhere but itself, and a container's
+  // published port arrives from the docker bridge — so this is the normal path
+  // for `docker run -p`, not an edge case.
+  if (session != null && !session.canSetUp) {
+    return (
+      <AuthShell
+        title="Set up this server"
+        description="Nobody has claimed this server yet."
+        session={session}
+      >
+        <p className="text-sm text-muted-foreground">
+          Setup only answers a browser on the server itself, and a container’s published port does
+          not count — the request arrives from the docker bridge. Get in with an invite instead:
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm">
+          docker exec &lt;container&gt; /app/studio/ClrKernel.Studio new-admin-invite
+        </pre>
+        <p className="mt-3 text-sm text-muted-subtle">
+          It prints a single-use link. Open the <code className="font-mono">/invite/&lt;code&gt;</code>{' '}
+          path on this address — the printed host and port are the server’s own, which is not
+          where you reached it if the port was published as something else.
+        </p>
+      </AuthShell>
+    );
+  }
+
   async function go(event: React.FormEvent) {
     event.preventDefault();
     setError(null);

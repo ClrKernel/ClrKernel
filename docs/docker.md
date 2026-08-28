@@ -44,6 +44,22 @@ Running hello (hello.nb.md)
 Succeeded: hello in 0.9s
 ```
 
+`hello` is a **job**, not a file. It is a named entry in
+`notebooks/hello.jobs.yaml`, and running it that way is what gets you the job's
+parameters, its retries, its notifications and a row in the run history. Running
+a notebook file on its own is a different tool — the kernel's `clrkernel run
+notebook.nb.md`, which is also in this image:
+
+```bash
+docker run --rm \
+  --volume "$PWD/docs/examples/docker/notebooks:/notebooks:ro" \
+  --entrypoint /app/kernel/ClrKernel \
+  clrkernel-studio run /notebooks/hello.nb.md
+```
+
+Use Studio's `run` for anything you would also want to schedule; use the kernel's
+for a one-off execution of a file.
+
 `:ro` is deliberate: a one-shot run never writes to your notebooks. The artifact
 paths it prints are inside the container and vanish with `--rm`; mount `/data` as
 below if you want to keep them.
@@ -68,7 +84,9 @@ docker run --detach --name clrkernel-studio \
   clrkernel-studio
 ```
 
-Then open **<http://localhost:8080>** and create the first account.
+Then open **<http://localhost:8080>** — and read the next section before
+expecting to sign up, because the first account cannot be created through a
+published port.
 
 **Port 8080, not 5000, if you are on a Mac.** macOS runs its AirPlay receiver on
 5000, and the container will refuse to start with `address already in use`. Any
@@ -89,6 +107,62 @@ curl --silent http://localhost:8080/api/health
 
 `/api/health` answers without signing in, which is what the image's own
 `HEALTHCHECK` uses. Everything else needs an account.
+
+### Creating the first account
+
+The setup screen tells you it cannot help and gives you this command; here is why.
+
+A fresh data directory makes whoever reaches `/setup` first the Server Admin, so
+the server insists that the caller's **own IP** is loopback. A published port is
+not: docker forwards it through the bridge, so a browser on your own machine
+arrives as something like `172.17.0.1`. Honouring `X-Forwarded-For` instead would
+mean trusting a header anyone can send. The same refusal applies behind a reverse
+proxy, for the same reason.
+
+So ask the container for an invite:
+
+```bash
+docker exec clrkernel-studio /app/studio/ClrKernel.Studio new-admin-invite
+```
+
+```
+Nb77U7_yzJeRmEvDBy7vuaPjupM
+http://localhost:5000/invite/Nb77U7_yzJeRmEvDBy7vuaPjupM
+Single use, expires 2026-09-04 13:35:58Z. Opening it creates a new Server Admin.
+The host and port above are this server's own. Reaching it somewhere else — a
+published container port, a reverse proxy — means opening /invite/Nb77U7_... there.
+```
+
+**The printed port is the container's, not the one you published.** It comes from
+`CLRKERNEL_STUDIO_ORIGINS`, which defaults to the bind address — `:5000` inside
+the container. Published on 8080, the link to open is
+`http://localhost:8080/invite/<code>`. Set `CLRKERNEL_STUDIO_ORIGINS` to the URL
+people actually use and it prints that instead (the compose files do).
+
+Open it, register a passkey, and you are the admin. The same command is the way
+back in if every admin loses their device.
+
+The full path is needed because the image's `ENTRYPOINT` **is** the application —
+`docker exec clrkernel-studio new-admin-invite` would look for a program called
+`new-admin-invite`. For the same reason, a shell needs `--entrypoint`:
+
+```bash
+docker run --rm --interactive --tty --entrypoint sh clrkernel-studio
+```
+
+### What is in the image
+
+```
+/app/studio/    the scheduler, the API and the web UI  (ClrKernel.Studio)
+/app/kernel/    the kernel that runs the notebooks      (ClrKernel)
+```
+
+Two directories with overlapping file names, and that is on purpose: they are two
+independent .NET applications, each published with its own resolved dependency
+graph. Of the 74 assemblies whose names appear in both, a good fifteen are
+*different versions* — merging them into one directory would silently give one
+application the other's copy. Studio spawns the kernel as a child process
+(`CLRKERNEL_STUDIO_CLRKERNEL` points at it), so both have to be here.
 
 Stop and clean up:
 
@@ -175,41 +249,19 @@ reaching it as `localhost`. On a real hostname it is telling you to fix `rp-id`
 **before** anyone registers a passkey, because a passkey cannot be moved to
 another domain afterwards.
 
-### First-run setup does not work through a proxy — on purpose
+### First-run setup does not work through the proxy either
 
-Open `http://localhost:8080` behind nginx and the setup screen refuses:
-
-> First-run setup has to be done from the machine running the server.
-
-That is deliberate, not a misconfiguration. A fresh data directory makes whoever
-reaches it first the Server Admin, so the check looks at the **caller's own IP**
-and insists on loopback. Behind a proxy the caller is the proxy, and honouring
-`X-Forwarded-For` here would mean trusting a header anyone can send.
-
-Ask the container for an invite instead:
+Behind nginx the caller the server sees is nginx, so `/setup` refuses exactly as
+it does through a published port — [same reason, same
+fix](#creating-the-first-account), with compose:
 
 ```bash
 docker compose --file docs/examples/docker/compose.nginx.yaml \
-  exec studio /app/jobs/ClrKernel.Studio new-admin-invite
+  exec studio /app/studio/ClrKernel.Studio new-admin-invite
 ```
 
-```
-Nb77U7_yzJeRmEvDBy7vuaPjupM
-http://localhost:8080/invite/Nb77U7_yzJeRmEvDBy7vuaPjupM
-Single use, expires 2026-09-04 13:35:58Z. Opening it creates a new Server Admin.
-```
-
-It builds that URL from `CLRKERNEL_STUDIO_ORIGINS`, so it is already the address
-your browser should use. Open it, register a passkey, and you are the admin. The
-same command is the way back in if every admin loses their device.
-
-The full path is needed because the image's `ENTRYPOINT` **is** the application —
-`docker compose exec studio new-admin-invite` would look for a program called
-`new-admin-invite`. For the same reason, a shell needs `--entrypoint`:
-
-```bash
-docker run --rm --interactive --tty --entrypoint sh clrkernel-studio
-```
+This compose file sets `CLRKERNEL_STUDIO_ORIGINS` to the proxied URL, so here the
+printed link is already the one to open.
 
 ## 5. The dev → prod git workflow
 

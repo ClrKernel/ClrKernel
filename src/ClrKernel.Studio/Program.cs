@@ -59,6 +59,11 @@ public static class Program {
 
         Commands: serve, run, list, validate, git init, new-admin-invite.
 
+        `run <job>` runs one *job* — a named entry in a *.jobs.yaml, with its
+        parameters, retries, notifications and a row in the run history. To run a
+        notebook file and nothing else, that is the kernel's own `clrkernel run
+        <notebook>`; this command needs the job, not the notebook.
+
         `new-admin-invite` prints a fresh Server Admin invite code. Self-hosted with
         no email means a lost device is otherwise a permanent lockout; anyone with a
         shell on this box could do worse, so this is not a new exposure.
@@ -174,6 +179,9 @@ public static class Program {
         Console.WriteLine($"{origin}/invite/{invite.Code}");
         Console.Error.WriteLine(
             $"Single use, expires {invite.ExpiresAt:u}. Opening it creates a new Server Admin.");
+        Console.Error.WriteLine(
+            "The host and port above are this server's own. Reaching it somewhere else — a "
+            + $"published container port, a reverse proxy — means opening /invite/{invite.Code} there.");
         return 0;
     }
 
@@ -268,6 +276,13 @@ public static class Program {
                 "over HTTPS) before anyone registers one.");
         }
         Console.WriteLine($"API on {urls} (sign-in required; passkeys bound to {options.RelyingPartyId})");
+        if (await app.Services.GetRequiredService<AuthService>().UserCountAsync() == 0) {
+            Console.Error.WriteLine(
+                "  ! No accounts yet. Open /setup in a browser on this machine. In a container that "
+                + "will not work — a published port arrives from the docker bridge, not from "
+                + "localhost — so run `docker exec <container> /app/studio/ClrKernel.Studio "
+                + "new-admin-invite` and open the /invite/<code> path it prints.");
+        }
         await app.RunAsync(urls);
         return 0;
     }

@@ -34,6 +34,34 @@ public class StoreConfigTest {
         }
     }
 
+    /// <summary>
+    /// A wildcard bind is not an origin. No browser presents
+    /// <c>http://0.0.0.0:5000</c> as an Origin header and none can open it, so the
+    /// default-from-urls path must not leave one in the allowed list — or in the
+    /// invite link, which is built from the same array and is the whole way back in.
+    /// </summary>
+    [TestMethod]
+    public void A_wildcard_bind_address_becomes_a_reachable_origin() {
+        var wildcard = JobsOptions.Resolve(new Dictionary<string, string> {
+            ["data-dir"] = _dir,
+            ["urls"] = "http://0.0.0.0:5000",
+        });
+        CollectionAssert.AreEqual(new[] { "http://localhost:5000" }, wildcard.Origins);
+
+        Assert.AreEqual("http://localhost:5000", JobsOptions.Reachable("http://[::]:5000"));
+        Assert.AreEqual("http://localhost:5000", JobsOptions.Reachable("http://*:5000"));
+        Assert.AreEqual("http://localhost:5000", JobsOptions.Reachable("http://+:5000"));
+
+        // A real host is left exactly as written, wildcard-looking port and all.
+        Assert.AreEqual("https://studio.example.com", JobsOptions.Reachable("https://studio.example.com"));
+        var explicitly = JobsOptions.Resolve(new Dictionary<string, string> {
+            ["data-dir"] = _dir,
+            ["urls"] = "http://0.0.0.0:5000",
+            ["origins"] = "https://studio.example.com",
+        });
+        CollectionAssert.AreEqual(new[] { "https://studio.example.com" }, explicitly.Origins);
+    }
+
     [TestMethod]
     public void Every_layer_reports_its_provenance() {
         // CLI wins and says so.

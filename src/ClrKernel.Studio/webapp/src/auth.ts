@@ -17,6 +17,10 @@ export interface SessionState {
   authenticated: boolean;
   /** No accounts yet: the first person here claims the server. */
   needsSetup: boolean;
+  /** False when the request did not come from the server machine itself — a
+   *  published container port lands here, so the setup page explains rather
+   *  than offering a form the server will refuse. */
+  canSetUp: boolean;
   /**
    * Whether the *server* saw TLS on this request. Diagnostics only — behind a
    * proxy that terminates TLS it is false on a perfectly good HTTPS origin, so
