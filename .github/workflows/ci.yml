@@ -81,7 +81,7 @@ jobs:
         working-directory: src/ClrKernel.Studio/webapp
 
   studio-stores:
-    name: Studio run-store contract (PostgreSQL + SQL Server)
+    name: Studio live backends (run store + connection dialects)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -120,6 +120,25 @@ jobs:
           CLRKERNEL_TEST_REQUIRE_LIVE: '1'
           CLRKERNEL_STUDIO_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_studio;Username=postgres;Password=ci-only
           CLRKERNEL_STUDIO_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_studio;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
+
+      # unixodbc is a driver manager and ships no drivers; without one every ODBC
+      # connection fails with "data source name not found". The same reason the
+      # Studio image installs this pair.
+      - name: Install an ODBC driver
+        run: sudo apt-get update && sudo apt-get install --yes unixodbc odbc-postgresql
+
+      # The Connections area against real backends: the object-tree queries, the
+      # generated scripts and the reader loop are per-dialect and a closed port
+      # proves only the error path. Oracle is not here — its image takes minutes to
+      # start and gigabytes to pull, so that one stays a local gate.
+      - name: Run the connection dialect tests
+        run: dotnet test test/ClrKernel.Studio.UnitTest/ClrKernel.Studio.UnitTest.csproj
+          --filter "ClassName~ConnectionsLiveTest|ClassName~PostgresLiveTest|ClassName~OdbcLiveTest"
+        env:
+          CLRKERNEL_TEST_REQUIRE_LIVE: '1'
+          CLRKERNEL_STUDIO_TEST_SQL: Server=localhost,1433;Database=master;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
+          CLRKERNEL_STUDIO_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_studio;Username=postgres;Password=ci-only
+          CLRKERNEL_STUDIO_TEST_ODBC: Driver={PostgreSQL Unicode};Server=localhost;Port=5432;Database=clrkernel_studio;Uid=postgres;Pwd=ci-only
 
   studio-image:
     name: Studio Docker image (build + smoke)

@@ -504,6 +504,35 @@ time from the secret chain — OS credential store, then `CLRKERNEL_SECRETS_FILE
 then `CLRKERNEL_SECRET_*` — the same rule every connection in this repo follows.
 Nothing writes a token to this file.
 
+### What a connection can be
+
+| type | savable | browsable and queryable in Studio |
+| --- | --- | --- |
+| SQL Server | yes | yes |
+| PostgreSQL | yes | yes |
+| Oracle | yes | yes |
+| ODBC | yes | as far as the driver will say |
+| Analysis Services, Fabric, JDBC | yes | no |
+
+The split is not arbitrary: a type is browsable when **this server** carries the
+provider that opens it. The rest are still worth saving — a notebook names one and
+the kernel opens it there — and the Connections page says so rather than showing a
+folder that opens onto nothing.
+
+Each type is a `ConnectionProviderDescriptor` (its settings, rendered by one
+generic form) plus, for the ones this server opens, an `IConnectionDialect` (the
+catalog queries behind the object tree). Adding a database means adding those two
+and a project reference; nothing in the page changes.
+
+Two of them have shapes worth knowing about. **Oracle** reaches one service rather
+than a list of databases, and a schema is a user, so the tree's top level is that
+one service and the schema level lists the users that own something. **ODBC** is
+not a database at all — behind a DSN could be anything — so its tree comes from
+the driver via `GetSchema` and stops at columns: no keys, no indexes, no stored
+definitions, because those have no portable source and an empty list would claim
+the table has none rather than that nobody can tell. The ODBC driver has to be
+installed wherever the server runs; the Docker image ships the PostgreSQL one.
+
 ### Where a saved password goes
 
 The connection editor can only save a password where one can be kept. On a laptop
