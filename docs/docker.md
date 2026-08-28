@@ -410,6 +410,78 @@ docker run --detach --name clrkernel-studio \
 So `slack-hook` in a channel, or `sql:analytics` in a connection, resolves from
 the OS store if there is one, then `/data/secrets.json`, then the environment.
 
+## Reaching a database from inside the container
+
+`localhost` inside the container is the container. Point a connection at
+`localhost,1433` and you get, fifteen seconds later:
+
+```
+A network-related or instance-specific error occurred while establishing a
+connection to SQL Server. (provider: TCP Provider, error: 40)
+```
+
+That is the single most common way this goes wrong, and it looks like a
+credentials problem when it is a hostname problem. There are two fixes.
+
+**Put Studio on the database's network.** The better one if the database is also
+a container: they then reach each other by service name, on the *internal* port,
+with nothing published. `docker network ls` finds the network — a compose project
+called `dev` makes one called `dev_default`:
+
+```bash
+docker network connect dev_default clrkernel-studio
+```
+
+Or start it there in the first place:
+
+```bash
+docker run --detach --name clrkernel-studio \
+  --network dev_default \
+  --publish 8080:5000 \
+  --volume "$PWD/notebooks:/notebooks" \
+  --volume clrkernel-studio-data:/data \
+  clrkernel-studio
+```
+
+The server is then the compose service name and the container's own port — for a
+service called `sqlserver`, that is `sqlserver,1433`, **not** the port you
+published on the host.
+
+**Or go back out through the host.** No shared network needed, and it is the one
+that works when the database is not in docker at all — on Docker Desktop the host
+is `host.docker.internal`, and the port is the **published** one:
+
+```
+host.docker.internal,51433
+```
+
+On Linux this name does not exist by default; add
+`--add-host host.docker.internal:host-gateway` to the `docker run`.
+
+Filling in the connection, either way:
+
+| field | value |
+| --- | --- |
+| Server | `sqlserver,1433` (shared network) or `host.docker.internal,51433` (via the host) |
+| Database | the database, e.g. `master` |
+| Authentication | `sql` |
+| User | e.g. `sa` |
+| Password | typed in — it goes to `/data/secrets.json`, see [Passwords](#passwords) |
+| Encrypt | **off**, or turn *Trust server certificate* on |
+
+That last row is not optional for a development SQL Server. It presents a
+self-signed certificate, and the driver encrypts by default, so a connection that
+is otherwise perfect fails on certificate validation. Turn Encrypt off, or trust
+the certificate — do not do either against a real server.
+
+The same thing in a notebook, where the password is a *reference* the kernel
+resolves from the same place the web app saved it:
+
+```
+#!sql-connect --name dev --server sqlserver,1433 --database master \
+  --auth sql --user sa --secret sql:dev --encrypt false
+```
+
 ## When it does not come up
 
 ```bash
