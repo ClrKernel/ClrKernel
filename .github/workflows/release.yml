@@ -32,7 +32,7 @@ jobs:
             exit 1
           fi
 
-      # The jobs web app must exist before the solution build: ClrKernel.Studio packs
+      # The Studio web app must exist before the solution build: ClrKernel.Studio packs
       # wwwroot as content, and the Pack step below runs with --no-build.
       - uses: actions/setup-node@v4
         with:
@@ -40,7 +40,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/ClrKernel.Studio/webapp/package-lock.json
 
-      - name: Build jobs web app
+      - name: Build the Studio web app
         run: npm ci && npm run build
         working-directory: src/ClrKernel.Studio/webapp
 

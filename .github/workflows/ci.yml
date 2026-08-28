@@ -55,7 +55,7 @@ jobs:
         working-directory: editors/vscode
 
   webapp:
-    name: Jobs web app (build + unit tests)
+    name: Studio web app (build + unit tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -80,8 +80,8 @@ jobs:
         run: npm test
         working-directory: src/ClrKernel.Studio/webapp
 
-  jobs-stores:
-    name: Jobs run-store contract (PostgreSQL + SQL Server)
+  studio-stores:
+    name: Studio run-store contract (PostgreSQL + SQL Server)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -121,8 +121,8 @@ jobs:
           CLRKERNEL_STUDIO_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_studio;Username=postgres;Password=ci-only
           CLRKERNEL_STUDIO_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_studio;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
 
-  jobs-image:
-    name: Jobs Docker image (build + smoke)
+  studio-image:
+    name: Studio Docker image (build + smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
