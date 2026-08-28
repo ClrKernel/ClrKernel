@@ -142,6 +142,42 @@ public class ApiTest {
             (await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", NewJob("taken"))).StatusCode);
     }
 
+    /// <summary>
+    /// Asking for worktrees is asking for the workflow. The CLI's <c>git init</c>
+    /// persists <c>gitEnabled</c> on its way out, and this route used to refuse
+    /// instead — which left the browser telling people to stop the server and run a
+    /// shell command, from the page whose whole job is not to have to.
+    /// </summary>
+    [TestMethod]
+    public async Task Setting_up_worktrees_turns_the_workflow_on_for_a_flat_project() {
+        var before = await _client.GetFromJsonAsync<JsonElement>("/api/health");
+        Assert.IsFalse(before.GetProperty("gitEnabled").GetBoolean(), "a flat folder to begin with");
+
+        var response = await _client.PostAsync("/api/projects/default/init", null);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+
+        var health = await _client.GetFromJsonAsync<JsonElement>("/api/health");
+        Assert.IsTrue(health.GetProperty("gitEnabled").GetBoolean());
+        var project = (await _client.GetFromJsonAsync<JsonElement>("/api/projects"))
+            .GetProperty("projects").EnumerateArray().Single();
+        Assert.IsTrue(project.GetProperty("gitEnabled").GetBoolean());
+        Assert.IsTrue(project.GetProperty("ready").GetBoolean(), "the worktrees are there");
+        CollectionAssert.Contains(
+            project.GetProperty("environments").EnumerateArray().Select(e => e.GetString()).ToArray(),
+            "test");
+
+        // The notebook that was already in the folder was adopted, not lost.
+        Assert.IsTrue(File.Exists(Path.Combine(_options.NotebooksRoot, "test", "etl", "nightly.nb.md")));
+
+        // Written down, not only in memory: a restart has to come back on.
+        var reread = new ProjectRegistry(_options, NullLoggerFactory.Instance);
+        Assert.IsTrue(reread.Default.GitEnabled);
+
+        // And saying it twice is not an error — it adopts whatever is there.
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await _client.PostAsync("/api/projects/default/init", null)).StatusCode);
+    }
+
     [TestMethod]
     public async Task An_unregistered_project_is_404_everywhere_it_is_named() {
         var listed = await _client.GetFromJsonAsync<JsonElement>("/api/projects");

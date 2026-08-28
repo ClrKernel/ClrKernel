@@ -383,9 +383,11 @@ absolute path on the server. **The folder is created if it is not there yet** �
 registering a project is how you make one — and the answer says so, because a typo
 in the path would otherwise be an empty project that looks like a working one. It
 cannot be a file, and it cannot be inside the data directory: that holds the run
-history and the settings, not notebooks. If the project uses the workflow
-and its folder is not a workspace yet, the same page offers to make it one —
-the same thing `clrkernel-studio git init` does, adopting whatever is already there.
+history and the settings, not notebooks. A project whose folder is not a workspace
+yet — including one that is not on the workflow at all — gets a **Set up worktrees**
+button on that page, which does what `clrkernel-studio git init` does and adopts
+whatever is already there. Asking for it turns the workflow on, so there is no flag
+to find first.
 Registering by cloning a repo url is not there yet; put the clone on the server
 first and point at it.
 
@@ -514,7 +516,9 @@ sits on, so keep it out of any git worktree. The Docker image sets it to
 
 ## Test → prod with git
 
-Opt in with one command on your notebooks folder (stop `serve` first):
+Opt in from the browser: **Files** offers it on a project that has not got it, and
+so does **Settings → Projects**. One button, no restart. Or from a shell, which is
+the same thing and is what a scripted install wants (stop `serve` first):
 
 ```bash
 clrkernel-studio git init --notebooks ./notebooks

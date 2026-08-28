@@ -177,9 +177,16 @@ public static class JobsApi {
             if (projects.Find(project) is not { } found) {
                 return NoProject(project);
             }
-            if (projects.GitFor(found) is not { } git) {
+            // Asking for worktrees is asking for the workflow, so the flag comes on
+            // here rather than being a separate thing to find first. That is the rule
+            // `clrkernel-studio git init` already follows — it persists gitEnabled on
+            // its way out — and refusing instead left the browser telling people to go
+            // and run a shell command, which is the whole thing this route exists to
+            // avoid.
+            var enabled = found.GitEnabled ? found : projects.Update(found.Slug, p => p.GitEnabled = true);
+            if (projects.GitFor(enabled) is not { } git) {
                 return Results.BadRequest(new {
-                    error = "This project does not use the test/prod workflow. Turn it on first.",
+                    error = "This project could not be put on the test/prod workflow.",
                 });
             }
             try {

@@ -1,4 +1,6 @@
-import { ChevronDown, ChevronRight, FilePlus2, FolderClosed, GitBranch } from 'lucide-react';
+import {
+  ChevronDown, ChevronRight, FilePlus2, FolderClosed, FolderGit2, GitBranch,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -15,7 +17,7 @@ import { FileBadge } from '../components/FileBadge';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { loadBranch, saveBranch } from '../prefs';
 import { editPath, jobsFilePath } from '../routes';
-import { useIsProjectMember } from '../sessionContext';
+import { useIsProjectAdmin, useIsProjectMember } from '../sessionContext';
 
 function Node({
   node,
@@ -126,9 +128,33 @@ function jobsFileFor(notebook: string): string {
 export function Files() {
   const navigate = useNavigate();
   const mayEdit = useIsProjectMember();
+  const isProjectAdmin = useIsProjectAdmin();
   const { data, error, reload } = usePolling(() => api.notebooks(), null);
-  const { data: health } = usePolling(() => api.health(), null);
+  // Reloaded by hand after setting up the workflow: it is loaded once, and it is
+  // what decides whether the "no workflow" notice is still on screen.
+  const { data: health, reload: reloadHealth } = usePolling(() => api.health(), null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [setting, setSetting] = useState(false);
+
+  /**
+   * Turns this project's folder into a test/prod workspace — what
+   * `clrkernel-studio git init` does, from the page that told you to go and do it.
+   * Idempotent, and it adopts whatever is already in the folder.
+   */
+  async function setUpGit() {
+    setSetting(true);
+    setNotice(null);
+    try {
+      const result = await api.initProject(projectSlug());
+      setNotice(result.message);
+      reload();
+      reloadHealth();
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setSetting(false);
+    }
+  }
 
   /**
    * "+ job" writes the paired file on your own branch and opens it.
@@ -219,15 +245,28 @@ export function Files() {
           <AlertDescription>
             <p>
               Editing notebooks in the browser needs the test→prod git workflow, so every save is a
-              commit. Enable it once (stop the server first):
+              commit. It is set up once, and this folder keeps everything already in it.
             </p>
-            <pre className="my-2 overflow-x-auto rounded-lg bg-muted px-2 py-1.5 font-mono text-code text-foreground">
-              clrkernel-studio git init --notebooks &lt;your notebooks folder&gt;
-            </pre>
-            <p>
-              Then restart — test notebooks get an <strong>Edit</strong> button, and changes promote
-              to production after a green run.
-            </p>
+            {isProjectAdmin ? (
+              <>
+                <Button className="my-2" size="sm" disabled={setting} onClick={setUpGit}>
+                  <FolderGit2 className="size-3.5" aria-hidden="true" />
+                  {setting ? 'Setting up…' : 'Set up the git workflow'}
+                </Button>
+                <p>
+                  Your notebooks move into <code className="font-mono text-code">test/</code> and{' '}
+                  <code className="font-mono text-code">prod/</code> worktrees. Test notebooks then
+                  get an <strong>Edit</strong> button, and changes promote to production after a
+                  green run.
+                </p>
+              </>
+            ) : (
+              <p className="mt-2">
+                Ask an admin of this project to set it up — it is one button on this page for them,
+                or <code className="font-mono text-code">clrkernel-studio git init</code> on the
+                server.
+              </p>
+            )}
           </AlertDescription>
         </Alert>
       )}

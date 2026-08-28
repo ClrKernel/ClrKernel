@@ -417,9 +417,7 @@ export function ProjectsSection() {
                 </td>
                 <td className="font-mono text-xs text-muted-foreground">{project.root}</td>
                 <td>
-                  {!project.gitEnabled ? (
-                    <span className="text-muted-foreground">flat folder</span>
-                  ) : project.ready ? (
+                  {project.gitEnabled && project.ready ? (
                     <span>
                       test → prod
                       {project.remoteMode !== 'Local' && (
@@ -427,17 +425,25 @@ export function ProjectsSection() {
                       )}
                     </span>
                   ) : (
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      disabled={busy}
-                      onClick={() =>
-                        run(() => api.initProject(project.slug), `${project.name} is a workspace now.`)
-                      }
-                    >
-                      <FolderGit2 className="size-3.5" aria-hidden="true" />
-                      Set up worktrees
-                    </Button>
+                    // Offered for a flat folder too: setting up the worktrees is how
+                    // you ask for the workflow, so it turns it on rather than sending
+                    // you to the project editor to tick a box first.
+                    <span className="flex items-center gap-2">
+                      {!project.gitEnabled && (
+                        <span className="text-muted-foreground">flat folder</span>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        disabled={busy}
+                        onClick={() =>
+                          run(() => api.initProject(project.slug), `${project.name} is a workspace now.`)
+                        }
+                      >
+                        <FolderGit2 className="size-3.5" aria-hidden="true" />
+                        Set up worktrees
+                      </Button>
+                    </span>
                   )}
                 </td>
                 <td className="text-right">
