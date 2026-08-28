@@ -73,4 +73,19 @@ public interface IRunStore {
 
     /// <summary>Marks rows stuck in Pending/Running (from a crash) as Failed. Returns the count.</summary>
     Task<int> MarkOrphansFailedAsync();
+
+    /// <summary>
+    /// Forgets runs that finished before <paramref name="before"/>, and returns the
+    /// artifact directories they owned so the caller can delete those too — a row
+    /// removed while its executed notebook stays on disk is half a retention policy.
+    /// <para>
+    /// Two exceptions, both structural rather than configurable. A job's <b>most
+    /// recent</b> run survives whatever its age: it is what the promotion gate
+    /// reads, and a retention sweep that could make something unpromotable would be
+    /// a policy about disk quietly becoming a policy about deployment. And anything
+    /// still Pending or Running is left alone — a null <c>FinishedAt</c> is not old,
+    /// it is unfinished.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<string>> PurgeRunsAsync(DateTime before);
 }

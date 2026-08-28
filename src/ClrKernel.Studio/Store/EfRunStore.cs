@@ -317,6 +317,33 @@ public sealed class EfRunStore : IRunStore {
         await db.SaveChangesAsync();
     }
 
+    public async Task<IReadOnlyList<string>> PurgeRunsAsync(DateTime before) {
+        using var db = _contextFactory();
+        // The newest run of each job, whatever its age. Read as ids rather than
+        // filtered around in the delete query: three providers, and "not the max of
+        // its group" is where a LINQ translation quietly becomes a table scan or a
+        // NotSupportedException.
+        var keep = (await db.Runs.AsNoTracking()
+            .GroupBy(r => new { r.Project, r.Environment, r.JobName })
+            .Select(g => g.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id)
+                .Select(r => r.Id).First())
+            .ToListAsync()).ToHashSet();
+
+        var stale = await db.Runs
+            .Where(r => r.FinishedAt != null && r.FinishedAt < before)
+            .ToListAsync();
+        var going = stale.Where(r => !keep.Contains(r.Id)).ToList();
+        if (going.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var ids = going.Select(r => r.Id).ToHashSet();
+        db.RunCells.RemoveRange(await db.RunCells.Where(c => ids.Contains(c.RunId)).ToListAsync());
+        db.Runs.RemoveRange(going);
+        await db.SaveChangesAsync();
+        return going.Select(r => r.ArtifactPath).Where(p => p != null).ToList();
+    }
+
     public async Task<int> MarkOrphansFailedAsync() {
         using var db = _contextFactory();
         var orphans = await db.Runs

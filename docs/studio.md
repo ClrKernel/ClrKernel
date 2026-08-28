@@ -428,6 +428,32 @@ what each is holding, and removing one of those asks twice. Set
 `worktreeIdleDays` (or `--worktree-idle-days`) to change the month, or to `0` to
 sweep nothing.
 
+### Retention
+
+Run history and the artifacts beside it grow without bound. `runRetentionDays`
+(or `--run-retention-days`, `CLRKERNEL_STUDIO_RUN_RETENTION_DAYS`) removes runs
+that finished longer ago than that, together with each one's artifact folder —
+the executed notebook and the log. Rows and files go together: forgetting the row
+and keeping the notebook still grows the disk, and keeping the row while deleting
+the notebook leaves every old run's Artifact tab answering 404 forever.
+
+**It is off by default.** A first run after an upgrade that silently deleted
+somebody's history is not a default anyone can take back.
+
+Two exceptions are structural rather than configurable:
+
+- **A job's most recent run is never removed**, whatever its age. It is what the
+  promotion gate reads, and a sweep that could delete it would turn a policy about
+  disk into a policy about deployment — with nothing to connect the two when
+  somebody finds their notebook has become unpromotable.
+- **Nothing still Pending or Running is touched.** A null finish time is not old,
+  it is unfinished; an orphan from a crash is `MarkOrphansFailedAsync`'s to settle.
+
+One consequence to know about: the promotion log records the run ids that were its
+evidence, and purging those runs leaves those ids pointing at rows that are gone.
+The audit's own account — who promoted what, when, and what it switched off —
+survives; the link to the run does not.
+
 The branch you are reading is the chip beside the file name in the breadcrumb, and
 it is a switcher: your own branch, then everybody else's under **Read-only**, then
 `test` and `prod`. The **Files** page and the editor's explorer offer the same

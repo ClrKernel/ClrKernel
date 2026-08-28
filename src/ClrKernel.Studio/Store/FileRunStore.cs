@@ -147,6 +147,30 @@ public sealed class FileRunStore : IRunStore {
 
     public Task<Run> GetRunAsync(Guid id) => Task.FromResult(Find(id)?.Run);
 
+    public Task<IReadOnlyList<string>> PurgeRunsAsync(DateTime before) {
+        var all = AllRecords().Select(r => r.Run).ToList();
+        var keep = all
+            .GroupBy(r => $"{r.Project ?? "default"}:{r.Environment}:{r.JobName}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id).First().Id)
+            .ToHashSet();
+
+        var gone = new List<string>();
+        foreach (var run in all.Where(r =>
+                     r.FinishedAt is { } finished && finished < before && !keep.Contains(r.Id))) {
+            // The record lives beside its artifacts, so the whole directory goes and
+            // the row goes with it — there is no second place to forget.
+            var directory = DirectoryFor(run);
+            if (Directory.Exists(directory)) {
+                Directory.Delete(directory, recursive: true);
+            }
+            if (run.ArtifactPath != null) {
+                gone.Add(run.ArtifactPath);
+            }
+        }
+        return Task.FromResult<IReadOnlyList<string>>(gone);
+    }
+
     public Task<IReadOnlyList<Run>> QueryRunsAsync(RunQuery query) {
         var runs = AllRecords().Select(r => r.Run)
             .Where(r => query.Projects.Contains(r.Project ?? "default", StringComparer.OrdinalIgnoreCase));

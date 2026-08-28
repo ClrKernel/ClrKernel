@@ -490,4 +490,32 @@ public class PromotionTest {
             string.Join("; ", result.Reasons));
     }
 
+    /// <summary>
+    /// Retention must not be able to make something unpromotable.
+    /// <para>
+    /// The gate reads a job's most recent test run. A sweep that deleted it because
+    /// the run happened to be older than the cutoff would turn a policy about disk
+    /// into a policy about deployment — and nobody would connect the two.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task A_retention_sweep_cannot_make_a_job_unpromotable() {
+        SeedNotebookAndJob();
+        var green = await RecordRunAsync();
+        // Older than anything a sweep would keep for its age alone.
+        var longAgo = DateTime.UtcNow.AddDays(-400);
+        green.CreatedAt = longAgo;
+        green.FinishedAt = longAgo;
+        await _store.UpdateRunAsync(green);
+
+        Assert.IsTrue((await Promotion.CheckAsync(
+            _projects.Default, _projects, _store, "etl.nb.md")).Eligible, "green before the sweep");
+
+        await _store.PurgeRunsAsync(DateTime.UtcNow);
+
+        Assert.IsNotNull(await _store.GetRunAsync(green.Id), "the evidence survived");
+        Assert.IsTrue((await Promotion.CheckAsync(
+            _projects.Default, _projects, _store, "etl.nb.md")).Eligible, "and still green after it");
+    }
+
 }

@@ -338,6 +338,66 @@ public class RunStoreContractTest {
         Assert.AreEqual(0, await store.MarkOrphansFailedAsync(), "cleanup is idempotent");
     }
 
+    /// <summary>
+    /// Retention. Two of these are not policy but structure: the promotion gate
+    /// reads a job's most recent run, so a sweep that could delete it would be a
+    /// policy about disk quietly becoming a policy about deployment — and a run
+    /// still in flight is not old, it is unfinished.
+    /// </summary>
+    [TestMethod]
+    [DataRow("sqlite")]
+    [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
+    public async Task Retention_forgets_old_runs_but_never_the_latest_or_the_unfinished(string kind) {
+        var store = StoreFor(kind);
+        var now = DateTime.UtcNow;
+
+        async Task<Run> Add(string job, DateTime at, RunStatus status = RunStatus.Succeeded) =>
+            await store.CreateRunAsync(new Run {
+                Id = Guid.NewGuid(),
+                Project = "default",
+                Environment = "prod",
+                JobName = job,
+                NotebookPath = "nb.nb.md",
+                Status = status,
+                Trigger = RunTrigger.Schedule,
+                CreatedAt = at,
+                StartedAt = at,
+                FinishedAt = status is RunStatus.Pending or RunStatus.Running ? null : at.AddMinutes(1),
+                ArtifactPath = $"artifacts/prod/{job}/{Guid.NewGuid():N}/output.ipynb",
+            });
+
+        var ancient = await Add("nightly", now.AddDays(-90));
+        var old = await Add("nightly", now.AddDays(-60));
+        var latest = await Add("nightly", now.AddDays(-40));
+        // A different job whose only run is old: it is still that job's latest.
+        var onlyRun = await Add("quarterly", now.AddDays(-100));
+        // Left over from a crash three months ago — no FinishedAt, so not old.
+        var stuck = await Add("hourly", now.AddDays(-95), RunStatus.Running);
+        var recent = await Add("nightly", now.AddMinutes(-5));
+
+        var artifacts = await store.PurgeRunsAsync(now.AddDays(-30));
+
+        Assert.AreEqual(3, artifacts.Count,
+            "the two superseded old ones and the one that used to be latest");
+        Assert.IsNull(await store.GetRunAsync(ancient.Id));
+        Assert.IsNull(await store.GetRunAsync(old.Id));
+        Assert.IsNull(await store.GetRunAsync(latest.Id), "superseded by the recent one");
+        Assert.IsNotNull(await store.GetRunAsync(recent.Id));
+        Assert.IsNotNull(await store.GetRunAsync(onlyRun.Id),
+            "a job's most recent run is what proves it works, whatever its age");
+        Assert.IsNotNull(await store.GetRunAsync(stuck.Id),
+            "unfinished is not old");
+
+        // The paths come back so the caller can delete what is on disk. A row
+        // forgotten while its executed notebook stays is half a retention policy.
+        Assert.IsTrue(artifacts.All(p => p.Contains("output.ipynb")), string.Join(", ", artifacts));
+
+        Assert.AreEqual(0, (await store.PurgeRunsAsync(now.AddDays(-30))).Count,
+            "and it is idempotent");
+    }
+
     [TestMethod]
     public async Task The_file_store_keeps_each_run_beside_its_artifacts() {
         var options = new JobsOptions { DataDir = Path.Combine(_dir, "files"), NotebooksRoot = _dir, Store = "files" };

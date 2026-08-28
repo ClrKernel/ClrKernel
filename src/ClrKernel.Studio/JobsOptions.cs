@@ -82,6 +82,21 @@ public sealed class JobsOptions {
     /// </summary>
     public int WorktreeIdleDays { get; set; } = 30;
 
+    /// <summary>
+    /// How long finished runs are kept. <b>0 — the default — keeps them forever.</b>
+    /// <para>
+    /// Off by default on purpose: a first run after an upgrade that silently deleted
+    /// somebody's history is not a default anyone can take back. Turn it on when the
+    /// table and the artifact directory matter more than a year-old run does.
+    /// </para>
+    /// <para>
+    /// A job's most recent run is never removed, whatever its age — it is what the
+    /// promotion gate reads, and retention must not be able to make something
+    /// unpromotable. Nor is anything still Pending or Running.
+    /// </para>
+    /// </summary>
+    public int RunRetentionDays { get; set; }
+
     public string ArtifactsDir => Path.Combine(DataDir, "artifacts");
     public string DefaultSqlitePath => Path.Combine(DataDir, "jobs.db");
 
@@ -225,6 +240,11 @@ public sealed class JobsOptions {
             "CLRKERNEL_STUDIO_WORKTREE_IDLE_DAYS", Setting("worktreeIdleDays"), null);
         if (idleDays != null && int.TryParse(idleDays, out var idle) && idle >= 0) {
             options.WorktreeIdleDays = idle;
+        }
+        var retention = Pick("runRetentionDays", "run-retention-days",
+            "CLRKERNEL_STUDIO_RUN_RETENTION_DAYS", Setting("runRetentionDays"), null);
+        if (retention != null && int.TryParse(retention, out var days) && days >= 0) {
+            options.RunRetentionDays = days;
         }
         return options;
     }

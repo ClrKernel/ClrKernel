@@ -197,7 +197,10 @@ Started, Duration.
 - Rows are scoped by project access — a user never sees a run from a project they
   can't reach.
 - Pair this with a **retention policy** for run history and stored output, or the
-  table and the disk both grow forever.
+  table and the disk both grow forever. *(Done: `runRetentionDays`, off by
+  default, removing rows and artifact folders together. A job's most recent run
+  and anything unfinished are never removed — the first because the promotion
+  gate reads it.)*
 
 ### Rerunning failures
 

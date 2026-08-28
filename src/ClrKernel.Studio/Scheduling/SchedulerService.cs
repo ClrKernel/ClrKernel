@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -189,9 +190,51 @@ public sealed class SchedulerService : BackgroundService {
         }
     }
 
+    private DateTime _lastPurge = DateTime.MinValue;
+
+    /// <summary>
+    /// Retention, from the loop that is already ticking. Off unless somebody asked
+    /// for it — see <see cref="JobsOptions.RunRetentionDays"/>.
+    /// <para>
+    /// The rows and the artifacts go together. A run history that forgot the row but
+    /// kept the executed notebook would grow the disk anyway, and one that deleted
+    /// the notebook but kept the row would leave every old run's Artifact tab
+    /// answering 404 forever.
+    /// </para>
+    /// </summary>
+    private async Task PurgeRunsAsync(DateTime now) {
+        if (_options.RunRetentionDays <= 0 || now - _lastPurge < TimeSpan.FromDays(1)) {
+            return;
+        }
+        _lastPurge = now;
+        var before = now - TimeSpan.FromDays(_options.RunRetentionDays);
+        try {
+            var artifacts = await _store.PurgeRunsAsync(before);
+            var removed = 0;
+            foreach (var relative in artifacts) {
+                // The store hands back the artifact file; what goes is the run's own
+                // directory, which is where its log lives too.
+                var directory = Path.GetDirectoryName(Path.Combine(_options.DataDir, relative));
+                if (directory != null && Directory.Exists(directory)) {
+                    Directory.Delete(directory, recursive: true);
+                    removed++;
+                }
+            }
+            if (artifacts.Count > 0) {
+                _logger.LogInformation(
+                    "Retention: removed {Runs} run(s) finished before {Before:u} and {Dirs} artifact folder(s).",
+                    artifacts.Count, before, removed);
+            }
+        } catch (Exception e) {
+            // Housekeeping must never stop the tick that runs the jobs.
+            _logger.LogError(e, "Retention sweep failed.");
+        }
+    }
+
     /// <summary>One pass over the catalog for the (from, to] window.</summary>
     internal async Task TickAsync(DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken) {
         SweepWorktrees(toUtc);
+        await PurgeRunsAsync(toUtc);
         var catalog = _projects.LoadAll();
         foreach (var error in catalog.Errors) {
             _logger.LogWarning("Catalog: {Error}", error);
