@@ -345,19 +345,40 @@ persists the partially-executed output notebook as a diagnostic artifact.
 ### Scheduling notebooks — ClrKernel Studio (preview)
 
 `ClrKernel.Studio` is a companion dotnet tool that runs notebooks as scheduled jobs
-and serves a web dashboard, so you don't need an external scheduler:
+and serves a web app for editing and watching them, so you don't need an external
+scheduler:
 
 ```bash
 dotnet tool install --global ClrKernel.Studio
 clrkernel-studio serve --notebooks ./notebooks     # http://localhost:5000
 ```
 
-Jobs are `*.jobs.yaml` files beside the notebooks (several jobs per notebook, each
-with its own cron and parameters), chained with `dependsOn`. Every run executes in
-an isolated kernel process, cell by cell, with live progress and an executed
-`.ipynb` kept as the artifact. Run history goes to SQLite, SQL Server, PostgreSQL,
-or plain files; failures notify over webhooks or SMTP — with passwords resolved from
-secret references, never stored in config. Also ships as a Docker image.
+**Jobs are files.** A `*.jobs.yaml` is named for the notebook it schedules —
+`etl.jobs.yaml` runs `etl.nb.md` — and holds one or more jobs, each with its own
+cron and parameters, chained with `dependsOn`. The pair is one unit: it is edited
+together, promoted together, and production can never end up holding a schedule
+whose notebook is missing.
+
+**Files** is a browser over the repository: notebooks open in a cell editor with
+IntelliSense and per-cell execution, jobs files open as a form or as YAML over the
+same buffer, and everything else opens read-only. Work happens on your own branch,
+is pushed to `test`, and reaches `prod` by promotion — which is refused unless the
+exact files being promoted have a green run in `test` at their current commit.
+
+**Dashboard** is Overview, Monitoring and Notifications. Monitoring is one grid
+over every project's runs, filtered, sorted and paged by the server, with rerun
+from a row — at the branch's HEAD after a fix, or at the exact commit that failed,
+for reproducing one.
+
+Every run executes in an isolated kernel process, cell by cell, with live progress
+and an executed `.ipynb` kept as the artifact. `test` and `prod` both schedule; a
+personal branch never does. Run history goes to SQLite, SQL Server, PostgreSQL, or
+plain files, with optional retention that never removes a job's most recent run.
+Notification rules bind events — a job failed, recovered, ran long, or something
+reached production — to webhook or SMTP channels, and the delivery feed records
+what failed to send as well as what arrived. Passwords are always resolved from
+secret references, never stored in a notebook or a config file. Also ships as a
+Docker image.
 
 See [docs/studio.md](docs/studio.md).
 
