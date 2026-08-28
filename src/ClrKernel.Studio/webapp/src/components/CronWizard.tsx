@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_SPEC, WEEKDAYS, buildCron, specOf, type CronSpec,
 } from '../cron';
+import { Modal } from './Modal';
 
 /**
  * Picking a schedule without writing cron.
@@ -47,119 +48,113 @@ export function CronWizard({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
-          <h2 style={{ margin: 0 }}>Schedule</h2>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
-        </div>
+    <Modal title="Schedule" onClose={onClose}>
 
-        {current.trim() !== '' && parsed == null && (
-          <p className="text-base text-status-warning">
-            <code className="font-mono text-code">{current}</code> is not a shape this can
-            show, so it starts from a default. Using a schedule below replaces it.
-          </p>
-        )}
-
-        <label>
-          Repeats
-          <Select
-            value={spec.every}
-            onValueChange={(every) => setSpec(startingFrom(every as CronSpec['every'], hour, minute))}
-          >
-            <SelectTrigger aria-label="Repeats"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="minutes">Every N minutes</SelectItem>
-              <SelectItem value="hour">Hourly</SelectItem>
-              <SelectItem value="day">Daily</SelectItem>
-              <SelectItem value="week">Weekly</SelectItem>
-              <SelectItem value="month">Monthly</SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
-
-        {spec.every === 'minutes' && (
-          <label>
-            Every how many minutes
-            <Input
-              type="number" min={1} max={59} value={spec.minutes}
-              onChange={(e) => setSpec({ every: 'minutes', minutes: Number(e.target.value) || 1 })}
-            />
-          </label>
-        )}
-
-        {spec.every === 'hour' && (
-          <label>
-            At this many minutes past the hour
-            <Input
-              type="number" min={0} max={59} value={spec.minute}
-              onChange={(e) => setSpec({ every: 'hour', minute: Number(e.target.value) || 0 })}
-            />
-          </label>
-        )}
-
-        {(spec.every === 'day' || spec.every === 'week' || spec.every === 'month') && (
-          <label>
-            At (UTC)
-            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-          </label>
-        )}
-
-        {spec.every === 'week' && (
-          <fieldset className="field">
-            <legend>On these days</legend>
-            <div className="flex flex-wrap gap-2">
-              {WEEKDAYS.map((label, day) => (
-                <label key={label} className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={spec.days.includes(day)}
-                    onChange={(e) => setSpec({
-                      ...spec,
-                      days: e.target.checked
-                        ? [...spec.days, day]
-                        : spec.days.filter((d) => d !== day),
-                    })}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            {spec.days.length === 0 && (
-              <span className="block text-base text-muted-foreground">
-                None ticked means every day — cron has no way to say "never".
-              </span>
-            )}
-          </fieldset>
-        )}
-
-        {spec.every === 'month' && (
-          <label>
-            On day of the month
-            <Input
-              type="number" min={1} max={31} value={spec.dayOfMonth}
-              onChange={(e) => setSpec({ ...spec, dayOfMonth: Number(e.target.value) || 1 })}
-            />
-            {spec.dayOfMonth > 28 && (
-              <span className="block text-base text-status-warning">
-                Months without a {spec.dayOfMonth}th are skipped, not moved.
-              </span>
-            )}
-          </label>
-        )}
-
-        <p className="text-base text-muted-foreground">
-          That is{' '}
-          <code className="font-mono text-code text-foreground">{built}</code>
-          {' '}— the field shows the next few runs once you use it.
+      {current.trim() !== '' && parsed == null && (
+        <p className="text-base text-status-warning">
+          <code className="font-mono text-code">{current}</code> is not a shape this can
+          show, so it starts from a default. Using a schedule below replaces it.
         </p>
+      )}
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={() => { onUse(built); onClose(); }}>Use this schedule</Button>
-        </div>
+      <label>
+        Repeats
+        <Select
+          value={spec.every}
+          onValueChange={(every) => setSpec(startingFrom(every as CronSpec['every'], hour, minute))}
+        >
+          <SelectTrigger aria-label="Repeats"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="minutes">Every N minutes</SelectItem>
+            <SelectItem value="hour">Hourly</SelectItem>
+            <SelectItem value="day">Daily</SelectItem>
+            <SelectItem value="week">Weekly</SelectItem>
+            <SelectItem value="month">Monthly</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+
+      {spec.every === 'minutes' && (
+        <label>
+          Every how many minutes
+          <Input
+            type="number" min={1} max={59} value={spec.minutes}
+            onChange={(e) => setSpec({ every: 'minutes', minutes: Number(e.target.value) || 1 })}
+          />
+        </label>
+      )}
+
+      {spec.every === 'hour' && (
+        <label>
+          At this many minutes past the hour
+          <Input
+            type="number" min={0} max={59} value={spec.minute}
+            onChange={(e) => setSpec({ every: 'hour', minute: Number(e.target.value) || 0 })}
+          />
+        </label>
+      )}
+
+      {(spec.every === 'day' || spec.every === 'week' || spec.every === 'month') && (
+        <label>
+          At (UTC)
+          <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+      )}
+
+      {spec.every === 'week' && (
+        <fieldset className="field">
+          <legend>On these days</legend>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAYS.map((label, day) => (
+              <label key={label} className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={spec.days.includes(day)}
+                  onChange={(e) => setSpec({
+                    ...spec,
+                    days: e.target.checked
+                      ? [...spec.days, day]
+                      : spec.days.filter((d) => d !== day),
+                  })}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          {spec.days.length === 0 && (
+            <span className="block text-base text-muted-foreground">
+              None ticked means every day — cron has no way to say "never".
+            </span>
+          )}
+        </fieldset>
+      )}
+
+      {spec.every === 'month' && (
+        <label>
+          On day of the month
+          <Input
+            type="number" min={1} max={31} value={spec.dayOfMonth}
+            onChange={(e) => setSpec({ ...spec, dayOfMonth: Number(e.target.value) || 1 })}
+          />
+          {spec.dayOfMonth > 28 && (
+            <span className="block text-base text-status-warning">
+              Months without a {spec.dayOfMonth}th are skipped, not moved.
+            </span>
+          )}
+        </label>
+      )}
+
+      <p className="text-base text-muted-foreground">
+        That is{' '}
+        <code className="font-mono text-code text-foreground">{built}</code>
+        {' '}— the field shows the next few runs once you use it.
+      </p>
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button size="sm" onClick={() => { onUse(built); onClose(); }}>Use this schedule</Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

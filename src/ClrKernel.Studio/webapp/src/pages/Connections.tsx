@@ -33,6 +33,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { textToRun } from '../monaco/runTarget';
 import { useFillEditor } from '../monaco/useMonaco';
 import { clamp, loadLayout, saveLayout, DEFAULT_LAYOUT, MAX_TREE, MIN_TREE } from '../prefs';
+import { Modal } from '../components/Modal';
 import { connectionsPath } from '../routes';
 import { useIsProjectMember, useIsServerAdmin } from '../sessionContext';
 
@@ -333,14 +334,18 @@ export function Connections() {
     }
   }
 
-  function saved(connection: ApiConnection) {
+  // `close` is false when the form saved a new connection only so it could test
+  // it: the list needs the row, but the dialog is still being filled in.
+  function saved(connection: ApiConnection, close = true) {
     setConnections((current) => {
       const rest = current.filter((c) => c.id !== connection.id);
       return [...rest, connection].sort((a, b) =>
         a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope.localeCompare(b.scope));
     });
-    setEditing(null);
-    setCreating(false);
+    if (close) {
+      setEditing(null);
+      setCreating(false);
+    }
     navigate(connectionsPath(connection.id));
   }
 
@@ -615,58 +620,52 @@ function HistoryPanel({ connection, onUse, onClose }: {
   }, [connection.id, scope]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
-          <h2 style={{ margin: 0 }}>History</h2>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
-        </div>
-        <Tabs value={scope} onValueChange={(v) => setScope(v as 'connection' | 'mine')}>
-          <TabsList>
-            <TabsTrigger value="connection">{connection.name}</TabsTrigger>
-            <TabsTrigger value="mine">Everything I have run</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <ErrorBanner error={error} />
-        {rows == null && !error && (
-          <p className="text-base text-muted-foreground">Reading the log…</p>
-        )}
-        {rows?.length === 0 && (
-          <p className="text-base text-muted-foreground">
-            {scope === 'connection'
-              ? 'Nothing has been run against this connection yet.'
-              : 'You have not run anything yet.'}
-          </p>
-        )}
-        <div className="query-history">
-          {(rows ?? []).map((row) => (
-            <div key={row.id} className="query-history-row">
-              <div className="query-history-meta">
-                <strong>{scope === 'mine' ? row.connectionName : row.actorName ?? 'somebody'}</strong>
-                <span>{new Date(row.startedAt).toLocaleString()}</span>
-                <Badge variant="outline" className="font-normal">{row.outcome}</Badge>
-                {row.leastPrivilege && (
-                  <Badge variant="outline" className="font-normal">read-only login</Badge>
-                )}
-                <span>{Math.round(row.durationMs)} ms</span>
-                <span className="spacer" />
-                {/* Into the editor at the cursor, like everything else that writes
-                    there — running somebody's old statement is a decision they take
-                    after reading it, not a button that does it for them. */}
-                <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
-                  onClick={() => onUse(row.statement)}>
-                  Use
-                </Button>
-              </div>
-              <pre>{row.statement}</pre>
-              {row.errorSummary && (
-                <p className="text-sm text-destructive">{row.errorSummary}</p>
+    <Modal title="History" onClose={onClose} wide>
+      <Tabs value={scope} onValueChange={(v) => setScope(v as 'connection' | 'mine')}>
+        <TabsList>
+          <TabsTrigger value="connection">{connection.name}</TabsTrigger>
+          <TabsTrigger value="mine">Everything I have run</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <ErrorBanner error={error} />
+      {rows == null && !error && (
+        <p className="text-base text-muted-foreground">Reading the log…</p>
+      )}
+      {rows?.length === 0 && (
+        <p className="text-base text-muted-foreground">
+          {scope === 'connection'
+            ? 'Nothing has been run against this connection yet.'
+            : 'You have not run anything yet.'}
+        </p>
+      )}
+      <div className="query-history">
+        {(rows ?? []).map((row) => (
+          <div key={row.id} className="query-history-row">
+            <div className="query-history-meta">
+              <strong>{scope === 'mine' ? row.connectionName : row.actorName ?? 'somebody'}</strong>
+              <span>{new Date(row.startedAt).toLocaleString()}</span>
+              <Badge variant="outline" className="font-normal">{row.outcome}</Badge>
+              {row.leastPrivilege && (
+                <Badge variant="outline" className="font-normal">read-only login</Badge>
               )}
+              <span>{Math.round(row.durationMs)} ms</span>
+              <span className="spacer" />
+              {/* Into the editor at the cursor, like everything else that writes
+                  there — running somebody's old statement is a decision they take
+                  after reading it, not a button that does it for them. */}
+              <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
+                onClick={() => onUse(row.statement)}>
+                Use
+              </Button>
             </div>
-          ))}
-        </div>
+            <pre>{row.statement}</pre>
+            {row.errorSummary && (
+              <p className="text-sm text-destructive">{row.errorSummary}</p>
+            )}
+          </div>
+        ))}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -737,80 +736,74 @@ function SavedQueriesPanel({ connection, sql, onOpen, onClose }: {
   ];
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
-          <h2 style={{ margin: 0 }}>Saved queries</h2>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={onClose}>✕</Button>
+    <Modal title="Saved queries" onClose={onClose} wide>
+      <ErrorBanner error={error} />
+
+      {sql.trim().length > 0 && (
+        <div className="saved-query-new">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Save what is in the editor as…"
+            aria-label="Name for this query"
+          />
+          {isAdmin && (
+            <select value={scope} onChange={(e) => setScope(e.target.value as 'shared' | 'private')}
+              aria-label="Visible to">
+              <option value="private">Only me</option>
+              <option value="shared">Everyone</option>
+            </select>
+          )}
+          <Button size="sm" disabled={busy || name.trim().length === 0} onClick={save}>
+            Save
+          </Button>
         </div>
-        <ErrorBanner error={error} />
+      )}
 
-        {sql.trim().length > 0 && (
-          <div className="saved-query-new">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Save what is in the editor as…"
-              aria-label="Name for this query"
-            />
-            {isAdmin && (
-              <select value={scope} onChange={(e) => setScope(e.target.value as 'shared' | 'private')}
-                aria-label="Visible to">
-                <option value="private">Only me</option>
-                <option value="shared">Everyone</option>
-              </select>
-            )}
-            <Button size="sm" disabled={busy || name.trim().length === 0} onClick={save}>
-              Save
-            </Button>
-          </div>
-        )}
+      {queries == null && !error && (
+        <p className="text-base text-muted-foreground">Looking…</p>
+      )}
+      {queries?.length === 0 && (
+        <p className="text-base text-muted-foreground">
+          Nothing saved yet. Write a query and keep it here to find it again.
+        </p>
+      )}
 
-        {queries == null && !error && (
-          <p className="text-base text-muted-foreground">Looking…</p>
-        )}
-        {queries?.length === 0 && (
-          <p className="text-base text-muted-foreground">
-            Nothing saved yet. Write a query and keep it here to find it again.
-          </p>
-        )}
-
-        {groups.map(({ scope: group, label }) => {
-          const inGroup = (queries ?? []).filter((q) => q.scope === group);
-          if (inGroup.length === 0) {
-            return null;
-          }
-          return (
-            <div key={group}>
-              <h3>{label}</h3>
-              <div className="query-history">
-                {inGroup.map((query) => (
-                  <div key={query.id} className="query-history-row">
-                    <div className="query-history-meta">
-                      <strong>{query.name}</strong>
-                      {query.connectionName && <span>{query.connectionName}</span>}
-                      <span>{query.createdByName}</span>
-                      <span className="spacer" />
-                      <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
-                        title="Put it in the editor" onClick={() => onOpen(query)}>
-                        Open
+      {groups.map(({ scope: group, label }) => {
+        const inGroup = (queries ?? []).filter((q) => q.scope === group);
+        if (inGroup.length === 0) {
+          return null;
+        }
+        return (
+          <div key={group}>
+            <h3>{label}</h3>
+            <div className="query-history">
+              {inGroup.map((query) => (
+                <div key={query.id} className="query-history-row">
+                  <div className="query-history-meta">
+                    <strong>{query.name}</strong>
+                    {query.connectionName && <span>{query.connectionName}</span>}
+                    <span>{query.createdByName}</span>
+                    <span className="spacer" />
+                    <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
+                      title="Put it in the editor" onClick={() => onOpen(query)}>
+                      Open
+                    </Button>
+                    {query.canEdit && (
+                      <Button variant="outline" size="sm"
+                        className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => void remove(query)}>
+                        Delete
                       </Button>
-                      {query.canEdit && (
-                        <Button variant="outline" size="sm"
-                          className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => void remove(query)}>
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                    <pre>{query.sql}</pre>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <pre>{query.sql}</pre>
+                </div>
+              ))}
             </div>
-          );
-        })}
-      </div>
-    </div>
+          </div>
+        );
+      })}
+    </Modal>
   );
 }
