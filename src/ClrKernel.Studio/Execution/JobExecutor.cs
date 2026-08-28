@@ -46,10 +46,17 @@ public sealed class JobExecutor {
     /// <summary>Raised on every cell state change (run, cell, total code cells) — the CLI/API progress feed.</summary>
     public event Action<Run, RunCell, int> CellProgress;
 
+    /// <param name="atCommit">
+    /// The commit this run's files were checked out at, for a rerun of a recorded
+    /// version. When set, it is recorded as-is instead of reading the branch's HEAD:
+    /// the job is running out of a detached checkout of the past, and a run that
+    /// claimed HEAD would be evidence for a tree it never executed — which is
+    /// exactly what the promotion gate reads.
+    /// </param>
     public async Task<Run> ExecuteAsync(
         JobDefinition job, RunTrigger trigger, Guid? causedByRunId = null, int attempt = 1,
         Guid? runId = null, bool hadOverrides = false, Guid? actorId = null, string actorName = null,
-        CancellationToken cancellationToken = default) {
+        string atCommit = null, CancellationToken cancellationToken = default) {
         var git = _projects?.Find(job.Project) is { } project ? _projects.GitFor(project) : null;
         var run = new Run {
             Id = runId ?? Guid.NewGuid(),
@@ -70,7 +77,13 @@ public sealed class JobExecutor {
         // Promotion evidence, captured BEFORE the notebook is parsed: a save that
         // lands between capture and parse must invalidate, not sneak in.
         run.HadOverrides = hadOverrides;
-        if (git != null && job.Environment is GitService.TestBranch or "prod") {
+        if (atCommit != null) {
+            // A checkout of one commit is that commit, with nothing uncommitted in
+            // it by construction — and the branch's own working tree says nothing
+            // about what this run read.
+            run.CommitSha = atCommit;
+            run.WasDirty = false;
+        } else if (git != null && job.Environment is GitService.TestBranch or "prod") {
             try {
                 run.CommitSha = git.HeadSha(job.Environment);
                 var relativeYaml = Path.GetRelativePath(

@@ -29,6 +29,7 @@ public class ProjectRoleTest {
     private IAuthStore _auth;
     private WebApplication _app;
     private HttpClient _anonymous;
+    private IRunStore _store;
 
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
@@ -51,6 +52,7 @@ public class ProjectRoleTest {
         // A third one with the workflow on: running is a test/prod question, and
         // the other two are flat folders where there is no such thing.
         File.WriteAllText(Path.Combine(_root, "shipping", "manifest.nb.md"), "```csharp\n1+1\n```\n");
+        File.WriteAllText(Path.Combine(_root, "shipping", "manifest.jobs.yaml"), "jobs:\n  - name: nightly\n");
         new GitService(Path.Combine(_root, "shipping"), NullLogger.Instance).Init();
 
         ProjectsFile.Write(_options.DataDir, new[] {
@@ -65,6 +67,7 @@ public class ProjectRoleTest {
         var dbPath = Path.Combine(_options.DataDir, "test.db");
         var store = EfRunStore.Sqlite(dbPath);
         store.Migrate();
+        _store = store;
         _auth = TestAuth.StoreFor(dbPath);
 
         _app = Program.BuildApp(
@@ -237,6 +240,57 @@ public class ProjectRoleTest {
                 Assert.AreNotEqual(HttpStatusCode.Forbidden, status, $"{branch}");
             }
         }
+    }
+
+    /// <summary>
+    /// The same rule, whichever button starts it. A permission only the rerun route
+    /// enforced would be worth nothing: the person refused a rerun would press Run
+    /// and get the same job at the same HEAD.
+    /// </summary>
+    [TestMethod]
+    public async Task Only_admins_start_a_job_in_prod_by_hand_or_by_rerun() {
+        var recorded = await _store.CreateRunAsync(new Run {
+            Id = Guid.NewGuid(),
+            Project = "shipping",
+            Environment = "prod",
+            JobName = "nightly",
+            NotebookPath = "manifest.nb.md",
+            Status = RunStatus.Failed,
+            Trigger = RunTrigger.Schedule,
+            CreatedAt = DateTime.UtcNow,
+            StartedAt = DateTime.UtcNow,
+            FinishedAt = DateTime.UtcNow,
+        });
+
+        using var member = await ClientFor(UserRole.ServerUser, ("shipping", ProjectRole.ProjectMember));
+        using var admin = await ClientFor(UserRole.ServerUser, ("shipping", ProjectRole.ProjectAdmin));
+
+        foreach (var (client, refused, who) in new[] { (member, true, "member"), (admin, false, "admin") }) {
+            foreach (var (what, response) in new[] {
+                ("run", await client.PostAsync(
+                    "/api/projects/shipping/branches/prod/jobs/nightly/run", null)),
+                ("rerun", await client.PostAsJsonAsync(
+                    "/api/runs/rerun", new { runIds = new[] { recorded.Id } })),
+            }) {
+                if (refused) {
+                    Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode, $"{who} {what}");
+                } else {
+                    Assert.AreNotEqual(HttpStatusCode.Forbidden, response.StatusCode, $"{who} {what}");
+                }
+            }
+        }
+
+        // And a viewer cannot rerun anywhere — refused before the branch is read.
+        using var viewer = await ClientFor(UserRole.ServerUser, ("shipping", ProjectRole.ProjectViewer));
+        Assert.AreEqual(HttpStatusCode.Forbidden,
+            (await viewer.PostAsJsonAsync("/api/runs/rerun", new { runIds = new[] { recorded.Id } }))
+                .StatusCode);
+
+        // A run in a project you cannot see is a run that does not exist.
+        using var outsider = await ClientFor(UserRole.ServerUser, ("finance", ProjectRole.ProjectAdmin));
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await outsider.PostAsJsonAsync("/api/runs/rerun", new { runIds = new[] { recorded.Id } }))
+                .StatusCode);
     }
 
     // --- the project's own admin list ---------------------------------------

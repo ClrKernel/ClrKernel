@@ -1057,6 +1057,11 @@ public static class JobsApi {
                         error = "Jobs run in test and prod. Push this to test, then run it there.",
                     });
                 }
+                // Before the lookup: whether you may run things in production does
+                // not depend on which job you named.
+                if (await DenyProductionRun(context, scope.Project.Slug, branch) is { } denied) {
+                    return denied;
+                }
                 var job = scope.Catalog.Load().Find(scope.Project.Slug, branch, name);
                 if (job == null) {
                     return Results.NotFound(new { error = $"No job named '{name}' in {branch}." });
@@ -1239,6 +1244,102 @@ public static class JobsApi {
                     : Results.Ok(new { run, cells = await store.GetCellsAsync(id) });
             });
 
+        // Run that again.
+        //
+        // One route for one row and for fifty: a single rerun is a batch of one, and
+        // the confirmation the client shows needs the same counted, deduplicated
+        // answer either way. Refusals come back beside the starts rather than as an
+        // error — "forty-eight started, two were already running" is the true
+        // outcome, and a 409 for the whole batch would throw away the forty-eight.
+        //
+        // Not throttled here: SchedulerService.Launch waits on the same
+        // MaxParallelism semaphore every scheduled run does, so a batch queues
+        // instead of arriving at the database all at once.
+        api.MapPost("/runs/rerun", async (
+            HttpContext context, ProjectRegistry projects, SchedulerService scheduler,
+            IRunStore store) => {
+                var write = await BodyOf<RerunWrite>(context);
+                if (write?.RunIds is not { Count: > 0 }) {
+                    return Results.BadRequest(new { error = "Expected one or more run ids." });
+                }
+                if (write.RunIds.Count > _maxRerunBatch) {
+                    // ponytail: a cap, not a queue — the scheduler already queues.
+                    // It stops one request from checking a thousand rows and holding
+                    // the store while it does.
+                    return Results.BadRequest(new {
+                        error = $"Rerun at most {_maxRerunBatch} runs at a time.",
+                    });
+                }
+
+                var runs = new List<Run>();
+                foreach (var id in write.RunIds.Distinct()) {
+                    // A run in a project you cannot see is a run that does not
+                    // exist, the same answer the detail route gives.
+                    if (await VisibleRun(context, projects, await store.GetRunAsync(id)) is { } run) {
+                        runs.Add(run);
+                    } else {
+                        return Results.NotFound(new { error = $"No run {id}." });
+                    }
+                }
+
+                if (Scope.Of(projects, runs[0].Project ?? ProjectRegistry.DefaultSlug) is not { } scope) {
+                    return NoProject(runs[0].Project);
+                }
+                if (await context.ProjectRoleAsync(scope.Project.Slug) is not
+                        (ProjectRole.ProjectMember or ProjectRole.ProjectAdmin)) {
+                    return Results.Json(
+                        new { error = "Rerunning is for this project's members." }, statusCode: 403);
+                }
+
+                var plan = await Rerun.PlanAsync(
+                    runs, write.ExactVersion, scope.Catalog, scope.Git, store);
+                if (plan.Error != null) {
+                    return Results.BadRequest(new { error = plan.Error });
+                }
+                if (await DenyProductionRun(context, scope.Project.Slug, plan.Environment) is { } denied) {
+                    // Checked once for the batch, which is why the batch is one
+                    // branch. Before anything is launched, and before any checkout
+                    // is left behind.
+                    foreach (var target in plan.Targets) {
+                        scope.Git?.RemoveRerunWorktree(target.WorktreePath);
+                    }
+                    return denied;
+                }
+
+                var user = context.CurrentUser();
+                var started = new List<object>();
+                foreach (var target in plan.Targets) {
+                    var worktree = target.WorktreePath;
+                    var runId = scheduler.TriggerRerun(
+                        target.Job, target.OriginalRunId, user?.Id, user?.DisplayName,
+                        worktree == null ? null : () => scope.Git?.RemoveRerunWorktree(worktree),
+                        // Only for a checkout of the past. A rerun at HEAD reads the
+                        // branch's own state, dirty tree and all, like any other run.
+                        worktree == null ? null : target.Sha);
+                    if (runId == null) {
+                        // It started between the plan and here. TriggerRerun already
+                        // ran the cleanup.
+                        plan.Refused.Add(new RerunRefusal(
+                            target.OriginalRunId, $"'{target.Job.Name}' already has a run in flight."));
+                        continue;
+                    }
+                    started.Add(new {
+                        runId,
+                        rerunOf = target.OriginalRunId,
+                        job = target.Job.Name,
+                        sha = target.Sha,
+                    });
+                }
+
+                return Results.Accepted("/api/runs", new {
+                    project = plan.Project,
+                    environment = plan.Environment,
+                    exactVersion = write.ExactVersion,
+                    started,
+                    refused = plan.Refused.Select(r => new { runId = r.RunId, reason = r.Reason }),
+                });
+            });
+
         api.MapGet("/runs/{id:guid}/artifact", async (
             HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options, Guid id) =>
             await ServeRunFile(context, projects, store, options, id, r => r.ArtifactPath, "application/json"));
@@ -1323,6 +1424,9 @@ public static class JobsApi {
         // index.html fallback (which would hand a client 200 text/html).
         api.MapFallback(() => Results.NotFound(new { error = "No such API endpoint." }));
     }
+
+    /// <summary>How many rows one rerun request may name.</summary>
+    private const int _maxRerunBatch = 100;
 
     private static int Clamp(int? limit) => Math.Clamp(limit ?? 50, 1, 500);
 
@@ -1550,6 +1654,24 @@ public static class JobsApi {
     /// Admin. The check moved; it was not dropped.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Running code in production is a Project Admin's to do, whichever button
+    /// starts it — the run button, a rerun, or a cell.
+    /// <para>
+    /// One function because it is one rule: a permission that only the rerun route
+    /// enforced would be worth nothing, since the person refused a rerun could press
+    /// Run instead and get the same job at the same HEAD.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> DenyProductionRun(
+        HttpContext context, string project, string environment) =>
+        environment == "prod"
+            && await context.ProjectRoleAsync(project) is not ProjectRole.ProjectAdmin
+            ? Results.Json(
+                new { error = "Only this project's admins run anything in production." },
+                statusCode: 403)
+            : null;
+
     private static async Task<IResult> DenyExecution(
         HttpContext context, Scope scope, string branch, string path) {
         if (!scope.Catalog.GitLayout) {
@@ -1569,11 +1691,8 @@ public static class JobsApi {
                     error = "That is somebody else's branch. Open this notebook on yours.",
                 });
             }
-            if (branch == "prod" && await context.ProjectRoleAsync(scope.Project.Slug)
-                    is not ProjectRole.ProjectAdmin) {
-                return Results.Json(
-                    new { error = "Only this project's admins run anything in production." },
-                    statusCode: 403);
+            if (await DenyProductionRun(context, scope.Project.Slug, branch) is { } denied) {
+                return denied;
             }
             if (branch != "prod" && branch != GitService.TestBranch) {
                 return Results.NotFound(new { error = $"No branch '{branch}'." });
@@ -2024,6 +2143,18 @@ public sealed class JobView {
 /// <summary>Optional body for an ad-hoc run: parameters for this run only.</summary>
 public sealed class RunOverrides {
     public Dictionary<string, object> Parameters { get; set; }
+}
+
+/// <summary>Which recorded runs to run again, and which version of them.</summary>
+public sealed class RerunWrite {
+    public List<Guid> RunIds { get; set; }
+    /// <summary>
+    /// False — the default — runs the job as it is on that branch now, which is what
+    /// you want after a fix. True goes back to the commit the run recorded, for
+    /// reproducing a failure, and is refused when that commit would not be a
+    /// faithful reproduction.
+    /// </summary>
+    public bool ExactVersion { get; set; }
 }
 
 /// <summary>The create/update body for a job.</summary>

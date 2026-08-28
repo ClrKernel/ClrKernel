@@ -356,7 +356,69 @@ public sealed class GitService {
     /// <summary>Fixes worktree gitdir pointers after the workspace moved (volumes do).</summary>
     public void Repair() {
         Run(BareRepoPath, "worktree", "repair", TestPath, ProdPath);
+        SweepRerunWorktrees();
         ExcludeScratch();
+    }
+
+    /// <summary>
+    /// Removes checkouts of the past left behind by a process that died mid-run.
+    /// <para>
+    /// The directories have to go, not just the registrations: <c>git worktree
+    /// prune</c> only forgets worktrees whose folder is already gone, so after a
+    /// crash the checkout stays on disk and prune does nothing about it. The prune
+    /// afterwards is for the other direction — somebody deleted the folder by hand.
+    /// </para>
+    /// <para>
+    /// Safe where it is called from, which is startup: this process cannot have a
+    /// rerun in flight before it has begun. It is deliberately not called anywhere
+    /// else, because a sweep during normal running would delete the tree a live
+    /// rerun is reading.
+    /// </para>
+    /// </summary>
+    private void SweepRerunWorktrees() {
+        foreach (var stale in Directory.EnumerateDirectories(_workspace, RerunWorktreePrefix + "*")) {
+            RemoveRerunWorktree(stale);
+        }
+        Run(BareRepoPath, "worktree", "prune");
+    }
+
+    /// <summary>The prefix every rerun-at-a-sha checkout lives under.</summary>
+    /// <remarks>
+    /// Deliberately not <c>user-</c>: <see cref="UserWorktrees"/> scans that prefix
+    /// and would report a transient checkout as somebody's branch. It sits beside
+    /// the worktrees rather than inside one, so <see cref="JobCatalog"/> — which
+    /// scans <c>&lt;root&gt;/test</c> and <c>&lt;root&gt;/prod</c> — never sees the
+    /// jobs in it and cannot schedule a job out of a copy of the past.
+    /// </remarks>
+    public const string RerunWorktreePrefix = "rerun-";
+
+    /// <summary>
+    /// Checks the whole tree out at one commit, detached, and returns the path.
+    /// <para>
+    /// The whole tree, not the one notebook: <c>#!import</c>, <c>connections.json</c>
+    /// and every sibling resolve relative to the notebook, so a single file copied
+    /// somewhere else is a different program that happens to share a name. This is
+    /// what makes "rerun the exact failed version" mean what it says.
+    /// </para>
+    /// <para>The caller removes it — see <see cref="RemoveRerunWorktree"/>.</para>
+    /// </summary>
+    public string AddRerunWorktree(string sha) => WithLock(() => {
+        var path = Path.Combine(_workspace, RerunWorktreePrefix + Guid.NewGuid().ToString("N")[..12]);
+        Run(BareRepoPath, "worktree", "add", "--detach", path, sha);
+        return path;
+    });
+
+    /// <summary>Removes a checkout from <see cref="AddRerunWorktree"/>. Never throws:
+    /// this runs in a finally, and a failed cleanup must not lose the run's result.</summary>
+    public void RemoveRerunWorktree(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return;
+        }
+        try {
+            WithLock(() => Run(BareRepoPath, "worktree", "remove", "--force", path));
+        } catch (Exception e) {
+            _logger.LogWarning("Could not remove the rerun worktree {Path}: {Error}", path, e.Message);
+        }
     }
 
     /// <summary>

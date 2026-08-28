@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, isActive, type Run, type RunCell } from '../api';
+import { rerunOutcome, rerunQuestion } from '../rerun';
 import { EnvBadge, ErrorBanner, StatusBadge, usePolling } from '../components/common';
 import { NotebookView } from '../components/NotebookView';
 import { duration, timeAgo, type Notebook } from '../ipynb';
@@ -72,6 +73,31 @@ export function RunDetail() {
   const live = run ? isActive(run.status) : true;
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunNote, setRerunNote] = useState<string | null>(null);
+
+  /**
+   * Two buttons because they are two acts. "Run again" takes the branch as it is
+   * now, which is what you want once something is fixed. "Run the recorded
+   * version" goes back to the commit that failed, for reproducing it — offered
+   * only when the recording is faithful enough to be worth the label, which the
+   * server decides again and refuses out loud if it disagrees.
+   */
+  async function again(exactVersion: boolean) {
+    if (!confirm(rerunQuestion([run!], exactVersion))) {
+      return;
+    }
+    setRerunNote(null);
+    setRerunning(true);
+    try {
+      const result = await api.rerun([run!.id], exactVersion);
+      setRerunNote(rerunOutcome(result.started, result.refused));
+    } catch (e) {
+      setRerunNote((e as Error).message);
+    } finally {
+      setRerunning(false);
+    }
+  }
 
   async function cancel() {
     setCancelError(null);
@@ -121,16 +147,38 @@ export function RunDetail() {
           <StatusBadge status={run.status} />
           {run.environment !== 'default' && <EnvBadge env={run.environment} />}
         </h1>
-        {live && (
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-sm text-muted-subtle">live · refreshing</span>
-            <Button variant="outline" size="sm" onClick={cancel} disabled={cancelling}>
-              {cancelling ? 'Cancelling…' : 'Cancel run'}
-            </Button>
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {live ? (
+            <>
+              <span className="text-sm text-muted-subtle">live · refreshing</span>
+              <Button variant="outline" size="sm" onClick={cancel} disabled={cancelling}>
+                {cancelling ? 'Cancelling…' : 'Cancel run'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => again(false)} disabled={rerunning}>
+                {rerunning ? 'Starting…' : 'Run again'}
+              </Button>
+              {/* Only when there is a commit to go back to. A run with none, or
+                  one that ran over uncommitted changes or ad-hoc parameters,
+                  cannot be reproduced — the server refuses it and says which of
+                  those it was, so nothing here has to guess. */}
+              {run.commitSha && !run.wasDirty && !run.hadOverrides && (
+                <Button variant="ghost" size="sm" onClick={() => again(true)} disabled={rerunning}>
+                  Run the recorded version
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
       <ErrorBanner error={cancelError} />
+      {rerunNote && (
+        <Alert className="mb-3">
+          <AlertDescription>{rerunNote}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="mb-3 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm text-muted-subtle">
         <span className="font-mono">{run.notebookPath}</span>

@@ -56,7 +56,7 @@ public sealed class SchedulerService : BackgroundService {
         _parallelism = new SemaphoreSlim(Math.Max(1, options.MaxParallelism));
         RunJob = (request, ct) => executor.ExecuteAsync(
             request.Job, request.Trigger, request.CausedByRunId, request.Attempt, request.RunId,
-            request.HadOverrides, request.ActorId, request.ActorName, ct);
+            request.HadOverrides, request.ActorId, request.ActorName, request.AtCommit, ct);
     }
 
     /// <summary>
@@ -74,6 +74,38 @@ public sealed class SchedulerService : BackgroundService {
                 HadOverrides = hadOverrides,
                 ActorId = actorId,
                 ActorName = actorName,
+            },
+            _stoppingToken);
+        return runId;
+    }
+
+    /// <summary>
+    /// Runs a job again on behalf of a recorded run. Returns the new run id, or null
+    /// when that job already has one in flight.
+    /// <para>
+    /// Deliberately <see cref="RunTrigger.Manual"/> and not <c>Retry</c>: Retry is
+    /// the automatic loop after a failure, counted by <c>Attempt</c>, and a person
+    /// pressing a button is not that. What makes this a rerun rather than a fresh
+    /// manual run is <c>CausedByRunId</c> — together with the actor and the commit,
+    /// that is the whole audit record, which is why there is no table for it.
+    /// </para>
+    /// </summary>
+    /// <param name="cleanup">Runs when the job finishes, however it finishes —
+    /// removing the checkout an exact-version rerun was read out of.</param>
+    public Guid? TriggerRerun(
+        JobDefinition job, Guid originalRunId, Guid? actorId, string actorName,
+        Action cleanup = null, string atCommit = null) {
+        if (_activeJobs.ContainsKey(KeyOf(job))) {
+            cleanup?.Invoke();
+            return null;
+        }
+        var runId = Guid.NewGuid();
+        Launch(
+            new RunRequest(job, RunTrigger.Manual, originalRunId, runId) {
+                ActorId = actorId,
+                ActorName = actorName,
+                Cleanup = cleanup,
+                AtCommit = atCommit,
             },
             _stoppingToken);
         return runId;
@@ -267,6 +299,9 @@ public sealed class SchedulerService : BackgroundService {
                 _activeJobs.TryRemove(KeyOf(job), out _);
                 _inflight.TryRemove(key, out _);
                 cancellation.Dispose();
+                // After the retry loop and the notification, because both read the
+                // notebook this is about to delete.
+                request.Cleanup?.Invoke();
             }
         }, CancellationToken.None);
     }
@@ -283,4 +318,10 @@ internal sealed record RunRequest(JobDefinition Job, RunTrigger Trigger, Guid? C
     /// <summary>Who pressed run. Null for everything the scheduler starts by itself.</summary>
     public Guid? ActorId { get; init; }
     public string ActorName { get; init; }
+    /// <summary>Runs when the launch finishes, however it finishes. Temporary state
+    /// the run needed — a checkout of an old commit — is torn down here.</summary>
+    public Action Cleanup { get; init; }
+    /// <summary>The commit the job's files were checked out at, when this is a rerun
+    /// of a recorded version. Null means "whatever the branch is now".</summary>
+    public string AtCommit { get; init; }
 }

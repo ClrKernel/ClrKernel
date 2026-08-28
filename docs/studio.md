@@ -646,6 +646,49 @@ Paging is Previous/Next rather than "1–50 of 1,240": the page asks for one row
 more than it shows and reports whether it got it, where a total would be a
 `COUNT(*)` over the whole history on every poll.
 
+### Running something again
+
+Two acts wear one word, and the sentence in the confirmation is what tells them
+apart.
+
+**At branch HEAD** — the default, and what the grid's bulk button always does.
+After a fix, the fix is the thing you want run. Tick rows, press **Run again**,
+and the confirmation names the branch and the number of runs.
+
+**At the commit it recorded** — on the run's own page, one run at a time. This is
+for reproducing a failure, not for repairing one. The whole tree is checked out at
+that commit into a detached worktree beside `test/` and `prod/`, so `#!import`,
+`connections.json` and every sibling resolve the way they did that day; the
+checkout is removed when the run ends. It is offered only when the recording is
+faithful, and refused with the reason when it is not: a run with no commit, one
+that ran over uncommitted changes, or one that used ad-hoc parameters that were
+never kept. An approximation wearing the label "the exact failed version" would be
+worse than no button.
+
+A run started that way records **the commit it ran**, not the branch's HEAD. That
+is not bookkeeping: the promotion gate reads the latest test run's sha and asks
+whether the files have moved since, so a rerun of an old commit stamping itself
+HEAD would be evidence for a tree it never executed.
+
+Selecting a week of the same job's failures starts it **once** — the count in the
+confirmation is jobs, not rows. A selection spanning two branches or two projects
+is refused rather than guessed at, because the confirmation has to name *the*
+branch and the production permission is one check, not one per row.
+
+Nothing here is throttled separately: every rerun waits on the same parallelism
+semaphore a scheduled run does, so fifty of them queue instead of arriving at a
+database at once.
+
+**Running anything in production is a Project Admin's to do** — the run button, a
+rerun, and a cell, all through one check. A permission only the rerun route
+enforced would be worth nothing, since whoever was refused could press Run and get
+the same job at the same HEAD.
+
+There is no separate audit table. A rerun is a manual run that names the run it
+repeats: `causedByRunId`, the actor, and the commit are the record. `Retry` stays
+what it has always meant — the scheduler's automatic loop after a failure, counted
+by `attempt`.
+
 The theme picker offers five accents on one shared neutral base — green (the default),
 blue, violet, amber, rose. Only the accent changes, so the app does not look like five
 different apps, and the choice is remembered in your browser. Environment and run-status

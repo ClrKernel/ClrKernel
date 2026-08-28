@@ -79,7 +79,7 @@ a job definition from any other YAML once the route shows every file. No rename.
 Files shows only notebooks and `*.jobs.yaml` (`NotebookTree` filters); no
 `monaco-yaml`, no published schema anywhere, no server-side YAML validation; no
 rerun endpoint (`runJob` starts a fresh run by name, not a rerun of a recorded run
-at a sha); no run-history retention; notification rules live inside each job's
+at a sha) — **done**: `POST /api/runs/rerun`; no run-history retention; notification rules live inside each job's
 yaml and no delivery is recorded. In the Monitoring grid, project visibility is
 filtered **after** the query (`runs.Where(visible.ContainsKey)`), so cross-project
 paging returns short pages — that has to move into the query before paging can be
@@ -259,8 +259,16 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
       what makes a page of fifty fifty rows. Sorting is a whitelist, and duration
       is not on it: it is `FinishedAt - StartedAt`, null in flight, and subtracted
       differently by each provider.)*
-- [ ] Rerun defaults to branch HEAD, offers exact-version rerun, respects role and
-      concurrency rules, and is audited.
-- [ ] Bulk rerun is throttled.
+- [x] Rerun defaults to branch HEAD, offers exact-version rerun, respects role and
+      concurrency rules, and is audited. *(Exact-version checks the whole tree out
+      at that commit, and is refused when the recording would not be faithful — no
+      sha, a dirty tree, or ad-hoc parameters that were not kept. The audit is the
+      run row: `causedByRunId` + actor + the commit it actually ran. The prod-admin
+      rule is now shared with the plain run button, which previously needed only
+      Project Member.)*
+- [x] Bulk rerun is throttled. *(By machinery that was already there:
+      `SchedulerService.Launch` waits on the same `MaxParallelism` semaphore every
+      scheduled run does. The route caps one request at 100 rows; it does not
+      queue, because the scheduler already does.)*
 - [ ] Notifications configures rules and shows a delivery feed; Channels remains
       destinations only.

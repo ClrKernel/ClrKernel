@@ -282,6 +282,79 @@ public class ApiTest {
     }
 
     /// <summary>
+    /// The rerun route's shape. What it means to rerun is
+    /// <see cref="RerunTest"/>'s subject; this is what the request is allowed to say.
+    /// </summary>
+    [TestMethod]
+    public async Task A_rerun_names_runs_that_exist_and_refuses_a_batch_it_cannot_confirm() {
+        async Task<Run> Record(string job, string environment) =>
+            await _store.CreateRunAsync(new Run {
+                Id = Guid.NewGuid(),
+                JobName = job,
+                NotebookPath = "etl/nightly.nb.md",
+                Environment = environment,
+                Status = RunStatus.Failed,
+                Trigger = RunTrigger.Schedule,
+                CreatedAt = DateTime.UtcNow,
+                StartedAt = DateTime.UtcNow,
+                FinishedAt = DateTime.UtcNow,
+            });
+
+        await _client.PostAsJsonAsync(
+            "/api/projects/default/branches/default/jobs", NewJob("nightly"));
+        var here = await Record("nightly", "default");
+        var elsewhere = await Record("hourly", "prod");
+
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/runs/rerun", new { runIds = new[] { Guid.NewGuid() } }))
+                .StatusCode,
+            "a run id nobody recorded");
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/runs/rerun", new { runIds = Array.Empty<Guid>() }))
+                .StatusCode,
+            "nothing selected");
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync(
+                "/api/runs/rerun",
+                new { runIds = Enumerable.Range(0, 101).Select(_ => Guid.NewGuid()).ToArray() }))
+                .StatusCode,
+            "more rows than one request may name");
+
+        // The confirmation names *the* branch, so a selection with two of them is
+        // refused rather than guessed at.
+        var mixed = await _client.PostAsJsonAsync(
+            "/api/runs/rerun", new { runIds = new[] { here.Id, elsewhere.Id } });
+        Assert.AreEqual(HttpStatusCode.BadRequest, mixed.StatusCode);
+        StringAssert.Contains(await mixed.Content.ReadAsStringAsync(), "one project and one branch");
+
+        // A run whose job is still there starts, and says what it started and where.
+        var accepted = await _client.PostAsJsonAsync(
+            "/api/runs/rerun", new { runIds = new[] { here.Id } });
+        Assert.AreEqual(HttpStatusCode.Accepted, accepted.StatusCode);
+        var body = await accepted.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.AreEqual("default", body.GetProperty("environment").GetString());
+        var started = body.GetProperty("started");
+        Assert.AreEqual(1, started.GetArrayLength());
+        Assert.AreEqual(here.Id.ToString(), started[0].GetProperty("rerunOf").GetString());
+
+        // And the new run points back at the one it repeats — that lineage, with the
+        // actor and the commit, is the whole audit record.
+        var rerunId = Guid.Parse(started[0].GetProperty("runId").GetString());
+        Run recorded = null;
+        for (var i = 0; i < 50 && recorded == null; i++) {
+            recorded = await _store.GetRunAsync(rerunId);
+            if (recorded == null) {
+                await Task.Delay(100);
+            }
+        }
+        Assert.IsNotNull(recorded, "the run the route promised was never recorded");
+        Assert.AreEqual(here.Id, recorded.CausedByRunId);
+        Assert.AreEqual(RunTrigger.Manual, recorded.Trigger,
+            "a person pressing a button is a manual run; Retry is the automatic loop");
+        Assert.AreEqual(_admin.DisplayName, recorded.ActorName);
+    }
+
+    /// <summary>
     /// The monitoring grid's filters, at the route. A filter the server does not
     /// understand is a 400 naming what it would have understood — never a silently
     /// unfiltered page, which answers a question nobody asked and looks like data.

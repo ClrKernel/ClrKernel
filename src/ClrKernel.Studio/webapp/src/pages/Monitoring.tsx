@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { EnvBadge, ErrorBanner, PageHeader, StatusBadge, usePolling } from '../c
 import { DashboardTabs } from './Dashboard';
 import { duration, timeAgo } from '../ipynb';
 import { useProjects } from '../projectContext';
+import { rerunOutcome, rerunQuestion } from '../rerun';
 import {
   activeFilters, fromSearch, PAGE_SIZE, runsQuery, sortBy, toSearch, withFilter,
   type RunFilters, type RunSort,
@@ -161,6 +162,48 @@ export function Monitoring() {
   const runs = data?.page.runs ?? [];
   const chips = activeFilters(filters);
 
+  // What is selected is intersected with what is on the page, not stored as a
+  // list of its own: the grid polls, and a row that filters or pages away from
+  // under a ticked box must stop counting rather than stay in a rerun you can no
+  // longer see. The ids linger in the set and mean nothing until the row is back.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const selected = runs.filter((run) => picked.has(run.id));
+  const toggle = (id: string) => setPicked((was) => {
+    const next = new Set(was);
+    if (!next.delete(id)) {
+      next.add(id);
+    }
+    return next;
+  });
+
+  /**
+   * Bulk rerun is always at branch HEAD. Going back to a recorded commit is a
+   * single deliberate act — it lives on the run's own page — and after a fix, the
+   * fix is the thing you want run.
+   *
+   * Nothing throttles here because the scheduler already does: every launch waits
+   * on the same parallelism semaphore a scheduled run does, so fifty reruns queue
+   * rather than arriving at a database at once.
+   */
+  async function rerunSelected() {
+    if (!confirm(rerunQuestion(selected, false))) {
+      return;
+    }
+    setNote(null);
+    setBusy(true);
+    try {
+      const result = await api.rerun(selected.map((run) => run.id));
+      setNote(rerunOutcome(result.started, result.refused));
+      setPicked(new Set());
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader title="Dashboard" />
@@ -244,6 +287,20 @@ export function Monitoring() {
         </div>
       )}
 
+      {selected.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={rerunSelected} disabled={busy}>
+            {busy ? 'Starting…' : `Run again (${selected.length})`}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setPicked(new Set())}>
+            Clear selection
+          </Button>
+        </div>
+      )}
+      {note && (
+        <p className="mb-3 text-base text-muted-foreground">{note}</p>
+      )}
+
       {data && runs.length === 0 ? (
         <p className="text-base text-muted-foreground">
           {chips.length > 0 ? 'No runs match these filters.' : 'No runs yet.'}
@@ -253,6 +310,16 @@ export function Monitoring() {
           <table className="table">
             <thead>
               <tr>
+                <th className="w-[34px]">
+                  <input
+                    type="checkbox"
+                    aria-label="Select every run on this page"
+                    checked={runs.length > 0 && selected.length === runs.length}
+                    onChange={(e) => setPicked(
+                      e.target.checked ? new Set(runs.map((run) => run.id)) : new Set(),
+                    )}
+                  />
+                </th>
                 <SortHeader column="project" label="Project" filters={filters} onSort={apply} />
                 <SortHeader column="jobName" label="Job" filters={filters} onSort={apply} />
                 <th>File</th>
@@ -270,6 +337,14 @@ export function Monitoring() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/runs/${run.id}`)}
                 >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select the ${run.jobName} run`}
+                      checked={picked.has(run.id)}
+                      onChange={() => toggle(run.id)}
+                    />
+                  </td>
                   <td className="whitespace-nowrap">
                     <button
                       type="button"

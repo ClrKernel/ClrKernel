@@ -159,7 +159,6 @@ export interface Run {
   notebookPath: string;
   status: RunStatus;
   trigger: RunTrigger;
-  causedByRunId: string | null;
   attempt: number;
   createdAt: string;
   startedAt: string | null;
@@ -171,6 +170,15 @@ export interface Run {
    *  recorded before the column existed — read it beside `trigger`, never alone. */
   actorId: string | null;
   actorName: string | null;
+  /** The branch's git HEAD when this started. Null without the git workflow —
+   *  and then there is no exact version to go back to. */
+  commitSha: string | null;
+  /** Uncommitted changes under the job's files, so the sha is not what ran. */
+  wasDirty: boolean;
+  /** Ran with one-off parameters that were not kept, so it cannot be repeated. */
+  hadOverrides: boolean;
+  /** For a rerun, the run it repeats. For a chained run, the upstream success. */
+  causedByRunId: string | null;
 }
 
 /** One page of the monitoring grid. `hasMore` costs a row, where a total would
@@ -522,6 +530,17 @@ export const api = {
   // to the selected project — Project is its first column. `query` comes from
   // runFilters.runsQuery, and the server applies all of it; the page is a page.
   runGrid: (query: string) => request<RunPage>(`/runs?${query}`),
+
+  /** Runs recorded runs again. `exactVersion` goes back to the commit each one
+   *  recorded, and is one run at a time; the default runs branch HEAD. */
+  rerun: (runIds: string[], exactVersion = false) =>
+    request<{
+      project: string;
+      environment: string;
+      exactVersion: boolean;
+      started: { runId: string; rerunOf: string; job: string; sha: string | null }[];
+      refused: { runId: string; reason: string }[];
+    }>('/runs/rerun', { method: 'POST', body: JSON.stringify({ runIds, exactVersion }) }),
   run: (id: string) => request<{ run: Run; cells: RunCell[] }>(`/runs/${id}`),
   artifact: (id: string) => request<unknown>(`/runs/${id}/artifact`),
   log: (id: string) =>

@@ -117,6 +117,19 @@ page.wait_for_url(lambda u: not u.endswith('/setup'), timeout=15000)
   `DataTransfer` for the arithmetic.
 - Setup runs once per data dir. Re-run the reset before a script that creates the
   admin account, or `page.fill` times out on a sign-in screen.
+- **Seeded run ids must be UPPERCASE.** EF Core's sqlite provider stores `Guid` as
+  uppercase TEXT and its id lookups compare case-sensitively, so a row seeded with
+  `str(uuid.uuid4())` lists fine in `/api/runs` and 404s on every route that fetches
+  it by id. It looks exactly like a broken route.
+
+## Never `pkill -f "ClrKernel.Studio"`
+
+That pattern matches `ClrKernel.Studio.UnitTest.dll` too, so a reset script kills
+the **test host** of any suite running at the same time. It looks like a suite
+that crashes silently — the run stops mid-way with no failing test named and
+`dotnet` exits 1 — and it will not reproduce when you run that suite on its own.
+Match `ClrKernel.Studio.dll`, which the unit-test assembly's name does not
+contain.
 
 ## A check that cannot fail is not a check
 
