@@ -770,6 +770,11 @@ export const api = {
     }),
   deleteConnection: (id: string) =>
     request<{ removed: string }>(`/connections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Tests what is on screen without saving it: a connection that does not answer
+   *  is one you probably do not want stored. */
+  testDraftConnection: (body: ApiConnectionSave) =>
+    request<{ ok: boolean; error: string | null }>(
+      '/connections/test', { method: 'POST', body: JSON.stringify(body) }),
   testConnection: (id: string, password?: string) =>
     request<{ ok: boolean; error: string | null }>(
       `/connections/${encodeURIComponent(id)}/test`,

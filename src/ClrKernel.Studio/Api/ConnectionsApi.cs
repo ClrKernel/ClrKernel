@@ -87,6 +87,36 @@ public static class ConnectionsApi {
 
         // --- execution ------------------------------------------------------
 
+        // Before it exists. A connection that does not answer is one you probably do
+        // not want saved, so this writes nothing — no row, no secret, no file sync.
+        api.MapPost("/test", async (
+            HttpContext context, ConnectionStore store, QueryRunner runner, JobsOptions options,
+            ConnectionProviderCatalog catalog, ConnectionBody body,
+            CancellationToken cancellationToken) => {
+                await catalog.GetAsync(cancellationToken);
+                if (Draft(context, store, options, catalog, id: null, body, out var draft) is { } refusal) {
+                    return refusal;
+                }
+                if (!ConnectionProviderCatalog.IsQueryable(draft.Type)) {
+                    return NotOpenedHere(draft.Type);
+                }
+                // The password has to be the one on screen. A *reference* could name a
+                // secret this server holds for somebody else, and the read-only rule
+                // exists precisely so that a non-admin cannot open a connection as a
+                // privileged login of their choosing — which an unsaved draft, pointed
+                // at any host, would otherwise be a way to do.
+                if (Restricted(context, options, draft) && string.IsNullOrEmpty(body.Password)) {
+                    return Results.Json(new {
+                        error = "Type the password to test this. This server holds you to a "
+                            + "read-only login, so it will not open a connection using a secret "
+                            + "it already stores for something else.",
+                    }, statusCode: 403);
+                }
+                var failure = await runner.TestAsync(
+                    draft, leastPrivilege: false, body.Password, cancellationToken);
+                return Results.Ok(new { ok = failure == null, error = failure });
+            });
+
         api.MapPost("/{id}/test", async (
             HttpContext context, ConnectionStore store, QueryRunner runner, JobsOptions options,
             string id, TestBody body, CancellationToken cancellationToken) => {
@@ -285,6 +315,33 @@ public static class ConnectionsApi {
     private static IResult Save(
         HttpContext context, ConnectionStore store, JobsOptions options, ConnectionMaterializer files,
         ConnectionProviderCatalog catalog, string id, ConnectionBody body) {
+        if (Draft(context, store, options, catalog, id, body, out var entry) is { } denied) {
+            return denied;
+        }
+        try {
+            var saved = store.Save(entry, body.Password, body.ReadOnlyPassword);
+            // On the way out, not on a timer: a connection somebody just saved has to
+            // be resolvable by the next notebook that names it.
+            files.Sync();
+            return Results.Ok(ConnectionView.From(saved, store, context, options));
+        } catch (ConnectionException e) {
+            return Results.BadRequest(new { error = e.Message });
+        } catch (SecretNotFoundException e) {
+            return Results.BadRequest(new { error = e.Message });
+        }
+    }
+
+    /// <summary>
+    /// What this body would become, and whether this caller may make it — everything
+    /// <see cref="Save"/> does except writing it down. Testing takes the same path so
+    /// that "may I test this" cannot drift from "may I save this"; it returns the
+    /// refusal, or null with <paramref name="entry"/> set.
+    /// </summary>
+    private static IResult Draft(
+        HttpContext context, ConnectionStore store, JobsOptions options,
+        ConnectionProviderCatalog catalog, string id, ConnectionBody body,
+        out StoredConnection entry) {
+        entry = null;
         if (context.CurrentUser() is not { } user) {
             return Unauthorized();
         }
@@ -314,7 +371,7 @@ public static class ConnectionsApi {
             return Results.BadRequest(new { error = $"No connection type '{body.Type}'." });
         }
 
-        var entry = new StoredConnection {
+        entry = new StoredConnection {
             Id = existing?.Id,
             Name = body.Name,
             Scope = scope,
@@ -329,17 +386,7 @@ public static class ConnectionsApi {
             RowCap = body.RowCap ?? existing?.RowCap ?? 10_000,
             CreatedBy = existing?.CreatedBy ?? user.Id,
         };
-        try {
-            var saved = store.Save(entry, body.Password, body.ReadOnlyPassword);
-            // On the way out, not on a timer: a connection somebody just saved has to
-            // be resolvable by the next notebook that names it.
-            files.Sync();
-            return Results.Ok(ConnectionView.From(saved, store, context, options));
-        } catch (ConnectionException e) {
-            return Results.BadRequest(new { error = e.Message });
-        } catch (SecretNotFoundException e) {
-            return Results.BadRequest(new { error = e.Message });
-        }
+        return null;
     }
 
     /// <summary>
@@ -381,14 +428,7 @@ public static class ConnectionsApi {
             return false;
         }
         if (!ConnectionProviderCatalog.IsQueryable(connection.Type)) {
-            // Saving one is the point — a notebook can name it and the kernel opens it
-            // there. Opening it *here* would build a SQL Server connection out of an
-            // Oracle connection's settings and dial it, which is worse than refusing.
-            refusal = Results.Json(new {
-                error = $"{connection.Type} connections are opened by the kernel, not by this "
-                    + "server, so they cannot be browsed or queried here. A notebook can still "
-                    + "use this connection by name.",
-            }, statusCode: 400);
+            refusal = NotOpenedHere(connection.Type);
             return false;
         }
         if (Restricted(context, options, connection) && !store.HasSecret(connection.ReadOnlySecretRef)) {
@@ -423,6 +463,18 @@ public static class ConnectionsApi {
         HttpContext context, JobsOptions options, StoredConnection connection) =>
         !context.IsAdmin()
         && (connection.Scope == ConnectionScope.Shared || options.PrivateConnectionsReadOnly);
+
+    /// <summary>
+    /// Saving one is the point — a notebook can name it and the kernel opens it there.
+    /// Opening it *here* would build a SQL Server connection out of an Oracle
+    /// connection's settings and dial it, which is worse than refusing.
+    /// </summary>
+    private static IResult NotOpenedHere(string type) =>
+        Results.Json(new {
+            error = $"{type} connections are opened by the kernel, not by this server, so they "
+                + "cannot be browsed or queried here. A notebook can still use this connection "
+                + "by name.",
+        }, statusCode: 400);
 
     private static IResult Unauthorized() =>
         Results.Json(new { error = "Sign in first." }, statusCode: 401);

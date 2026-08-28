@@ -31,7 +31,7 @@ export function ConnectionForm({
 }: {
   /** null when creating. */
   connection: ApiConnection | null;
-  onSaved: (saved: ApiConnection, close?: boolean) => void;
+  onSaved: (saved: ApiConnection) => void;
   onClose: () => void;
   onDeleted: (id: string) => void;
 }) {
@@ -43,9 +43,6 @@ export function ConnectionForm({
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // What the server holds, which starts as the prop and changes underneath us when
-  // Test has to save a new connection before it can open one.
-  const [stored, setStored] = useState(connection);
 
   const [name, setName] = useState(connection?.name ?? '');
   const [scope, setScope] = useState<ConnectionScope>(
@@ -116,7 +113,7 @@ export function ConnectionForm({
     setSaving(true);
     setError(null);
     try {
-      onSaved(await api.saveConnection(stored?.id ?? null, draft()));
+      onSaved(await api.saveConnection(connection?.id ?? null, draft()));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -125,23 +122,18 @@ export function ConnectionForm({
   }
 
   /**
-   * Testing opens what the server has stored, not what is on screen — the
-   * password may be a reference it has to resolve. So a connection that has never
-   * been saved is saved first, and the dialog stays open on the result: "save it
-   * first, then reopen it to test" was a step nobody could guess was required.
+   * Nothing is written. A connection that does not answer is one you probably do
+   * not want saved, so an unsaved draft is tested as it stands; an existing one
+   * still tests what the server holds, because its password may be a reference
+   * only the server can resolve.
    */
   async function test() {
     setSaving(true);
     setTesting('Connecting…');
     try {
-      let target = stored;
-      if (target == null) {
-        target = await api.saveConnection(null, draft());
-        setStored(target);
-        // The list needs the new row; the dialog is still in use, so it stays.
-        onSaved(target, false);
-      }
-      const reply = await api.testConnection(target.id, password || undefined);
+      const reply = connection == null
+        ? await api.testDraftConnection(draft())
+        : await api.testConnection(connection.id, password || undefined);
       setTesting(reply.ok ? 'Connected.' : reply.error);
     } catch (e) {
       setTesting((e as Error).message);
@@ -151,19 +143,19 @@ export function ConnectionForm({
   }
 
   async function remove() {
-    if (stored == null || !confirm(`Delete the connection '${stored.name}'?`)) {
+    if (connection == null || !confirm(`Delete the connection '${connection.name}'?`)) {
       return;
     }
     try {
-      await api.deleteConnection(stored.id);
-      onDeleted(stored.id);
+      await api.deleteConnection(connection.id);
+      onDeleted(connection.id);
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
   return (
-    <Modal title={stored == null ? 'New connection' : stored.name} onClose={onClose}>
+    <Modal title={connection == null ? 'New connection' : connection.name} onClose={onClose}>
       <ErrorBanner error={error} />
 
       <div className="wizard-fields">
@@ -184,7 +176,7 @@ export function ConnectionForm({
             // publishing somebody's credential to the whole server on a dropdown
             // change is not an undo away, and moving one out breaks every
             // notebook that names it.
-            disabled={stored != null}
+            disabled={connection != null}
             onChange={(e) => setScope(e.target.value as ConnectionScope)}
           >
             {isAdmin && <option value="shared">Everyone (shared)</option>}
@@ -200,7 +192,7 @@ export function ConnectionForm({
         {providers != null && providers.length > 1 && (
           <label className="form-field">
             <span>Type</span>
-            <select value={type} onChange={(e) => setType(e.target.value)} disabled={stored != null}>
+            <select value={type} onChange={(e) => setType(e.target.value)} disabled={connection != null}>
               {providers.map((p) => (
                 <option key={p.type} value={p.type}>{p.displayName}</option>
               ))}
@@ -253,7 +245,7 @@ export function ConnectionForm({
           <input type="checkbox" checked={prompt} onChange={(e) => setPrompt(e.target.checked)} />
           <span>
             Do not store it — ask each session
-            {stored?.secretConfigured && !prompt && (
+            {connection?.secretConfigured && !prompt && (
               <Badge variant="outline" className="font-normal">configured</Badge>
             )}
           </span>
@@ -262,12 +254,12 @@ export function ConnectionForm({
           <label className="form-field">
             <span>
               Password
-              {stored?.secretConfigured && (
+              {connection?.secretConfigured && (
                 <Badge variant="outline" className="font-normal">configured</Badge>
               )}
             </span>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder={stored?.secretConfigured ? 'leave blank to keep the stored one' : ''} />
+              placeholder={connection?.secretConfigured ? 'leave blank to keep the connection one' : ''} />
             <em className="text-base text-muted-foreground">
               Kept in this server's credential store. It is never written to the connection
               itself, never sent back to a browser, and never lands in a notebook.
@@ -308,14 +300,14 @@ export function ConnectionForm({
               <label className="form-field">
                 <span>
                   Password
-                  {stored?.readOnlySecretConfigured && (
+                  {connection?.readOnlySecretConfigured && (
                     <Badge variant="outline" className="font-normal">configured</Badge>
                   )}
                 </span>
                 <Input type="password" value={readOnlyPassword}
                   onChange={(e) => setReadOnlyPassword(e.target.value)}
-                  placeholder={stored?.readOnlySecretConfigured
-                    ? 'leave blank to keep the stored one' : ''} />
+                  placeholder={connection?.readOnlySecretConfigured
+                    ? 'leave blank to keep the connection one' : ''} />
               </label>
             )}
             {/* The same escape hatch the primary credential has. Without it, a
@@ -354,12 +346,11 @@ export function ConnectionForm({
         <Button size="sm" disabled={saving || name.trim().length === 0} onClick={save}>
           {saving ? 'Saving…' : 'Save'}
         </Button>
-        <Button variant="outline" size="sm" onClick={test}
-          disabled={saving || name.trim().length === 0}>
-          {stored == null ? 'Save & test' : 'Test'}
+        <Button variant="outline" size="sm" onClick={test} disabled={saving}>
+          Test
         </Button>
         <span className="spacer" />
-        {stored != null && (
+        {connection != null && (
           <Button variant="outline" size="sm"
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={remove}>

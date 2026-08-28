@@ -334,18 +334,14 @@ export function Connections() {
     }
   }
 
-  // `close` is false when the form saved a new connection only so it could test
-  // it: the list needs the row, but the dialog is still being filled in.
-  function saved(connection: ApiConnection, close = true) {
+  function saved(connection: ApiConnection) {
     setConnections((current) => {
       const rest = current.filter((c) => c.id !== connection.id);
       return [...rest, connection].sort((a, b) =>
         a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope.localeCompare(b.scope));
     });
-    if (close) {
-      setEditing(null);
-      setCreating(false);
-    }
+    setEditing(null);
+    setCreating(false);
     navigate(connectionsPath(connection.id));
   }
 

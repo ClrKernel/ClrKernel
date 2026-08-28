@@ -302,6 +302,73 @@ public class ConnectionsApiTest {
         Assert.IsFalse(result.GetProperty("canceled").GetBoolean());
     }
 
+    /// <summary>
+    /// The point of testing before saving: a connection that does not answer is one
+    /// you probably do not want stored, so nothing may be written on the way through
+    /// — no row, no secret.
+    /// </summary>
+    [TestMethod]
+    public async Task TestingADraftSavesNothing() {
+        await SignInAsync(UserRole.ServerAdmin);
+        var body = Unreachable("warehouse", "shared");
+        body["password"] = "hunter2";
+
+        var response = await _client.PostAsJsonAsync("/api/connections/test", body);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        var reply = JsonSerializer.Deserialize<JsonElement>(
+            await response.Content.ReadAsStringAsync(), _json);
+        Assert.IsFalse(reply.GetProperty("ok").GetBoolean());
+        Assert.IsFalse(string.IsNullOrEmpty(reply.GetProperty("error").GetString()),
+            "a server that cannot be opened is an answer, not a 500");
+
+        CollectionAssert.AreEqual(Array.Empty<string>(), await NamesAsync(),
+            "testing a draft must not leave a connection behind");
+        // The password is written by the same call that writes the row, so no row
+        // means no secret — and the file is where either would show up.
+        Assert.IsFalse(File.Exists(ConnectionsFile.PathIn(_options.DataDir))
+            && File.ReadAllText(ConnectionsFile.PathIn(_options.DataDir)).Contains("warehouse"));
+    }
+
+    /// <summary>
+    /// Same authorization as saving, because the two questions are the same one:
+    /// otherwise a draft test is a way to open a connection as any login this server
+    /// holds, from an account that may not create one.
+    /// </summary>
+    [TestMethod]
+    public async Task TestingADraftAnswersToTheSameRuleAsSavingOne() {
+        await SignInAsync(UserRole.ServerUser);
+        var response = await _client.PostAsJsonAsync(
+            "/api/connections/test", Unreachable("warehouse", "shared"));
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode,
+            "only a server admin manages shared connections, testing included");
+
+        // A private one is theirs to make, so it is theirs to test.
+        var mine = Unreachable("scratch", "private");
+        mine["password"] = "hunter2";
+        response = await _client.PostAsJsonAsync("/api/connections/test", mine);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// A secret *reference* on a draft could name a password this server keeps for
+    /// somebody else. Where the read-only rule applies, that would turn "test" into
+    /// a way to open a privileged login against a host of your choosing.
+    /// </summary>
+    [TestMethod]
+    public async Task ADraftUnderTheReadOnlyRuleNeedsThePasswordTyped() {
+        _options.PrivateConnectionsReadOnly = true;
+        await SignInAsync(UserRole.ServerUser);
+        var body = Unreachable("scratch", "private");
+        body["secretRef"] = "someone-elses";
+
+        var response = await _client.PostAsJsonAsync("/api/connections/test", body);
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+
+        body["password"] = "typed-by-me";
+        response = await _client.PostAsJsonAsync("/api/connections/test", body);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
     [TestMethod]
     public async Task RunningAgainstASharedConnectionIsAudited() {
         await SignInAsync(UserRole.ServerAdmin, "Grace");
