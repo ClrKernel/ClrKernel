@@ -209,4 +209,58 @@ public class RunStoreContractTest {
             StringAssert.Contains(e.Message, "--connection-string");
         }
     }
+
+    /// <summary>
+    /// Git says the files changed; this says who sent them and what stopped
+    /// running. Every backend has to agree, because the answer to "why did this
+    /// job stop?" cannot depend on which store somebody configured.
+    /// </summary>
+    [TestMethod]
+    [DataRow("sqlite")]
+    [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
+    public async Task Promotions_are_recorded_and_read_back(string kind) {
+        var store = StoreFor(kind);
+        var actor = Guid.NewGuid();
+
+        await store.RecordPromotionAsync(new PromotionAudit {
+            Id = Guid.NewGuid(),
+            Project = "default",
+            Paths = "etl.nb.md\netl.jobs.yaml",
+            ActorId = actor,
+            ActorName = "Ada Lovelace",
+            PromotedAt = DateTime.UtcNow.AddMinutes(-5),
+            CommitSha = "abc123",
+            EvidenceRuns = Guid.NewGuid().ToString(),
+        });
+        await store.RecordPromotionAsync(new PromotionAudit {
+            Id = Guid.NewGuid(),
+            Project = "default",
+            Paths = "old.jobs.yaml",
+            ActorId = actor,
+            ActorName = "Ada Lovelace",
+            PromotedAt = DateTime.UtcNow,
+            IsDeletion = true,
+            CommitSha = "def456",
+            Unscheduled = "nightly (0 2 * * *)",
+        });
+
+        var all = await store.PromotionAuditAsync(new PromotionAuditQuery());
+        Assert.AreEqual(2, all.Count);
+        Assert.AreEqual("def456", all[0].CommitSha, "newest first");
+        Assert.AreEqual("Ada Lovelace", all[0].ActorName);
+
+        // The question this exists to answer: what stopped running, and when.
+        var unschedules = await store.PromotionAuditAsync(
+            new PromotionAuditQuery { UnschedulesOnly = true });
+        Assert.AreEqual(1, unschedules.Count);
+        Assert.IsTrue(unschedules[0].IsDeletion);
+        StringAssert.Contains(unschedules[0].Unscheduled, "nightly");
+
+        Assert.AreEqual(0,
+            (await store.PromotionAuditAsync(new PromotionAuditQuery { Project = "other" })).Count,
+            "another project's promotions are another project's");
+    }
+
 }

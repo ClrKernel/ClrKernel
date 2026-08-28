@@ -717,6 +717,24 @@ public static class JobsApi {
                 }
                 var sha = Promotion.Apply(scope.Git, eligibility, path);
                 scope.Git.TryPush(scope.Project.Remote ?? options.GitPushRemote);
+                // Git records that the files changed. This records who sent them and
+                // what stopped running — a commit deleting a jobs file looks exactly
+                // like a commit deleting a jobs file, and an unschedule is the change
+                // people notice weeks later when something did not run.
+                var actor = context.CurrentUser();
+                await store.RecordPromotionAsync(new PromotionAudit {
+                    Id = Guid.NewGuid(),
+                    Project = scope.Project.Slug,
+                    Paths = string.Join("\n", eligibility.Paths),
+                    ActorId = actor?.Id ?? Guid.Empty,
+                    ActorName = actor?.DisplayName,
+                    PromotedAt = DateTime.UtcNow,
+                    IsDeletion = eligibility.IsDeletion,
+                    CommitSha = sha,
+                    Unscheduled = string.Join("\n", eligibility.Unscheduling.Select(
+                        j => j.Cron == null ? j.Name : $"{j.Name} ({j.Cron})")),
+                    EvidenceRuns = string.Join("\n", eligibility.EvidenceRuns.Values),
+                });
                 return Results.Ok(new { promoted = true, commitSha = sha, paths = eligibility.Paths });
             }).RequiresProject(ProjectRole.ProjectAdmin);
 
@@ -1122,6 +1140,37 @@ public static class JobsApi {
         // definition the server validates with (JobsSchema), so the two cannot come
         // to different conclusions about a file. Constant for the life of the
         // process — it is derived from types, not from anything on disk.
+        // What has gone to production, and what it switched off. Scoped to the
+        // projects the caller can see, like every other history route here.
+        api.MapGet("/promotions", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store,
+            string project, bool? unschedulesOnly, int? limit) => {
+                var visible = await context.VisibleProjectsAsync(projects);
+                if (project != null && !visible.ContainsKey(project)) {
+                    return NoProject(project);
+                }
+                var audits = await store.PromotionAuditAsync(new PromotionAuditQuery {
+                    Project = project,
+                    UnschedulesOnly = unschedulesOnly ?? false,
+                    Limit = Clamp(limit),
+                });
+                return Results.Ok(new {
+                    promotions = audits
+                        .Where(a => visible.ContainsKey(a.Project ?? ProjectRegistry.DefaultSlug))
+                        .Select(a => new {
+                            a.Id,
+                            a.Project,
+                            a.ActorName,
+                            a.PromotedAt,
+                            a.IsDeletion,
+                            a.CommitSha,
+                            paths = Lines(a.Paths),
+                            unscheduled = Lines(a.Unscheduled),
+                            evidenceRuns = Lines(a.EvidenceRuns),
+                        }),
+                });
+            });
+
         api.MapGet("/jobs/schema", () =>
             Results.Text(JobsSchema.Json, "application/schema+json"));
 
@@ -1377,6 +1426,10 @@ public static class JobsApi {
         || (GitService.IsUserBranch(branch) && scope.Git != null);
 
     /// <summary>Shared refusal for promotion and diff: both compare test against prod.</summary>
+    /// <summary>Newline-joined storage back to a list — empty rather than [""].</summary>
+    private static string[] Lines(string joined) =>
+        string.IsNullOrEmpty(joined) ? Array.Empty<string>() : joined.Split('\n');
+
     private static IResult PromotionRefusal(Scope scope, string branch, string path) {
         if (scope.Git == null || !scope.Catalog.GitLayout) {
             return Results.BadRequest(new { error = "The git workflow is not enabled." });

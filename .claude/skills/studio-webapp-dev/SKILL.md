@@ -166,6 +166,19 @@ Then `./build.sh Test`, and `dotnet format ClrKernel.slnx --verify-no-changes`
 if any C# moved. CI runs format **first**, so unformatted code never reaches the
 build.
 
+**Check format's own exit code, not a pipeline's.** `dotnet format … | tail -1 &&
+echo OK` reports the exit status of `tail`, which is always 0 — so it prints OK
+over a failing check. It has already hidden a broken format run across several
+commits here. Redirect to a file and test `$?`:
+
+```bash
+dotnet format ClrKernel.slnx --verify-no-changes > /tmp/fmt.txt 2>&1; echo $?
+```
+
+EF migrations are generated with block namespaces and need converting to
+file-scoped by hand — `dotnet format` will not do it, and the repo's existing
+migrations were converted the same way.
+
 **Touching a `.csproj`, `.props` or `.targets` means building before committing**
 — even for a comment. XML comments cannot contain `--`, so writing a CLI flag
 into one makes the project unloadable, and nothing in the TypeScript or test

@@ -453,9 +453,15 @@ public class PromotionTest {
             _git.Commit("test", "unschedule", "etl.jobs.yaml");
         });
         await _store.CreateRunAsync(new Run {
-            Id = Guid.NewGuid(), Project = ProjectRegistry.DefaultSlug, Environment = "prod",
-            JobName = "etl", NotebookPath = "etl.nb.md", Status = RunStatus.Running,
-            Trigger = RunTrigger.Schedule, CreatedAt = DateTime.UtcNow, StartedAt = DateTime.UtcNow,
+            Id = Guid.NewGuid(),
+            Project = ProjectRegistry.DefaultSlug,
+            Environment = "prod",
+            JobName = "etl",
+            NotebookPath = "etl.nb.md",
+            Status = RunStatus.Running,
+            Trigger = RunTrigger.Schedule,
+            CreatedAt = DateTime.UtcNow,
+            StartedAt = DateTime.UtcNow,
         });
 
         var result = await Check("etl.jobs.yaml");

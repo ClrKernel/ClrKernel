@@ -269,6 +269,29 @@ public sealed class FileRunStore : IRunStore {
 
     private string QueryAuditPath => Path.Combine(_root, "..", "connection-queries.jsonl");
 
+    private string PromotionAuditPath => Path.Combine(_root, "promotions.jsonl");
+
+    public async Task RecordPromotionAsync(PromotionAudit audit) {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(PromotionAuditPath))!);
+        await File.AppendAllTextAsync(
+            PromotionAuditPath, JsonSerializer.Serialize(audit, _compact) + "\n");
+    }
+
+    public Task<IReadOnlyList<PromotionAudit>> PromotionAuditAsync(PromotionAuditQuery query) {
+        var audits = ReadLines<PromotionAudit>(PromotionAuditPath).AsEnumerable();
+        if (!string.IsNullOrEmpty(query.Project)) {
+            audits = audits.Where(a =>
+                string.Equals(a.Project, query.Project, StringComparison.OrdinalIgnoreCase));
+        }
+        if (query.UnschedulesOnly) {
+            audits = audits.Where(a => !string.IsNullOrEmpty(a.Unscheduled));
+        }
+        return Task.FromResult<IReadOnlyList<PromotionAudit>>(audits
+            .OrderByDescending(a => a.PromotedAt)
+            .Take(Math.Clamp(query.Limit, 1, 500))
+            .ToList());
+    }
+
     public async Task RecordQueryAsync(QueryAudit audit) {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(QueryAuditPath))!);
         await File.AppendAllTextAsync(
@@ -338,24 +361,30 @@ public sealed class FileRunStore : IRunStore {
         }
     }
 
-    private List<QueryAudit> ReadQueryAudits() {
-        var audits = new List<QueryAudit>();
-        if (!File.Exists(QueryAuditPath)) {
-            return audits;
+    private List<QueryAudit> ReadQueryAudits() => ReadLines<QueryAudit>(QueryAuditPath);
+
+    /// <summary>
+    /// One JSON object per line, skipping what will not parse — a truncated final
+    /// line from a crash must not lose the rest of the log.
+    /// </summary>
+    private List<T> ReadLines<T>(string path) {
+        var items = new List<T>();
+        if (!File.Exists(path)) {
+            return items;
         }
-        foreach (var line in File.ReadAllLines(QueryAuditPath)) {
+        foreach (var line in File.ReadAllLines(path)) {
             if (line.Trim().Length == 0) {
                 continue;
             }
             try {
-                if (JsonSerializer.Deserialize<QueryAudit>(line, _compact) is { } audit) {
-                    audits.Add(audit);
+                if (JsonSerializer.Deserialize<T>(line, _compact) is { } item) {
+                    items.Add(item);
                 }
             } catch (JsonException) {
-                // A truncated final line from a crash must not lose the rest.
+                // Deliberately swallowed; see above.
             }
         }
-        return audits;
+        return items;
     }
 
     private static readonly JsonSerializerOptions _compact = new() {

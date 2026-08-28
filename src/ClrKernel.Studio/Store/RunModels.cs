@@ -121,6 +121,45 @@ public sealed class ManualRunQuery {
 /// <see cref="QueryAuditQuery"/> — so a new route cannot forget it.
 /// </para>
 /// </summary>
+/// <summary>
+/// One promotion: what went to production, who sent it, and what it switched off.
+/// <para>
+/// Git already records that the files changed, and is the authority on their
+/// contents. What it cannot answer is the operational question — who promoted
+/// this, which green runs were the evidence, and which schedules stopped running
+/// as a result — because a commit deleting a yaml looks exactly like a commit
+/// deleting a yaml. That last one is why this exists: an unschedule is the change
+/// people notice weeks later, when something did not run.
+/// </para>
+/// </summary>
+public sealed class PromotionAudit {
+    public Guid Id { get; set; }
+    public string Project { get; set; } = "default";
+    /// <summary>The files promoted, '/'-separated and newline-joined.</summary>
+    public string Paths { get; set; }
+    public Guid ActorId { get; set; }
+    /// <summary>Denormalised: the record has to survive the account being removed.</summary>
+    public string ActorName { get; set; }
+    public DateTime PromotedAt { get; set; }
+    /// <summary>True when this removed something from prod rather than updating it.</summary>
+    public bool IsDeletion { get; set; }
+    /// <summary>The prod commit this produced, or null when nothing changed.</summary>
+    public string CommitSha { get; set; }
+    /// <summary>Job names whose schedule this stopped, newline-joined. Empty for most.</summary>
+    public string Unscheduled { get; set; }
+    /// <summary>The run ids that served as evidence, newline-joined.</summary>
+    public string EvidenceRuns { get; set; }
+}
+
+/// <summary>What to read back out of the promotion log.</summary>
+public sealed class PromotionAuditQuery {
+    /// <summary>null = every project the caller can see; the route filters.</summary>
+    public string Project { get; set; }
+    /// <summary>Only promotions that switched a schedule off.</summary>
+    public bool UnschedulesOnly { get; set; }
+    public int Limit { get; set; } = 50;
+}
+
 public sealed class QueryAudit {
     public Guid Id { get; set; }
     public string ConnectionId { get; set; }

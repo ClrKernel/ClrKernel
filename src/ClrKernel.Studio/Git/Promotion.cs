@@ -193,7 +193,9 @@ public static class Promotion {
             unscheduling.AddRange(prodJobs
                 .Where(p => !testJobs.Any(t => Same(t.Name, p.Name)))
                 .Select(job => new UnscheduledJob {
-                    Name = job.Name, Cron = job.Cron, NextRun = NextRun(job.Cron),
+                    Name = job.Name,
+                    Cron = job.Cron,
+                    NextRun = NextRun(job.Cron),
                 }));
 
             // The prod graph must still validate after the swap: prod jobs not from

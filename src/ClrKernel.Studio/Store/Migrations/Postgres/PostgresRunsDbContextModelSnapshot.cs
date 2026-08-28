@@ -272,6 +272,61 @@ namespace ClrKernel.Studio.Store.Migrations.Postgres
                     b.ToTable("project_members", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.PromotionAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commit_sha");
+
+                    b.Property<string>("EvidenceRuns")
+                        .HasColumnType("text")
+                        .HasColumnName("evidence_runs");
+
+                    b.Property<bool>("IsDeletion")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deletion");
+
+                    b.Property<string>("Paths")
+                        .HasColumnType("text")
+                        .HasColumnName("paths");
+
+                    b.Property<string>("Project")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("project");
+
+                    b.Property<DateTime>("PromotedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("promoted_at");
+
+                    b.Property<string>("Unscheduled")
+                        .HasColumnType("text")
+                        .HasColumnName("unscheduled");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Project");
+
+                    b.HasIndex("PromotedAt");
+
+                    b.ToTable("promotions", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.QueryAudit", b =>
                 {
                     b.Property<Guid>("Id")

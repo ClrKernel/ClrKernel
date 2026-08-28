@@ -18,6 +18,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<JobTriggerState> JobTriggerStates => Set<JobTriggerState>();
     public DbSet<ManualRun> ManualRuns => Set<ManualRun>();
     public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
+    public DbSet<PromotionAudit> PromotionAudits => Set<PromotionAudit>();
     public DbSet<SavedQuery> SavedQueries => Set<SavedQuery>();
 
     // Accounts live here rather than in a file of their own so one backup covers
@@ -112,6 +113,25 @@ public abstract class RunsDbContext : DbContext {
             audit.HasIndex(a => a.StartedAt);
             audit.HasIndex(a => a.ConnectionId);
             // No foreign key to users, for the same reason the manual-run audit has
+            // none: the row has to outlive the account it is about.
+        });
+
+        modelBuilder.Entity<PromotionAudit>(audit => {
+            audit.ToTable("promotions");
+            audit.HasKey(a => a.Id);
+            audit.Property(a => a.Id).HasColumnName("id");
+            audit.Property(a => a.Project).HasColumnName("project").HasMaxLength(120);
+            audit.Property(a => a.Paths).HasColumnName("paths");
+            audit.Property(a => a.ActorId).HasColumnName("actor_id");
+            audit.Property(a => a.ActorName).HasColumnName("actor_name").HasMaxLength(120);
+            audit.Property(a => a.PromotedAt).HasColumnName("promoted_at");
+            audit.Property(a => a.IsDeletion).HasColumnName("is_deletion");
+            audit.Property(a => a.CommitSha).HasColumnName("commit_sha").HasMaxLength(64);
+            audit.Property(a => a.Unscheduled).HasColumnName("unscheduled");
+            audit.Property(a => a.EvidenceRuns).HasColumnName("evidence_runs");
+            audit.HasIndex(a => a.PromotedAt);
+            audit.HasIndex(a => a.Project);
+            // No foreign key to users, for the same reason the other audits have
             // none: the row has to outlive the account it is about.
         });
 

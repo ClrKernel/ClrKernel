@@ -45,6 +45,7 @@ public sealed class EfRunStore : IRunStore {
         db.Database.ExecuteSqlRaw("DELETE FROM run_cells");
         db.Database.ExecuteSqlRaw("DELETE FROM runs");
         db.Database.ExecuteSqlRaw("DELETE FROM job_trigger_state");
+        db.Database.ExecuteSqlRaw("DELETE FROM promotions");
     }
 
     public async Task<Run> CreateRunAsync(Run run) {
@@ -150,6 +151,27 @@ public sealed class EfRunStore : IRunStore {
             runs = runs.Where(r => r.NotebookPath == query.NotebookPath);
         }
         return await runs.OrderByDescending(r => r.StartedAt).Take(query.Limit).ToListAsync();
+    }
+
+    public async Task RecordPromotionAsync(PromotionAudit audit) {
+        using var db = _contextFactory();
+        db.PromotionAudits.Add(audit);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<PromotionAudit>> PromotionAuditAsync(PromotionAuditQuery query) {
+        using var db = _contextFactory();
+        var audits = db.PromotionAudits.AsNoTracking();
+        if (!string.IsNullOrEmpty(query.Project)) {
+            audits = audits.Where(a => a.Project == query.Project);
+        }
+        if (query.UnschedulesOnly) {
+            audits = audits.Where(a => a.Unscheduled != null && a.Unscheduled != "");
+        }
+        return await audits
+            .OrderByDescending(a => a.PromotedAt)
+            .Take(Math.Clamp(query.Limit, 1, 500))
+            .ToListAsync();
     }
 
     public async Task RecordQueryAsync(QueryAudit audit) {

@@ -267,6 +267,61 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                     b.ToTable("project_members", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.PromotionAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_name");
+
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("commit_sha");
+
+                    b.Property<string>("EvidenceRuns")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("evidence_runs");
+
+                    b.Property<bool>("IsDeletion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_deletion");
+
+                    b.Property<string>("Paths")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("paths");
+
+                    b.Property<string>("Project")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("project");
+
+                    b.Property<DateTime>("PromotedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("promoted_at");
+
+                    b.Property<string>("Unscheduled")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("unscheduled");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Project");
+
+                    b.HasIndex("PromotedAt");
+
+                    b.ToTable("promotions", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.QueryAudit", b =>
                 {
                     b.Property<Guid>("Id")

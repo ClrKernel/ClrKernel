@@ -46,6 +46,14 @@ public interface IRunStore {
     /// <summary>Records a finished statement against a shared connection. Written
     /// after the fact rather than opened and closed like a run: a query is one round
     /// trip, and nobody polls it.</summary>
+    /// <summary>
+    /// Records a promotion. Git says the files changed; this says who sent them and
+    /// what stopped running because of it.
+    /// </summary>
+    Task RecordPromotionAsync(PromotionAudit audit);
+
+    Task<IReadOnlyList<PromotionAudit>> PromotionAuditAsync(PromotionAuditQuery query);
+
     Task RecordQueryAsync(QueryAudit audit);
 
     Task<IReadOnlyList<QueryAudit>> QueryAuditAsync(QueryAuditQuery query);
