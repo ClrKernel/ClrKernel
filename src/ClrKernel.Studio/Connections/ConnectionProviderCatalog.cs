@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
+using ClrKernel.Database.Provider.Odbc;
+using ClrKernel.Database.Provider.Oracle;
 using ClrKernel.Database.Provider.Postgres;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Extensions.Logging;
@@ -45,6 +47,8 @@ public sealed class ConnectionProviderCatalog {
         new[] {
             SqlServerConnectionProvider.Descriptor,
             PostgresConnectionProvider.Descriptor,
+            OracleConnectionProvider.Descriptor,
+            OdbcConnectionProvider.Descriptor,
         };
 
     private readonly JobsOptions _options;

@@ -105,6 +105,8 @@ public static class ConnectionDialects {
     private static readonly IReadOnlyList<IConnectionDialect> _all = new IConnectionDialect[] {
         new SqlServerDialect(),
         new PostgresDialect(),
+        new OracleDialect(),
+        new OdbcDialect(),
     };
 
     public static IConnectionDialect For(string type) =>

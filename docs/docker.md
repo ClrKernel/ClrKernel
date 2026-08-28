@@ -445,6 +445,38 @@ docker run --detach --name clrkernel-studio \
 So `slack-hook` in a channel, or `sql:analytics` in a connection, resolves from
 the OS store if there is one, then `/data/secrets.json`, then the environment.
 
+## Which databases the Connections page can open
+
+| type | savable | browsable and queryable in Studio |
+| --- | --- | --- |
+| SQL Server | yes | yes |
+| PostgreSQL | yes | yes |
+| Oracle | yes | yes |
+| ODBC | yes | yes — as far as the driver will say (see below) |
+| Analysis Services, Fabric, JDBC | yes | no — the kernel opens those when a notebook names one |
+
+**ODBC needs a driver, and the image ships one.** `unixodbc` is a driver
+*manager*: on its own it connects to nothing, and every ODBC connection fails with
+`data source name not found`. The image installs `odbc-postgresql` so the type
+works out of the box; anything else means adding that driver to the image:
+
+```dockerfile
+FROM clrkernel-studio
+USER root
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends odbc-mdbtools \
+    && rm -rf /var/lib/apt/lists/*
+USER app
+```
+
+`docker exec <container> odbcinst -q -d` lists what is installed.
+
+**An ODBC tree is shallower on purpose.** Behind a DSN could be anything, so what
+the tree shows comes from the driver rather than from a catalog query in a dialect
+nobody declared: schemas, tables, columns, and a generated `SELECT`. No keys, no
+indexes, no stored definitions — those have no portable source, and showing an
+empty list would claim the table has none rather than that nobody can tell.
+
 ## Reaching a database from inside the container
 
 `localhost` inside the container is the container. Point a connection at

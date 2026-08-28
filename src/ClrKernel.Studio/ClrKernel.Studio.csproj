@@ -52,6 +52,8 @@
     <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
     <!-- Secret *references* for SMTP/webhook credentials — never the secrets. -->
     <ProjectReference Include="../ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.Oracle/ClrKernel.Database.Provider.Oracle.csproj" />
     <ProjectReference Include="../ClrKernel.Database.Provider.Postgres/ClrKernel.Database.Provider.Postgres.csproj" />
     <!-- The Connections area opens database connections in *this* process rather than
          through a kernel, which is the one place that boundary is crossed and is

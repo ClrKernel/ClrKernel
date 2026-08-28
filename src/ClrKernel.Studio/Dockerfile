@@ -54,9 +54,13 @@ WORKDIR /app
 # dbus is how anything reaches it, and secret-tool (libsecret-tools) is what the
 # secret chain in ClrKernel.Core.Secrets drives. About 35 MB, and it is what keeps
 # passwords off the volume in the clear.
+# unixodbc is the ODBC driver *manager* and ships no drivers: an ODBC connection
+# fails with "data source name not found" until one is installed. odbc-postgresql
+# is here so the type works out of the box for the database most people reach that
+# way; anything else means adding its driver to this image. See docs/docker.md.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
-        curl git dbus gnome-keyring libsecret-tools \
+        curl git dbus gnome-keyring libsecret-tools unixodbc odbc-postgresql \
     && rm -rf /var/lib/apt/lists/*
 
 # Two applications, two publish directories: /app/studio (scheduler + web app)
