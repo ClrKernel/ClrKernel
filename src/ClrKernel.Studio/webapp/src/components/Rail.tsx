@@ -7,7 +7,7 @@ import {
   Settings as SettingsIcon,
   type LucideIcon,
 } from 'lucide-react';
-import { Link, useMatch } from 'react-router-dom';
+import { Link, useLocation, useMatch } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 /**
@@ -19,13 +19,13 @@ const NAV: {
   label: string;
   icon: LucideIcon;
   end: boolean;
-  /** A second route this entry owns, for a section whose views are separate
-   *  top-level paths — the Dashboard's Monitoring grid is still the Dashboard. */
-  also?: string;
+  /** Other routes this entry owns, for a section whose views are separate
+   *  top-level paths — Monitoring and Notifications are still the Dashboard. */
+  also?: string[];
   isSpecial?: boolean;
 }[] = [
   { to: '/', label: 'ClrKernel Studio', icon: BookOpenCheck, end: true, isSpecial: true },
-  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true, also: '/monitoring' },
+  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true, also: ['/monitoring', '/notifications'] },
   // Files, not Notebooks: what is under here is notebooks *and* the jobs files
   // beside them, and a folder tree is what you are looking at either way.
   { to: '/files', label: 'Files', icon: FolderTree, end: false },
@@ -41,11 +41,11 @@ const NAV: {
  * own source text and none of the classes apply.
  */
 function RailLink({ to, label, icon: Icon, end, also, isSpecial }: (typeof NAV)[number]) {
-  // Both hooks run every render — a `useMatch` behind a condition is a hook
-  // whose position moves, which is the one thing React cannot survive.
+  // `useLocation` for the extra paths rather than a `useMatch` each: the number of
+  // hooks a component calls cannot depend on the length of a list.
+  const { pathname } = useLocation();
   const here = useMatch({ path: to, end }) != null;
-  const nearby = useMatch({ path: also ?? to, end: false }) != null;
-  const active = here || (also != null && nearby);
+  const active = here || (also ?? []).some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
   return (
     <div className={["w-48px", active ? "bg-primary-soft" : "hover:bg-primary-soft", "p-2.5"].join(" ")}>

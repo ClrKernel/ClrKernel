@@ -234,6 +234,18 @@ duration threshold, scheduled run missed, promotion to `prod` happened. Scope
 rules per project, and decide whether subscriptions are per user or per project —
 per project is simpler and probably right for the first pass.
 
+> **Done, less one.** `jobFailed`, `jobRecovered`, `runTooSlow` and
+> `promotedToProd`, scoped per project and optionally per branch. Per project, as
+> suggested.
+>
+> **`scheduled run missed` is not built, and it is not a notification feature.**
+> `SchedulerService.TickAsync` fires occurrences inside `(lastTick, now]`, so a
+> process that was down for an hour skips that hour in silence — there is no event
+> to bind a channel to. Detecting the gap means persisting the last evaluated
+> instant per job and comparing expected occurrences against actual ones, which is
+> a scheduler change that happens to have a notification as its output. Building
+> it as a rule would have meant a rule that never fires.
+
 ## Rail changes
 
 > **Done.** The rail is Dashboard, Files, Connections, Channels, Settings. `/jobs`
@@ -286,5 +298,9 @@ Just remove `/jobs` dont be converned with redirects since this is still not pub
       `SchedulerService.Launch` waits on the same `MaxParallelism` semaphore every
       scheduled run does. The route caps one request at 100 rows; it does not
       queue, because the scheduler already does.)*
-- [ ] Notifications configures rules and shows a delivery feed; Channels remains
-      destinations only.
+- [x] Notifications configures rules and shows a delivery feed; Channels remains
+      destinations only. *(Rules live beside the channels in `notifications.yaml`;
+      the feed records every attempt including the failures, which is the half that
+      answers "why did nobody hear about this?". Four of the five events are built
+      — "scheduled run missed" is not a notification feature and is listed as an
+      omission with the reason.)*

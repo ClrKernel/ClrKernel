@@ -54,6 +54,11 @@ public interface IRunStore {
 
     Task<IReadOnlyList<PromotionAudit>> PromotionAuditAsync(PromotionAuditQuery query);
 
+    /// <summary>Records a notification that was attempted — including one that failed.</summary>
+    Task RecordDeliveryAsync(NotificationDelivery delivery);
+
+    Task<IReadOnlyList<NotificationDelivery>> DeliveriesAsync(NotificationQuery query);
+
     Task RecordQueryAsync(QueryAudit audit);
 
     Task<IReadOnlyList<QueryAudit>> QueryAuditAsync(QueryAuditQuery query);

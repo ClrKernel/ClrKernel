@@ -103,8 +103,9 @@ function StatCard({ value, label, tone }: { value: string; label: string; tone?:
  * when it isn't. Separate paths rather than component state, so a filtered grid
  * is a link and the back button does what it looks like it does.
  *
- * Notifications is the third view in the spec and is not built yet, so it is not
- * a tab: a tab that leads nowhere is worse than one that is not there.
+ * Notifications is the third: the rules that decide when something is sent, and
+ * the feed of what actually went out. Channels stays on the rail, because a
+ * destination is configured once and a rule is decided per project.
  */
 export function DashboardTabs() {
   return (
@@ -114,6 +115,7 @@ export function DashboardTabs() {
       items={[
         { to: '/', label: 'Overview' },
         { to: '/monitoring', label: 'Monitoring' },
+        { to: '/notifications', label: 'Notifications' },
       ]}
     />
   );

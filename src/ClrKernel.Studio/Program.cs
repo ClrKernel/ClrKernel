@@ -364,7 +364,8 @@ public static class Program {
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(),
             projects));
         builder.Services.AddSingleton(provider => new Notifier(
-            options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>()));
+            options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>(),
+            secrets: null, store: store));
         // What the kernel can run, for parsing notebooks and filling the editor's
         // language picker. Probed lazily on first use, never at startup.
         builder.Services.AddSingleton(provider => new KernelLanguages(

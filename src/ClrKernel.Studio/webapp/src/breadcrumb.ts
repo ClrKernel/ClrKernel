@@ -94,9 +94,10 @@ export function breadcrumbFor(pathname: string): Crumb[] {
         : [leaf('Settings')];
 
     case 'monitoring':
-      // A view of the Dashboard rather than a section of its own, so the trail
-      // says so: the tabs on the page are what move between the two.
-      return [{ label: 'Dashboard', to: '/' }, leaf('Monitoring')];
+    case 'notifications':
+      // Views of the Dashboard rather than sections of their own, so the trail
+      // says so: the tabs on the page are what move between them.
+      return [{ label: 'Dashboard', to: '/' }, leaf(titleCase(segments[0]))];
 
     case 'runs':
       // A run belongs to a project, but the crumb only has the path to go on, so

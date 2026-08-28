@@ -19,6 +19,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<ManualRun> ManualRuns => Set<ManualRun>();
     public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
     public DbSet<PromotionAudit> PromotionAudits => Set<PromotionAudit>();
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
     public DbSet<SavedQuery> SavedQueries => Set<SavedQuery>();
 
     // Accounts live here rather than in a file of their own so one backup covers
@@ -59,6 +60,22 @@ public abstract class RunsDbContext : DbContext {
             run.Property(r => r.ActorName).HasColumnName("actor_name").HasMaxLength(120);
             run.HasIndex(r => new { r.Project, r.Environment, r.JobName });
             run.HasIndex(r => r.CreatedAt);
+        });
+
+        modelBuilder.Entity<NotificationDelivery>(delivery => {
+            delivery.ToTable("notifications");
+            delivery.HasKey(d => d.Id);
+            delivery.Property(d => d.Id).HasColumnName("id");
+            delivery.Property(d => d.Project).HasColumnName("project").IsRequired().HasMaxLength(64);
+            delivery.Property(d => d.Environment).HasColumnName("environment").HasMaxLength(16);
+            delivery.Property(d => d.Event).HasColumnName("event_type").HasMaxLength(32);
+            delivery.Property(d => d.Channel).HasColumnName("channel").HasMaxLength(120);
+            delivery.Property(d => d.Subject).HasColumnName("subject");
+            delivery.Property(d => d.RunId).HasColumnName("run_id");
+            delivery.Property(d => d.SentAt).HasColumnName("sent_at");
+            delivery.Property(d => d.Error).HasColumnName("error");
+            delivery.HasIndex(d => d.SentAt);
+            delivery.HasIndex(d => d.Project);
         });
 
         modelBuilder.Entity<RunCell>(cell => {

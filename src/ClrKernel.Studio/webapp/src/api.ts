@@ -416,6 +416,36 @@ export interface ProjectStats {
   failed: number;
 }
 
+export type NotificationEventName =
+  'JobFailed' | 'JobRecovered' | 'RunTooSlow' | 'PromotedToProd';
+
+/** One rule: when this happens here, tell these channels. */
+export interface NotificationRule {
+  event: NotificationEventName;
+  /** Empty means every project. */
+  project?: string | null;
+  /** Empty means every branch that runs anything. */
+  environment?: string | null;
+  to: string[];
+  /** How slow is too slow, for RunTooSlow. */
+  afterSeconds?: number | null;
+  enabled: boolean;
+}
+
+/** One notification that was attempted — including one that did not arrive. */
+export interface NotificationDelivery {
+  id: string;
+  project: string;
+  environment: string | null;
+  event: NotificationEventName;
+  channel: string;
+  subject: string | null;
+  runId: string | null;
+  sentAt: string;
+  /** Null when it went out. Set when it did not, and why. */
+  error: string | null;
+}
+
 /** One scheduled occurrence that has not happened yet. */
 export interface UpcomingRun {
   project: string;
@@ -475,6 +505,25 @@ export const api = {
       errors: string[];
     }>('/health'),
   stats: (days = 7) => request<Stats>(`/stats?days=${days}`),
+
+  /** When things get sent, as against where — Channels is the destinations. */
+  notificationRules: () =>
+    request<{
+      rules: NotificationRule[];
+      channels: string[];
+      events: NotificationEventName[];
+      errors: string[];
+    }>('/notification-rules'),
+  saveNotificationRules: (rules: NotificationRule[]) =>
+    request<{ rules: NotificationRule[] }>('/notification-rules', {
+      method: 'PUT',
+      body: JSON.stringify(rules),
+    }),
+  /** What was actually sent, and what was not. */
+  notifications: (failuresOnly = false, limit = 50) =>
+    request<{ deliveries: NotificationDelivery[] }>(
+      `/notifications?failuresOnly=${failuresOnly}&limit=${limit}`,
+    ),
 
   /** What the crons say is next, across every project you can see. */
   upcoming: (limit = 8) =>

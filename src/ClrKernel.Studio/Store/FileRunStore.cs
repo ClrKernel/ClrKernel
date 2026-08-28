@@ -342,6 +342,26 @@ public sealed class FileRunStore : IRunStore {
     private string QueryAuditPath => Path.Combine(_root, "..", "connection-queries.jsonl");
 
     private string PromotionAuditPath => Path.Combine(_root, "promotions.jsonl");
+    private string DeliveryPath => Path.Combine(_root, "notifications.jsonl");
+
+    public async Task RecordDeliveryAsync(NotificationDelivery delivery) {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(DeliveryPath))!);
+        await File.AppendAllTextAsync(
+            DeliveryPath, JsonSerializer.Serialize(delivery, _compact) + "\n");
+    }
+
+    public Task<IReadOnlyList<NotificationDelivery>> DeliveriesAsync(NotificationQuery query) {
+        var deliveries = ReadLines<NotificationDelivery>(DeliveryPath)
+            .Where(d => query.Projects.Contains(d.Project ?? "default", StringComparer.OrdinalIgnoreCase));
+        if (query.FailuresOnly) {
+            deliveries = deliveries.Where(d => !string.IsNullOrEmpty(d.Error));
+        }
+        return Task.FromResult<IReadOnlyList<NotificationDelivery>>(deliveries
+            .OrderByDescending(d => d.SentAt).ThenByDescending(d => d.Id)
+            .Take(Math.Clamp(query.Limit, 1, 500))
+            .ToList());
+    }
+
 
     public async Task RecordPromotionAsync(PromotionAudit audit) {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(PromotionAuditPath))!);

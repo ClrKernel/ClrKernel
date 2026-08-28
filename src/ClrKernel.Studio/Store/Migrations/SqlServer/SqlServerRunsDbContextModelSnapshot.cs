@@ -244,6 +244,59 @@ namespace ClrKernel.Studio.Store.Migrations.SqlServer
                     b.ToTable("manual_runs", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.NotificationDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Channel")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("channel");
+
+                    b.Property<string>("Environment")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("environment");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("Event")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("event_type");
+
+                    b.Property<string>("Project")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("project");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("run_id");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Subject")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("subject");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Project");
+
+                    b.HasIndex("SentAt");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.ProjectMembership", b =>
                 {
                     b.Property<string>("ProjectSlug")

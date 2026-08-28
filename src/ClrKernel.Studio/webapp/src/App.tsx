@@ -8,6 +8,7 @@ import { Channels } from './pages/Channels';
 import { Connections } from './pages/Connections';
 import { Dashboard } from './pages/Dashboard';
 import { Monitoring } from './pages/Monitoring';
+import { Notifications } from './pages/Notifications';
 import { Editor } from './pages/Editor';
 import { Files } from './pages/Files';
 import { RunDetail } from './pages/RunDetail';
@@ -182,6 +183,7 @@ export function App() {
                   root because its filters live in the query string, and nesting
                   it would have put a project in the path it deliberately spans. */}
               <Route path="/monitoring" element={<Monitoring />} />
+              <Route path="/notifications" element={<Notifications />} />
 
               {/* Everything about a project has that project in its path: a link
                   to a job or a file has to mean one job or one file, and two

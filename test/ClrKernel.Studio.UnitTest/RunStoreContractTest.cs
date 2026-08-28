@@ -398,6 +398,53 @@ public class RunStoreContractTest {
             "and it is idempotent");
     }
 
+    /// <summary>
+    /// The delivery feed, on every backend. "Why did nobody hear about this?" must
+    /// not depend on which store somebody configured — and the failures are the
+    /// half that answers it.
+    /// </summary>
+    [TestMethod]
+    [DataRow("sqlite")]
+    [DataRow("files")]
+    [DataRow("postgres")]
+    [DataRow("sqlserver")]
+    public async Task Notifications_record_what_was_sent_and_what_was_not(string kind) {
+        var store = StoreFor(kind);
+        var at = DateTime.UtcNow;
+
+        async Task Add(string project, string channel, string error, int minutesAgo) =>
+            await store.RecordDeliveryAsync(new NotificationDelivery {
+                Id = Guid.NewGuid(),
+                Project = project,
+                Environment = "prod",
+                Event = "JobFailed",
+                Channel = channel,
+                Subject = "nightly",
+                SentAt = at.AddMinutes(-minutesAgo),
+                Error = error,
+            });
+
+        await Add("default", "ops", null, 10);
+        await Add("default", "pager", "Webhook returned 500 Internal Server Error.", 5);
+        await Add("secret", "theirs", null, 1);
+
+        var mine = await store.DeliveriesAsync(new NotificationQuery { Projects = new[] { "default" } });
+        Assert.AreEqual(2, mine.Count, "another project's notifications are another project's");
+        Assert.AreEqual("pager", mine[0].Channel, "newest first");
+
+        var failures = await store.DeliveriesAsync(new NotificationQuery {
+            Projects = new[] { "default" },
+            FailuresOnly = true,
+        });
+        Assert.AreEqual(1, failures.Count);
+        StringAssert.Contains(failures[0].Error, "500");
+        Assert.AreEqual("JobFailed", failures[0].Event);
+
+        Assert.AreEqual(0,
+            (await store.DeliveriesAsync(new NotificationQuery { Projects = Array.Empty<string>() })).Count,
+            "somebody who can see no projects sees no notifications");
+    }
+
     [TestMethod]
     public async Task The_file_store_keeps_each_run_beside_its_artifacts() {
         var options = new JobsOptions { DataDir = Path.Combine(_dir, "files"), NotebooksRoot = _dir, Store = "files" };

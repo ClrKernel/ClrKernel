@@ -46,6 +46,7 @@ public sealed class EfRunStore : IRunStore {
         db.Database.ExecuteSqlRaw("DELETE FROM runs");
         db.Database.ExecuteSqlRaw("DELETE FROM job_trigger_state");
         db.Database.ExecuteSqlRaw("DELETE FROM promotions");
+        db.Database.ExecuteSqlRaw("DELETE FROM notifications");
     }
 
     public async Task<Run> CreateRunAsync(Run run) {
@@ -235,6 +236,26 @@ public sealed class EfRunStore : IRunStore {
         }
         return await audits
             .OrderByDescending(a => a.PromotedAt)
+            .Take(Math.Clamp(query.Limit, 1, 500))
+            .ToListAsync();
+    }
+
+    public async Task RecordDeliveryAsync(NotificationDelivery delivery) {
+        using var db = _contextFactory();
+        db.NotificationDeliveries.Add(delivery);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<NotificationDelivery>> DeliveriesAsync(NotificationQuery query) {
+        using var db = _contextFactory();
+        var projects = query.Projects;
+        var deliveries = db.NotificationDeliveries.AsNoTracking()
+            .Where(d => projects.Contains(d.Project));
+        if (query.FailuresOnly) {
+            deliveries = deliveries.Where(d => d.Error != null);
+        }
+        return await deliveries
+            .OrderByDescending(d => d.SentAt).ThenByDescending(d => d.Id)
             .Take(Math.Clamp(query.Limit, 1, 500))
             .ToListAsync();
     }

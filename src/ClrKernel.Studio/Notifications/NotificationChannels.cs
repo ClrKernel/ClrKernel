@@ -21,6 +21,17 @@ public sealed class NotificationChannels {
 
     public List<ChannelConfig> Channels { get; set; } = new();
 
+    /// <summary>
+    /// When things get sent, as against where. Channels are destinations; a rule
+    /// binds an event to one or more of them.
+    /// <para>
+    /// Same file because they are read together and a second file is a second thing
+    /// to find, commit and keep in step — a rule naming a channel that moved to
+    /// another file is a rule that silently stops firing.
+    /// </para>
+    /// </summary>
+    public List<NotificationRule> Rules { get; set; } = new();
+
     private static readonly IDeserializer _deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .IgnoreUnmatchedProperties()
@@ -65,6 +76,17 @@ public sealed class NotificationChannels {
     public ChannelConfig Find(string name) =>
         Channels.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The rules that apply to one event in one project, in file order.</summary>
+    public IEnumerable<NotificationRule> For(NotificationEvent what, string project) =>
+        Rules.Where(r =>
+            r.Enabled
+            && r.Event == what
+            // No project means every project. Scoping is per project because that
+            // is what people actually mean by "tell us about ours", and per-user
+            // subscriptions would need an account behind every delivery.
+            && (string.IsNullOrEmpty(r.Project)
+                || string.Equals(r.Project, project, StringComparison.OrdinalIgnoreCase)));
+
     /// <summary>Problems worth surfacing in the UI (bad type, missing required fields).</summary>
     public IReadOnlyList<string> Validate() {
         var errors = new List<string>();
@@ -93,8 +115,53 @@ public sealed class NotificationChannels {
                     break;
             }
         }
+        foreach (var rule in Rules) {
+            if (rule.To is not { Count: > 0 }) {
+                errors.Add($"{FileName}: the '{rule.Event}' rule has no channel to send to.");
+                continue;
+            }
+            foreach (var name in rule.To.Where(n => Find(n) == null)) {
+                // Caught here rather than at send time: a rule pointing at a channel
+                // nobody has is a rule that looks configured and never arrives.
+                errors.Add($"{FileName}: the '{rule.Event}' rule sends to '{name}', which is not a channel.");
+            }
+            if (rule.Event == NotificationEvent.RunTooSlow && rule.AfterSeconds is not > 0) {
+                errors.Add($"{FileName}: a runTooSlow rule needs an afterSeconds greater than zero.");
+            }
+        }
         return errors;
     }
+}
+
+/// <summary>
+/// What happened. Deliberately a closed set: an event nobody emits is a rule that
+/// never fires, and a free-text name is how you get one by typo.
+/// </summary>
+public enum NotificationEvent {
+    /// <summary>A run finished in any state other than Succeeded.</summary>
+    JobFailed,
+    /// <summary>A job succeeded whose previous run had not. The all-clear.</summary>
+    JobRecovered,
+    /// <summary>A run took longer than the rule's threshold.</summary>
+    RunTooSlow,
+    /// <summary>Something reached production, including a deletion.</summary>
+    PromotedToProd,
+}
+
+/// <summary>
+/// One rule: when this happens here, tell these channels.
+/// </summary>
+public sealed class NotificationRule {
+    public NotificationEvent Event { get; set; }
+    /// <summary>Empty means every project this server hosts.</summary>
+    public string Project { get; set; }
+    /// <summary>Empty means every branch that runs anything — usually test and prod.</summary>
+    public string Environment { get; set; }
+    /// <summary>Channel names. A rule with none is a rule that does nothing.</summary>
+    public List<string> To { get; set; } = new();
+    /// <summary>How slow is too slow, for <see cref="NotificationEvent.RunTooSlow"/>.</summary>
+    public int? AfterSeconds { get; set; }
+    public bool Enabled { get; set; } = true;
 }
 
 /// <summary>One notification channel: a generic webhook or an SMTP mailbox.</summary>

@@ -253,4 +253,180 @@ public class NotifierTest {
                 .SendAsync(channel, Notifier.Message.Test("mail"), CancellationToken.None));
         StringAssert.Contains(e.Message, "secret reference");
     }
+    // --- rules: when, as against where ---------------------------------------
+
+    private (Notifier Notifier, EfRunStore Store) WithFeed() {
+        var store = EfRunStore.Sqlite(Path.Combine(_root, "feed.db"));
+        store.Migrate();
+        return (new Notifier(Options, NullLogger.Instance, store: store), store);
+    }
+
+    private Task<IReadOnlyList<NotificationDelivery>> FeedAsync(EfRunStore store, bool failures = false) =>
+        store.DeliveriesAsync(new NotificationQuery {
+            Projects = new[] { "default" },
+            FailuresOnly = failures,
+        });
+
+    /// <summary>
+    /// A rule sends without the job asking. That is the whole point of the split:
+    /// "tell us when anything in this project fails" belongs to whoever runs the
+    /// project, not written into every job by hand.
+    /// </summary>
+    [TestMethod]
+    public async Task A_rule_notifies_a_job_that_names_no_channel_itself() {
+        WriteChannels(
+            $"channels:\n  - name: ops\n    type: webhook\n    url: {Url("/hook")}\n"
+            + "rules:\n  - event: jobFailed\n    to: [ops]\n");
+        var (notifier, store) = WithFeed();
+
+        await notifier.NotifyAsync(Job(), Finished(RunStatus.Failed, "boom"));
+        Assert.AreEqual(1, _received.Count);
+
+        // And a success does not fire a failure rule.
+        await notifier.NotifyAsync(Job(), Finished(RunStatus.Succeeded));
+        Assert.AreEqual(1, _received.Count);
+
+        var feed = await FeedAsync(store);
+        Assert.AreEqual(1, feed.Count);
+        Assert.AreEqual("JobFailed", feed[0].Event);
+        Assert.AreEqual("ops", feed[0].Channel);
+        Assert.IsNull(feed[0].Error, "it arrived");
+    }
+
+    [TestMethod]
+    public async Task A_job_and_a_rule_naming_one_channel_send_one_message() {
+        WriteChannels(
+            $"channels:\n  - name: ops\n    type: webhook\n    url: {Url("/hook")}\n"
+            + "rules:\n  - event: jobFailed\n    to: [ops]\n");
+        var (notifier, _) = WithFeed();
+
+        await notifier.NotifyAsync(Job(onFailure: "ops"), Finished(RunStatus.Failed, "boom"));
+
+        Assert.AreEqual(1, _received.Count, "one message, not one per source of the same name");
+    }
+
+    /// <summary>
+    /// The all-clear. It needs the previous run because "recovered" is not a fact
+    /// about this run — a green run after a green run is just Tuesday.
+    /// </summary>
+    [TestMethod]
+    public async Task Recovered_fires_only_after_a_failure() {
+        WriteChannels(
+            $"channels:\n  - name: ops\n    type: webhook\n    url: {Url("/hook")}\n"
+            + "rules:\n  - event: jobRecovered\n    to: [ops]\n");
+        var (notifier, store) = WithFeed();
+
+        await notifier.NotifyAsync(Job(), Finished(RunStatus.Succeeded), Finished(RunStatus.Succeeded));
+        Assert.AreEqual(0, _received.Count, "green after green is not a recovery");
+
+        await notifier.NotifyAsync(Job(), Finished(RunStatus.Succeeded), Finished(RunStatus.Failed));
+        Assert.AreEqual(1, _received.Count);
+        Assert.AreEqual("JobRecovered", (await FeedAsync(store))[0].Event);
+
+        // And the very first run of a job has nothing to have recovered from.
+        _received.Clear();
+        await notifier.NotifyAsync(Job(), Finished(RunStatus.Succeeded));
+        Assert.AreEqual(0, _received.Count);
+    }
+
+    [TestMethod]
+    public async Task Too_slow_fires_on_the_threshold_it_was_given() {
+        WriteChannels(
+            $"channels:\n  - name: ops\n    type: webhook\n    url: {Url("/hook")}\n"
+            + "rules:\n  - event: runTooSlow\n    afterSeconds: 60\n    to: [ops]\n");
+        var (notifier, store) = WithFeed();
+
+        var quick = Finished(RunStatus.Succeeded);
+        quick.FinishedAt = quick.StartedAt!.Value.AddSeconds(5);
+        await notifier.NotifyAsync(Job(), quick, Finished(RunStatus.Succeeded));
+        Assert.AreEqual(0, _received.Count);
+
+        var slow = Finished(RunStatus.Succeeded);
+        slow.FinishedAt = slow.StartedAt!.Value.AddSeconds(120);
+        await notifier.NotifyAsync(Job(), slow, Finished(RunStatus.Succeeded));
+        Assert.AreEqual(1, _received.Count);
+        Assert.AreEqual("RunTooSlow", (await FeedAsync(store))[0].Event);
+    }
+
+    /// <summary>
+    /// The feed's reason for existing. A run went red, the rule fired, nobody heard —
+    /// and every log said the notification was configured.
+    /// </summary>
+    [TestMethod]
+    public async Task A_delivery_that_failed_is_in_the_feed_with_its_reason() {
+        WriteChannels(
+            $"channels:\n  - name: ops\n    type: webhook\n    url: {Url("/broken")}\n"
+            + "rules:\n  - event: jobFailed\n    to: [ops]\n");
+        var (notifier, store) = WithFeed();
+
+        // Still does not throw: a broken channel must never fail a run.
+        await notifier.NotifyAsync(Job(), Finished(RunStatus.Failed, "boom"));
+
+        var failures = await FeedAsync(store, failures: true);
+        Assert.AreEqual(1, failures.Count);
+        StringAssert.Contains(failures[0].Error, "500");
+        Assert.AreEqual("ops", failures[0].Channel);
+    }
+
+    [TestMethod]
+    public async Task A_promotion_tells_whoever_asked() {
+        WriteChannels(
+            $"channels:\n  - name: ops\n    type: webhook\n    url: {Url("/hook")}\n"
+            + "rules:\n  - event: promotedToProd\n    to: [ops]\n");
+        var (notifier, store) = WithFeed();
+
+        await notifier.NotifyPromotionAsync(
+            "default", new[] { "etl.nb.md", "etl.jobs.yaml" }, isDeletion: false, "Ada Lovelace");
+
+        var payload = JsonDocument.Parse(_received.Single().Body).RootElement;
+        Assert.AreEqual("PromotedToProd", payload.GetProperty("event").GetString());
+        Assert.AreEqual("Ada Lovelace", payload.GetProperty("actor").GetString());
+        Assert.AreEqual(2, payload.GetProperty("paths").GetArrayLength());
+        Assert.AreEqual("PromotedToProd", (await FeedAsync(store))[0].Event);
+    }
+
+    [TestMethod]
+    public void A_rule_pointing_at_a_channel_nobody_has_is_a_validation_error() {
+        var config = new NotificationChannels {
+            Channels = { new ChannelConfig { Name = "ops", Type = "webhook", Url = "http://x" } },
+            Rules = {
+                new NotificationRule { Event = NotificationEvent.JobFailed, To = { "typo" } },
+                new NotificationRule { Event = NotificationEvent.RunTooSlow, To = { "ops" } },
+                new NotificationRule { Event = NotificationEvent.JobFailed },
+            },
+        };
+        var errors = config.Validate();
+
+        // Caught here rather than at send time: each of these is a rule that looks
+        // configured and never arrives.
+        Assert.IsTrue(errors.Any(e => e.Contains("'typo'")), string.Join(" | ", errors));
+        Assert.IsTrue(errors.Any(e => e.Contains("afterSeconds")), string.Join(" | ", errors));
+        Assert.IsTrue(errors.Any(e => e.Contains("no channel to send to")), string.Join(" | ", errors));
+    }
+
+    /// <summary>
+    /// Channels and rules share one file, so each half's save has to leave the other
+    /// alone. The Channels page has no idea rules exist.
+    /// </summary>
+    [TestMethod]
+    public void Saving_one_half_of_the_file_keeps_the_other() {
+        WriteChannels(
+            "channels:\n  - name: ops\n    type: webhook\n    url: http://x\n"
+            + "rules:\n  - event: jobFailed\n    to: [ops]\n");
+
+        var loaded = NotificationChannels.Load(_root);
+        Assert.AreEqual(1, loaded.Rules.Count);
+
+        // What the channels PUT does: read, replace one half, write.
+        loaded.Channels = new List<ChannelConfig> {
+            new() { Name = "ops", Type = "webhook", Url = "http://y" },
+        };
+        NotificationChannels.Save(_root, loaded);
+
+        var again = NotificationChannels.Load(_root);
+        Assert.AreEqual("http://y", again.Channels.Single().Url);
+        Assert.AreEqual(1, again.Rules.Count, "the rules survived a channels save");
+        Assert.AreEqual(NotificationEvent.JobFailed, again.Rules[0].Event);
+    }
+
 }

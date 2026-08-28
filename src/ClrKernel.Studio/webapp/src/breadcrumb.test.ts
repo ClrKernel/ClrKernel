@@ -39,11 +39,11 @@ describe('breadcrumbFor', () => {
 
   // Monitoring is a view of the Dashboard, not a section, and the trail is where
   // that is said — the rail has one entry for both.
-  it('puts monitoring under the dashboard', () => {
-    expect(breadcrumbFor('/monitoring')).toEqual([
-      { label: 'Dashboard', to: '/' },
-      { label: 'Monitoring' },
-    ]);
+  it.each([
+    ['/monitoring', 'Monitoring'],
+    ['/notifications', 'Notifications'],
+  ])('puts %s under the dashboard', (pathname, label) => {
+    expect(breadcrumbFor(pathname)).toEqual([{ label: 'Dashboard', to: '/' }, { label }]);
   });
 
   // A job has no page of its own any more, so nothing here knows a project from

@@ -709,6 +709,47 @@ Paging is Previous/Next rather than "1–50 of 1,240": the page asks for one row
 more than it shows and reports whether it got it, where a total would be a
 `COUNT(*)` over the whole history on every poll.
 
+### Notifications
+
+**Channels** is *where* — a destination and its credentials, configured once.
+**Notifications** is *when*: rules that bind an event to channels, and a feed of
+what actually went out. They live in the same `notifications.yaml`, because a rule
+naming a channel that moved to another file is a rule that silently stops firing.
+
+Four events:
+
+| event | fires when |
+|---|---|
+| `jobFailed` | a run finished in anything other than success |
+| `jobRecovered` | a job succeeded whose previous run had not — the all-clear |
+| `runTooSlow` | a run took longer than the rule's `afterSeconds` |
+| `promotedToProd` | something reached production, including a deletion |
+
+A rule scopes to a project (empty means all of them) and optionally to one branch.
+Scoping is per project rather than per user: that is what people mean by "tell us
+about ours", and per-user subscriptions would need an account behind every
+delivery.
+
+A job's own `notify:` block still works and is untouched. Rules are **additive** —
+somebody who wrote channels into a job did not ask for that to stop meaning
+anything — and a channel named by both gets one message, not two.
+
+The feed records **every attempt, including the ones that failed**, with the
+reason. That is the half that matters: a feed of successful sends is the one that
+lies when a webhook has been returning 500 for a week — the run went red, the rule
+fired, nobody heard, and every log said the notification was configured. Tick
+*only what did not arrive* to see just those.
+
+A rule pointing at a channel nobody has is refused when you save it, not
+discovered when something breaks at 2am.
+
+**Not built: "a scheduled run was missed."** It reads like a fifth event but it is
+not a notification feature — the scheduler fires occurrences inside `(lastTick,
+now]`, so a process that was down for an hour skips that hour silently and there
+is nothing to notify *about*. Detecting the gap means persisting the last
+evaluated instant per job and comparing expected against actual, which is a
+scheduler change with a notification as its output. Worth doing as its own thing.
+
 ### Running something again
 
 Two acts wear one word, and the sentence in the confirmation is what tells them

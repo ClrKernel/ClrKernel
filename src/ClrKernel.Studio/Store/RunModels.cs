@@ -166,6 +166,43 @@ public sealed class PromotionAuditQuery {
     public int Limit { get; set; } = 50;
 }
 
+/// <summary>
+/// One notification that was attempted: what happened, where it was sent, and
+/// whether it arrived.
+/// <para>
+/// The failures are the reason this exists. A feed of successful sends is the one
+/// that lies when a webhook has been returning 500 for a week — the run went red,
+/// the rule fired, nobody heard, and every log said the notification was
+/// configured. <see cref="Error"/> is the whole point of the row.
+/// </para>
+/// </summary>
+public sealed class NotificationDelivery {
+    public Guid Id { get; set; }
+    public string Project { get; set; } = "default";
+    public string Environment { get; set; }
+    /// <summary>JobFailed | JobRecovered | RunTooSlow | PromotedToProd.</summary>
+    public string Event { get; set; }
+    /// <summary>The channel it was sent to, by name — the channel itself may be gone.</summary>
+    public string Channel { get; set; }
+    /// <summary>What it was about: a job name, or the paths of a promotion.</summary>
+    public string Subject { get; set; }
+    /// <summary>The run that caused it, when there was one.</summary>
+    public Guid? RunId { get; set; }
+    public DateTime SentAt { get; set; }
+    /// <summary>Null when it went out. Set when it did not, and why.</summary>
+    public string Error { get; set; }
+}
+
+/// <summary>What to read back out of the delivery feed.</summary>
+public sealed class NotificationQuery {
+    /// <summary>The projects the caller may see. Required, for the same reason
+    /// <see cref="RunQuery.Projects"/> is.</summary>
+    public required IReadOnlyCollection<string> Projects { get; init; }
+    /// <summary>Only the ones that did not arrive.</summary>
+    public bool FailuresOnly { get; set; }
+    public int Limit { get; set; } = 50;
+}
+
 public sealed class QueryAudit {
     public Guid Id { get; set; }
     public string ConnectionId { get; set; }

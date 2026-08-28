@@ -23,43 +23,176 @@ public class Notifier {
     private readonly JobsOptions _options;
     private readonly ILogger _logger;
     private readonly SecretStore _secrets;
+    private readonly IRunStore _store;
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
-    public Notifier(JobsOptions options, ILogger logger, SecretStore secrets = null) {
+    /// <param name="store">
+    /// Where every attempt is recorded, including the ones that failed. Optional so
+    /// the CLI's one-shot run can notify without a feed; a server always has one.
+    /// </param>
+    public Notifier(
+        JobsOptions options, ILogger logger, SecretStore secrets = null, IRunStore store = null) {
         _options = options;
         _logger = logger;
         _secrets = secrets ?? new SecretStore();
+        _store = store;
     }
 
     /// <summary>
     /// Notifies the channels this job wants for the run's outcome. Success rules
     /// fire on Succeeded; failure rules on everything else that finished.
     /// </summary>
-    public async Task NotifyAsync(JobDefinition job, Run run, CancellationToken cancellationToken = default) {
-        var wanted = run.Status == RunStatus.Succeeded
-            ? job.Notify?.OnSuccess
-            : job.Notify?.OnFailure;
-        if (wanted is not { Count: > 0 }) {
+    public async Task NotifyAsync(
+        JobDefinition job, Run run, Run previous = null, CancellationToken cancellationToken = default) {
+        var channels = NotificationChannels.Load(_options.NotebooksRoot);
+        var project = run.Project ?? ProjectRegistry.DefaultSlug;
+
+        // The job's own notify: block, which predates rules and keeps working. A
+        // rule is additive — somebody who wrote `notify:` into a job did not ask for
+        // it to stop meaning anything when rules arrived.
+        var wanted = new List<string>(
+            (run.Status == RunStatus.Succeeded ? job.Notify?.OnSuccess : job.Notify?.OnFailure)
+            ?? Enumerable.Empty<string>());
+
+        var events = new List<NotificationEvent>();
+        if (run.Status != RunStatus.Succeeded) {
+            events.Add(NotificationEvent.JobFailed);
+        } else if (previous != null && previous.Status != RunStatus.Succeeded) {
+            // The all-clear. Only worth sending to somebody who was told about the
+            // failure, which is why it needs the previous run rather than a flag.
+            events.Add(NotificationEvent.JobRecovered);
+        }
+
+        var seconds = run.StartedAt is { } start && run.FinishedAt is { } end
+            ? (end - start).TotalSeconds
+            : (double?)null;
+
+        foreach (var what in events) {
+            wanted.AddRange(Matching(channels, what, project, run.Environment));
+        }
+        if (seconds is { } took) {
+            wanted.AddRange(channels.For(NotificationEvent.RunTooSlow, project)
+                .Where(r => Applies(r, run.Environment) && took > r.AfterSeconds)
+                .SelectMany(r => r.To));
+            if (channels.For(NotificationEvent.RunTooSlow, project)
+                .Any(r => Applies(r, run.Environment) && took > r.AfterSeconds)) {
+                events.Add(NotificationEvent.RunTooSlow);
+            }
+        }
+
+        if (wanted.Count == 0) {
             return;
         }
 
-        var channels = NotificationChannels.Load(_options.NotebooksRoot);
-        foreach (var name in wanted.Distinct(StringComparer.OrdinalIgnoreCase)) {
+        // One event name for the feed, and the strongest one wins: a run that both
+        // failed and was slow is a failure, and a row saying "too slow" would bury
+        // that.
+        var recorded = events.Contains(NotificationEvent.JobFailed) ? NotificationEvent.JobFailed
+            : events.Contains(NotificationEvent.JobRecovered) ? NotificationEvent.JobRecovered
+            : NotificationEvent.RunTooSlow;
+
+        await SendAllAsync(
+            channels, wanted, Message.For(job, run, _options),
+            recorded, project, run.Environment, job.Name, run.Id, cancellationToken);
+    }
+
+    /// <summary>The channels a rule set wants for one event here.</summary>
+    private static IEnumerable<string> Matching(
+        NotificationChannels channels, NotificationEvent what, string project, string environment) =>
+        channels.For(what, project).Where(r => Applies(r, environment)).SelectMany(r => r.To);
+
+    private static bool Applies(NotificationRule rule, string environment) =>
+        string.IsNullOrEmpty(rule.Environment)
+        || string.Equals(rule.Environment, environment, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sends one message to every named channel, once each, and records what
+    /// happened — including what did not.
+    /// <para>
+    /// Deduplicated by name: a job's own <c>notify:</c> and a rule naming the same
+    /// channel is one message, not two. Delivery never fails a run, and recording
+    /// never fails a delivery.
+    /// </para>
+    /// </summary>
+    private async Task SendAllAsync(
+        NotificationChannels channels, IEnumerable<string> names, Message message,
+        NotificationEvent what, string project, string environment, string subject,
+        Guid? runId, CancellationToken cancellationToken) {
+        foreach (var name in names.Distinct(StringComparer.OrdinalIgnoreCase)) {
             var channel = channels.Find(name);
             if (channel == null) {
                 _logger.LogWarning(
-                    "{Job}: no notification channel named '{Channel}' in {File}.",
-                    job.Name, name, NotificationChannels.FileName);
+                    "{Subject}: no notification channel named '{Channel}' in {File}.",
+                    subject, name, NotificationChannels.FileName);
+                await RecordAsync(what, project, environment, name, subject, runId,
+                    $"There is no channel named '{name}'.");
                 continue;
             }
             try {
-                await SendAsync(channel, Message.For(job, run, _options), cancellationToken);
-                _logger.LogInformation("{Job}: notified '{Channel}'.", job.Name, channel.Name);
+                await SendAsync(channel, message, cancellationToken);
+                _logger.LogInformation("{Subject}: notified '{Channel}'.", subject, channel.Name);
+                await RecordAsync(what, project, environment, channel.Name, subject, runId, null);
             } catch (Exception e) {
-                // A broken channel must never turn a successful run into a failure.
-                _logger.LogError(e, "{Job}: notifying '{Channel}' failed.", job.Name, channel.Name);
+                // A broken channel must never turn a successful run into a failure —
+                // and must not disappear either, which is what the row is for.
+                _logger.LogError(e, "{Subject}: notifying '{Channel}' failed.", subject, channel.Name);
+                await RecordAsync(what, project, environment, channel.Name, subject, runId, e.Message);
             }
         }
+    }
+
+    private async Task RecordAsync(
+        NotificationEvent what, string project, string environment, string channel,
+        string subject, Guid? runId, string error) {
+        if (_store == null) {
+            return;
+        }
+        try {
+            await _store.RecordDeliveryAsync(new NotificationDelivery {
+                Id = Guid.NewGuid(),
+                Project = project,
+                Environment = environment,
+                Event = what.ToString(),
+                Channel = channel,
+                Subject = subject,
+                RunId = runId,
+                SentAt = DateTime.UtcNow,
+                Error = error,
+            });
+        } catch (Exception e) {
+            _logger.LogWarning(e, "Could not record a notification delivery.");
+        }
+    }
+
+    /// <summary>
+    /// Tells whoever asked that something reached production. Sent after the fact,
+    /// from the promote route — the promotion has already happened, and a channel
+    /// that is down must not be able to undo it.
+    /// </summary>
+    public async Task NotifyPromotionAsync(
+        string project, IReadOnlyList<string> paths, bool isDeletion, string actor,
+        CancellationToken cancellationToken = default) {
+        var channels = NotificationChannels.Load(_options.NotebooksRoot);
+        var wanted = Matching(channels, NotificationEvent.PromotedToProd, project, "prod").ToList();
+        if (wanted.Count == 0) {
+            return;
+        }
+        var what = isDeletion ? "removed from" : "promoted to";
+        var subject = string.Join(", ", paths);
+        var message = new Message {
+            Subject = $"[ClrKernel Studio] {subject} {what} production",
+            Body = $"{actor} {what} production:\n{string.Join("\n", paths)}\n",
+            Payload = new Dictionary<string, object> {
+                ["event"] = NotificationEvent.PromotedToProd.ToString(),
+                ["project"] = project,
+                ["paths"] = paths,
+                ["isDeletion"] = isDeletion,
+                ["actor"] = actor,
+            },
+        };
+        await SendAllAsync(
+            channels, wanted, message, NotificationEvent.PromotedToProd, project, "prod",
+            subject, null, cancellationToken);
     }
 
     /// <summary>Sends one message to one channel. Virtual so tests can observe it.</summary>

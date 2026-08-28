@@ -699,7 +699,7 @@ public static class JobsApi {
 
         scoped.MapPost("/notebooks/promote", async (
             HttpContext context, ProjectRegistry projects, IRunStore store, JobsOptions options,
-            ConnectionStore connections, KernelLanguages kernelLanguages,
+            ConnectionStore connections, KernelLanguages kernelLanguages, Notifier notifier,
             ConnectionProviderCatalog providers, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -735,6 +735,12 @@ public static class JobsApi {
                         j => j.Cron == null ? j.Name : $"{j.Name} ({j.Cron})")),
                     EvidenceRuns = string.Join("\n", eligibility.EvidenceRuns.Values),
                 });
+                // After the fact, and not awaited into the answer: production has
+                // already changed, and a channel that is down must not be able to
+                // make the promotion look like it failed.
+                _ = notifier.NotifyPromotionAsync(
+                    scope.Project.Slug, eligibility.Paths, eligibility.IsDeletion,
+                    actor?.DisplayName ?? "somebody");
                 return Results.Ok(new { promoted = true, commitSha = sha, paths = eligibility.Paths });
             }).RequiresProject(ProjectRole.ProjectAdmin);
 
@@ -1429,16 +1435,67 @@ public static class JobsApi {
             });
         });
 
+        // Rules: *when* things get sent, against Channels' *where*. Same file, and
+        // the same read-modify-write as the channels below — a PUT that replaced the
+        // whole document would let one page's stale copy of the other half win.
+        api.MapGet("/notification-rules", (JobsOptions options) => {
+            var loaded = NotificationChannels.Load(options.NotebooksRoot);
+            return Results.Ok(new {
+                rules = loaded.Rules,
+                // The picker's options, so the page never offers a channel that does
+                // not exist — which is the one mistake that makes a rule look
+                // configured and never arrive.
+                channels = loaded.Channels.Select(c => c.Name),
+                events = Enum.GetNames<NotificationEvent>(),
+                errors = loaded.Validate(),
+            });
+        });
+
+        api.MapPut("/notification-rules", (JobsOptions options, List<NotificationRule> rules) => {
+            if (rules == null) {
+                return Results.BadRequest(new { error = "Expected a rules list." });
+            }
+            var loaded = NotificationChannels.Load(options.NotebooksRoot);
+            loaded.Rules = rules;
+            try {
+                NotificationChannels.Save(options.NotebooksRoot, loaded);
+            } catch (InvalidDataException e) {
+                return Results.BadRequest(new { error = e.Message });
+            }
+            return Results.Ok(new { rules = loaded.Rules });
+        }).AdminOnly();
+
+        // What was actually sent, and what was not. The failures are the reason it
+        // exists: a feed of successes is the one that lies when a webhook has been
+        // returning 500 for a week.
+        api.MapGet("/notifications", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store,
+            bool? failuresOnly, int? limit) => {
+                var visible = await context.VisibleProjectsAsync(projects);
+                return Results.Ok(new {
+                    deliveries = await store.DeliveriesAsync(new NotificationQuery {
+                        Projects = visible.Keys.ToList(),
+                        FailuresOnly = failuresOnly ?? false,
+                        Limit = Clamp(limit),
+                    }),
+                });
+            });
+
         api.MapPut("/channels", (JobsOptions options, NotificationChannels channels) => {
             if (channels?.Channels == null) {
                 return Results.BadRequest(new { error = "Expected a channels list." });
             }
+            // Read-modify-write, because channels and rules share one file: saving
+            // the posted document wholesale would carry this page's empty rules list
+            // over the top of every rule somebody had written.
+            var loaded = NotificationChannels.Load(options.NotebooksRoot);
+            loaded.Channels = channels.Channels;
             try {
-                NotificationChannels.Save(options.NotebooksRoot, channels);
+                NotificationChannels.Save(options.NotebooksRoot, loaded);
             } catch (InvalidDataException e) {
                 return Results.BadRequest(new { error = e.Message });
             }
-            return Results.Ok(new { channels = channels.Channels.Count });
+            return Results.Ok(new { channels = loaded.Channels.Count });
         }).AdminOnly();
 
         api.MapPost("/channels/{name}/test", async (JobsOptions options, Notifier notifier, string name) => {

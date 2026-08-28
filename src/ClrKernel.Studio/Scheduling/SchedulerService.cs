@@ -349,7 +349,19 @@ public sealed class SchedulerService : BackgroundService {
 
                     // After the retry loop settles, so a job that recovers on retry
                     // notifies success once rather than failure-then-success.
-                    await _notifier.NotifyAsync(job, run, CancellationToken.None);
+                    //
+                    // The run before this one comes along for the ride: "recovered"
+                    // is only meaningful against what it recovered from, and asking
+                    // for the two most recent avoids a second definition of "latest"
+                    // that could disagree with the one the gate uses.
+                    var previous = (await _store.QueryRunsAsync(new RunQuery {
+                        Projects = new[] { job.Project ?? ProjectRegistry.DefaultSlug },
+                        Environment = job.Environment,
+                        JobName = job.Name,
+                        Sort = RunSort.Created,
+                        Limit = 2,
+                    })).FirstOrDefault(r => r.Id != run.Id);
+                    await _notifier.NotifyAsync(job, run, previous, CancellationToken.None);
                 } finally {
                     _parallelism.Release();
                 }

@@ -3,6 +3,7 @@ using System;
 using ClrKernel.Studio;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClrKernel.Studio.Store.Migrations.Postgres
 {
     [DbContext(typeof(PostgresRunsDbContext))]
-    partial class PostgresRunsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828051511_AddNotificationDeliveries")]
+    partial class AddNotificationDeliveries
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
