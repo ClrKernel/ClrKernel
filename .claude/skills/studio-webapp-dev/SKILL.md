@@ -131,6 +131,21 @@ that crashes silently — the run stops mid-way with no failing test named and
 Match `ClrKernel.Studio.dll`, which the unit-test assembly's name does not
 contain.
 
+## Locators that break as the app grows
+
+Three that have already cost a re-run here, all from something new sharing a name
+or a prefix with something old:
+
+- **Scope a sortable column heading to `thead`.** The monitoring grid's job cells
+  became buttons too (click to filter), so `get_by_role("button", name="Job")`
+  matches the header and every row.
+- **Wait for `nav[aria-label="Sections"] a` before counting rail links.** The rail
+  paints after the URL changes, so an early count is zero for everything — which
+  makes "the rail no longer offers Jobs" pass for the wrong reason while the four
+  assertions beside it fail.
+- **`a[href^="/monitoring?project="]` also matches every run row's job link.** Add
+  `:not([href*="&job="])` when you mean the project, not one of its jobs.
+
 ## A check that cannot fail is not a check
 
 Before believing a green run, **break the thing it covers and watch it go red.**

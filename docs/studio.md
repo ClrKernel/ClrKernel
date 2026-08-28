@@ -743,6 +743,11 @@ fired, nobody heard, and every log said the notification was configured. Tick
 A rule pointing at a channel nobody has is refused when you save it, not
 discovered when something breaks at 2am.
 
+One row per channel per event, and a run that both failed and ran long is
+recorded as **failed** — the slow fact is dropped, not filed under a second row.
+The message still goes to everyone either rule named, once each; it is the feed's
+label that picks the more serious of the two.
+
 **Not built: "a scheduled run was missed."** It reads like a fifth event but it is
 not a notification feature — the scheduler fires occurrences inside `(lastTick,
 now]`, so a process that was down for an hour skips that hour silently and there
