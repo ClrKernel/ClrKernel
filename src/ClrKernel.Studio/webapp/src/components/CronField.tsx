@@ -91,11 +91,14 @@ export function CronField({
   const offset = localOffset();
 
   return (
-    <div className="field">
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <label htmlFor="cron">Schedule</label>
+        {/* A div rather than a Field: a <button> inside a <label> takes that
+            label's whole text as its accessible name, so this row points at the
+            input by id instead. */}
+        <label htmlFor="cron" className="text-sm font-medium">Schedule</label>
         <span className="text-base font-normal text-muted-foreground">
-          (cron — empty means manual or dependency-triggered)
+          cron — empty means manual or dependency-triggered
         </span>
         <span className="flex-1" />
         {!disabled && (

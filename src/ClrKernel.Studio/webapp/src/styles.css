@@ -102,46 +102,6 @@
 
   /* A form is read one field at a time, so it stays narrow whatever the window
      does — a 1600px-wide text input is a worse target, not a better one. */
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 13px;
-    max-width: 560px;
-    margin: 0 0 2rem;
-  }
-
-  .form label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: var(--text-sm);
-    font-weight: 500;
-  }
-
-  /* The same shape as a label, for a field whose header carries a control of its
-     own. A <button> inside a <label> takes that label's entire text as its
-     accessible name — "Use a preset" gets announced as the whole schedule field —
-     so such a field is a div and points at its input by id instead. */
-  .form .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: var(--text-sm);
-    font-weight: 500;
-  }
-
-  .form-row {
-    display: flex;
-    gap: 12px;
-    align-items: flex-end;
-  }
-
-  .checkbox {
-    flex-direction: row !important;
-    align-items: center;
-    gap: 0.4rem !important;
-  }
-
   /* --- data --------------------------------------------------------------- */
 
   /* A table is the one thing that can genuinely exceed the content width, so
@@ -653,7 +613,11 @@
     z-index: 50;
   }
 
+  /* A column so the actions can sit outside the scrolling part: the body grows
+     until the dialog hits its cap and then scrolls, and Save stays on screen. */
   .modal {
+    display: flex;
+    flex-direction: column;
     background: var(--popover);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -661,31 +625,7 @@
     padding: 1.1rem 1.25rem 1.25rem;
     width: min(42rem, 100%);
     max-height: 80vh;
-    overflow: auto;
-  }
-
-  .wizard-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-    gap: 0.75rem;
-    margin: 0.85rem 0;
-  }
-
-  .form-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 1rem;
-  }
-
-  .form-field.checkbox {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .wizard-required {
-    color: var(--status-warning);
+    overflow: hidden;
   }
 
   .wizard-preview {

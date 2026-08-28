@@ -11,6 +11,9 @@ import {
   type ConnectionScope,
 } from '../api';
 import { isSecret } from '../connectionDirective';
+import {
+  CheckboxField, Field, FieldGrid, FieldSection, SelectField,
+} from '@/components/ui/field';
 import { unmet } from '../connectionFields';
 import { useIsServerAdmin } from '../sessionContext';
 import { ErrorBanner } from './common';
@@ -167,49 +170,66 @@ export function ConnectionForm({
   }
 
   return (
-    <Modal title={connection == null ? 'New connection' : connection.name} onClose={onClose}>
+    <Modal
+      title={connection == null ? 'New connection' : connection.name}
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" disabled={saving || name.trim().length === 0} onClick={save}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={test} disabled={saving}>
+            Test
+          </Button>
+          <span className="flex-1" />
+          {connection != null && (
+            <Button variant="outline" size="sm"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={remove}>
+              Delete
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        </>
+      }
+    >
       <ErrorBanner error={error} />
 
-      <div className="wizard-fields">
-        <label className="form-field">
-          <span>Name<span className="wizard-required"> *</span></span>
-          <input value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="warehouse" />
-          <em className="text-base text-muted-foreground">
-            What a notebook cell references. It has to stay put, so it is not a label.
-          </em>
-        </label>
+      <FieldGrid>
+        <Field
+          label="Name"
+          required
+          hint="What a notebook cell references. It has to stay put, so it is not a label."
+        >
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="warehouse" />
+        </Field>
 
-        <label className="form-field">
-          <span>Visible to</span>
-          <select
-            value={scope}
-            // A connection cannot move between the lists after it is created:
-            // publishing somebody's credential to the whole server on a dropdown
-            // change is not an undo away, and moving one out breaks every
-            // notebook that names it.
-            disabled={connection != null}
-            onChange={(e) => setScope(e.target.value as ConnectionScope)}
-          >
-            {isAdmin && <option value="shared">Everyone (shared)</option>}
-            <option value="private">Only me</option>
-          </select>
-          <em className="text-base text-muted-foreground">
-            {scope === 'shared'
-              ? 'Managed by server admins and visible to everybody.'
-              : 'Invisible to everyone else, server admins included, and never committed.'}
-          </em>
-        </label>
+        <SelectField
+          label="Visible to"
+          value={scope}
+          onChange={(value) => setScope(value as ConnectionScope)}
+          // A connection cannot move between the lists after it is created:
+          // publishing somebody's credential to the whole server on a dropdown
+          // change is not an undo away, and moving one out breaks every notebook
+          // that names it.
+          disabled={connection != null}
+          options={[
+            ...(isAdmin ? [{ value: 'shared', label: 'Everyone (shared)' }] : []),
+            { value: 'private', label: 'Only me' },
+          ]}
+          hint={scope === 'shared'
+            ? 'Managed by server admins and visible to everybody.'
+            : 'Invisible to everyone else, server admins included, and never committed.'}
+        />
 
         {providers != null && providers.length > 1 && (
-          <label className="form-field">
-            <span>Type</span>
-            <select value={type} onChange={(e) => setType(e.target.value)} disabled={connection != null}>
-              {providers.map((p) => (
-                <option key={p.type} value={p.type}>{p.displayName}</option>
-              ))}
-            </select>
-          </label>
+          <SelectField
+            label="Type"
+            value={type}
+            onChange={setType}
+            disabled={connection != null}
+            options={providers.map((p) => ({ value: p.type, label: p.displayName }))}
+          />
         )}
 
         {plain != null && (
@@ -219,7 +239,7 @@ export function ConnectionForm({
             onChange={(name, v) => setValues((current) => ({ ...current, [name]: v }))}
           />
         )}
-      </div>
+      </FieldGrid>
 
       {provider != null && provider.queryable === false && (
         <Alert>
@@ -245,131 +265,120 @@ export function ConnectionForm({
           Encrypt and Trust server certificate, a heading called Password reads
           like one more setting rather than the start of a section — and there is
           a field called Password inside it. */}
-      <h3>Credential</h3>
-      {secretHelp && (
-        <Alert>
-          <AlertDescription>{secretHelp}</AlertDescription>
-        </Alert>
-      )}
-      <div className="wizard-fields">
-        <label className="form-field checkbox">
-          <input type="checkbox" checked={prompt} onChange={(e) => setPrompt(e.target.checked)} />
-          <span>
-            Do not store it — ask each session
-            {connection?.secretConfigured && !prompt && (
-              <Badge variant="outline" className="font-normal">configured</Badge>
-            )}
-          </span>
-        </label>
-        {!prompt && canPersist && (
-          <label className="form-field">
-            <span>
-              Password
-              {connection?.secretConfigured && (
-                <Badge variant="outline" className="font-normal">configured</Badge>
+      <FieldSection title="Credential">
+        {secretHelp && (
+          <Alert>
+            <AlertDescription>{secretHelp}</AlertDescription>
+          </Alert>
+        )}
+        {/* Outside the grid: a checkbox is one line tall and a field is three, so
+            sharing a row leaves the checkbox stranded at the top of a tall cell. */}
+        <CheckboxField
+          label={
+            <>
+              Do not store it — ask each session
+              {connection?.secretConfigured && !prompt && (
+                <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
               )}
-            </span>
+            </>
+          }
+          checked={prompt}
+          onChange={setPrompt}
+        />
+        <FieldGrid>
+        {!prompt && canPersist && (
+          <Field
+            label={
+              <>
+                Password
+                {connection?.secretConfigured && (
+                  <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
+                )}
+              </>
+            }
+            hint={"Kept in this server's credential store. It is never written to the connection "
+              + 'itself, never sent back to a browser, and never lands in a notebook.'}
+          >
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder={connection?.secretConfigured ? 'leave blank to keep the connection one' : ''} />
-            <em className="text-base text-muted-foreground">
-              Kept in this server's credential store. It is never written to the connection
-              itself, never sent back to a browser, and never lands in a notebook.
-            </em>
-          </label>
+          </Field>
         )}
         {!prompt && !canPersist && (
-          <label className="form-field">
-            <span>Secret name</span>
-            <input value={secretRef} onChange={(e) => setSecretRef(e.target.value)}
+          <Field label="Secret name">
+            <Input value={secretRef} onChange={(e) => setSecretRef(e.target.value)}
               placeholder="the name of a secret, not the password" />
-          </label>
+          </Field>
         )}
-      </div>
+        </FieldGrid>
+      </FieldSection>
 
       {/* Shared connections always need one; private ones do too when the install
           has asked for it. Rendering this only for shared meant that on such an
           install a private connection had no field anywhere to make it runnable. */}
       {(scope === 'shared' || privateReadOnly) && (
-        <>
-          <h3>Read-only login</h3>
-          <p className="text-base text-muted-foreground">
-            {scope === 'shared'
-              ? 'Everyone below a server admin runs as this login. Without it they cannot run '
-                + 'against this connection at all — which is honest: no amount of reading the '
-                + 'SQL makes a writable login read-only, so the second credential is the '
-                + 'boundary.'
-              : 'This server requires a read-only login on every connection, private ones '
-                + 'included. Without one this connection cannot be run at all.'}
-          </p>
-          <div className="wizard-fields">
-            <label className="form-field">
-              <span>User</span>
-              <input value={readOnlyUser} onChange={(e) => setReadOnlyUser(e.target.value)}
+        <FieldSection
+          title="Read-only login"
+          description={scope === 'shared'
+            ? 'Everyone below a server admin runs as this login. Without it they cannot run '
+              + 'against this connection at all — which is honest: no amount of reading the '
+              + 'SQL makes a writable login read-only, so the second credential is the '
+              + 'boundary.'
+            : 'This server requires a read-only login on every connection, private ones '
+              + 'included. Without one this connection cannot be run at all.'}
+        >
+          <FieldGrid>
+            <Field label="User">
+              <Input value={readOnlyUser} onChange={(e) => setReadOnlyUser(e.target.value)}
                 placeholder="reader" />
-            </label>
+            </Field>
             {readOnlyUser && canPersist && (
-              <label className="form-field">
-                <span>
-                  Password
-                  {connection?.readOnlySecretConfigured && (
-                    <Badge variant="outline" className="font-normal">configured</Badge>
-                  )}
-                </span>
+              <Field
+                label={
+                  <>
+                    Password
+                    {connection?.readOnlySecretConfigured && (
+                      <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
+                    )}
+                  </>
+                }
+              >
                 <Input type="password" value={readOnlyPassword}
                   onChange={(e) => setReadOnlyPassword(e.target.value)}
                   placeholder={connection?.readOnlySecretConfigured
                     ? 'leave blank to keep the connection one' : ''} />
-              </label>
+              </Field>
             )}
             {/* The same escape hatch the primary credential has. Without it, a
                 server with no OS credential store could never make any shared
                 connection runnable by a non-admin. */}
             {readOnlyUser && !canPersist && (
-              <label className="form-field">
-                <span>Secret name</span>
-                <input value={readOnlySecretRef}
+              <Field label="Secret name">
+                <Input value={readOnlySecretRef}
                   onChange={(e) => setReadOnlySecretRef(e.target.value)}
                   placeholder="the name of a secret, not the password" />
-              </label>
+              </Field>
             )}
-          </div>
-        </>
+          </FieldGrid>
+        </FieldSection>
       )}
 
-      <h3>Limits</h3>
-      <div className="wizard-fields">
-        <label className="form-field">
-          <span>Query timeout (seconds)</span>
-          <input value={timeoutSeconds} onChange={(e) => setTimeout(e.target.value)} inputMode="numeric" />
-        </label>
-        <label className="form-field">
-          <span>Row cap</span>
-          <input value={rowCap} onChange={(e) => setRowCap(e.target.value)} inputMode="numeric" />
-          <em className="text-base text-muted-foreground">
-            A SELECT * against a fact table should not be able to take down the browser tab.
-          </em>
-        </label>
-      </div>
+      <FieldSection title="Limits">
+        <FieldGrid>
+        <Field label="Query timeout (seconds)">
+          <Input value={timeoutSeconds} onChange={(e) => setTimeout(e.target.value)}
+            inputMode="numeric" />
+        </Field>
+        <Field
+          label="Row cap"
+          hint="A SELECT * against a fact table should not be able to take down the browser tab."
+        >
+          <Input value={rowCap} onChange={(e) => setRowCap(e.target.value)} inputMode="numeric" />
+          </Field>
+        </FieldGrid>
+      </FieldSection>
 
       {testing && <p className="text-base text-muted-foreground">{testing}</p>}
 
-      <div className="flex items-center gap-2">
-        <Button size="sm" disabled={saving || name.trim().length === 0} onClick={save}>
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-        <Button variant="outline" size="sm" onClick={test} disabled={saving}>
-          Test
-        </Button>
-        <span className="spacer" />
-        {connection != null && (
-          <Button variant="outline" size="sm"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={remove}>
-            Delete
-          </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-      </div>
     </Modal>
   );
 }

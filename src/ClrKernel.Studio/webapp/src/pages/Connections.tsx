@@ -29,6 +29,9 @@ import { ConnectionTree } from '../components/ConnectionTree';
 import { ErrorBanner, usePolling } from '../components/common';
 import { ResultGrid } from '../components/ResultGrid';
 import { Splitter } from '../components/Splitter';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { textToRun } from '../monaco/runTarget';
 import { useFillEditor } from '../monaco/useMonaco';
@@ -744,11 +747,15 @@ function SavedQueriesPanel({ connection, sql, onOpen, onClose }: {
             aria-label="Name for this query"
           />
           {isAdmin && (
-            <select value={scope} onChange={(e) => setScope(e.target.value as 'shared' | 'private')}
-              aria-label="Visible to">
-              <option value="private">Only me</option>
-              <option value="shared">Everyone</option>
-            </select>
+            <Select value={scope} onValueChange={(value) => setScope(value as 'shared' | 'private')}>
+              <SelectTrigger aria-label="Visible to" className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="private">Only me</SelectItem>
+                <SelectItem value="shared">Everyone</SelectItem>
+              </SelectContent>
+            </Select>
           )}
           <Button size="sm" disabled={busy || name.trim().length === 0} onClick={save}>
             Save

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CheckboxField, Field, FieldRow, SelectField } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -70,49 +71,40 @@ function RuleCard({
         )}
       </div>
 
-      <div className="form-row">
-        <label>
-          In project
-          <Select
-            value={rule.project || ANY}
-            disabled={readOnly}
-            onValueChange={(value) => set('project', value === ANY ? null : value)}
-          >
-            <SelectTrigger aria-label="Project"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>every project</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.slug} value={p.slug}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <label>
-          On branch
-          <Select
-            value={rule.environment || ANY}
-            disabled={readOnly}
-            onValueChange={(value) => set('environment', value === ANY ? null : value)}
-          >
-            <SelectTrigger aria-label="Branch"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>test and prod</SelectItem>
-              <SelectItem value="test">test only</SelectItem>
-              <SelectItem value="prod">prod only</SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
+      <FieldRow>
+        <SelectField
+          label="In project"
+          className="min-w-44 flex-1"
+          value={rule.project || ANY}
+          disabled={readOnly}
+          onChange={(value) => set('project', value === ANY ? null : value)}
+          options={[
+            { value: ANY, label: 'every project' },
+            ...projects.map((p) => ({ value: p.slug, label: p.name })),
+          ]}
+        />
+        <SelectField
+          label="On branch"
+          className="min-w-40 flex-1"
+          value={rule.environment || ANY}
+          disabled={readOnly}
+          onChange={(value) => set('environment', value === ANY ? null : value)}
+          options={[
+            { value: ANY, label: 'test and prod' },
+            { value: 'test', label: 'test only' },
+            { value: 'prod', label: 'prod only' },
+          ]}
+        />
         {rule.event === 'RunTooSlow' && (
-          <label>
-            Slower than (seconds)
+          <Field label="Slower than (seconds)" className="w-40">
             <Input
               value={rule.afterSeconds ?? ''}
               disabled={readOnly}
               onChange={(e) => set('afterSeconds', Number(e.target.value) || null)}
             />
-          </label>
+          </Field>
         )}
-      </div>
+      </FieldRow>
 
       <fieldset className="fieldset">
         <legend>Send to</legend>
@@ -126,31 +118,27 @@ function RuleCard({
         ) : (
           <div className="flex flex-wrap gap-3">
             {channels.map((name) => (
-              <label key={name} className="checkbox">
-                <input
-                  type="checkbox"
-                  disabled={readOnly}
-                  checked={rule.to.includes(name)}
-                  onChange={(e) => set('to', e.target.checked
-                    ? [...rule.to, name]
-                    : rule.to.filter((n) => n !== name))}
-                />
-                {name}
-              </label>
+              <CheckboxField
+                key={name}
+                label={name}
+                disabled={readOnly}
+                checked={rule.to.includes(name)}
+                onChange={(checked) => set('to', checked
+                  ? [...rule.to, name]
+                  : rule.to.filter((n) => n !== name))}
+              />
             ))}
           </div>
         )}
       </fieldset>
 
-      <label className="checkbox mt-2">
-        <input
-          type="checkbox"
-          disabled={readOnly}
-          checked={rule.enabled}
-          onChange={(e) => set('enabled', e.target.checked)}
-        />
-        Enabled
-      </label>
+      <CheckboxField
+        className="mt-2"
+        label="Enabled"
+        disabled={readOnly}
+        checked={rule.enabled}
+        onChange={(enabled) => set('enabled', enabled)}
+      />
     </div>
   );
 }
@@ -305,14 +293,11 @@ export function Notifications() {
       <section>
         <div className="mb-1.5 flex items-baseline justify-between gap-3">
           <h2 className="text-lg font-semibold">Delivered</h2>
-          <label className="checkbox text-base">
-            <input
-              type="checkbox"
-              checked={failuresOnly}
-              onChange={(e) => setFailuresOnly(e.target.checked)}
-            />
-            only what did not arrive
-          </label>
+          <CheckboxField
+            label="only what did not arrive"
+            checked={failuresOnly}
+            onChange={setFailuresOnly}
+          />
         </div>
         <Feed deliveries={feed?.deliveries ?? []} />
       </section>

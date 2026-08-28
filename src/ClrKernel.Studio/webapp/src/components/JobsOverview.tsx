@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Play, Plus, Square, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { CheckboxField, Field, FieldRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { api } from '../api';
 import { addJob, readJobsFile, removeJob, setJobField, type JobView } from '../jobsFile';
@@ -78,22 +79,23 @@ export function JobsOverview({
       )}
 
       {view.jobs.map((job, index) => (
-        <div key={index} className="max-w-[720px] rounded-2xl border border-border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <label className="flex-1">
-              Name
+        <div
+          key={index}
+          className="flex max-w-[720px] flex-col gap-3 rounded-2xl border border-border bg-card p-4"
+        >
+          <div className="flex items-end gap-2">
+            <Field label="Name" className="flex-1">
               <Input
                 value={job.name}
                 disabled={readOnly}
                 placeholder="daily"
                 onChange={(e) => set(index, 'name', e.target.value)}
               />
-            </label>
+            </Field>
             {!readOnly && (
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-5"
                 aria-label={`Remove ${job.name || 'this job'}`}
                 onClick={() => {
                   // A job is a scheduled thing somebody relies on, and this is
@@ -108,26 +110,26 @@ export function JobsOverview({
             )}
           </div>
 
-          <label>
-            Notebook
+          <Field
+            label="Notebook"
+            hint={
+              job.notebook === '' && view.notebook !== '' ? (
+                <>Empty, so it runs the file's <code className="font-mono">{view.notebook}</code>.</>
+              ) : job.notebook !== '' && notebooks.length > 0
+                  && !notebooks.includes(resolve(job.notebook)) ? (
+                <span className="text-status-warning">
+                  Not on this branch yet — a job can only name a notebook that is here.
+                </span>
+              ) : null
+            }
+          >
             <Input
               value={job.notebook}
               disabled={readOnly}
               placeholder={view.notebook || './daily.nb.md'}
               onChange={(e) => set(index, 'notebook', e.target.value)}
             />
-            {job.notebook === '' && view.notebook !== '' && (
-              <span className="block text-base text-muted-foreground">
-                Empty, so it runs the file's <code className="font-mono">{view.notebook}</code>.
-              </span>
-            )}
-            {job.notebook !== '' && notebooks.length > 0
-              && !notebooks.includes(resolve(job.notebook)) && (
-              <span className="block text-base text-status-warning">
-                Not on this branch yet — a job can only name a notebook that is here.
-              </span>
-            )}
-          </label>
+          </Field>
 
           <CronField
             value={job.cron}
@@ -135,45 +137,40 @@ export function JobsOverview({
             onChange={(cron) => set(index, 'cron', cron)}
           />
 
-          <label>
-            Depends on{' '}
-            <span className="text-base text-muted-foreground">
-              (job names, comma-separated — this one runs after they succeed)
-            </span>
+          <Field
+            label="Depends on"
+            hint="Job names, comma-separated — this one runs after they succeed."
+          >
             <Input
               value={job.dependsOn}
               disabled={readOnly}
               onChange={(e) => set(index, 'dependsOn', e.target.value)}
             />
-          </label>
+          </Field>
 
-          <div className="form-row">
-            <label>
-              Timeout (seconds)
+          <FieldRow>
+            <Field label="Timeout (seconds)" className="w-40">
               <Input
                 value={job.timeoutSeconds}
                 disabled={readOnly}
                 onChange={(e) => set(index, 'timeoutSeconds', e.target.value)}
               />
-            </label>
-            <label>
-              Retries
+            </Field>
+            <Field label="Retries" className="w-28">
               <Input
                 value={job.retryCount}
                 disabled={readOnly}
                 onChange={(e) => set(index, 'retryCount', e.target.value)}
               />
-            </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={job.enabled}
-                disabled={readOnly}
-                onChange={(e) => set(index, 'enabled', e.target.checked)}
-              />
-              Enabled
-            </label>
-          </div>
+            </Field>
+            <CheckboxField
+              label="Enabled"
+              className="pb-1.5"
+              checked={job.enabled}
+              disabled={readOnly}
+              onChange={(enabled) => set(index, 'enabled', enabled)}
+            />
+          </FieldRow>
 
           {job.extras.length > 0 && (
             <p className="mt-2 text-base text-muted-foreground">

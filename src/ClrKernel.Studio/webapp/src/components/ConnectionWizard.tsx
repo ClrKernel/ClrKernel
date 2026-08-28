@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { api, type ApiConnection, type ApiConnectionProvider, type ApiConnectionSetting, type ApiLanguage } from '../api';
 import { composeConnectDirective, isSecret, sameKind } from '../connectionDirective';
 import {
   filled, label, membersOf, unmet, type SettingValues,
 } from '../connectionFields';
+import {
+  CheckboxField, Field as FormField, FieldGrid, SelectField,
+} from '@/components/ui/field';
 import { ErrorBanner } from './common';
 import { Modal } from './Modal';
 
@@ -94,7 +98,19 @@ export function ConnectionWizard({
   const missing = provider ? unmet(provider, values) : [];
 
   return (
-    <Modal title={`${language.displayName} connection`} onClose={onClose}>
+    <Modal
+      title={`${language.displayName} connection`}
+      onClose={onClose}
+      footer={provider && (defining || offered.length === 0) ? (
+        <>
+          <Button size="sm" disabled={missing.length > 0} onClick={() => onInsert(directive)}>
+            Insert as a new cell
+          </Button>
+          <span className="flex-1" />
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        </>
+      ) : undefined}
+    >
       <ErrorBanner error={error} />
 
       {providers == null && !error && <p className="text-base text-muted-foreground">Asking the kernel what it can connect to…</p>}
@@ -145,28 +161,24 @@ export function ConnectionWizard({
       )}
 
       {(defining || offered.length === 0) && providers && providers.length > 1 && (
-        <label className="form-field">
-          <span>Connection type</span>
-          <select value={type ?? ''} onChange={(e) => setType(e.target.value)}>
-            {providers.map((p) => (
-              <option key={p.type} value={p.type}>
-                {p.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField
+          label="Connection type"
+          value={type ?? ''}
+          onChange={setType}
+          options={providers.map((p) => ({ value: p.type, label: p.displayName }))}
+        />
       )}
 
       {provider && (defining || offered.length === 0) && (
         <>
           {provider.description && <p className="text-base text-muted-foreground">{provider.description}</p>}
-          <div className="wizard-fields">
+          <FieldGrid>
             <Fields
               provider={provider}
               values={values}
               onChange={(name, v) => setValues((current) => ({ ...current, [name]: v }))}
             />
-          </div>
+          </FieldGrid>
 
           <p className="text-base text-muted-foreground">
             This is what will be inserted. Nothing secret appears in it — a credential setting
@@ -180,18 +192,6 @@ export function ConnectionWizard({
             </p>
           )}
 
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              disabled={missing.length > 0}
-              onClick={() => onInsert(directive)}
-            >
-              Insert as a new cell
-            </Button>
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
         </>
       )}
     </Modal>
@@ -232,7 +232,7 @@ export function Fields({
           onChange={onChange}
         />
       ) : (
-        <Field
+        <SettingField
           key={row.setting.name}
           setting={row.setting}
           value={values[row.setting.name]}
@@ -258,32 +258,27 @@ function OneOf({
     ?? members[0];
 
   if (members.length === 1) {
-    return <Field setting={chosen} value={values[chosen.name]}
+    return <SettingField setting={chosen} value={values[chosen.name]}
       onChange={(v) => onChange(chosen.name, v)} />;
   }
   return (
     <>
-      <label className="form-field">
-        <span>{group.charAt(0).toUpperCase() + group.slice(1)}</span>
-        <select
-          value={chosen.name}
-          onChange={(e) => {
-            // Exactly one applies, so choosing one drops what the others held —
-            // otherwise a value nobody can see any more is still submitted.
-            members.forEach((other) => {
-              if (other.name !== e.target.value) {
-                onChange(other.name, undefined);
-              }
-            });
-            setPicked(e.target.value);
-          }}
-        >
-          {members.map((m) => (
-            <option key={m.name} value={m.name}>{label(m)}</option>
-          ))}
-        </select>
-      </label>
-      <Field setting={chosen} value={values[chosen.name]}
+      <SelectField
+        label={group.charAt(0).toUpperCase() + group.slice(1)}
+        value={chosen.name}
+        onChange={(name) => {
+          // Exactly one applies, so choosing one drops what the others held —
+          // otherwise a value nobody can see any more is still submitted.
+          members.forEach((other) => {
+            if (other.name !== name) {
+              onChange(other.name, undefined);
+            }
+          });
+          setPicked(name);
+        }}
+        options={members.map((m) => ({ value: m.name, label: label(m) }))}
+      />
+      <SettingField setting={chosen} value={values[chosen.name]}
         onChange={(v) => onChange(chosen.name, v)} />
     </>
   );
@@ -294,60 +289,61 @@ function OneOf({
  * area renders the same descriptors — a provider describes its settings once and
  * both the notebook wizard and the saved-connection form follow it.
  */
-export function Field({
+export function SettingField({
   setting, value, onChange,
 }: {
   setting: ApiConnectionSetting;
   value: string | boolean | undefined;
   onChange: (value: string | boolean | undefined) => void;
 }) {
-  const label = setting.displayName ?? setting.name;
+  const name = setting.displayName ?? setting.name;
 
   if (sameKind(setting.kind, 'bool')) {
     return (
-      <label className="form-field checkbox">
-        <input
-          type="checkbox"
-          checked={String(value ?? setting.default ?? 'false') === 'true'}
-          onChange={(e) => onChange(String(e.target.checked))}
-        />
-        <span>
-          {label}
-          {setting.description && <em className="text-base text-muted-foreground"> — {setting.description}</em>}
-        </span>
-      </label>
+      <CheckboxField
+        label={name}
+        hint={setting.description}
+        checked={String(value ?? setting.default ?? 'false') === 'true'}
+        onChange={(checked) => onChange(String(checked))}
+      />
+    );
+  }
+
+  const label = (
+    <>
+      {name}
+      {isSecret(setting.kind) && (
+        <Badge variant="outline" className="ml-2 font-normal">secret name</Badge>
+      )}
+    </>
+  );
+
+  if (setting.enumValues?.length) {
+    return (
+      <SelectField
+        label={label}
+        hint={setting.description}
+        required={setting.required}
+        value={String(value ?? '')}
+        onChange={onChange}
+        clearLabel="(kernel default)"
+        placeholder="(kernel default)"
+        options={setting.enumValues.map((option) => ({ value: option, label: option }))}
+      />
     );
   }
 
   return (
-    <label className="form-field">
-      <span>
-        {label}
-        {setting.required && <span className="wizard-required"> *</span>}
-        {isSecret(setting.kind) && <Badge variant="outline" className="font-normal">secret name</Badge>}
-      </span>
-      {setting.enumValues?.length ? (
-        <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-          <option value="">(kernel default)</option>
-          {setting.enumValues.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type="text"
-          value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={
-            isSecret(setting.kind)
-              ? 'name of a stored secret — not the password itself'
-              : (setting.default ?? '')
-          }
-        />
-      )}
-      {setting.description && <em className="text-base text-muted-foreground">{setting.description}</em>}
-    </label>
+    <FormField label={label} hint={setting.description} required={setting.required}>
+      <Input
+        value={String(value ?? '')}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={
+          isSecret(setting.kind)
+            ? 'name of a stored secret — not the password itself'
+            : (setting.default ?? '')
+        }
+      />
+    </FormField>
   );
 }

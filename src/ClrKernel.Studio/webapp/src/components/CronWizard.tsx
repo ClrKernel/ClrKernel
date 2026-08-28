@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { CheckboxField, Field, SelectField } from '@/components/ui/field';
 import {
   DEFAULT_SPEC, WEEKDAYS, buildCron, specOf, type CronSpec,
 } from '../cron';
@@ -48,7 +46,17 @@ export function CronWizard({
   };
 
   return (
-    <Modal title="Schedule" onClose={onClose}>
+    <Modal
+      title="Schedule"
+      onClose={onClose}
+      footer={
+        <>
+          <span className="flex-1" />
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={() => { onUse(built); onClose(); }}>Use this schedule</Button>
+        </>
+      }
+    >
 
       {current.trim() !== '' && parsed == null && (
         <p className="text-base text-status-warning">
@@ -57,68 +65,59 @@ export function CronWizard({
         </p>
       )}
 
-      <label>
-        Repeats
-        <Select
-          value={spec.every}
-          onValueChange={(every) => setSpec(startingFrom(every as CronSpec['every'], hour, minute))}
-        >
-          <SelectTrigger aria-label="Repeats"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="minutes">Every N minutes</SelectItem>
-            <SelectItem value="hour">Hourly</SelectItem>
-            <SelectItem value="day">Daily</SelectItem>
-            <SelectItem value="week">Weekly</SelectItem>
-            <SelectItem value="month">Monthly</SelectItem>
-          </SelectContent>
-        </Select>
-      </label>
+      <SelectField
+        label="Repeats"
+        value={spec.every}
+        onChange={(every) => setSpec(startingFrom(every as CronSpec['every'], hour, minute))}
+        options={[
+          { value: 'minutes', label: 'Every N minutes' },
+          { value: 'hour', label: 'Hourly' },
+          { value: 'day', label: 'Daily' },
+          { value: 'week', label: 'Weekly' },
+          { value: 'month', label: 'Monthly' },
+        ]}
+      />
 
       {spec.every === 'minutes' && (
-        <label>
-          Every how many minutes
+        <Field label="Every how many minutes">
           <Input
             type="number" min={1} max={59} value={spec.minutes}
             onChange={(e) => setSpec({ every: 'minutes', minutes: Number(e.target.value) || 1 })}
           />
-        </label>
+        </Field>
       )}
 
       {spec.every === 'hour' && (
-        <label>
-          At this many minutes past the hour
+        <Field label="At this many minutes past the hour">
           <Input
             type="number" min={0} max={59} value={spec.minute}
             onChange={(e) => setSpec({ every: 'hour', minute: Number(e.target.value) || 0 })}
           />
-        </label>
+        </Field>
       )}
 
       {(spec.every === 'day' || spec.every === 'week' || spec.every === 'month') && (
-        <label>
-          At (UTC)
+        <Field label="At (UTC)">
           <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </label>
+        </Field>
       )}
 
       {spec.every === 'week' && (
-        <fieldset className="field">
-          <legend>On these days</legend>
-          <div className="flex flex-wrap gap-2">
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-sm font-medium">On these days</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
             {WEEKDAYS.map((label, day) => (
-              <label key={label} className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={spec.days.includes(day)}
-                  onChange={(e) => setSpec({
-                    ...spec,
-                    days: e.target.checked
-                      ? [...spec.days, day]
-                      : spec.days.filter((d) => d !== day),
-                  })}
-                />
-                {label}
-              </label>
+              <CheckboxField
+                key={label}
+                label={label}
+                checked={spec.days.includes(day)}
+                onChange={(checked) => setSpec({
+                  ...spec,
+                  days: checked
+                    ? [...spec.days, day]
+                    : spec.days.filter((d) => d !== day),
+                })}
+              />
             ))}
           </div>
           {spec.days.length === 0 && (
@@ -150,10 +149,6 @@ export function CronWizard({
         {' '}— the field shows the next few runs once you use it.
       </p>
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-        <Button size="sm" onClick={() => { onUse(built); onClose(); }}>Use this schedule</Button>
-      </div>
     </Modal>
   );
 }

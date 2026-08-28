@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -89,10 +90,11 @@ function Section({ section }: { section: SettingsSection }) {
                     {locked ? (
                       <FieldValue field={field} />
                     ) : field.type === 'bool' ? (
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                        aria-label={field.label ?? field.name}
                         checked={(edits[field.name] as boolean | undefined) ?? Boolean(field.value)}
-                        onChange={(e) => setEdits({ ...edits, [field.name]: e.target.checked })}
+                        onCheckedChange={(checked) =>
+                          setEdits({ ...edits, [field.name]: checked === true })}
                       />
                     ) : (
                       <Input

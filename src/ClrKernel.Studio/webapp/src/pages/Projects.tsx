@@ -2,6 +2,7 @@ import { FolderGit2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { CheckboxField } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -197,14 +198,11 @@ function Fields({
         </label>
       )}
 
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={value.gitEnabled}
-          onChange={(e) => set({ gitEnabled: e.target.checked })}
-        />
-        <span className="text-base">Use the test → prod workflow</span>
-      </label>
+      <CheckboxField
+        label="Use the test → prod workflow"
+        checked={value.gitEnabled}
+        onChange={(gitEnabled) => set({ gitEnabled })}
+      />
 
       <label className="grid gap-1">
         <span className="text-sm text-muted-foreground">Remote</span>
@@ -247,14 +245,11 @@ function Fields({
               credential store or <code>CLRKERNEL_SECRET_*</code>, so nothing here ends up in a file.
             </span>
           </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={value.pushUserBranches}
-              onChange={(e) => set({ pushUserBranches: e.target.checked })}
-            />
-            <span className="text-base">Push personal branches to the remote too</span>
-          </label>
+          <CheckboxField
+            label="Push personal branches to the remote too"
+            checked={value.pushUserBranches}
+            onChange={(pushUserBranches) => set({ pushUserBranches })}
+          />
         </>
       )}
     </div>

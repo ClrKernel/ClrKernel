@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -311,12 +312,11 @@ export function Monitoring() {
             <thead>
               <tr>
                 <th className="w-[34px]">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label="Select every run on this page"
                     checked={runs.length > 0 && selected.length === runs.length}
-                    onChange={(e) => setPicked(
-                      e.target.checked ? new Set(runs.map((run) => run.id)) : new Set(),
+                    onCheckedChange={(checked) => setPicked(
+                      checked === true ? new Set(runs.map((run) => run.id)) : new Set(),
                     )}
                   />
                 </th>
@@ -338,11 +338,10 @@ export function Monitoring() {
                   onClick={() => navigate(`/runs/${run.id}`)}
                 >
                   <td onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Select the ${run.jobName} run`}
                       checked={picked.has(run.id)}
-                      onChange={() => toggle(run.id)}
+                      onCheckedChange={() => toggle(run.id)}
                     />
                   </td>
                   <td className="whitespace-nowrap">
