@@ -70,7 +70,8 @@ public class SchedulerTest {
 
     private void WriteJobs(string yaml) {
         File.WriteAllText(Path.Combine(_root, "nb.nb.md"), "```csharp\n1+1\n```\n");
-        File.WriteAllText(Path.Combine(_root, "test.jobs.yaml"), yaml);
+        // Named for the notebook it schedules — the pairing every jobs file has.
+        File.WriteAllText(Path.Combine(_root, "nb.jobs.yaml"), yaml);
     }
 
     private async Task TickAsync(DateTime from, DateTime to) {
@@ -92,7 +93,6 @@ public class SchedulerTest {
     public async Task A_due_cron_job_fires_and_an_active_run_skips_the_occurrence() {
         WriteJobs(
             """
-            notebook: ./nb.nb.md
             jobs:
               - name: minutely
                 cron: "* * * * *"
@@ -119,7 +119,6 @@ public class SchedulerTest {
     public async Task Fan_in_fires_the_dependent_exactly_once_when_all_dependencies_are_fresh() {
         WriteJobs(
             """
-            notebook: ./nb.nb.md
             jobs:
               - name: a1
               - name: a2
@@ -157,7 +156,6 @@ public class SchedulerTest {
     public async Task A_failed_dependency_stops_the_chain() {
         WriteJobs(
             """
-            notebook: ./nb.nb.md
             jobs:
               - name: up
                 cron: "* * * * *"
@@ -179,7 +177,6 @@ public class SchedulerTest {
     public async Task A_failed_run_retries_up_to_the_configured_count() {
         WriteJobs(
             """
-            notebook: ./nb.nb.md
             jobs:
               - name: flaky
                 cron: "* * * * *"
@@ -200,7 +197,6 @@ public class SchedulerTest {
     public async Task A_disabled_job_never_fires() {
         WriteJobs(
             """
-            notebook: ./nb.nb.md
             jobs:
               - name: off
                 cron: "* * * * *"

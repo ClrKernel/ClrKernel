@@ -20,9 +20,17 @@ public class JobsFileTest {
     [TestCleanup]
     public void Cleanup() => Directory.Delete(_dir, recursive: true);
 
-    private IReadOnlyList<JobDefinition> Load(string yaml) {
+    /// <summary>
+    /// Writes `test.jobs.yaml` with `test.nb.md` beside it — the pairing every
+    /// jobs file now has, so most of these tests are about what is *inside* the
+    /// file rather than which notebook it found.
+    /// </summary>
+    private IReadOnlyList<JobDefinition> Load(string yaml, string notebook = "test.nb.md") {
         var path = Path.Combine(_dir, "test.jobs.yaml");
         File.WriteAllText(path, yaml);
+        if (notebook != null) {
+            File.WriteAllText(Path.Combine(_dir, notebook), "```csharp\n1\n```\n");
+        }
         return JobsFile.Load(path, _dir);
     }
 
@@ -30,7 +38,6 @@ public class JobsFileTest {
     public void Jobs_inherit_defaults_and_override_them() {
         var jobs = Load(
             """
-            notebook: ./nightly.nb.md
             defaults:
               timeoutSeconds: 3600
               retryCount: 1
@@ -57,26 +64,57 @@ public class JobsFileTest {
         Assert.AreEqual("prod", eu.Parameters["env"], "unset keys stay inherited");
     }
 
+    /// <summary>
+    /// Every job in a file runs the notebook the file is named for. They are
+    /// schedules for one notebook, which is what makes "promote this file"
+    /// answerable and stops prod holding a schedule whose notebook is missing.
+    /// </summary>
     [TestMethod]
-    public void Both_jobs_resolve_the_shared_notebook_relative_to_the_yaml() {
+    public void Every_job_runs_the_notebook_the_file_is_named_for() {
         var jobs = Load(
             """
-            notebook: ./sub/nb.nb.md
             jobs:
               - name: a
               - name: b
-                notebook: ./other.nb.md
             """);
-        Assert.AreEqual(Path.Combine(_dir, "sub", "nb.nb.md"), jobs.Single(j => j.Name == "a").NotebookPath);
-        Assert.AreEqual(Path.Combine(_dir, "other.nb.md"), jobs.Single(j => j.Name == "b").NotebookPath);
-        Assert.AreEqual("sub/nb.nb.md", jobs.Single(j => j.Name == "a").NotebookRelative);
+        foreach (var job in jobs) {
+            Assert.AreEqual(Path.Combine(_dir, "test.nb.md"), job.NotebookPath);
+            Assert.AreEqual("test.nb.md", job.NotebookRelative);
+        }
+    }
+
+    [TestMethod]
+    public void The_pairing_finds_any_notebook_kind() {
+        var jobs = Load("jobs:\n  - name: a\n", notebook: "test.ipynb");
+        Assert.AreEqual(Path.Combine(_dir, "test.ipynb"), jobs.Single().NotebookPath);
+    }
+
+    /// <summary>
+    /// The file-level `notebook:` may stay — plenty of files have it and it reads
+    /// well — but only if it says what is already true.
+    /// </summary>
+    [TestMethod]
+    public void A_declared_notebook_may_repeat_the_pairing_and_nothing_else() {
+        var jobs = Load("notebook: ./test.nb.md\njobs:\n  - name: a\n");
+        Assert.AreEqual(Path.Combine(_dir, "test.nb.md"), jobs.Single().NotebookPath);
+
+        var e = Assert.ThrowsExactly<InvalidDataException>(
+            () => Load("notebook: ./other.nb.md\njobs:\n  - name: a\n"));
+        StringAssert.Contains(e.Message, "not the notebook this file is named for");
+    }
+
+    [TestMethod]
+    public void A_jobs_file_with_no_notebook_beside_it_is_an_error() {
+        // It schedules nothing, and nothing is what it would do.
+        var e = Assert.ThrowsExactly<InvalidDataException>(
+            () => Load("jobs:\n  - name: a\n", notebook: null));
+        StringAssert.Contains(e.Message, "No notebook beside this file");
     }
 
     [TestMethod]
     public void A_job_without_a_name_is_an_error() {
         var e = Assert.ThrowsExactly<InvalidDataException>(() => Load(
             """
-            notebook: ./nb.nb.md
             jobs:
               - cron: "* * * * *"
             """));
@@ -84,17 +122,7 @@ public class JobsFileTest {
     }
 
     [TestMethod]
-    public void A_job_without_any_notebook_is_an_error() {
-        var e = Assert.ThrowsExactly<InvalidDataException>(() => Load(
-            """
-            jobs:
-              - name: orphan
-            """));
-        StringAssert.Contains(e.Message, "notebook");
-    }
-
-    [TestMethod]
     public void An_empty_jobs_list_is_an_error() {
-        Assert.ThrowsExactly<InvalidDataException>(() => Load("notebook: ./nb.nb.md"));
+        Assert.ThrowsExactly<InvalidDataException>(() => Load("notebook: ./test.nb.md"));
     }
 }

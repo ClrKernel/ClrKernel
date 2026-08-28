@@ -31,12 +31,17 @@ somewhere else with `--clrkernel <path>` if you keep a dev build around.
 
 ## Define jobs
 
-Jobs live in `*.jobs.yaml` files **beside the notebooks they run**, so they version
-with the notebooks. One file holds any number of jobs — the same notebook can be
-scheduled several times with different parameters:
+Jobs live in `*.jobs.yaml` files **named for the notebook they run** and beside it,
+so they version with it: `nightly.jobs.yaml` schedules `nightly.nb.md`. One file
+holds any number of jobs — every one of them a schedule for that notebook, with
+its own cron and parameters.
+
+That pairing is the rule, not a convention. It is what gives "promote this file"
+a single answer, and what stops production holding a schedule whose notebook is
+missing: the two are promoted together.
 
 ```yaml
-notebook: ./nightly.nb.md      # shared by the jobs below; a job may override it
+# nightly.jobs.yaml, beside nightly.nb.md
 defaults:                      # inherited by every job in this file
   timeoutSeconds: 3600
   retryCount: 1                # one retry, 30s later
@@ -61,8 +66,13 @@ Check the whole tree before trusting it:
 clrkernel-studio validate --notebooks ./notebooks
 ```
 
-That reports duplicate names, missing notebooks, unknown dependencies, dependency
-cycles, and invalid cron expressions.
+That reports duplicate names, jobs files with no notebook beside them, unknown
+dependencies, dependency cycles, and invalid cron expressions.
+
+A file-level `notebook:` is still accepted, but only when it names the notebook
+the file is already paired with — a file claiming to run something else is saying
+something untrue rather than something useful, and is refused. There is no
+per-job `notebook:`; a file schedules one notebook.
 
 ### Parameters
 

@@ -316,8 +316,8 @@ public static class JobsApi {
                 // your own branch, and refusing the autosave would mean losing what
                 // you typed. The problems ride back with the save so the editor can
                 // underline them; the push is where they actually stop something.
-                var problems = target.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)
-                    ? JobsFileValidation.Check(content)
+                var problems = JobsPairing.IsJobsFile(target)
+                    ? JobsFileValidation.Check(content, target)
                     : null;
                 return SaveToBranch(context, scope, branch, target, path, content, problems);
             }).RequiresProject(ProjectRole.ProjectMember);
@@ -1628,7 +1628,7 @@ public static class JobsApi {
             } catch (IOException) {
                 continue;
             }
-            if (JobsFileValidation.Check(content) is { Count: > 0 } problems) {
+            if (JobsFileValidation.Check(content, file) is { Count: > 0 } problems) {
                 invalid.Add(new InvalidJobsFile(relative, problems));
             }
         }
@@ -1755,10 +1755,11 @@ public static class JobsApi {
             return Results.BadRequest(new { error = $"Notebook not found: {write.Notebook}" });
         }
 
-        // New jobs land in <notebook-dir>/<notebook-stem>.jobs.yaml; edits stay put.
-        var targetFile = existing?.SourceFile ?? Path.Combine(
-            Path.GetDirectoryName(notebook)!,
-            Path.GetFileName(notebook).Split('.')[0] + ".jobs.yaml");
+        // The notebook's paired jobs file; edits stay in the file they came from.
+        // `JobsPairing` rather than splitting on '.', which turned
+        // `quarterly.report.nb.md` into `quarterly.jobs.yaml` and paired it with
+        // nothing.
+        var targetFile = existing?.SourceFile ?? JobsPairing.JobsFileFor(notebook);
 
         var file = File.Exists(targetFile) ? JobsFile.Read(targetFile) : new JobsFile();
         file.Jobs ??= new List<JobsFileEntry>();
@@ -1779,7 +1780,7 @@ public static class JobsApi {
         }
 
         entry.Name = write.Name;
-        entry.Notebook = Path.GetRelativePath(Path.GetDirectoryName(targetFile)!, notebook).Replace('\\', '/');
+        // No per-job notebook any more: the file is named for the one it runs.
         entry.Cron = string.IsNullOrWhiteSpace(write.Cron) ? null : write.Cron;
         entry.Enabled = write.Enabled;
         entry.TimeoutSeconds = write.TimeoutSeconds;

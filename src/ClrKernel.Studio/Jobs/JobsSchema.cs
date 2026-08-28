@@ -28,7 +28,8 @@ public static class JobsSchema {
     /// <summary>Top level of the file.</summary>
     public static readonly IReadOnlyList<Field> Root = new[] {
         new Field("notebook", "string",
-            "Notebook every job in this file runs, relative to the file. A job may override it.",
+            "Optional. The notebook this file schedules — which is the one it is named "
+            + "for, so this can only ever repeat it. Set it or leave it out.",
             "./daily.nb.md"),
         new Field("defaults", "object", "Values every job in this file inherits unless it sets its own."),
         new Field("jobs", "array", "The jobs. At least one."),
@@ -37,7 +38,6 @@ public static class JobsSchema {
     /// <summary>One job, and the same shape as <c>defaults</c> (which has no name).</summary>
     public static readonly IReadOnlyList<Field> Entry = new[] {
         new Field("name", "string", "Unique within the environment. This is what run history records.", "daily"),
-        new Field("notebook", "string", "Notebook to run, relative to this file.", "./daily.nb.md"),
         new Field("cron", "string",
             "Five-field cron, UTC. Omit for a job that only ever runs on demand.", "0 6 * * *"),
         new Field("enabled", "boolean", "Default true. A disabled job is never scheduled and blocks nothing."),

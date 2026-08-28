@@ -32,7 +32,12 @@ public sealed record JobsProblem(int Line, int Column, string Message);
 /// </para>
 /// </summary>
 public static class JobsFileValidation {
-    public static IReadOnlyList<JobsProblem> Check(string yaml) {
+    /// <param name="path">
+    /// The file's path, when the caller has it. Only the name is used, to check a
+    /// declared <c>notebook:</c> against the one this file is paired with. Omitted,
+    /// that check is skipped — everything else is answerable from the text alone.
+    /// </param>
+    public static IReadOnlyList<JobsProblem> Check(string yaml, string path = null) {
         var problems = new List<JobsProblem>();
         if (string.IsNullOrWhiteSpace(yaml)) {
             problems.Add(new JobsProblem(1, 1, "A jobs file needs a `jobs:` list."));
@@ -56,6 +61,18 @@ public static class JobsFileValidation {
         }
 
         UnknownKeys(root, JobsSchema.RootKeys, problems, "");
+
+        // A jobs file schedules the notebook it is named for. Declaring a different
+        // one is not a second option, it is a statement that is not true — and the
+        // loader refuses it, so catching it here is the difference between a
+        // squiggle and a job that vanishes from the catalog.
+        if (path != null && Child(root, "notebook") is YamlScalarNode { Value: { Length: > 0 } declared }
+            && !JobsPairing.Matches(path, declared)) {
+            var paired = JobsPairing.BaseNameOfJobsFile(path);
+            problems.Add(At(Child(root, "notebook"),
+                $"`notebook: {declared}` is not what this file is named for. It schedules "
+                + $"`{paired}` beside it — remove this line, or point it there."));
+        }
 
         if (Child(root, "defaults") is YamlMappingNode defaults) {
             CheckEntry(defaults, problems, isDefaults: true);

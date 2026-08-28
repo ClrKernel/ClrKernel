@@ -145,12 +145,31 @@ public class JobsFileValidationTest {
     }
 
     /// <summary>
-    /// A path that does not exist yet is not an error: you are typing it. The
-    /// catalog answers "does this notebook exist on this branch" at load time.
+    /// A job cannot name its own notebook any more: a jobs file schedules the
+    /// notebook it is named for, and every entry in it is a schedule for that one.
+    /// The key is simply unknown now, which is what the editor underlines.
     /// </summary>
     [TestMethod]
-    public void A_notebook_that_is_not_there_yet_is_not_this_checks_business() {
-        Assert.AreEqual(0, JobsFileValidation.Check("jobs:\n  - name: daily\n    notebook: ./not-written-yet.nb.md\n").Count);
+    public void A_job_cannot_name_its_own_notebook() {
+        var problems = JobsFileValidation.Check("jobs:\n  - name: daily\n    notebook: ./other.nb.md\n");
+        Assert.AreEqual(1, problems.Count);
+        StringAssert.Contains(problems[0].Message, "notebook");
+    }
+
+    /// <summary>
+    /// The file-level one may stay, but only if it repeats the pairing. Checked
+    /// only when the caller passes a path — the text alone cannot know.
+    /// </summary>
+    [TestMethod]
+    public void A_declared_notebook_is_checked_against_the_file_name() {
+        var good = "notebook: ./daily.nb.md\njobs:\n  - name: daily\n";
+        Assert.AreEqual(0, JobsFileValidation.Check(good, "reports/daily.jobs.yaml").Count);
+        Assert.AreEqual(0, JobsFileValidation.Check(good).Count, "no path, no opinion");
+
+        var wrong = JobsFileValidation.Check(good, "reports/weekly.jobs.yaml");
+        Assert.AreEqual(1, wrong.Count);
+        StringAssert.Contains(wrong[0].Message, "not what this file is named for");
+        Assert.AreEqual(1, wrong[0].Line, "on the line that declares it");
     }
 }
 
