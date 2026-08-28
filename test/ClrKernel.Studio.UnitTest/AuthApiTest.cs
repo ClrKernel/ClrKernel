@@ -365,7 +365,11 @@ public class AuthApiTest {
         response = await browser.GetAsync("/jobs");
         Assert.AreEqual("/signin", response.Headers.Location?.OriginalString);
 
-        Assert.AreEqual(HttpStatusCode.OK, (await browser.GetAsync("/signin")).StatusCode,
+        // Not a status code: the subject here is the middleware, and whether /signin
+        // answers 200 or 404 depends on something else entirely — the built SPA,
+        // which this suite does not build and CI builds in another job. Asserting
+        // OK made a passing test mean "somebody ran vite on this machine once".
+        Assert.AreNotEqual(HttpStatusCode.Redirect, (await browser.GetAsync("/signin")).StatusCode,
             "the page you are being sent to cannot itself redirect");
     }
 }
