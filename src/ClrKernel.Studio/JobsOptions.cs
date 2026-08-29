@@ -160,12 +160,12 @@ public sealed class JobsOptions {
     /// <summary>Builds options from parsed CLI flags, applying the env/settings/default layers.</summary>
     public static JobsOptions Resolve(IReadOnlyDictionary<string, string> cliFlags) {
         string Cli(string name) => cliFlags.TryGetValue(name, out var v) ? v : null;
-        // The `CLRKERNEL_JOBS_` spelling is still read, and this is not politeness:
-        // the product was renamed after these were documented, and a deployment
-        // that sets CLRKERNEL_JOBS_RPID would otherwise fall back to `localhost`
-        // silently — which does not fail, it just stops every passkey working.
+        // The `CLRKERNEL_JOBS_` spelling is still read: it is the name this tool
+        // had while it was being built. Nothing was ever published under it — the
+        // rename landed before the first release — so this is for a source build
+        // or a dev script set up back then, not a migration anybody has to do.
         // `SourceOf` reports whichever name actually supplied the value, so the
-        // settings UI and the error messages name the one to change.
+        // settings UI names the one that is in play rather than the one it wanted.
         string Env(string name) =>
             Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v
                 : Environment.GetEnvironmentVariable(LegacyEnvName(name)) is { Length: > 0 } old

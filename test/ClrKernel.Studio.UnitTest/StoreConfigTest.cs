@@ -174,10 +174,12 @@ public class StoreConfigTest {
     }
 
     /// <summary>
-    /// The product was renamed from Jobs to Studio after these variables were
-    /// documented. A deployment that sets <c>CLRKERNEL_JOBS_RPID</c> and is quietly
-    /// given <c>localhost</c> instead does not fail — it just stops every passkey
-    /// working, which is the worst way for a rename to land.
+    /// <c>CLRKERNEL_JOBS_*</c> is the name these variables had while the tool was
+    /// being built, before it was renamed to Studio — which happened before the
+    /// first release, so nothing ever shipped under it. What this pins is that a
+    /// source build or dev script set up back then still gets its value, and that
+    /// the settings UI names the spelling that actually supplied it: a variable
+    /// silently ignored does not fail, it falls back to a default.
     /// </summary>
     [TestMethod]
     public void The_pre_rename_environment_variables_still_work_and_say_which_one_was_read() {

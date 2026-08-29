@@ -9,15 +9,8 @@ isolated kernel process, cell by cell, and leaves behind an executed `.ipynb` yo
 can open in VS Code or Jupyter.
 
 > Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.9.x as "try it on real notebooks and tell us
+> production soak time yet — treat 0.10.x as "try it on real notebooks and tell us
 > what breaks".
-
-> **Renamed in 0.10.** This shipped as `ClrKernel.Jobs` / `clrkernel-jobs` up to
-> 0.9.2. The package, the command and the Docker image are all `ClrKernel.Studio` /
-> `clrkernel-studio` from 0.10 on, so an existing install keeps answering to the old
-> command until you install the new package and
-> `dotnet tool uninstall --global ClrKernel.Jobs`. Environment variables are the one
-> thing that did not break — see [Configuration reference](#configuration-reference).
 
 ## Install
 
@@ -1070,12 +1063,12 @@ Two gotchas worth knowing:
 Every setting takes a CLI flag, an environment variable, or a key in
 `settings.json` in the data directory — in that order of precedence.
 
-The tool was called **ClrKernel Jobs** up to 0.9.2, so the pre-rename
-`CLRKERNEL_JOBS_*` spelling of every variable below is still read when the
-`CLRKERNEL_STUDIO_*` one is not set. That is not politeness: a deployment whose
-`CLRKERNEL_JOBS_RPID` was silently ignored would not fail, it would fall back to
-`localhost` and stop every passkey working. The Settings page names whichever
-spelling actually supplied the value, so it tells you which one to change.
+The `CLRKERNEL_JOBS_*` spelling of every variable below is also read, when the
+`CLRKERNEL_STUDIO_*` one is not set. It is left over from the name this tool had
+while it was being built — it was renamed to Studio before its first release, so
+nothing was ever published as `ClrKernel.Jobs` and there is no migration to do.
+The Settings page names whichever spelling actually supplied a value, so a source
+build set up under the old names says so rather than looking like a default.
 
 | Flag | Environment variable | Default |
 | --- | --- | --- |
