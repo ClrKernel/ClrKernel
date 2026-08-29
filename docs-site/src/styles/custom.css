@@ -1,0 +1,13 @@
+/* Light-first, not busy. Accent tuned to sit with the Studio app shell. */
+:root {
+  --sl-color-accent-low: #e6eef8;
+  --sl-color-accent: #2b5fb3;
+  --sl-color-accent-high: #1c3f7a;
+}
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #15243d;
+  --sl-color-accent: #6ea2ee;
+  --sl-color-accent-high: #c6dbf9;
+}
+/* Result-grid screenshots are wide; let them breathe. */
+.sl-markdown-content img { border-radius: 6px; border: 1px solid var(--sl-color-hairline); }
