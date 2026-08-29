@@ -36,6 +36,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Before packaging, because the next two steps publish. A tag is the only
+      # thing standing between a broken build and every installed copy of the
+      # extension auto-updating to it — the NuGet release has run its suite from
+      # the tagged tree all along, and this one did not run anything.
+      - name: Compile
+        run: npm run compile
+
+      - name: Test
+        run: npm test
+
       - name: Package
         run: npx --yes @vscode/vsce package -o clrkernel-notebooks.vsix
 
