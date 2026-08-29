@@ -131,6 +131,15 @@ delete at all.
   three `*.jobs.yaml`, and four seeded runs, in a temp workspace named `analytics`
   because `git init` puts the folder name in every breadcrumb.
 
+  It now covers all thirteen nav destinations, and what that took was **fixture, not
+  Playwright**: an empty page photographs as a broken one, so Channels and
+  Notifications get seeded rules and destinations, Connections gets a throwaway
+  PostgreSQL from `dev/docker-compose.dbs.yml` with a small `sales` schema, and Diff
+  vs production needed a commit on `test` — the view compares the two branches that
+  *run*, never your own, so writing to `mine` produced a diff of nothing. The
+  Connections shots skip themselves with a printed line when there is no docker
+  rather than leaving the previous PNG in place and looking fresh.
+
   Every shot asserts something specific before the shutter: the first attempt waited
   on `svg`, matched a toolbar icon, and produced a perfectly valid screenshot of a
   cell that was still pending. The Focus Mode shot now waits for **Run all cells** to

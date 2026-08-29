@@ -32,6 +32,8 @@ so they version with it: `nightly.jobs.yaml` schedules `nightly.nb.md`. One file
 holds any number of jobs — every one of them a schedule for that notebook, with
 its own cron and parameters.
 
+![A jobs file's Overview tab: one card per job, with a cron builder that previews the next three fire times](images/studio/job.png)
+
 That pairing is the rule, not a convention. It is what gives "promote this file"
 a single answer, and what stops production holding a schedule whose notebook is
 missing: the two are promoted together.
@@ -155,6 +157,8 @@ Channels live in `notifications.yaml` at the notebooks root; jobs reference them
 name. **Passwords and tokens are never stored here** — only a *reference* resolved at
 send time from the OS credential store, the file `CLRKERNEL_SECRETS_FILE` names, or a
 `CLRKERNEL_SECRET_*` environment variable, so this file is safe to commit.
+
+![Channels: a webhook and an SMTP destination, each naming a secret reference rather than a password](images/studio/channels.png)
 
 ```yaml
 channels:
@@ -510,6 +514,8 @@ Nothing writes a token to this file.
 | ODBC | yes | as far as the driver will say |
 | Analysis Services, Fabric, JDBC | yes | no |
 
+![The Connections area: a live PostgreSQL browsed down to its tables, a query, and its results in the filterable grid](images/studio/connections.png)
+
 The split is not arbitrary: a type is browsable when **this server** carries the
 provider that opens it. The rest are still worth saving — a notebook names one and
 the kernel opens it there — and the Connections page says so rather than showing a
@@ -730,6 +736,8 @@ One grid over every project's runs, with **Project as the first column** — the
 view in the app that deliberately ignores the project you have selected, because
 "what is failing right now" is a question about the whole install.
 
+![The monitoring grid: every project's runs in one table, filtered by project, branch, status, trigger and date](images/studio/monitoring.png)
+
 Every filter, the sort and the paging are the **server's**. Run history grows
 without bound, and a grid that sorted a page it had already fetched would work
 right up until the day it very suddenly didn't. The filters live in the query
@@ -764,6 +772,8 @@ more than it shows and reports whether it got it, where a total would be a
 **Notifications** is *when*: rules that bind an event to channels, and a feed of
 what actually went out. They live in the same `notifications.yaml`, because a rule
 naming a channel that moved to another file is a rule that silently stops firing.
+
+![Notification rules: an event, the projects and branches it applies to, and the channels it goes to](images/studio/notifications.png)
 
 Four events:
 
@@ -808,6 +818,8 @@ scheduler change with a notification as its output. Worth doing as its own thing
 
 Two acts wear one word, and the sentence in the confirmation is what tells them
 apart.
+
+![One run: its cells with per-cell status and timings, the executed notebook, and the log](images/studio/run.png)
 
 **At branch HEAD** — the default, and what the grid's bulk button always does.
 After a fix, the fix is the thing you want run. Tick rows, press **Run again**,
@@ -866,11 +878,19 @@ open highlighted. Drag its right edge to resize it, or collapse it to a thin str
 click that strip to bring it back — the width and the collapsed state are remembered
 across notebooks.
 
+![The notebook editor in Normal mode: markdown rendered, C# cells with their execution counts and captured output](images/studio/editor-normal.png)
+
 The editor is a notebook, not a text box: each cell is a Monaco editor with syntax highlighting, a language picker fed by
 whatever the kernel declares (so a `#!sql` cell highlights as SQL and a shell cell as
 shell), and controls to add, delete and reorder cells. A **Source** tab shows the raw
 file when you want to see exactly what is on disk, and **Diff vs production** shows
 what promoting would ship, side by side.
+
+![The Source tab: the same notebook as the plain `.nb.md` on disk, fenced blocks and
+all](images/studio/editor-source.png)
+
+![Diff vs production: production on the left, test on the right, with the added and
+changed lines marked](images/studio/editor-diff.png)
 
 Everything the page can do is on one toolbar row: the tabs on the left, then the kernel
 status, the **Normal | Focus** switch, **Run All**, **Restart kernel**, **Save** and
@@ -1098,6 +1118,8 @@ anything pinned by a flag or environment variable is locked in the UI. Security 
 execution settings (passkey domain, kernel path, store, connection string, roots) are
 host-only by design — a browser can never change what the server executes or lock
 you out.
+
+![Settings: the signed-in account and its passkeys, with the other sections down the side](images/studio/settings.png)
 
 ## Not there yet
 
