@@ -45,8 +45,16 @@ public sealed class SqlCompletionContext {
 public static class SqlLanguage {
     public static SqlCompletion Complete(string code, int offset) => Complete(code, offset, null);
 
-    public static SqlCompletion Complete(string code, int offset, SqlCompletionContext context) {
+    /// <summary>Completion in T-SQL — the dialect <c>#!sql</c> has always been.</summary>
+    public static SqlCompletion Complete(string code, int offset, SqlCompletionContext context) =>
+        Complete(code, offset, context, SqlVocabulary.TSql);
+
+    /// <summary>Completion in one dialect: its own keywords, functions and types,
+    /// and nobody else's.</summary>
+    public static SqlCompletion Complete(
+        string code, int offset, SqlCompletionContext context, SqlVocabulary vocabulary) {
         var ctx = context ?? SqlCompletionContext.Empty;
+        var words = vocabulary ?? SqlVocabulary.TSql;
         var text = code ?? string.Empty;
         if (offset < 0) {
             offset = 0;
@@ -68,10 +76,10 @@ public static class SqlLanguage {
         if (left.StartsWith("--")) {
             return CompleteDirectiveLine(lineToCursor, lineStart, ctx);
         }
-        return CompleteTsql(text, offset);
+        return CompleteStatement(text, offset, words);
     }
 
-    private static SqlCompletion CompleteTsql(string text, int offset) {
+    private static SqlCompletion CompleteStatement(string text, int offset, SqlVocabulary words) {
         var start = offset;
         while (start > 0 && IsWordChar(text[start - 1])) {
             start--;
@@ -79,10 +87,10 @@ public static class SqlLanguage {
         var prefix = text.Substring(start, offset - start);
 
         var completion = new SqlCompletion { ReplaceStart = start, ReplaceLength = offset - start };
-        IEnumerable<SqlCompletionItem> pool = _keywords
+        IEnumerable<SqlCompletionItem> pool = words.Keywords
             .Select(k => new SqlCompletionItem { Label = k, InsertText = k, Kind = "keyword", Detail = "keyword" })
-            .Concat(_functions.Select(f => new SqlCompletionItem { Label = f, InsertText = f, Kind = "function", Detail = "built-in function" }))
-            .Concat(_types.Select(t => new SqlCompletionItem { Label = t, InsertText = t, Kind = "type", Detail = "data type" }));
+            .Concat(words.Functions.Select(f => new SqlCompletionItem { Label = f, InsertText = f, Kind = "function", Detail = "built-in function" }))
+            .Concat(words.Types.Select(t => new SqlCompletionItem { Label = t, InsertText = t, Kind = "type", Detail = "data type" }));
 
         if (prefix.Length > 0) {
             pool = pool.Where(i => i.Label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
@@ -154,7 +162,10 @@ public static class SqlLanguage {
     private static SqlCompletionItem Item(string label, string kind, string detail) =>
         new SqlCompletionItem { Label = label, InsertText = label, Kind = kind, Detail = detail };
 
-    public static SqlHover Hover(string code, int offset) {
+    public static SqlHover Hover(string code, int offset) => Hover(code, offset, SqlVocabulary.TSql);
+
+    public static SqlHover Hover(string code, int offset, SqlVocabulary vocabulary) {
+        var words = vocabulary ?? SqlVocabulary.TSql;
         var text = code ?? string.Empty;
         if (offset < 0 || offset > text.Length) {
             return null;
@@ -174,14 +185,14 @@ public static class SqlLanguage {
         var upper = word.ToUpperInvariant();
 
         string md = null;
-        if (_docs.TryGetValue(upper, out var doc)) {
+        if (words.Docs.TryGetValue(upper, out var doc)) {
             md = doc;
-        } else if (_keywords.Contains(upper)) {
-            md = $"**{upper}** — T-SQL keyword.";
-        } else if (_functions.Contains(upper)) {
-            md = $"**{upper}** — built-in T-SQL function.";
-        } else if (_types.Contains(upper)) {
-            md = $"**{upper}** — T-SQL data type.";
+        } else if (words.Keywords.Contains(upper)) {
+            md = $"**{upper}** — {words.Label} keyword.";
+        } else if (words.Functions.Contains(upper)) {
+            md = $"**{upper}** — built-in {words.Label} function.";
+        } else if (words.Types.Contains(upper)) {
+            md = $"**{upper}** — {words.Label} data type.";
         }
         if (md == null) {
             return null;
@@ -193,50 +204,4 @@ public static class SqlLanguage {
 
     private static readonly string[] _directives = { "connections", "step", "needs" };
 
-    private static readonly HashSet<string> _keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-        "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "INSERT", "INTO", "VALUES",
-        "UPDATE", "SET", "DELETE", "MERGE", "USING", "MATCHED", "TARGET", "SOURCE", "JOIN", "INNER",
-        "LEFT", "RIGHT", "FULL", "OUTER", "CROSS", "APPLY", "ON", "AS", "DISTINCT", "TOP", "PERCENT",
-        "UNION", "ALL", "EXCEPT", "INTERSECT", "WITH", "CASE", "WHEN", "THEN", "ELSE", "END", "AND",
-        "OR", "NOT", "IN", "EXISTS", "BETWEEN", "LIKE", "IS", "NULL", "ASC", "DESC", "OFFSET", "FETCH",
-        "NEXT", "ROWS", "ONLY", "CREATE", "ALTER", "DROP", "TRUNCATE", "TABLE", "VIEW", "PROCEDURE",
-        "PROC", "FUNCTION", "INDEX", "TRIGGER", "DATABASE", "SCHEMA", "PRIMARY", "KEY", "FOREIGN",
-        "REFERENCES", "CONSTRAINT", "UNIQUE", "CHECK", "DEFAULT", "IDENTITY", "CLUSTERED", "NONCLUSTERED",
-        "DECLARE", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION", "TRAN", "TRY", "CATCH", "THROW", "RAISERROR",
-        "RETURN", "EXEC", "EXECUTE", "GO", "OUTPUT", "OVER", "PARTITION", "WITHIN", "GROUPING", "ROLLUP",
-        "CUBE", "PIVOT", "UNPIVOT", "COLLATE", "CAST", "CONVERT", "IF", "WHILE", "BREAK", "CONTINUE",
-    };
-
-    private static readonly HashSet<string> _functions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-        "COUNT", "COUNT_BIG", "SUM", "AVG", "MIN", "MAX", "STDEV", "VAR", "STRING_AGG", "GROUPING_ID",
-        "GETDATE", "GETUTCDATE", "SYSDATETIME", "SYSUTCDATETIME", "DATEADD", "DATEDIFF", "DATEPART",
-        "DATENAME", "DAY", "MONTH", "YEAR", "EOMONTH", "FORMAT", "ISNULL", "COALESCE", "NULLIF", "IIF",
-        "LEN", "DATALENGTH", "SUBSTRING", "CHARINDEX", "PATINDEX", "REPLACE", "STUFF", "UPPER", "LOWER",
-        "LTRIM", "RTRIM", "TRIM", "CONCAT", "CONCAT_WS", "LEFT", "RIGHT", "REPLICATE", "REVERSE", "SPACE",
-        "ROUND", "FLOOR", "CEILING", "ABS", "POWER", "SQRT", "SIGN", "RAND", "NEWID", "TRY_CAST",
-        "TRY_CONVERT", "TRY_PARSE", "PARSE", "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE", "LAG", "LEAD",
-        "FIRST_VALUE", "LAST_VALUE", "CUME_DIST", "PERCENT_RANK", "OBJECT_ID", "SCOPE_IDENTITY",
-        "IDENT_CURRENT", "ISNUMERIC", "ISDATE", "JSON_VALUE", "JSON_QUERY", "OPENJSON",
-    };
-
-    private static readonly HashSet<string> _types = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-        "INT", "BIGINT", "SMALLINT", "TINYINT", "BIT", "DECIMAL", "NUMERIC", "MONEY", "SMALLMONEY",
-        "FLOAT", "REAL", "DATE", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET", "TIME",
-        "CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT", "BINARY", "VARBINARY", "IMAGE",
-        "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT", "ROWVERSION", "GEOGRAPHY", "GEOMETRY", "HIERARCHYID",
-    };
-
-    private static readonly Dictionary<string, string> _docs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
-        ["SELECT"] = "**SELECT** — retrieves rows.\n\n`SELECT col1, col2 FROM table WHERE predicate`",
-        ["MERGE"] = "**MERGE** — insert/update/delete a target from a source in one statement.\n\n`MERGE target USING source ON (...) WHEN MATCHED THEN UPDATE ... WHEN NOT MATCHED THEN INSERT ...;`",
-        ["JOIN"] = "**JOIN** — combines rows from two tables on a predicate. Prefix with INNER / LEFT / RIGHT / FULL / CROSS.",
-        ["ISNULL"] = "**ISNULL(check, replacement)** — returns `replacement` when `check` is NULL.",
-        ["COALESCE"] = "**COALESCE(a, b, ...)** — returns the first non-NULL argument.",
-        ["ROW_NUMBER"] = "**ROW_NUMBER() OVER(...)** — sequential number per partition.\n\n`ROW_NUMBER() OVER (PARTITION BY g ORDER BY k)`",
-        ["DATEADD"] = "**DATEADD(datepart, number, date)** — adds an interval to a date.",
-        ["DATEDIFF"] = "**DATEDIFF(datepart, start, end)** — difference between two dates in datepart units.",
-        ["CAST"] = "**CAST(expr AS type)** — converts an expression to a data type.",
-        ["CONVERT"] = "**CONVERT(type, expr [, style])** — converts with an optional style code.",
-        ["STRING_AGG"] = "**STRING_AGG(expr, sep)** — concatenates values with a separator (add `WITHIN GROUP (ORDER BY ...)`).",
-    };
 }

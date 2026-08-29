@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ClrKernel.Studio</RootNamespace>
+    <AssemblyName>ClrKernel.Studio</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>clrkernel-studio</ToolCommandName>
+    <PackageId>ClrKernel.Studio</PackageId>
+    <!-- Microsoft.NET.Sdk.Web disables packaging by default; without this the
+         release pack step produces no package at all, only a warning. -->
+    <IsPackable>true</IsPackable>
+    <Description>Preview: notebook job scheduler for ClrKernel. Runs .nb.md/.ipynb/.dib notebooks as jobs — scheduled (cron), manual, or DAG-chained — with per-cell progress, run history, and a web dashboard. Each run executes in an isolated `clrkernel serve` process.</Description>
+    <Copyright>Copyright © ClrKernel contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ClrKernel/ClrKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>Notebook,Jobs,Scheduler,Cron,C#,CSharp,dotnet,papermill</PackageTags>
+    <!-- NU1608: EF Design's Workspaces.MSBuild pins Roslyn 4.8 exactly while the engine
+         uses 5.6 — design-time only, deliberately lifted above. -->
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- EF Design pins Roslyn Workspaces 4.8.0 (exact Common 4.8.0), which conflicts with
+         the Roslyn 5.6.0 the scripting engine brings in transitively. Lift Workspaces to
+         match; design-time only, so keep it out of the package graph. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Cronos" Version="0.11.0" />
+    <!-- WebAuthn attestation/assertion verification. Hand-rolling COSE key parsing
+         and attestation-statement checks is exactly the kind of cryptography that
+         looks right and is not. -->
+    <PackageReference Include="Fido2" Version="4.0.0" />
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Notebook parsing (NotebookDocument), artifact writing (IpynbWriter) and the
+         papermill parameters cell (RunnerParameters). Core.Scripting/Primitives arrive
+         transitively. The kernel itself is NOT referenced — runs spawn `clrkernel serve`. -->
+    <ProjectReference Include="../ClrKernel.Core.Runner/ClrKernel.Core.Runner.csproj" />
+    <!-- Secret *references* for SMTP/webhook credentials — never the secrets. -->
+    <ProjectReference Include="../ClrKernel.Core.Secrets/ClrKernel.Core.Secrets.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.Oracle/ClrKernel.Database.Provider.Oracle.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.Postgres/ClrKernel.Database.Provider.Postgres.csproj" />
+    <!-- The Connections area opens database connections in *this* process rather than
+         through a kernel, which is the one place that boundary is crossed and is
+         deliberate: cancelling a running query, pooling and a row cap are all
+         in-process concerns, and no kernel RPC surface can interrupt a running cell.
+         See docs/Connections-area-spec.md §2. The cost is that the #r-only providers
+         (Oracle, ODBC, JDBC) can be saved but not queried from that area. -->
+    <ProjectReference Include="../ClrKernel.Database/ClrKernel.Database.csproj" />
+    <ProjectReference Include="../ClrKernel.Database.Provider.SqlServer/ClrKernel.Database.Provider.SqlServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClrKernel.Studio.UnitTest" />
+  </ItemGroup>
+
+  <!-- The SPA build output (webapp/ -> wwwroot/, built by `./build.sh Web` or CI).
+       The Web SDK already globs wwwroot; this just makes it travel with the tool.
+       webapp/ itself (sources, node_modules) is never part of the project. -->
+  <ItemGroup>
+    <Content Remove="webapp/**" />
+    <None Remove="webapp/**" />
+    <!-- `dotnet watch` otherwise restarts the API every time a .tsx is saved (and
+         on each file Vite writes); the UI has its own hot reload. -->
+    <Watch Remove="webapp/**" />
+    <Watch Remove="wwwroot/**" />
+    <!-- CopyToOutputDirectory is what carries it into the tool package too: a tool
+         packs its publish output, so wwwroot lands beside the binary. It is also
+         why a no-build `dotnet run` after an `npm run build` serves the *previous*
+         bundle: the copy happens at build time, and skipping the build skips it.
+         That looks exactly like a UI fix that did not work. -->
+    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

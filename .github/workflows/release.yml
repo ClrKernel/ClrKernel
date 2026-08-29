@@ -32,17 +32,17 @@ jobs:
             exit 1
           fi
 
-      # The jobs web app must exist before the solution build: ClrKernel.Jobs packs
+      # The Studio web app must exist before the solution build: ClrKernel.Studio packs
       # wwwroot as content, and the Pack step below runs with --no-build.
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: src/ClrKernel.Jobs/webapp/package-lock.json
+          cache-dependency-path: src/ClrKernel.Studio/webapp/package-lock.json
 
-      - name: Build jobs web app
+      - name: Build the Studio web app
         run: npm ci && npm run build
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
       - name: Restore
         run: dotnet restore ClrKernel.slnx
@@ -95,7 +95,7 @@ jobs:
           dotnet pack src/ClrKernel.Database.Provider.Oracle/ClrKernel.Database.Provider.Oracle.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.Jdbc/ClrKernel.Database.Provider.Jdbc.csproj -c Release --no-build -o artifacts/pkg
-          dotnet pack src/ClrKernel.Jobs/ClrKernel.Jobs.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Studio/ClrKernel.Studio.csproj -c Release --no-build -o artifacts/pkg
           ls -l artifacts/pkg
 
       # Trusted publishing: exchange the GitHub OIDC token for a short-lived

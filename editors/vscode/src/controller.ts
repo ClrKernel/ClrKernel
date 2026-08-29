@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { compareKernelVersion, kernelVersionWarning } from './kernelVersion';
-import { currentLanguages, onLanguagesChanged, startsWithSelector } from './languages';
+import { currentLanguages, editorLanguageFor, languageForEditorLanguage, onLanguagesChanged, startsWithSelector } from './languages';
 import { toOutputItemData } from './outputItems';
 import { DisplayNotification, ServerClient } from './serverClient';
 import { SingleFlight } from './singleFlight';
@@ -46,7 +46,9 @@ export class ClrKernelController {
     }
 
     private applySupportedLanguages(): void {
-        this.controller.supportedLanguages = ['csharp-script', ...currentLanguages().map((l) => l.id)];
+        this.controller.supportedLanguages = [
+            'csharp-script', ...currentLanguages().map(editorLanguageFor),
+        ];
     }
 
     private executionOrder = 0;
@@ -251,7 +253,7 @@ export class ClrKernelController {
      */
     private cellCode(cell: vscode.NotebookCell): string {
         const text = cell.document.getText();
-        const language = currentLanguages().find((l) => l.id === cell.document.languageId);
+        const language = languageForEditorLanguage(cell.document.languageId);
         if (!language?.defaultSelector || startsWithSelector(language, text)) {
             return text;
         }

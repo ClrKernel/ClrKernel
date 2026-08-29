@@ -1,0 +1,467 @@
+import { describe, expect, it } from 'vitest';
+import type { ApiCell, ApiLanguage, ApiSession, TreeNode } from './api';
+import {
+  UNDO_DEPTH,
+  cellsToRun,
+  copyOfCell,
+  fileEditable,
+  fileLanguage,
+  isDirty,
+  keepIds,
+  languageOptions,
+  mergeStatus,
+  monacoLanguage,
+  moveCell,
+  notebookPaths,
+  pushUndo,
+  removeCell,
+  restoreCells,
+  setCellLanguage,
+  toApiCells,
+  languageGroups,
+  runsOnProvider,
+  toRunCells,
+  toSyncCells,
+  withIds,
+} from './notebook';
+
+const languages: ApiLanguage[] = [
+  { id: 'sql', displayName: 'SQL', defaultSelector: '#!sql', selectors: ['#!sql'], languageTags: ['sql', 'tsql'] },
+  {
+    id: 'shellscript', displayName: 'Shell', defaultSelector: '#!bash',
+    selectors: ['#!bash', '#!zsh'], languageTags: ['bash', 'zsh', 'sh', 'shell'],
+  },
+  { id: 'dax', displayName: 'DAX', defaultSelector: '#!dax', selectors: ['#!dax'], languageTags: ['dax'] },
+];
+
+const cell = (over: Partial<ApiCell> = {}): ApiCell => ({
+  kind: 'code', tag: 'csharp', languageId: null, source: '', ...over,
+});
+
+describe('monacoLanguage with descriptors', () => {
+  it('believes a language that says which highlighter it wants', () => {
+    // Three kernel languages, one Monaco language — and this file never learns
+    // their names to do it.
+    expect(monacoLanguage('oraclesql', null, dialects)).toBe('sql');
+    expect(monacoLanguage('ansisql', null, dialects)).toBe('sql');
+  });
+
+  it('falls back to plaintext for one asking for a highlighter we do not wire', () => {
+    // The gate: our LSP providers are registered for a fixed set of Monaco ids,
+    // so honouring an id outside it would hand back a model with no completion,
+    // no hover and no diagnostics.
+    const exotic = [{
+      id: 'pgsql', displayName: 'PostgreSQL', defaultSelector: '#!pgsql', selectors: ['#!pgsql'],
+      languageTags: ['pgsql'], editorLanguageId: 'clr-pgsql', grammarId: 'pgsql',
+    }];
+    expect(monacoLanguage('pgsql', null, exotic)).toBe('plaintext');
+  });
+
+  it('and needs no descriptors at all for the languages that predate the field', () => {
+    expect(monacoLanguage('sql')).toBe('sql');
+    expect(monacoLanguage('shellscript')).toBe('shell');
+  });
+});
+
+describe('monacoLanguage', () => {
+  it('maps kernel language ids onto Monaco grammars', () => {
+    expect(monacoLanguage('sql')).toBe('sql');
+    expect(monacoLanguage('powershell')).toBe('powershell');
+    expect(monacoLanguage('shellscript')).toBe('shell');
+  });
+
+  it('falls back to plain text rather than a wrong highlighter', () => {
+    // Monaco ships no grammar for these; guessing would colour them wrongly.
+    expect(monacoLanguage('dax')).toBe('plaintext');
+    expect(monacoLanguage('mermaid')).toBe('plaintext');
+    expect(monacoLanguage('http')).toBe('plaintext');
+  });
+
+  it('treats a tagged cell with no language as C#, and an untagged one as prose', () => {
+    expect(monacoLanguage(null, 'csharp')).toBe('csharp');
+    expect(monacoLanguage(null, null)).toBe('markdown');
+  });
+});
+
+describe('fileLanguage', () => {
+  it('answers for every file the editor can open, not just .nb.md', () => {
+    expect(fileLanguage('a/b.nb.md')).toBe('markdown');
+    expect(fileLanguage('Report.IPYNB')).toBe('json');
+    expect(fileLanguage('etl.jobs.yaml')).toBe('yaml');
+    expect(fileLanguage('setup.csx')).toBe('csharp');
+    expect(fileLanguage('legacy.dib')).toBe('csharp');
+  });
+});
+
+describe('cellsToRun', () => {
+  const cells = withIds([
+    cell({ source: 'a' }),
+    cell({ kind: 'markdown', tag: null, source: 'prose' }),
+    cell({ source: 'b' }),
+    cell({ source: 'c' }),
+  ]);
+
+  it('runs one cell', () => {
+    expect(cellsToRun(cells, 2, 'one').map((c) => c.source)).toEqual(['b']);
+  });
+
+  it('runs everything before, excluding the cell itself', () => {
+    expect(cellsToRun(cells, 2, 'before').map((c) => c.source)).toEqual(['a']);
+  });
+
+  it('runs the cell and everything after', () => {
+    expect(cellsToRun(cells, 2, 'after').map((c) => c.source)).toEqual(['b', 'c']);
+  });
+
+  it('runs all code cells', () => {
+    expect(cellsToRun(cells, 0, 'all').map((c) => c.source)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('never runs markdown', () => {
+    expect(cellsToRun(cells, 1, 'one')).toEqual([]);
+  });
+
+  it('has nothing above the first cell', () => {
+    // The run endpoint rejects an empty list, so the button that would produce
+    // one is disabled — this is the fact it is disabled on.
+    expect(cellsToRun(cells, 0, 'before')).toEqual([]);
+  });
+});
+
+describe('toRunCells', () => {
+  it('carries the cell id, which a save deliberately drops', () => {
+    // The session keys each cell's outputs by the id it received. Without one,
+    // the server falls back to position in the request, so running cell three
+    // alone would file its output against cell one.
+    const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const posted = toRunCells([cells[1]]);
+    expect(posted[0].id).toBe(cells[1].id);
+    expect(posted[0].source).toBe('b');
+    expect(toApiCells(cells)[0].id).toBeUndefined();
+  });
+});
+
+describe('toSyncCells', () => {
+  it('names C# the way the kernel does, not the way Monaco does', () => {
+    // The trap: monacoLanguage() answers 'csharp' for the same cell, and that is
+    // the right answer for highlighting and the wrong one for the wire — the
+    // server dispatches its language services off what we send here, and it has
+    // no language called 'csharp'. 'csharp-script' is what VS Code sends.
+    const cells = withIds([cell({ tag: 'csharp', languageId: null, source: 'var a = 1;' })]);
+    expect(monacoLanguage(cells[0].languageId, cells[0].tag)).toBe('csharp');
+    expect(toSyncCells(cells)).toEqual([
+      { id: cells[0].id, languageId: 'csharp-script', source: 'var a = 1;' },
+    ]);
+  });
+
+  it('passes a real language id through untouched', () => {
+    const cells = withIds([cell({ tag: 'sql', languageId: 'sql', source: 'select 1' })]);
+    expect(toSyncCells(cells)[0].languageId).toBe('sql');
+  });
+
+  it('leaves markdown out, so prose is never parsed as code', () => {
+    // Every open document in a notebook feeds completion context. A markdown cell
+    // opened as C# would put its prose into the completion of every code cell —
+    // and dropping it here is also what closes one that used to be code.
+    const cells = withIds([
+      cell({ kind: 'markdown', tag: null, source: '# Heading' }),
+      cell({ tag: 'csharp', source: 'code' }),
+    ]);
+    expect(toSyncCells(cells).map((c) => c.source)).toEqual(['code']);
+  });
+});
+
+describe('withIds', () => {
+  it('mints fresh ids rather than numbering by position', () => {
+    // Delete the first cell, save, reload: a positional id would hand the new
+    // first cell the old first cell's outputs. Losing them is honest; showing
+    // someone else's is not.
+    const first = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const reloaded = withIds([cell({ source: 'b' })]);
+    expect(reloaded[0].id).not.toBe(first[0].id);
+    expect(new Set(first.map((c) => c.id)).size).toBe(2);
+  });
+});
+
+describe('keepIds', () => {
+  it('carries ids across a save, so saving does not clear what just ran', () => {
+    const before = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const readBack: ApiCell[] = [cell({ source: 'a' }), cell({ source: 'b' })];
+    expect(keepIds(readBack, before).map((c) => c.id)).toEqual(before.map((c) => c.id));
+  });
+
+  it('mints fresh ids when the server re-parsed a different number of cells', () => {
+    // The alignment assumption is gone, so run state is dropped rather than
+    // shifted onto the wrong cells.
+    const before = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+    const merged: ApiCell[] = [cell({ source: 'a\nb' })];
+    expect(keepIds(merged, before)[0].id).not.toBe(before[0].id);
+  });
+});
+
+describe('mergeStatus', () => {
+  const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+  const session = (over: Partial<ApiSession> = {}): ApiSession => ({
+    started: true, running: false, ...over,
+  });
+
+  it('joins a cell to what the session says it did', () => {
+    const status = session({
+      cells: {
+        [cells[0].id]: {
+          status: 'succeeded', executionCount: 3, truncated: false,
+          outputs: [{ output_type: 'stream', text: 'hi' }],
+        },
+      },
+    });
+    const merged = mergeStatus(cells, status, {});
+    expect(merged[cells[0].id]).toMatchObject({ status: 'succeeded', executionCount: 3, stale: false });
+    expect(merged[cells[1].id]).toBeUndefined();
+  });
+
+  it('marks output stale once the cell it came from is edited', () => {
+    const status = session({
+      cells: { [cells[0].id]: { status: 'succeeded', executionCount: 1, truncated: false, outputs: [] } },
+    });
+    const ran = { [cells[0].id]: 'a' };
+    expect(mergeStatus(cells, status, ran)[cells[0].id].stale).toBe(false);
+
+    const edited = [{ ...cells[0], source: 'a + 1' }, cells[1]];
+    expect(mergeStatus(edited, status, ran)[cells[0].id].stale).toBe(true);
+  });
+
+  it('ignores state the session still holds for cells that are gone', () => {
+    const status = session({
+      cells: { 'deleted-cell': { status: 'succeeded', executionCount: 1, truncated: false, outputs: [] } },
+    });
+    expect(mergeStatus(cells, status, {})).toEqual({});
+  });
+
+  it('is empty before anything has run', () => {
+    expect(mergeStatus(cells, null, {})).toEqual({});
+    expect(mergeStatus(cells, session({ started: false }), {})).toEqual({});
+  });
+});
+
+describe('structural edits', () => {
+  const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' }), cell({ source: 'c' })]);
+
+  it('moves a cell and leaves the ends alone', () => {
+    expect(moveCell(cells, 0, 2).map((c) => c.source)).toEqual(['b', 'c', 'a']);
+    expect(moveCell(cells, 0, -1)).toBe(cells);
+    expect(moveCell(cells, 2, 3)).toBe(cells);
+  });
+
+  it('removes a cell', () => {
+    expect(removeCell(cells, 1).map((c) => c.source)).toEqual(['a', 'c']);
+  });
+});
+
+describe('copyOfCell', () => {
+  const [original] = withIds([cell({ source: 'x', tag: 'sql', languageId: 'sql' })]);
+
+  it('keeps everything the file cares about', () => {
+    const copy = copyOfCell(original);
+    expect(copy.source).toBe('x');
+    expect(copy.tag).toBe('sql');
+    expect(copy.languageId).toBe('sql');
+  });
+
+  it('and never the id — pasting twice must not make two cells one', () => {
+    const first = copyOfCell(original);
+    const second = copyOfCell(original);
+    expect(first.id).not.toBe(original.id);
+    expect(second.id).not.toBe(first.id);
+  });
+});
+
+describe('undo', () => {
+  const cells = withIds([cell({ source: 'a' }), cell({ source: 'b' })]);
+
+  it('keeps the newest and forgets the oldest past its depth', () => {
+    let stack: (typeof cells)[] = [];
+    for (let i = 0; i < UNDO_DEPTH + 5; i += 1) {
+      stack = pushUndo(stack, withIds([cell({ source: `${i}` })]));
+    }
+    expect(stack).toHaveLength(UNDO_DEPTH);
+    expect(stack[stack.length - 1][0].source).toBe(`${UNDO_DEPTH + 4}`);
+    expect(stack[0][0].source).toBe('5');
+  });
+
+  it('puts back a deleted cell with the text it had', () => {
+    const after = removeCell(cells, 0);
+    expect(restoreCells(cells, after).map((c) => c.source)).toEqual(['a', 'b']);
+  });
+
+  it('but leaves what was typed since alone', () => {
+    // The whole point: undoing a delete must not be a way to lose an edit made
+    // to a different cell afterwards.
+    const after = removeCell(cells, 0).map((c) => ({ ...c, source: 'b typed since' }));
+    expect(restoreCells(cells, after).map((c) => c.source)).toEqual(['a', 'b typed since']);
+  });
+
+  it('drops a cell that the snapshot never had', () => {
+    const after = [...cells, copyOfCell(cells[0])];
+    expect(restoreCells(cells, after).map((c) => c.id)).toEqual(cells.map((c) => c.id));
+  });
+});
+
+describe('setCellLanguage', () => {
+  it('clears the tag so the server computes one for the new language', () => {
+    // A tag that survives is a tag the file already had — those are never rewritten.
+    const sql = setCellLanguage(withIds([cell()])[0], 'sql', languages);
+    expect(sql).toMatchObject({ kind: 'code', tag: null, languageId: 'sql' });
+  });
+
+  it('keeps C# and Markdown expressible without a descriptor', () => {
+    const start = withIds([cell({ tag: 'sql', languageId: 'sql' })])[0];
+    expect(setCellLanguage(start, 'csharp', languages)).toMatchObject({ kind: 'code', tag: 'csharp', languageId: null });
+    expect(setCellLanguage(start, 'markdown', languages)).toMatchObject({ kind: 'markdown', tag: null });
+  });
+
+  it('offers Markdown and C# alongside every kernel language', () => {
+    expect(languageOptions(languages).map((o) => o.value)).toEqual([
+      'markdown', 'csharp', 'sql', 'shellscript', 'dax',
+    ]);
+  });
+});
+
+/** The kernel's SQL dialects, as the descriptors arrive on the wire. */
+const dialects: ApiLanguage[] = [
+  {
+    id: 'sql', displayName: 'T-SQL', defaultSelector: '#!sql', selectors: ['#!sql'],
+    languageTags: ['sql', 'tsql'], category: 'SQL', editorLanguageId: 'clr-sql', grammarId: 'sql',
+    supportedProviders: ['SqlServer', 'Odbc', 'Jdbc'],
+  },
+  {
+    id: 'oraclesql', displayName: 'Oracle SQL', defaultSelector: '#!oraclesql',
+    selectors: ['#!oraclesql'], languageTags: ['oraclesql', 'plsql'], category: 'SQL',
+    editorLanguageId: 'clr-oraclesql', grammarId: 'sql',
+    supportedProviders: ['Oracle', 'Odbc', 'Jdbc'],
+  },
+  {
+    id: 'ansisql', displayName: 'SQL (Generic)', defaultSelector: '#!ansisql',
+    selectors: ['#!ansisql'], languageTags: ['ansisql'], category: 'SQL',
+    editorLanguageId: 'clr-ansisql', grammarId: 'sql',
+    supportedProviders: ['Odbc', 'Jdbc'],
+  },
+  { id: 'http', displayName: 'HTTP', defaultSelector: '#!http', selectors: ['#!http'], languageTags: ['http'] },
+];
+
+describe('the language picker', () => {
+  it('clusters the dialects and leaves everything else where it was', () => {
+    const groups = languageGroups(dialects);
+
+    expect(groups.map((g) => g.label)).toEqual([null, 'SQL']);
+    // Markdown and C# first, because that is what most cells are — and HTTP with
+    // them, because it belongs to no group.
+    expect(groups[0].options.map((o) => o.value)).toEqual(['markdown', 'csharp', 'http']);
+    expect(groups[1].options.map((o) => o.value)).toEqual(['sql', 'oraclesql', 'ansisql']);
+  });
+
+  it('puts the provider list under the option and not in its label', () => {
+    // The button shows the display name alone; this is the text the dropdown
+    // carries under it. A label with the providers in it would end up on every
+    // cell's footer, which is where you read it once and then never again.
+    const oracle = languageGroups(dialects)[1].options.find((o) => o.value === 'oraclesql');
+    expect(oracle?.label).toBe('Oracle SQL');
+    expect(oracle?.detail).toBe('Oracle · Odbc · Jdbc');
+  });
+
+  it('gives a language with no providers no secondary text at all', () => {
+    const http = languageGroups(dialects)[0].options.find((o) => o.value === 'http');
+    expect(http?.detail).toBeUndefined();
+  });
+
+  it('needs no change here when a fourth dialect arrives', () => {
+    const withPostgres = [...dialects, {
+      id: 'pgsql', displayName: 'PostgreSQL', defaultSelector: '#!pgsql', selectors: ['#!pgsql'],
+      languageTags: ['pgsql'], category: 'SQL', supportedProviders: ['Odbc'],
+    }];
+    const sql = languageGroups(withPostgres).find((g) => g.label === 'SQL');
+    expect(sql?.options.map((o) => o.value)).toContain('pgsql');
+  });
+});
+
+describe('runsOnProvider', () => {
+  it('answers from the language’s own declaration', () => {
+    expect(runsOnProvider('sql', 'SqlServer', dialects)).toBe(true);
+    expect(runsOnProvider('sql', 'Oracle', dialects)).toBe(false);
+    expect(runsOnProvider('oraclesql', 'Oracle', dialects)).toBe(true);
+    expect(runsOnProvider('oraclesql', 'SqlServer', dialects)).toBe(false);
+    expect(runsOnProvider('ansisql', 'Odbc', dialects)).toBe(true);
+    expect(runsOnProvider('sql', 'sqlserver', dialects)).toBe(true);
+  });
+
+  it('says yes to a question it cannot answer', () => {
+    // Unknown is not a refusal. A descriptor that has not arrived, a connection
+    // with no type, or a language that is not provider-bound at all would
+    // otherwise put a warning on a cell that is perfectly fine.
+    expect(runsOnProvider('sql', null, dialects)).toBe(true);
+    expect(runsOnProvider(null, 'Oracle', dialects)).toBe(true);
+    expect(runsOnProvider('sql', 'Oracle', [])).toBe(true);
+    expect(runsOnProvider('http', 'Oracle', dialects)).toBe(true);
+  });
+});
+
+describe('isDirty', () => {
+  const saved: ApiCell[] = [cell({ source: 'a' }), cell({ kind: 'markdown', tag: null, source: 'prose' })];
+
+  it('is false for an untouched notebook', () => {
+    // The guard that stops opening-and-saving from rewriting a file, which would
+    // commit and invalidate the notebook's promotion evidence.
+    expect(isDirty(withIds(saved), saved)).toBe(false);
+  });
+
+  it('sees an edit, a language change and a reorder', () => {
+    const cells = withIds(saved);
+    expect(isDirty([{ ...cells[0], source: 'changed' }, cells[1]], saved)).toBe(true);
+    expect(isDirty([setCellLanguage(cells[0], 'sql', languages), cells[1]], saved)).toBe(true);
+    expect(isDirty(moveCell(cells, 0, 1), saved)).toBe(true);
+  });
+
+  it('drops editor-only fields on the way out', () => {
+    expect(toApiCells(withIds(saved))[0]).not.toHaveProperty('id');
+  });
+});
+
+describe('notebookPaths', () => {
+  const tree = {
+    name: '/', path: '', isDirectory: true, kind: null, jobs: null,
+    children: [
+      { name: 'reports', path: 'reports', isDirectory: true, kind: null, jobs: null, children: [
+        { name: 'monthly.nb.md', path: 'reports/monthly.nb.md', isDirectory: false, kind: 'notebook', jobs: null, children: null },
+        { name: 'monthly.jobs.yaml', path: 'reports/monthly.jobs.yaml', isDirectory: false, kind: 'jobs', jobs: null, children: null },
+      ] },
+      { name: 'etl.nb.md', path: 'etl.nb.md', isDirectory: false, kind: 'notebook', jobs: null, children: null },
+    ],
+  } as unknown as TreeNode;
+
+  it('finds notebooks at every depth and leaves jobs files out', () => {
+    expect(notebookPaths(tree)).toEqual(['reports/monthly.nb.md', 'etl.nb.md']);
+  });
+
+  it('has nothing to say about a branch with no tree', () => {
+    expect(notebookPaths(null)).toEqual([]);
+    expect(notebookPaths(undefined)).toEqual([]);
+  });
+});
+
+describe('fileEditable', () => {
+  it('is true for notebooks and jobs files', () => {
+    expect(fileEditable('reports/daily.nb.md')).toBe(true);
+    expect(fileEditable('old.ipynb')).toBe(true);
+    expect(fileEditable('scratch.csx')).toBe(true);
+    expect(fileEditable('reports/daily.JOBS.YAML')).toBe(true);
+  });
+
+  it('and false for everything else Files now lists', () => {
+    // The reason this exists: the tree shows the whole project, so the editor has
+    // to open a .txt read-only rather than offering a Save the server refuses.
+    expect(fileEditable('readme.txt')).toBe(false);
+    expect(fileEditable('docker-compose.yaml')).toBe(false);
+    expect(fileEditable('notes.md')).toBe(false);
+    expect(fileEditable('')).toBe(false);
+  });
+});
+

@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Fabric\ClrKernel.Database.Provider.Fabric.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Oracle\ClrKernel.Database.Provider.Oracle.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Odbc\ClrKernel.Database.Provider.Odbc.csproj" />
+    <ProjectReference Include="..\..\src\ClrKernel.Database.Provider.Postgres\ClrKernel.Database.Provider.Postgres.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Language.Sql\ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="..\..\src\ClrKernel.Language.Dax\ClrKernel.Language.Dax.csproj" />
   </ItemGroup>

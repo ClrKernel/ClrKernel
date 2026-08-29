@@ -203,7 +203,14 @@ public sealed class LspServer {
         if (session == null || string.IsNullOrEmpty(p?.LanguageId)) {
             return new { ok = false, error = "notebookUri and languageId are required." };
         }
-        return new { ok = true, providers = session.Engine.ConnectionProvidersFor(p.LanguageId) };
+        // No language means all of them, matching the serve surface — the two answer
+        // the same question and must not answer it differently.
+        return new {
+            ok = true,
+            providers = string.IsNullOrWhiteSpace(p.LanguageId)
+                ? session.Engine.ConnectionProviders
+                : session.Engine.ConnectionProvidersFor(p.LanguageId),
+        };
     }
 
     [JsonRpcMethod("initialized")]
@@ -278,7 +285,7 @@ public sealed class LspServer {
                             Start = new Position { Line = d.Line, Character = d.Column },
                             End = new Position { Line = d.EndLine, Character = d.EndColumn },
                         },
-                        Severity = 1,
+                        Severity = d.Severity,
                         Source = "clrkernel-" + lang,
                         Code = d.Code.ToString(),
                         Message = d.Message,

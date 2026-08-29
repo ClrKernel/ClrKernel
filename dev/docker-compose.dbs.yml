@@ -1,13 +1,13 @@
-# Dev-only: the databases and mail server for exercising ClrKernel.Jobs' non-default
+# Dev-only: the databases and mail server for exercising ClrKernel.Studio' non-default
 # backends and its SMTP channel. Not used by CI or by the shipped tool.
 #
 #   docker compose -f dev/docker-compose.dbs.yml up -d
 #
-#   clrkernel-jobs serve --store postgres \
-#     --connection-string "Host=localhost;Port=55432;Database=clrkernel_jobs;Username=postgres;Password=devonly"
+#   clrkernel-studio serve --store postgres \
+#     --connection-string "Host=localhost;Port=55432;Database=clrkernel_studio;Username=postgres;Password=devonly"
 #
-#   clrkernel-jobs serve --store sqlserver \
-#     --connection-string "Server=localhost,51433;Database=clrkernel_jobs;User Id=sa;Password=DevOnly!Passw0rd;TrustServerCertificate=True"
+#   clrkernel-studio serve --store sqlserver \
+#     --connection-string "Server=localhost,51433;Database=clrkernel_studio;User Id=sa;Password=DevOnly!Passw0rd;TrustServerCertificate=True"
 #
 # Mailpit catches every message and shows it at http://localhost:8025 — point an
 # email channel at host localhost, port 1025, startTls false, no user.
@@ -22,7 +22,7 @@ services:
     ports: ['55432:5432']
     environment:
       POSTGRES_PASSWORD: devonly
-      POSTGRES_DB: clrkernel_jobs
+      POSTGRES_DB: clrkernel_studio
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
@@ -36,6 +36,27 @@ services:
       MSSQL_SA_PASSWORD: 'DevOnly!Passw0rd'
     # The jobs database is created by the migrations on first start; the container
     # only needs to be up and reachable.
+
+  # Oracle Free 23ai, for the #!oraclesql dialect and the Oracle provider. Native
+  # arm64 as well as amd64, unlike the SQL Server image, which runs emulated on an
+  # Apple-silicon host. First start takes a couple of minutes while it creates the
+  # database; the healthcheck is what to wait on, not the port.
+  #
+  #   docker compose -f dev/docker-compose.dbs.yml up -d oracle
+  #   CLRKERNEL_TEST_ORACLE="User Id=clrkernel;Password=DevOnly1;Data Source=localhost:41521/FREEPDB1"
+  oracle:
+    image: gvenzl/oracle-free:slim
+    ports: ['41521:1521']
+    environment:
+      ORACLE_PASSWORD: 'DevOnly1'
+      APP_USER: clrkernel
+      APP_USER_PASSWORD: 'DevOnly1'
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   mailpit:
     image: axllent/mailpit

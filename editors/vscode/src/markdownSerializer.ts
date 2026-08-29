@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { currentLanguages, isCSharpTag, languageForTag, selectorForTag, tagForCell } from './languages';
+import { editorLanguageFor, isCSharpTag, languageForEditorLanguage, languageForTag, selectorForTag, tagForCell } from './languages';
 
 /**
  * Executable markdown <-> notebook, driven by the kernel's language descriptors:
@@ -46,7 +46,10 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
                     flushMarkup();
                     code = [];
                     closingDelimiter = match[1];
-                    language = descriptor?.id ?? 'csharp-script';
+                    // The editor's id for it, not the kernel's: the two differ for a
+                    // language that took one of its own, and this is the id the cell
+                    // will carry for as long as it is open.
+                    language = descriptor ? editorLanguageFor(descriptor) : 'csharp-script';
                     // A tag with its own selector keeps it explicit in the cell (#!zsh)
                     // so its meaning survives execution under the language default; a
                     // tag matching the default — or spelling the language's own id, its
@@ -79,7 +82,7 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         const parts: string[] = [];
         for (const cell of data.cells) {
             if (cell.kind === vscode.NotebookCellKind.Code) {
-                const descriptor = currentLanguages().find((l) => l.id === cell.languageId);
+                const descriptor = languageForEditorLanguage(cell.languageId);
                 const tag = descriptor ? tagForCell(descriptor, cell.value) : 'csharp';
                 parts.push('```' + tag + '\n' + cell.value.replace(/\s+$/, '') + '\n```');
             } else {

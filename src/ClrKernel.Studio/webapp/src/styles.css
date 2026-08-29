@@ -1,0 +1,1652 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Self-hosted, not Google Fonts: the app has to render identically offline and
+   inside the Docker image, and a webfont that 404s falls back to a stack with a
+   different x-height — which changes every measurement in the design. */
+@import "@fontsource/instrument-sans/400.css";
+@import "@fontsource/instrument-sans/500.css";
+@import "@fontsource/instrument-sans/600.css";
+@import "@fontsource/instrument-sans/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@import "./theme/tokens.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  /* The root stays at the browser default so 1rem is 16px and Tailwind's
+     spacing scale means what the design says: w-12 is 48px, not 42px. The
+     design's own type scale is absolute px (see tokens.css), so body size is
+     one token and nothing downstream tracks the browser's default. */
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* --- the pre-redesign stylesheet -----------------------------------------
+ * Layered deliberately. Unlayered CSS beats layered CSS, so while these rules
+ * sat outside a layer a bare `a { color: … }` silently overrode every Tailwind
+ * text utility on a link. In `components` they lose to utilities, which is what
+ * lets pages be migrated one at a time. Shrinking as pages move over.
+ */
+@layer components {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  code,
+  pre,
+  .preview {
+    font-family: var(--font-mono);
+    font-size: 0.875rem; /* 14px — a shade below the 16px base */
+  }
+
+  /* --- layout ------------------------------------------------------------- */
+
+  .spacer {
+    flex: 1;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  h2 {
+    font-size: 1.1rem;
+    margin-top: 2rem;
+  }
+
+  a {
+    color: var(--primary);
+  }
+
+  /* --- controls ----------------------------------------------------------- */
+
+  input,
+  textarea,
+  select {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card);
+    color: var(--foreground);
+    font: inherit;
+  }
+
+  textarea {
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    width: 100%;
+  }
+
+  /* A form is read one field at a time, so it stays narrow whatever the window
+     does — a 1600px-wide text input is a worse target, not a better one. */
+  /* --- data --------------------------------------------------------------- */
+
+  /* A table is the one thing that can genuinely exceed the content width, so
+     it scrolls inside its own box rather than widening the page. The box has no
+     border or fill of its own: in this design a table is rules on the canvas,
+     not a card. */
+  .table-box {
+    overflow-x: auto;
+  }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  .table th,
+  .table td {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+  }
+
+  /* The header rule is the strong one — it separates the table from the page;
+     the row rules only separate rows from each other. */
+  .table th {
+    color: var(--muted-subtle);
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table tbody tr:hover {
+    background: var(--accent);
+  }
+
+  .row-active {
+    background: var(--primary-soft);
+  }
+
+  .row-failed {
+    background: var(--row-failed);
+  }
+
+  .preview {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* --- tree --------------------------------------------------------------- */
+
+  /* --- notebook ----------------------------------------------------------- */
+
+  .notebook {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .cell-code {
+    display: flex;
+    gap: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem;
+    background: var(--muted);
+  }
+
+  .cell-injected {
+    border-style: dashed;
+  }
+
+  .cell-gutter {
+    color: var(--muted-foreground);
+    min-width: 1.5rem;
+    text-align: right;
+    font-size: 0.875rem;
+  }
+
+  .cell-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cell-tag {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .cell-source,
+  .output-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+  }
+
+  .output-text {
+    margin-top: 0.4rem;
+    color: var(--muted-foreground);
+  }
+
+  .log {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem;
+    background: var(--muted);
+    max-height: 32rem;
+    overflow: auto;
+  }
+
+  .output-html {
+    margin-top: 0.4rem;
+    overflow-x: auto;
+  }
+
+  .output-html table {
+    border-collapse: collapse;
+  }
+
+  .output-html th,
+  .output-html td {
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.4rem;
+    font-size: 0.9375rem;
+  }
+
+  .output-error {
+    margin-top: 0.4rem;
+    color: var(--status-error);
+  }
+
+  .cell-markdown :first-child {
+    margin-top: 0;
+  }
+
+  /* ANSI colours for stream output. */
+  .ansi-bold {
+    font-weight: 600;
+  }
+  .ansi-black {
+    color: var(--ansi-black);
+  }
+  .ansi-red {
+    color: var(--status-error);
+  }
+  .ansi-green {
+    color: var(--status-success);
+  }
+  .ansi-yellow {
+    color: var(--status-warning);
+  }
+  .ansi-blue {
+    color: var(--status-running);
+  }
+  .ansi-magenta {
+    color: var(--ansi-magenta);
+  }
+  .ansi-cyan {
+    color: var(--ansi-cyan);
+  }
+  .ansi-white {
+    color: var(--foreground);
+  }
+  .ansi-bright-black {
+    color: var(--muted-foreground);
+  }
+
+  .fieldset {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+  }
+
+  .fieldset legend {
+    color: var(--muted-foreground);
+    font-size: 0.9375rem;
+    padding: 0 0.3rem;
+  }
+
+  .notify-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.2rem 0;
+  }
+
+  .notify-label {
+    color: var(--muted-foreground);
+    font-size: 1rem;
+    min-width: 6rem;
+  }
+
+  .settings-section {
+    margin-bottom: 2rem;
+  }
+
+  .settings-label {
+    min-width: 14rem;
+  }
+
+  /* --- notebook editor (Monaco cells) ------------------------------------- */
+
+  .notebook-editor {
+    margin-bottom: 0.75rem;
+  }
+
+  /* The cell reads as one object: a code body with a footer, and output attached
+     underneath but visibly a different kind of thing. */
+  .notebook-cell {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    overflow: hidden;
+    margin: 0;
+    transition: border-color 0.12s ease;
+  }
+
+  .notebook-cell:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+
+  /* A run that failed is worth seeing without reading the badge. */
+  .notebook-cell.cell-failed {
+    border-left: 3px solid var(--status-error);
+  }
+
+  .notebook-cell.cell-succeeded {
+    border-left: 3px solid var(--status-success);
+  }
+
+  .notebook-cell.cell-running {
+    border-left: 3px solid var(--status-running);
+  }
+
+  .notebook-cell-markdown .cell-source {
+    background: var(--card);
+  }
+
+  .cell-main {
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* The gutter: run at the top, execution count at the bottom. */
+  .cell-gutter-bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    /* 40px, in px: the output pane indents past this gutter, and a rem width
+       would put the two out of alignment on a non-16px browser default. */
+    flex: 0 0 40px;
+    padding: 8px 0;
+    background: var(--surface-panel);
+    border-right: 1px solid var(--border);
+  }
+
+  .cell-run-button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: 0.9375rem;
+    line-height: 1;
+    padding: 0.2rem 0.35rem;
+  }
+
+  .cell-run-button:hover:not(:disabled) {
+    color: var(--primary);
+    border-color: var(--border);
+    background: var(--card);
+  }
+
+  .cell-run-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .cell-run-spacer {
+    height: 1.3rem;
+  }
+
+  .cell-gutter-index {
+    color: var(--muted-subtle);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    white-space: pre;
+  }
+
+  .cell-content {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Structural actions float over the top-right of the editor rather than taking
+     a row of their own — a resting cell should be code and nothing else. */
+  .cell-float-actions {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.5rem;
+    z-index: 2;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+  }
+
+  .notebook-cell:hover .cell-float-actions,
+  .notebook-cell:focus-within .cell-float-actions {
+    opacity: 1;
+  }
+
+  /* Monaco sizes itself to the content; the container just holds the space. */
+  .cell-editor {
+    width: 100%;
+  }
+
+  /* What the cell did on the left, how it is configured on the right. */
+  .cell-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-panel);
+    font-size: var(--text-xs);
+    min-height: 24px;
+  }
+
+  .cell-footer-status {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .cell-language:hover,
+  .cell-language:focus {
+    border-color: var(--border);
+    color: var(--foreground);
+  }
+
+  /* Rendered prose, the way a notebook reads. Double-click returns to the editor. */
+  .cell-preview {
+    padding: 0.1rem 0.9rem;
+    cursor: text;
+  }
+
+  .cell-preview > :first-child {
+    margin-top: 0.4rem;
+  }
+
+  .cell-preview > :last-child {
+    margin-bottom: 0.4rem;
+  }
+
+  /* The gap between two cells: a thin strip that offers to fill itself. */
+  .cell-inserter {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 1.5rem;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+  }
+
+  .cell-inserter:hover,
+  .cell-inserter-always {
+    opacity: 1;
+  }
+
+  /* --- running cells ------------------------------------------------------- */
+
+  .notebook-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Output is attached to the cell but is not the cell: inset, on the page
+     background, and separated by a rule. */
+  /* Output belongs to the cell but is not the cell: it sits on the canvas
+     colour rather than the card, and indents past the 40px gutter so it lines
+     up with the code that produced it. */
+  .cell-outputs {
+    position: relative;
+    border-top: 1px solid var(--border);
+    background: var(--background);
+    padding: 10px 14px 14px 44px;
+    max-height: 32rem;
+    overflow: auto;
+  }
+
+  /* The cell changed after this ran, so the result no longer matches the code
+     above it. Dimmed rather than dropped — losing output on a keystroke is worse. */
+  .cell-outputs-stale {
+    opacity: 0.45;
+  }
+
+  .cell-outputs .output-text {
+    margin: 0.2rem 0;
+  }
+
+  /* Script-driven output runs in its own document; the frame is sized from the
+     height it reports, so it must not add chrome of its own. */
+  .output-frame {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+  }
+
+  /* Left, in the strip that lines up with the cell's run gutter — the same edge
+     every other control on the cell hangs off. */
+  .output-menu {
+    position: absolute;
+    top: 0.2rem;
+    left: 0.5rem;
+    z-index: 3;
+  }
+
+  .output-menu-button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.05rem 0.35rem;
+  }
+
+  .output-menu-button:hover {
+    border-color: var(--border);
+    background: var(--card);
+    color: var(--foreground);
+  }
+
+  /* Placed from the button's rect by OutputMenu: fixed, so neither the output
+     area's scrolling nor the cell's hidden overflow can clip it. */
+  .output-menu-items {
+    position: fixed;
+    min-width: 9rem;
+    z-index: 40;
+    background: var(--popover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-popover);
+    padding: 0.2rem;
+  }
+
+  .output-menu-items button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .output-menu-items button:hover {
+    background: var(--muted);
+  }
+
+  /* The Source tab is the whole file: it takes the height of its pane and
+     scrolls inside itself, rather than growing the page. */
+  .source-editor {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  /* Height is set from the line count in useDiffEditor — a diff editor never
+     sizes itself, and a fixed height leaves a short file in a half-empty box. */
+  .diff-editor {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  /* --- modal (the connection wizard) --------------------------------------- */
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4rem 1rem 2rem;
+    z-index: 50;
+  }
+
+  /* A column so the actions can sit outside the scrolling part: the body grows
+     until the dialog hits its cap and then scrolls, and Save stays on screen. */
+  .modal {
+    display: flex;
+    flex-direction: column;
+    background: var(--popover);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-dialog);
+    padding: 1.1rem 1.25rem 1.25rem;
+    width: min(42rem, 100%);
+    max-height: 80vh;
+    overflow: hidden;
+  }
+
+  .wizard-preview {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+    background: var(--muted);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* ---------------------------------------------------------------------------
+     Focus Mode: one cell at a time, editor above output, contents on the left.
+     Every class here is prefixed `focus-` on purpose. Monaco's own DOM uses names
+     like .main, .tree and .contents, and unprefixed rules of ours have landed on
+     its widgets before — a blank suggest popup that took a while to explain.
+     --------------------------------------------------------------------------- */
+
+  /* Focus Mode fixes its work area to the viewport; the page behind must not also
+     scroll, or you get two scrollbars fighting for the same wheel. */
+  body.focus-mode-on {
+    overflow: hidden;
+  }
+
+  .focus-shell {
+    display: flex;
+    /* Height is measured in JS from this element's own top, because what sits
+       above it changes. This is only the floor. */
+    min-height: 16rem;
+    margin: 12px 16px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    overflow: hidden;
+  }
+
+  .focus-sidebar {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    background: var(--surface-panel);
+    border-right: 1px solid var(--border);
+    overflow: auto;
+  }
+
+  .focus-sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 7px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-subtle);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface-panel);
+  }
+
+  ul.focus-toc,
+  ul.focus-toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  ul.focus-toc ul.focus-toc-children {
+    padding-left: 0.75rem;
+  }
+
+  /* The language monogram beside a cell — `TSQL`, `ORA`, `C#`. Letters rather
+     than an icon: the redesign narrowed to lucide, which has nothing for "Oracle
+     SQL", and at this size a glyph is a smudge while three letters stay legible.
+     Its colour is one of six `--lang-*` hues, set inline from the cell's id. */
+  .cell-chip {
+    flex-shrink: 0;
+    min-width: 26px;
+    padding: 0 3px;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 14px;
+    text-align: center;
+    letter-spacing: 0.02em;
+    /* The border and text are the hue; the fill is not, or a column of chips
+       becomes a column of coloured blocks that shouts over the cell labels. */
+    opacity: 0.9;
+  }
+
+  /* --- the thumbnail view ------------------------------------------------- */
+
+  /* The zoom row, shown only in the thumbnail view. */
+  .focus-thumbs-zoom {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10.5px;
+    color: var(--muted-subtle);
+  }
+
+  .focus-thumbs-zoom input[type='range'] {
+    flex: 1;
+    min-width: 0;
+    height: 14px;
+    accent-color: var(--primary);
+    cursor: pointer;
+  }
+
+  .focus-thumbs-zoom-value {
+    min-width: 30px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Where a dragged cell would land. A line rather than a highlighted row: the
+     cell goes *between* two others, and highlighting one of them says it is
+     going onto it. Drawn with an inset shadow so it costs no layout and cannot
+     shift the row it is marking. */
+  .focus-toc-leaf[data-drop='before'],
+  .focus-thumb[data-drop='before'] {
+    box-shadow: inset 0 2px 0 var(--primary);
+  }
+
+  .focus-toc-leaf[data-drop='after'],
+  .focus-thumb[data-drop='after'] {
+    box-shadow: inset 0 -2px 0 var(--primary);
+  }
+
+  .focus-toc-leaf[draggable='true'],
+  .focus-thumb[draggable='true'] {
+    /* `grab` on hover would fight the pointer the rest of the row wants — a
+       click still selects the cell, and that is the commoner gesture by far. */
+    -webkit-user-drag: element;
+  }
+
+  .focus-thumbs {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 12px;
+  }
+
+  .focus-thumbs-section {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 5px 10px 4px;
+    background: var(--surface-panel);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-thumb {
+    display: block;
+    padding: 6px 10px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    /* The browser skips laying out and painting anything scrolled out of view,
+       which is what keeps a two-hundred-cell notebook scrolling smoothly without
+       a virtualiser of our own. The intrinsic size stops the scrollbar jumping
+       as skipped items come back. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
+  }
+
+  .focus-thumb:hover {
+    background: var(--surface-panel-strong);
+  }
+
+  .focus-thumb-active {
+    border-left-color: var(--primary);
+    background: var(--primary-soft);
+  }
+
+  .focus-thumb-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-bottom: 4px;
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .focus-thumb-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-thumb-count {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted-subtle);
+  }
+
+  /* Fixed 4:3 and `overflow: hidden` — clipped, never squashed. A preview that
+     changed shape per cell would be unreadable as a column. */
+  .focus-thumb-box {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--code-bg);
+    /* The clip fades rather than cutting, so a preview that ran out of room
+       says so — a hard edge reads as a cell that ends there. Applied to every
+       thumbnail: on one whose code stops short the faded band is empty anyway,
+       so there is nothing to detect and nothing to branch on. */
+    /* `currentColor` rather than the usual `#000`: a mask reads alpha, not hue,
+       so any opaque value does — and the token layer is the only place a colour
+       is written down. The guard test caught the black. */
+    mask-image: linear-gradient(to bottom, currentColor calc(100% - 18px), transparent);
+  }
+
+  .focus-thumb-code {
+    margin: 0;
+    padding: 4px 5px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--code-fg);
+    white-space: pre;
+    /* No wrapping: a wrapped preview is a different shape from the cell it is
+       previewing, which is the one thing a thumbnail has to get right. */
+    overflow: hidden;
+  }
+
+  /* Same box, no content — drawn while a preview is still being colorized so
+     nothing reflows when it arrives. */
+  .focus-thumb-pending {
+    width: 100%;
+    height: 100%;
+    background: var(--code-bg);
+  }
+
+  .focus-toc-leaf,
+  .focus-toc-section {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .focus-toc-leaf:hover,
+  .focus-toc-section:hover {
+    background: var(--surface-panel-strong);
+  }
+
+  .focus-toc-active {
+    background: var(--primary);
+    /* Not #fff: white on the amber accent is about 2:1. The accent's own
+       foreground token is the one that is checked for contrast. */
+    color: var(--primary-foreground);
+  }
+
+  .focus-toc-active .focus-toc-count {
+    color: var(--primary-foreground);
+  }
+
+  .focus-toc-chevron {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--muted-foreground);
+    padding: 0 0.15rem;
+    font-size: 0.8125rem;
+  }
+
+  .focus-toc-section-label {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-toc-count {
+    color: var(--muted-foreground);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+
+  .focus-toc-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-mono);
+  }
+
+  .focus-toc-dot {
+    font-size: 0.8125rem;
+    width: 0.9em;
+    text-align: center;
+    flex: 0 0 auto;
+  }
+
+  .focus-toc-dot-idle { color: var(--muted-foreground); opacity: 0.5; }
+  .focus-toc-dot-pending { color: var(--muted-foreground); }
+  .focus-toc-dot-running { color: var(--primary); }
+  .focus-toc-dot-succeeded { color: var(--status-success); }
+  .focus-toc-dot-skipped { color: var(--muted-foreground); opacity: 0.6; }
+  .focus-toc-dot-md { color: var(--muted-foreground); opacity: 0.6; }
+
+  /* An errored cell has to be findable from the tree without opening every cell. */
+  .focus-toc-dot-failed {
+    color: var(--status-error);
+    font-weight: 700;
+  }
+
+  .focus-work {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .focus-cell-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-panel);
+    font-size: var(--text-code);
+    flex: 0 0 auto;
+  }
+
+  .focus-cell-title {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+  }
+
+  /* flex-basis carries the split ratio; min-height keeps a pane from vanishing.
+     No overflow here — Monaco owns the scrollbar inside, and wrapping it would
+     nest two. */
+  .focus-editor-pane {
+    flex: 0 1 auto;
+    min-height: 80px;
+    background: var(--card);
+    overflow: hidden;
+  }
+
+  .focus-editor {
+    height: 100%;
+  }
+
+  .focus-output-pane {
+    flex: 1 1 auto;
+    min-height: 80px;
+    border-top: 1px solid var(--border);
+    background: var(--background);
+    overflow: auto;
+    padding: 12px 16px;
+  }
+
+  .focus-markdown-preview {
+    border: 0;
+    padding: 0;
+  }
+
+  .focus-empty,
+  .focus-empty-state {
+    color: var(--muted-foreground);
+    font-size: 0.9375rem;
+    padding: 0.6rem;
+  }
+
+  .focus-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .focus-splitter {
+    flex: 0 0 5px;
+    background: var(--border);
+  }
+
+  .focus-splitter:hover {
+    background: var(--primary);
+  }
+
+  .focus-splitter-vertical {
+    cursor: col-resize;
+  }
+
+  .focus-splitter-horizontal {
+    cursor: row-resize;
+  }
+
+  /* The work area is measured to the bottom of the window, so anything after it
+     would be clipped rather than reachable. Hide it instead of leaving text that
+     exists but cannot be read. */
+}
+
+/* --- underline tabs ------------------------------------------------------
+ * Unlayered on purpose. The generated Tabs component paints its `::after`
+ * indicator with group-data-scoped utilities that outrank anything we can pass
+ * through `className`, and `cn()`'s tailwind-merge drops the duplicate rather
+ * than letting the later one win. Unlayered CSS beats layered CSS, which is the
+ * one reliable way to override it — and this is a smaller diff than forking the
+ * component.
+ *
+ * Keyed off the variant, not off one page: the same treatment is wanted on job
+ * detail, run detail and the notebook editor, and three copies of it is three
+ * chances to drift.
+ */
+[data-slot='tabs-list'][data-variant='line'],
+[data-tabs='line'] {
+  display: flex;
+  width: 100%;
+  height: auto;
+  gap: 2px;
+  padding: 0;
+  justify-content: flex-start;
+  border-bottom: 1px solid var(--border);
+}
+
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'],
+[data-tabs='line'] [data-slot='tabs-trigger'] {
+  position: relative;
+  flex: 0 0 auto;
+  height: auto;
+  padding: 7px 12px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']:hover,
+[data-tabs='line'] [data-slot='tabs-trigger']:hover {
+  color: var(--foreground);
+}
+
+/* The indicator sits *on* the rule, not five pixels under it. Stated in full
+   rather than only overriding colour and offset, because TabNav's links are
+   plain anchors with none of the generated component's utility classes. */
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']::after,
+[data-tabs='line'] [data-slot='tabs-trigger']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'][data-state='active'],
+[data-tabs='line'] [data-slot='tabs-trigger'][data-state='active'] {
+  color: var(--foreground);
+  font-weight: 600;
+  background: transparent;
+}
+
+[data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'][data-state='active']::after,
+[data-tabs='line'] [data-slot='tabs-trigger'][data-state='active']::after {
+  opacity: 1;
+}
+
+/* In the editor the tab row *is* the toolbar, so the rule it underlines is the
+   toolbar's own bottom border. */
+.nb-toolbar [data-slot='tabs-list'][data-variant='line'] {
+  width: auto;
+  border-bottom: none;
+}
+
+.nb-toolbar [data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger'] {
+  height: 100%;
+  padding: 12px 10px 10px;
+}
+
+.nb-toolbar [data-slot='tabs-list'][data-variant='line'] [data-slot='tabs-trigger']::after {
+  bottom: 0;
+}
+
+/* --- outline buttons hover to the accent ---------------------------------
+ * Unlayered, for the same reason as the tabs above: the generated Button sets
+ * `hover:bg-accent hover:text-accent-foreground` on the outline variant, and a
+ * className override is dropped by tailwind-merge. The handoff's rule is that
+ * an outline control takes a green border and green text on hover, and a
+ * destructive one takes red — which is a property of the variant, not of any
+ * one page.
+ */
+[data-slot='button'][data-variant='outline']:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* --- the Connections area ------------------------------------------------ */
+
+.connections-page {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+/* The pane owns the width so the splitter has one thing to drag; the tree fills
+   it. Its right edge is the Splitter rather than a border, which is what makes it
+   draggable at all. */
+.connection-tree-pane {
+  display: flex;
+  min-width: 0;
+  flex-shrink: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.connection-tree {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--color-surface-panel);
+}
+
+.connection-tree-header {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.connection-tree-rows {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.connection-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  min-height: 24px;
+  font-size: var(--text-sm);
+}
+
+.connection-tree-row:hover {
+  background: var(--color-surface-panel-strong);
+}
+
+.connection-tree-row.is-selected {
+  background: var(--color-primary-soft);
+}
+
+.connection-tree-chevron {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--color-muted-subtle);
+  cursor: pointer;
+}
+
+.connection-tree-label {
+  flex: 1;
+  overflow: hidden;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Faint until the row is hovered, rather than absent until then: a control you
+   cannot see is a control you do not know is there, and hunting for it by waving
+   the pointer along a tree is not discovery. */
+.connection-tree-actions {
+  display: flex;
+  gap: 1px;
+  opacity: 0.45;
+}
+
+.connection-tree-row:hover .connection-tree-actions,
+.connection-tree-row:focus-within .connection-tree-actions,
+.connection-tree-actions:has([data-state='open']) {
+  opacity: 1;
+}
+
+.connection-tree-actions button {
+  display: inline-flex;
+  height: 20px;
+  width: 20px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+}
+
+.connection-tree-actions button:hover {
+  background: var(--color-surface-panel-strong);
+  color: var(--color-foreground);
+}
+
+.connection-tree-error {
+  padding-right: 8px;
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.connections-work {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.connections-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-card);
+}
+
+.connections-editor {
+  min-height: 80px;
+}
+
+.connections-results {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.connections-messages {
+  overflow: auto;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+/* --- the results grid --------------------------------------------------- */
+
+.result-grid {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.result-grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.result-grid-search {
+  width: 200px;
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  padding: 2px 8px;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.result-grid-search:focus {
+  border-color: var(--color-ring);
+}
+
+.result-grid-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.result-grid-scroll table {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Two sticky rows, so the second has to know how tall the first is. Stated
+   rather than measured: the alternative is a resize observer writing a custom
+   property, for a header whose height is not in question. */
+.result-grid-scroll thead th {
+  position: sticky;
+  z-index: 1;
+  background: var(--color-surface-panel);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.result-grid-head th {
+  top: 0;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  cursor: pointer;
+}
+
+.result-grid-filters th {
+  top: 26px;
+  cursor: auto;
+  height: 24px;
+  padding: 0 4px 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.result-grid-filters input {
+  width: 100%;
+  min-width: 60px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-input);
+  border-radius: 4px;
+  background: var(--color-background);
+  padding: 0 4px;
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 18px;
+  outline: none;
+}
+
+.result-grid-filters input:focus {
+  border-color: var(--color-ring);
+}
+
+
+.result-grid-sort {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+/* Faint, never absent. A control you cannot see is a control you do not know is
+   there, and hunting for one by waving the pointer along a header row is not
+   discovery — the same reason the connection tree's row actions are faint rather
+   than hidden. */
+.result-grid-funnel {
+  margin-left: 4px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--color-muted-subtle);
+  cursor: pointer;
+  opacity: 0.4;
+  vertical-align: middle;
+}
+
+.result-grid-head th:hover .result-grid-funnel,
+.result-grid-funnel:focus-visible,
+.result-grid-funnel.is-active {
+  opacity: 1;
+}
+
+.result-grid-funnel.is-active {
+  color: var(--color-primary);
+}
+
+.result-grid-funnel:hover {
+  background: var(--color-surface-panel-strong);
+  color: var(--color-foreground);
+}
+
+/* The height is stated rather than derived, and the line height matches it. The
+   grid virtualizes on a fixed ROW_HEIGHT, and an explicit height on a `tr` is a
+   minimum rather than a clamp — so a row that came out half a pixel taller than
+   the constant would let the window drift against scrollTop and rows would skip
+   as you scrolled. Padding-derived heights are how that happens. */
+.result-grid-scroll td {
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 380px;
+  height: 26px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  line-height: 25px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-grid-gutter {
+  color: var(--color-muted-subtle);
+  text-align: right;
+  user-select: none;
+}
+
+.result-grid-number {
+  text-align: right;
+}
+
+/* NULL and '' look identical in a grid and are not the same thing. */
+.result-grid-null {
+  color: var(--color-muted-subtle);
+  font-style: italic;
+}
+
+.result-grid-empty {
+  color: var(--color-muted-subtle);
+  font-family: var(--font-sans);
+  text-align: center;
+}
+
+/* Fixed, not absolute: the scroll container clips anything inside it, and no
+   z-index escapes a clip. */
+.result-grid-popup {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  width: 240px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  /* No shadow: hierarchy in this design is carried by borders, and the token
+     layer is the only place a colour may be written. */
+  background: var(--color-popover);
+}
+
+.result-grid-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.result-grid-popup-head input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-input);
+  border-radius: 4px;
+  background: var(--color-background);
+  padding: 2px 6px;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.result-grid-popup-head button,
+.result-grid-popup-actions button {
+  border: none;
+  background: none;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.result-grid-popup-head button:hover,
+.result-grid-popup-actions button:hover {
+  color: var(--color-foreground);
+  text-decoration: underline;
+}
+
+.result-grid-popup-actions {
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--color-muted-subtle);
+  font-size: var(--text-sm);
+}
+
+.result-grid-popup-list {
+  overflow: auto;
+  max-height: 260px;
+  padding: 2px 0;
+}
+
+.result-grid-popup-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.result-grid-popup-list label:hover {
+  background: var(--color-surface-panel);
+}
+
+.result-grid-popup-list span {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-grid-popup-list p {
+  padding: 6px 8px;
+}
+
+/* The saved-connection list in the cell wizard. */
+.wizard-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  max-height: 240px;
+}
+
+.wizard-saved button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.wizard-saved button:hover {
+  border-color: var(--color-ring);
+  background: var(--color-surface-panel);
+}
+
+.wizard-saved-name {
+  font-weight: 600;
+}
+
+.wizard-saved-detail {
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--color-muted-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The query history panel. Statements run long, so it gets more width than a form. */
+.modal-wide {
+  width: min(58rem, 100%);
+}
+
+.query-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.query-history-row {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 8px 10px;
+}
+
+.query-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+}
+
+.query-history-row pre {
+  overflow: auto;
+  max-height: 9rem;
+  margin: 6px 0 0;
+  border-radius: 6px;
+  background: var(--color-surface-panel);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+/* Saving what is in the editor, from the saved-queries panel. */
+.saved-query-new {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.saved-query-new input {
+  flex: 1;
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  padding: 2px 8px;
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.saved-query-new input:focus {
+  border-color: var(--color-ring);
+}

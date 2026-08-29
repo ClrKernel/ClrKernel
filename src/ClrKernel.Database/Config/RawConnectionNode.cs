@@ -21,6 +21,53 @@ public sealed class RawConnectionNode {
         SecretRefs = secretRefs;
     }
 
+    /// <summary>
+    /// A node assembled in memory rather than read from a file — for a caller that
+    /// already holds a connection's settings (the Jobs connection store) and wants the
+    /// provider's own mapping applied to them. Going through this rather than building
+    /// a provider spec by hand is what keeps the aliases, defaults and type inference
+    /// in <c>SqlConnectionConfig.FromNode</c> as the only copy of that knowledge.
+    /// </summary>
+    public static RawConnectionNode FromValues(
+        string name, string type,
+        IReadOnlyDictionary<string, string> values,
+        IReadOnlyDictionary<string, string> secretRefs = null) =>
+        new RawConnectionNode(
+            name, type, sourceFile: null,
+            values ?? new Dictionary<string, string>(),
+            secretRefs ?? new Dictionary<string, string>());
+
+    /// <summary>
+    /// A copy with one value replaced (or removed, for null). How a caller points the
+    /// same saved connection at another database, or swaps in a second login, without
+    /// knowing which connection-string keyword either becomes — that stays the
+    /// provider's business.
+    /// </summary>
+    public RawConnectionNode With(string key, string value) {
+        var values = new Dictionary<string, string>(Values, StringComparer.OrdinalIgnoreCase);
+        if (value == null) {
+            values.Remove(key);
+        } else {
+            values[key] = value;
+        }
+        // A secret reference for the same key would win over the value being set here,
+        // which is never what the caller meant.
+        var secretRefs = new Dictionary<string, string>(SecretRefs, StringComparer.OrdinalIgnoreCase);
+        secretRefs.Remove(key);
+        return new RawConnectionNode(Name, Type, SourceFile, values, secretRefs);
+    }
+
+    /// <summary>A copy with one secret reference replaced (or removed, for null).</summary>
+    public RawConnectionNode WithSecret(string key, string secretRef) {
+        var secretRefs = new Dictionary<string, string>(SecretRefs, StringComparer.OrdinalIgnoreCase);
+        if (secretRef == null) {
+            secretRefs.Remove(key);
+        } else {
+            secretRefs[key] = secretRef;
+        }
+        return new RawConnectionNode(Name, Type, SourceFile, Values, secretRefs);
+    }
+
     /// <summary>The node name (the key in the config file).</summary>
     public string Name { get; }
 

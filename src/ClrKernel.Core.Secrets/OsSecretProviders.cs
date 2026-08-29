@@ -26,19 +26,53 @@ public static class OsSecretProvider {
         return null;
     }
 
+    /// <summary>
+    /// Whether the Secret Service actually answers — not merely whether
+    /// <c>secret-tool</c> is installed.
+    /// <para>
+    /// The difference matters because the binary exits 0 for <c>--version</c> on a
+    /// machine with no session bus and no keyring daemon, where every store and
+    /// lookup then fails with "Cannot autolaunch D-Bus". A provider that says it
+    /// <see cref="ISecretProvider.CanStore"/> and cannot is worse than an absent
+    /// one: <see cref="SecretStore.Store"/> picks it, throws, and the connection
+    /// editor offers a password field that can never work.
+    /// </para>
+    /// <para>
+    /// The probe is a lookup for a key nobody stores. A live service answers "not
+    /// found" — exit 1, nothing on stderr. A missing one writes the reason to
+    /// stderr, which is the whole discriminator, since both exit 1.
+    /// </para>
+    /// </summary>
     private static bool SecretToolAvailable() {
         try {
-            var psi = new ProcessStartInfo("secret-tool", "--version") {
+            var psi = new ProcessStartInfo("secret-tool") {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
             };
+            foreach (var arg in new[] {
+                "lookup", "service", OsSecretProvider.ServiceName, "account", "__probe__",
+            }) {
+                psi.ArgumentList.Add(arg);
+            }
             using var p = Process.Start(psi);
             if (p == null) {
                 return false;
             }
-            p.WaitForExit(3000);
-            return p.HasExited && p.ExitCode == 0;
+            // Read before waiting: a full stderr pipe would deadlock the wait.
+            var complaint = p.StandardError.ReadToEnd();
+            p.WaitForExit(5000);
+            if (!p.HasExited) {
+                // A prompt with nobody to answer it, most likely. Killing it matters:
+                // the process would otherwise outlive this call still holding the bus.
+                try {
+                    p.Kill(entireProcessTree: true);
+                } catch {
+                    // Already gone between the check and the kill.
+                }
+                return false;
+            }
+            return complaint.Trim().Length == 0;
         } catch {
             return false;
         }

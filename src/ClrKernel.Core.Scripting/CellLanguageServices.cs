@@ -98,4 +98,9 @@ public sealed class DiagnosticResult {
     public int EndColumn { get; set; }
     public int Code { get; set; }
     public string Message { get; set; }
+
+    /// <summary>1 = error, 2 = warning — the LSP's own numbering, so a host can
+    /// pass it straight through. Defaults to error, which is what every
+    /// diagnostic was before anything needed to be less than one.</summary>
+    public int Severity { get; set; } = 1;
 }

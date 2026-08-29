@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.Fabric;
 using ClrKernel.Language.Dax;
@@ -22,13 +23,25 @@ public static class CellLanguages {
     /// Called once at startup, before any engine is constructed.
     /// </summary>
     public static void RegisterDefaults() {
-        CellLanguageRegistry.Default = new CellLanguageRegistry(new Func<ICellLanguage>[] {
-            () => new HttpCellLanguage(),
-            () => new MermaidCellLanguage(),
-            () => new PowerShellCellLanguage(),
-            () => new ShellCellLanguage(),
-            () => new SqlCellLanguage(),
-            () => new DaxCellLanguage(),
+        CellLanguageRegistry.Default = new CellLanguageRegistry(new Func<IReadOnlyList<ICellLanguage>>[] {
+            () => new[] { new HttpCellLanguage() },
+            () => new[] { new MermaidCellLanguage() },
+            () => new[] { new PowerShellCellLanguage() },
+            () => new[] { new ShellCellLanguage() },
+            // One family, one session: the three dialects share the notebook's
+            // connections, so a name declared in any of them means the same
+            // connection in all of them. Sharing has to happen inside the factory
+            // call — a session that outlived its engine would leak one notebook's
+            // connections into the next.
+            () => {
+                var sql = new SqlCellLanguage();
+                return new ICellLanguage[] {
+                    sql,
+                    new OracleSqlCellLanguage(sql.Session),
+                    new AnsiSqlCellLanguage(sql.Session),
+                };
+            },
+            () => new[] { new DaxCellLanguage() },
         });
         CellLanguageRegistry.DefaultContributions = new[] {
             // Fabric is reachable from C# cells (Fabric.Connect() -> warehouse

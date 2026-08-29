@@ -55,7 +55,7 @@ jobs:
         working-directory: editors/vscode
 
   webapp:
-    name: Jobs web app (build + unit tests)
+    name: Studio web app (build + unit tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -64,31 +64,31 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: src/ClrKernel.Jobs/webapp/package-lock.json
+          cache-dependency-path: src/ClrKernel.Studio/webapp/package-lock.json
 
       - name: Install
         run: npm ci
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
       # tsc proves the SPA is type-correct and vite proves it bundles; the unit
       # tests cover the renderer helpers, the only part with real logic.
       - name: Build
         run: npm run build
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
       - name: Test
         run: npm test
-        working-directory: src/ClrKernel.Jobs/webapp
+        working-directory: src/ClrKernel.Studio/webapp
 
-  jobs-stores:
-    name: Jobs run-store contract (PostgreSQL + SQL Server)
+  studio-stores:
+    name: Studio live backends (run store + connection dialects)
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: ci-only
-          POSTGRES_DB: clrkernel_jobs
+          POSTGRES_DB: clrkernel_studio
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -114,15 +114,34 @@ jobs:
       # CLRKERNEL_TEST_REQUIRE_LIVE makes a missing server fail the job rather than
       # skip, so this can never go green without touching a database.
       - name: Run the store contract tests
-        run: dotnet test test/ClrKernel.Jobs.UnitTest/ClrKernel.Jobs.UnitTest.csproj
+        run: dotnet test test/ClrKernel.Studio.UnitTest/ClrKernel.Studio.UnitTest.csproj
           --filter ClassName~RunStoreContractTest
         env:
           CLRKERNEL_TEST_REQUIRE_LIVE: '1'
-          CLRKERNEL_JOBS_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_jobs;Username=postgres;Password=ci-only
-          CLRKERNEL_JOBS_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_jobs;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
+          CLRKERNEL_STUDIO_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_studio;Username=postgres;Password=ci-only
+          CLRKERNEL_STUDIO_TEST_SQLSERVER: Server=localhost,1433;Database=clrkernel_studio;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
 
-  jobs-image:
-    name: Jobs Docker image (build + smoke)
+      # unixodbc is a driver manager and ships no drivers; without one every ODBC
+      # connection fails with "data source name not found". The same reason the
+      # Studio image installs this pair.
+      - name: Install an ODBC driver
+        run: sudo apt-get update && sudo apt-get install --yes unixodbc odbc-postgresql
+
+      # The Connections area against real backends: the object-tree queries, the
+      # generated scripts and the reader loop are per-dialect and a closed port
+      # proves only the error path. Oracle is not here — its image takes minutes to
+      # start and gigabytes to pull, so that one stays a local gate.
+      - name: Run the connection dialect tests
+        run: dotnet test test/ClrKernel.Studio.UnitTest/ClrKernel.Studio.UnitTest.csproj
+          --filter "ClassName~ConnectionsLiveTest|ClassName~PostgresLiveTest|ClassName~OdbcLiveTest"
+        env:
+          CLRKERNEL_TEST_REQUIRE_LIVE: '1'
+          CLRKERNEL_STUDIO_TEST_SQL: Server=localhost,1433;Database=master;User Id=sa;Password=CiOnly!Passw0rd;TrustServerCertificate=True
+          CLRKERNEL_STUDIO_TEST_POSTGRES: Host=localhost;Port=5432;Database=clrkernel_studio;Username=postgres;Password=ci-only
+          CLRKERNEL_STUDIO_TEST_ODBC: Driver={PostgreSQL Unicode};Server=localhost;Port=5432;Database=clrkernel_studio;Uid=postgres;Pwd=ci-only
+
+  studio-image:
+    name: Studio Docker image (build + smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -130,7 +149,7 @@ jobs:
       # The Dockerfile builds the SPA and both tools from this commit, so this is
       # also the check that a from-scratch build of the whole thing works.
       - name: Build image
-        run: docker build -f src/ClrKernel.Jobs/Dockerfile -t clrkernel-jobs .
+        run: docker build -f src/ClrKernel.Studio/Dockerfile -t clrkernel-studio .
 
       - name: Run a notebook job in the container
         run: |
@@ -144,7 +163,7 @@ jobs:
           jobs:
             - name: hello
           EOF
-          docker run --rm -v "$PWD/smoke:/notebooks:ro" clrkernel-jobs run hello
+          docker run --rm -v "$PWD/smoke:/notebooks:ro" clrkernel-studio run hello
 
   notebook-smoke:
     name: Headless notebook smoke test

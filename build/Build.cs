@@ -40,7 +40,7 @@ class ClrKernelBuild : NukeBuild {
 
     AbsolutePath SolutionFile => RootDirectory / "ClrKernel.slnx";
     AbsolutePath ExtensionDirectory => RootDirectory / "editors" / "vscode";
-    AbsolutePath WebappDirectory => RootDirectory / "src" / "ClrKernel.Jobs" / "webapp";
+    AbsolutePath WebappDirectory => RootDirectory / "src" / "ClrKernel.Studio" / "webapp";
 
     // The build/restore target: a single --project if given, else the solution.
     AbsolutePath TargetFile => string.IsNullOrEmpty(Project) ? SolutionFile : ResolveProject(Project);
@@ -129,11 +129,11 @@ class ClrKernelBuild : NukeBuild {
         });
 
     Target Web => _ => _
-        .Description("Build the ClrKernel.Jobs web app (npm install + vite build into wwwroot).")
+        .Description("Build the ClrKernel.Studio web app (npm install + vite build into wwwroot).")
         .Executes(() => {
             Npm("install", WebappDirectory);
             // Vite writes ../wwwroot, which the tool serves and packs. Run this before
-            // packing ClrKernel.Jobs or the tool ships with no UI.
+            // packing ClrKernel.Studio or the tool ships with no UI.
             Npm("run build", WebappDirectory);
         });
 

@@ -45,6 +45,76 @@ public interface ICellLanguage {
     string DisplayName => Id;
 
     /// <summary>
+    /// What a picker clusters this language under — "SQL" keeps the dialects
+    /// together instead of scattering them between C# and HTTP. Null for a
+    /// language that stands on its own.
+    /// </summary>
+    string Category => null;
+
+    /// <summary>
+    /// The <c>connections.json</c> <c>$type</c> values this language's cells can
+    /// execute against, in preference order.
+    /// <para>
+    /// A <b>compatibility declaration, not an identity</b>: which provider carries
+    /// a statement is a property of the connection, and changing connection must
+    /// not change what language the cell is written in. Open strings rather than
+    /// an enum, so a third party shipping a PostgreSQL dialect needs no change
+    /// here. Empty means the language is not provider-bound at all (HTTP, Mermaid,
+    /// Markdown), which is not the same as "runs on anything".
+    /// </para>
+    /// </summary>
+    IReadOnlyList<string> SupportedProviders => Array.Empty<string>();
+
+    /// <summary>
+    /// The id an editor should give this language's cells, when it differs from
+    /// <see cref="Id"/>.
+    /// <para>
+    /// This is an <b>identity</b>, so it is distinct per language: it is what a
+    /// cell is called in the editor and therefore what comes back to
+    /// <see cref="CellLanguageSet.ById"/> when the editor syncs the document. Two
+    /// languages sharing one would route one of them to the other.
+    /// </para>
+    /// <para>
+    /// Why a language would want its own: VS Code's language ids are global and
+    /// its built-ins are registered first, so a cell language called <c>sql</c>
+    /// wears the built-in's name in every menu ("SQL", not "T-SQL") and every SQL
+    /// extension the user has installed attaches to it. Same reason
+    /// <c>csharp-script</c> is not <c>csharp</c>.
+    /// </para>
+    /// </summary>
+    string EditorLanguageId => Id;
+
+    /// <summary>
+    /// Two to four characters naming this language in a space too small for its
+    /// display name — the chip beside a cell in a contents list, where the whole
+    /// point is that a notebook mixing C#, SQL and HTTP is scannable at a glance.
+    /// <para>
+    /// Here rather than in a table in each client, so a language that arrives at
+    /// run time gets a correct chip with no front-end change. The default is the
+    /// id, uppercased and cut to four, which is right for short ids and wrong for
+    /// long ones — <c>shellscript</c> would be "SHEL" — so a language with a
+    /// longer id says what it wants instead.
+    /// </para>
+    /// </summary>
+    string Monogram => (Id ?? string.Empty).ToUpperInvariant() is { Length: > 4 } long_
+        ? long_.Substring(0, 4)
+        : (Id ?? string.Empty).ToUpperInvariant();
+
+    /// <summary>
+    /// The syntax an editor should highlight these cells with, when it has no
+    /// grammar of its own for <see cref="EditorLanguageId"/>. Null to use the
+    /// editor language itself.
+    /// <para>
+    /// The opposite of the property above, and the reason they are two: this one
+    /// is about <em>appearance</em>, so several languages may share it. The SQL
+    /// dialects are three identities and one tokenizer — a tokenizer reads
+    /// strings, comments, numbers and identifiers rather than words, and the
+    /// dialects differ only by words.
+    /// </para>
+    /// </summary>
+    string GrammarId => null;
+
+    /// <summary>
     /// The code-block tags this language claims in <c>.nb.md</c> / <c>.dib</c>
     /// documents (<c>sql</c>, <c>tsql</c>; <c>bash</c>, <c>zsh</c>…). Parsers and
     /// serializers consult these instead of hard-coding tag tables. Empty when the
@@ -154,10 +224,11 @@ public interface ICellExecutionContext {
 /// </para>
 /// </summary>
 public sealed class CellLanguageRegistry {
-    private readonly List<Func<ICellLanguage>> _factories;
+    private readonly List<Func<IReadOnlyList<ICellLanguage>>> _factories;
 
     /// <summary>A registry with no languages: cells run as C# only.</summary>
-    public static CellLanguageRegistry Empty { get; } = new CellLanguageRegistry(Array.Empty<Func<ICellLanguage>>());
+    public static CellLanguageRegistry Empty { get; } =
+        new CellLanguageRegistry(Array.Empty<Func<ICellLanguage>>());
 
     /// <summary>
     /// The registry used by engines constructed without an explicit one. Set
@@ -180,13 +251,35 @@ public sealed class CellLanguageRegistry {
     /// runspace), so every engine must get its own set. Sharing instances across
     /// engines leaks one notebook's connections into another.
     /// </param>
-    public CellLanguageRegistry(IEnumerable<Func<ICellLanguage>> factories) {
-        _factories = (factories ?? Array.Empty<Func<ICellLanguage>>()).Where(f => f != null).ToList();
+    public CellLanguageRegistry(IEnumerable<Func<ICellLanguage>> factories)
+        : this((factories ?? Array.Empty<Func<ICellLanguage>>())
+            .Where(f => f != null)
+            .Select<Func<ICellLanguage>, Func<IReadOnlyList<ICellLanguage>>>(
+                f => () => new[] { f() })) {
+    }
+
+    /// <param name="families">
+    /// One factory per <em>family</em> of languages that share per-notebook state.
+    /// <para>
+    /// The SQL dialects are why this exists: T-SQL, Oracle SQL and generic SQL are
+    /// three languages and one set of connections. A connection is a property of
+    /// the notebook, not of the dialect that happens to name it — declare it once
+    /// and every dialect resolves it, and a name means one thing in a notebook
+    /// rather than one thing per dialect. That requires them to share a session,
+    /// and a session must not outlive its engine, so the sharing has to happen
+    /// inside the factory call rather than in a variable the factories close over.
+    /// </para>
+    /// </param>
+    public CellLanguageRegistry(IEnumerable<Func<IReadOnlyList<ICellLanguage>>> families) {
+        _factories = (families ?? Array.Empty<Func<IReadOnlyList<ICellLanguage>>>())
+            .Where(f => f != null).ToList();
     }
 
     /// <summary>Builds a fresh set of language instances for one engine.</summary>
     public CellLanguageSet CreateSet() =>
-        new CellLanguageSet(_factories.Select(f => f()).Where(l => l != null));
+        new CellLanguageSet(_factories
+            .SelectMany(f => f() ?? Array.Empty<ICellLanguage>())
+            .Where(l => l != null));
 
 }
 
@@ -238,9 +331,19 @@ public sealed class CellLanguageSet {
     public IReadOnlyList<ICellLanguage> Languages => _languages;
 
 
-    /// <summary>The registered language with this id, or null.</summary>
+    /// <summary>
+    /// The registered language with this id, or null.
+    /// <para>
+    /// Its <see cref="ICellLanguage.EditorLanguageId"/> answers too, and has to:
+    /// an editor that gives a cell an id of its own then syncs the document under
+    /// that id, and this is where the document comes back to find its language.
+    /// Own id first, so a language cannot be shadowed by another's editor id.
+    /// </para>
+    /// </summary>
     public ICellLanguage ById(string id) =>
-        _languages.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
+        _languages.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase))
+        ?? _languages.FirstOrDefault(
+            l => string.Equals(l.EditorLanguageId, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The single registered language of type <typeparamref name="T"/>, or null.</summary>
     public T Get<T>() where T : class, ICellLanguage => _languages.OfType<T>().FirstOrDefault();

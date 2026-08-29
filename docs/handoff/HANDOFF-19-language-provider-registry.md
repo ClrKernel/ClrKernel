@@ -6,7 +6,7 @@ Language knowledge had been re-typed by hand in four places and had already drif
 
 - **language-tag maps** in four copies, two divergent — the worst consequence being that
   ```sql / ```dax / ```bash tags in a `.nb.md` ran in VS Code but were **silently prose**
-  for `clrkernel run` and every ClrKernel.Jobs job (`NotebookDocument` only knew
+  for `clrkernel run` and every ClrKernel.Studio job (`NotebookDocument` only knew
   csharp/http/mermaid/pwsh).
 - **Directive flags** in four encodings: the parsers (truth), the completion tables
   (`#!sql-connect` completion omitted `--provider/--option/--var/--no-var`; DAX omitted

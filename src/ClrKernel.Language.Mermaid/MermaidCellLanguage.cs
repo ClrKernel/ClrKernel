@@ -13,6 +13,10 @@ public sealed class MermaidCellLanguage : ICellLanguage {
 
     public string DisplayName => "Mermaid";
 
+    /// <summary>Its id is too long to cut to four and still read — "MMD" is
+    /// what people write.</summary>
+    public string Monogram => "MMD";
+
     public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] {
         new DirectiveDefinition { Selector = "#!mermaid", Description = "Renders the cell as a diagram." },
     };

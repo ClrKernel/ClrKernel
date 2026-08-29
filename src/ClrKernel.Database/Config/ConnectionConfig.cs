@@ -119,6 +119,30 @@ public sealed class ConnectionConfig {
             $"Connection '{name}' not found in: {string.Join(", ", files)}.");
     }
 
+    /// <summary>
+    /// The same thing <see cref="Load"/> produces, from a node a caller already holds
+    /// rather than from a file — settings saved by a server, say. Secret references
+    /// resolve here, so what comes back is what a provider needs to open a connection.
+    /// <para>
+    /// This is what lets one mapping serve both: a provider's <c>FromConfig</c> and its
+    /// <c>FromNode</c> differ only in where the node came from, and the knowledge of
+    /// which key becomes which connection-string keyword stays in one place.
+    /// </para>
+    /// </summary>
+    public static ConnectionConfig From(RawConnectionNode node, SecretStore secrets = null) {
+        if (node == null) {
+            throw new ArgumentNullException(nameof(node));
+        }
+        secrets ??= new SecretStore();
+        var properties = new Dictionary<string, string>(node.Values, StringComparer.OrdinalIgnoreCase);
+        foreach (var reference in node.SecretRefs) {
+            if (!string.IsNullOrEmpty(reference.Value)) {
+                properties[reference.Key] = secrets.Resolve(reference.Value);
+            }
+        }
+        return new ConnectionConfig(node.Name, node.Type, node.SourceFile, properties);
+    }
+
     private static ConnectionConfig Materialize(string name, string file, JsonElement node, SecretStore secrets) {
         string type = null;
         var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

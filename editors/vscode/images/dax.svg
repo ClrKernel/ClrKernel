@@ -1,0 +1,13 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Change the hex value here to color both the icon and the text -->
+  <g fill="#E5B800">
+
+    <!-- Document and Box Outline -->
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M13.8502 4.44L10.5702 1.14L10.2202 1H2.50024L2.00024 1.5V7H3.00024V2H9.00024V5.5L9.50024 6H13.0002V7H14.0002V4.8L13.8502 4.44ZM10.0002 5V2L13.0002 5H10.0002ZM2.50024 8L2.00024 8.5V14.5L2.50024 15H13.5002L14.0002 14.5V8.5L13.5002 8H2.50024ZM13.0002 13V14H3.00024V9H13.0002V13Z" />
+
+    <!-- Reusable Text -->
+    <text x="8" y="12.5" font-family="sans-serif" font-size="3.5" font-weight="bold" text-anchor="middle">DAX</text>
+
+  </g>
+</svg>

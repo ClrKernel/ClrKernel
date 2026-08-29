@@ -1,0 +1,63 @@
+# ClrKernel Studio with PostgreSQL, on http://localhost:8080.
+#
+#   docker compose up --build
+#
+# The image is built from this repository — there is no published one yet — so
+# run compose from the repo root with `-f docs/examples/docker/compose.yaml`, or
+# copy this file to the root. `build.context` is the repo root either way,
+# because the Dockerfile needs the whole solution.
+
+services:
+  studio:
+    build:
+      context: ../../..
+      dockerfile: src/ClrKernel.Studio/Dockerfile
+    ports:
+      # 8080 on the host, not 5000: on macOS the AirPlay receiver listens on
+      # 5000 and the bind fails with "address already in use".
+      - "8080:5000"
+    volumes:
+      # Writable, because the git workflow commits here. Read-only (`:ro`) is
+      # fine if you only ever schedule notebooks you edit elsewhere.
+      - ./notebooks:/notebooks
+      # A named volume, so it picks up the image's uid 1654 by itself. A
+      # bind-mounted host directory does not — see docs/docker.md.
+      - studio-data:/data
+    environment:
+      CLRKERNEL_STUDIO_STORE: postgres
+      CLRKERNEL_STUDIO_CONNECTION: >-
+        Host=db;Port=5432;Database=clrkernel_studio;Username=studio;Password=compose-only
+      # The domain passkeys are bound to, and the origin the browser will present.
+      # Both are `localhost` here because that is what you type in the address
+      # bar. Behind a real hostname they become that hostname and its https URL.
+      CLRKERNEL_STUDIO_RPID: localhost
+      CLRKERNEL_STUDIO_ORIGINS: http://localhost:8080
+      # Concurrent runs. Each one is its own kernel process.
+      CLRKERNEL_STUDIO_MAX_PARALLELISM: "4"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: clrkernel_studio
+      POSTGRES_USER: studio
+      # Compose-only, and never a pattern to copy: a real deployment passes this
+      # from a secret store or an env file that is not in version control.
+      POSTGRES_PASSWORD: compose-only
+    volumes:
+      - studio-db:/var/lib/postgresql/data
+    healthcheck:
+      # Studio applies its migrations at startup and would fail against a
+      # database still starting, which is why `depends_on` waits for this.
+      test: ["CMD-SHELL", "pg_isready -U studio -d clrkernel_studio"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  studio-data:
+  studio-db:

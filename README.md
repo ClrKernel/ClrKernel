@@ -78,11 +78,36 @@ See [samples/Shell.nb.md](samples/Shell.nb.md) and
 
 ### SQL cells
 
-Set a cell's language to **SQL** (or start it with `#!sql`) to run T-SQL against
+Set a cell's language to **T-SQL** (or start it with `#!sql`) to run T-SQL against
 Microsoft SQL Server. You get T-SQL highlighting, live syntax checking,
 keyword/function completion, and results as the same interactive grid (sort, a
 global filter, per-column filters and value pickers that combine, and Analyze)
 that C# query results use.
+
+SQL comes in three dialects, grouped together in the language picker:
+
+| Language | Selector | Runs on |
+|---|---|---|
+| **T-SQL** | `#!sql` | SQL Server, ODBC, JDBC |
+| **Oracle SQL** | `#!oraclesql` | Oracle, ODBC, JDBC |
+| **SQL (Generic)** | `#!ansisql` | ODBC, JDBC |
+
+The dialect is a property of the **cell** — it decides which keywords and
+functions are completed, so an Oracle cell offers `NVL` and never `NVARCHAR`. The
+provider is a property of the **connection**, and it decides what carries the
+statement; pointing a cell at a different connection never changes what language
+it is written in. A pairing that cannot work is flagged while you write it and
+refused by name when you run it, rather than arriving as a parse error from a
+driver.
+
+`#!sql` still means T-SQL, as it always has: notebooks written before the split
+open, complete and run exactly as they did. `#!sql-bulk`, `#!sql-merge`,
+`#!sql-run` and `#!sql-deploy` are SQL Server's own and stay on `#!sql`.
+
+Non-SQL-Server connections are defined in `connections.json` (`"$type": "Oracle"`,
+`"Odbc"`, `"Jdbc"`); the driver package is loaded per notebook with
+`#r "nuget: ClrKernel.Database.Provider.Oracle"`, and a cell naming a connection
+whose package is not loaded says which line to add.
 
 ![ClrKernel interactive results grid with a per-column value picker open](https://raw.githubusercontent.com/ClrKernel/ClrKernel/main/docs/images/grid-value-picker.png)
 
@@ -317,24 +342,48 @@ papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p ru
 A failing cell exits non-zero (job schedulers see the failure); papermill also
 persists the partially-executed output notebook as a diagnostic artifact.
 
-### Scheduling notebooks — ClrKernel Jobs (preview)
+### Scheduling notebooks — ClrKernel Studio (preview)
 
-`ClrKernel.Jobs` is a companion dotnet tool that runs notebooks as scheduled jobs
-and serves a web dashboard, so you don't need an external scheduler:
+`ClrKernel.Studio` is a companion dotnet tool that runs notebooks as scheduled jobs
+and serves a web app for editing and watching them, so you don't need an external
+scheduler:
 
 ```bash
-dotnet tool install --global ClrKernel.Jobs
-clrkernel-jobs serve --notebooks ./notebooks     # http://localhost:5000
+dotnet tool install --global ClrKernel.Studio
+clrkernel-studio serve --notebooks ./notebooks     # http://localhost:5000
 ```
 
-Jobs are `*.jobs.yaml` files beside the notebooks (several jobs per notebook, each
-with its own cron and parameters), chained with `dependsOn`. Every run executes in
-an isolated kernel process, cell by cell, with live progress and an executed
-`.ipynb` kept as the artifact. Run history goes to SQLite, SQL Server, PostgreSQL,
-or plain files; failures notify over webhooks or SMTP — with passwords resolved from
-secret references, never stored in config. Also ships as a Docker image.
+**Jobs are files.** A `*.jobs.yaml` is named for the notebook it schedules —
+`etl.jobs.yaml` runs `etl.nb.md` — and holds one or more jobs, each with its own
+cron and parameters, chained with `dependsOn`. The pair is one unit: it is edited
+together, promoted together, and production can never end up holding a schedule
+whose notebook is missing.
 
-See [docs/jobs.md](docs/jobs.md).
+**Files** is a browser over the repository: notebooks open in a cell editor with
+IntelliSense and per-cell execution, jobs files open as a form or as YAML over the
+same buffer, and everything else opens read-only. Work happens on your own branch,
+is pushed to `test`, and reaches `prod` by promotion — which is refused unless the
+exact files being promoted have a green run in `test` at their current commit.
+
+**Dashboard** is Overview, Monitoring and Notifications. Monitoring is one grid
+over every project's runs, filtered, sorted and paged by the server, with rerun
+from a row — at the branch's HEAD after a fix, or at the exact commit that failed,
+for reproducing one.
+
+Every run executes in an isolated kernel process, cell by cell, with live progress
+and an executed `.ipynb` kept as the artifact. `test` and `prod` both schedule; a
+personal branch never does. Run history goes to SQLite, SQL Server, PostgreSQL, or
+plain files, with optional retention that never removes a job's most recent run.
+Notification rules bind events — a job failed, recovered, ran long, or something
+reached production — to webhook or SMTP channels, and the delivery feed records
+what failed to send as well as what arrived. Passwords are always resolved from
+secret references, never stored in a notebook or a config file.
+
+It also ships as a Docker image — see **[docs/docker.md](docs/docker.md)** for
+one-shot runs, compose with PostgreSQL, and running behind an nginx reverse
+proxy, with copy-paste files in [docs/examples/docker/](docs/examples/docker/).
+
+See [docs/studio.md](docs/studio.md).
 
 ## Build & test
 

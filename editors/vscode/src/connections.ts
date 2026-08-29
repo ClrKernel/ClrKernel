@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { composeConnectDirective, ConnectionProviderDescriptor, ConnectionSetting } from './connectionDirective';
 import { ClrKernelController } from './controller';
-import { currentLanguages, LanguageDescriptor } from './languages';
+import { LanguageDescriptor, currentLanguages, languageForEditorLanguage } from './languages';
 
 const NOTEBOOK_TYPE = 'clrkernel-markdown';
 
@@ -67,9 +67,8 @@ export class ConnectionUi {
         return {
             onDidChangeCellStatusBarItems: this.changeEmitter.event,
             provideCellStatusBarItems: (cell) => {
-                const language = currentLanguages().find(
-                    (l) => l.id === cell.document.languageId && l.hasConnections);
-                if (!language) {
+                const language = languageForEditorLanguage(cell.document.languageId);
+                if (!language?.hasConnections) {
                     return [];
                 }
                 const name = currentConnection(cell.document.getText());

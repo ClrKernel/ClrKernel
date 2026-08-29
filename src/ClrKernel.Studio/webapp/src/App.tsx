@@ -1,0 +1,265 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Rail } from './components/Rail';
+import { TopBar } from './components/TopBar';
+import { Channels } from './pages/Channels';
+import { Connections } from './pages/Connections';
+import { Dashboard } from './pages/Dashboard';
+import { Monitoring } from './pages/Monitoring';
+import { Notifications } from './pages/Notifications';
+import { Editor } from './pages/Editor';
+import { Files } from './pages/Files';
+import { RunDetail } from './pages/RunDetail';
+import { Settings } from './pages/Settings';
+import { Invite } from './pages/Invite';
+import { SignIn, Setup } from './pages/SignIn';
+import { ProjectProvider, ProjectScope, useProjects } from './projectContext';
+import { NOTEBOOK_VIEWS, filesPath, isFullBleed, legacyEditPath } from './routes';
+import { loadSession, type SessionState } from './auth';
+import { SessionContext } from './sessionContext';
+import { AccentContext, applyAccent, loadAccent } from './theme/accent';
+import { accentsFor } from './theme/palette';
+import { ThemeContext, applyThemeMode, loadThemeMode, resolveTheme } from './theme/theme';
+import { applyEditorTheme } from './monaco/setup';
+
+export function App() {
+  // The inline script in index.html already put both of these on <html> before
+  // first paint; these only mirror them so the pickers can show a tick.
+  const [accent, setAccent] = useState(loadAccent);
+  const [mode, setMode] = useState(loadThemeMode);
+  const [theme, setTheme] = useState(() => resolveTheme(loadThemeMode()));
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Pages that own their own panes and gutters: the notebook editor, and the
+  // Connections area, which is a tree beside a split of its own.
+  const fullBleed = isFullBleed(location.pathname);
+  const [session, setSession] = useState<SessionState | null>(null);
+
+  // Returns the session it loaded, because arriving from a sign-in has to wait
+  // for it: navigating while the old state still says "not signed in" bounces
+  // straight back out through the signed-out routes below.
+  const refresh = useCallback(
+    () => loadSession().then((next) => {
+      setSession(next);
+      return next;
+    }).catch(() => {
+      setSession(null);
+      return null;
+    }),
+    [],
+  );
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Monaco's theme is global rather than per-editor, so one call re-themes every
+  // editor on the page — including ones that were created before the switch.
+  useEffect(() => applyEditorTheme(theme), [theme]);
+
+  // On `system`, the OS can change under a running app — at sunset, or when
+  // somebody flips the setting in another window. Without this the app would
+  // keep the theme it started with and only agree again after a reload.
+  useEffect(() => {
+    if (mode !== 'system' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const follow = () => setTheme(applyThemeMode('system'));
+    query.addEventListener('change', follow);
+    // And once now: the OS may have changed while another mode was selected.
+    follow();
+    return () => query.removeEventListener('change', follow);
+  }, [mode]);
+
+  // The swatches show the colours you will actually get, which differ by theme:
+  // the accents are lightened for dark, or they disappear into the canvas.
+  const accents = accentsFor(theme);
+  const accentValue = accents.find((a) => a.name === accent) ?? accents[0];
+
+  // The server redirects a signed-out browser here, so these routes render
+  // without the app shell — there is no breadcrumb to show and no rail to
+  // navigate with until you are somebody.
+  const anonymousPage = ['/signin', '/setup'].includes(location.pathname)
+    || location.pathname.startsWith('/invite/');
+  // Signing in from one of those pages leaves you standing on it. Sending an
+  // authenticated session to the app is what makes the redirects below safe to
+  // write as plain rules rather than as a race against the session refresh.
+  if (anonymousPage && session?.authenticated === true && !session.needsSetup) {
+    return <Navigate to="/" replace />;
+  }
+  if (anonymousPage || (session != null && !session.authenticated)) {
+    // The navigation waits for the new session: `session` still says
+    // unauthenticated at this point, and moving to / before it updates would
+    // re-enter this branch and redirect back to /setup or /signin.
+    const arrive = () => {
+      refresh().then(() => navigate('/', { replace: true }));
+    };
+    return (
+      // The signed-out pages get both providers too: a sign-in screen that
+      // ignores the theme is the first thing anybody sees.
+      <ThemeContext.Provider value={theme}>
+      <AccentContext.Provider value={accentValue}>
+        <Routes>
+          {/* Claimed already: /setup is not a page any more, and the server 404s
+              it regardless. */}
+          <Route
+            path="/setup"
+            element={
+              session != null && !session.needsSetup
+                ? <Navigate to="/signin" replace />
+                : <Setup session={session} onSignedIn={arrive} />
+            }
+          />
+          <Route path="/invite/:code" element={<Invite session={session} onSignedIn={arrive} />} />
+          {/* An unclaimed server sends every other door to /setup. The server does
+              this too, but only for documents it serves itself — under `npm run
+              dev` the page comes from Vite on another port and only /api is
+              proxied, so the redirect has to happen here as well. */}
+          <Route
+            path="*"
+            element={
+              session?.needsSetup
+                ? <Navigate to="/setup" replace />
+                : <SignIn session={session} onSignedIn={arrive} />
+            }
+          />
+        </Routes>
+        <Toaster position="bottom-right" richColors closeButton />
+      </AccentContext.Provider>
+      </ThemeContext.Provider>
+    );
+  }
+
+  // The very first paint, before /api/auth/session has answered. Rendering the
+  // shell here would flash a signed-in app at someone who is not.
+  if (session == null) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
+  return (
+    <SessionContext.Provider value={session}>
+    <ThemeContext.Provider value={theme}>
+    <AccentContext.Provider value={accentValue}>
+    <ProjectProvider>
+    <TooltipProvider delayDuration={300}>
+      {/* Fixed rail, fixed top bar, scrolling content — the page itself never
+          scrolls, so the chrome cannot slide away under a long notebook.
+
+          The row track is minmax(0,1fr), not the implicit `auto`: an auto row
+          grows to its content, so h-screen would only clip the overflow rather
+          than constrain it, and a long notebook would push the content region
+          to several times the viewport height. */}
+      <div className="grid h-screen grid-cols-[48px_1fr] grid-rows-[minmax(0,1fr)] overflow-hidden">
+        <Rail />
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <TopBar
+            accent={accent}
+            onAccent={(next) => {
+              applyAccent(next);
+              setAccent(next);
+            }}
+            mode={mode}
+            theme={theme}
+            onMode={(next) => {
+              setMode(next);
+              setTheme(applyThemeMode(next));
+            }}
+          />
+          <main
+            // The editor and the Connections area manage their own panes and
+            // gutters; every other page takes the standard content padding.
+            className={
+              fullBleed
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                : 'min-h-0 flex-1 overflow-auto px-7 py-5'
+            }
+          >
+            <Routes>
+              {/* The dashboard is the whole server, so it names no project. */}
+              <Route path="/" element={<Dashboard />} />
+              {/* A view of the Dashboard, not a section of its own — it is off the
+                  root because its filters live in the query string, and nesting
+                  it would have put a project in the path it deliberately spans. */}
+              <Route path="/monitoring" element={<Monitoring />} />
+              <Route path="/notifications" element={<Notifications />} />
+
+              {/* Everything about a project has that project in its path: a link
+                  to a job or a file has to mean one job or one file, and two
+                  projects may each have a `nightly` and a `reports/monthly.nb.md`.
+                  It is also what lets the switcher in the breadcrumb go
+                  somewhere, rather than change what the page you are on is about
+                  and leave the address bar saying otherwise.
+
+                  The bare section is a door for the rail, a bookmark and a typed
+                  URL; it opens on the project you were last in. */}
+              <Route path="/files" element={<LastProject />} />
+              <Route path="/files/:project" element={<ProjectScope><Files /></ProjectScope>} />
+              {/* The path goes last because it is the only variable-length part:
+                  the view and the branch are one segment each, so
+                  `reports/monthly.nb.md` can stay readable rather than becoming
+                  one escaped blob.
+
+                  One route per view rather than a `:view` parameter: the three
+                  are a closed set, and a typo'd fourth should be Not found
+                  rather than the editor shell rendering nothing. */}
+              {NOTEBOOK_VIEWS.map((view) => (
+                <Route
+                  key={view}
+                  path={`/files/:project/${view}/:branch/*`}
+                  element={<ProjectScope><Editor /></ProjectScope>}
+                />
+              ))}
+
+              {/* No project segment: a connection belongs to the server, not to
+                  a repo, so there is nothing for one to name. */}
+              <Route path="/connections" element={<Connections />} />
+              <Route path="/connections/:id" element={<Connections />} />
+              <Route path="/channels" element={<Channels />} />
+              {/* Settings is tabbed by route: /settings redirects to the first
+                  section, and each section is its own URL so a tab is something
+                  you can link to. */}
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/:section" element={<Settings />} />
+              <Route path="/runs/:id" element={<RunDetail />} />
+
+              {/* Links written before the sections had projects in them. A
+                  shared editor link is the one people actually paste, so it
+                  moves rather than dies. */}
+              <Route path="/notebooks" element={<Navigate to="/files" replace />} />
+              <Route path="/edit" element={<LegacyEdit />} />
+
+              <Route
+              path="*"
+              element={<p className="text-base text-muted-foreground">Not found.</p>}
+            />
+            </Routes>
+          </main>
+        </div>
+      </div>
+      <Toaster position="bottom-right" richColors closeButton />
+    </TooltipProvider>
+    </ProjectProvider>
+    </AccentContext.Provider>
+    </ThemeContext.Provider>
+    </SessionContext.Provider>
+  );
+}
+
+/**
+ * The bare `/jobs` and `/files`: open the project you were last in.
+ *
+ * `current` is already the remembered one, validated against what is registered
+ * — see ProjectProvider, which renders nothing until that answer has arrived, so
+ * this never redirects to a slug that no longer exists.
+ */
+function LastProject() {
+  const { current } = useProjects();
+  return <Navigate to={filesPath(current)} replace />;
+}
+
+/** `/edit?project=…&path=…&branch=…`, as it is spelled now. */
+function LegacyEdit() {
+  return <Navigate to={legacyEditPath(useLocation().search)} replace />;
+}

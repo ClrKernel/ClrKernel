@@ -37,9 +37,16 @@ public class DataSource {
     /// <summary>Default command timeout (seconds) applied when a call doesn't set one.</summary>
     public int? DefaultCommandTimeout { get; set; }
 
+    /// <summary>
+    /// A connection that is not open yet (caller owns/disposes it). For a caller that
+    /// wants to await the open — which is the only way a connection attempt can be
+    /// cancelled or time out on the caller's terms.
+    /// </summary>
+    public virtual DbConnection Create() => _connectionFactory();
+
     /// <summary>Opens a live connection (caller owns/disposes it).</summary>
     public virtual DbConnection Open() {
-        var connection = _connectionFactory();
+        var connection = Create();
         connection.Open();
         return connection;
     }

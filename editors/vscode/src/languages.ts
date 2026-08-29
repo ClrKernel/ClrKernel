@@ -22,6 +22,22 @@ export interface LanguageDescriptor {
     hasConnections?: boolean;
     configBacked?: boolean;
     directives?: DirectiveDefinition[];
+    /** What a picker groups this under — 'SQL' clusters the dialects. VS Code's
+     *  cell language picker is VS Code's own and cannot be grouped, so this is
+     *  carried for completeness and used by the web app. */
+    category?: string | null;
+    /** The connections.json `$type`s this language's cells can run on. A
+     *  compatibility declaration, not part of the language's identity. */
+    supportedProviders?: string[];
+    /** The id an editor should give this language's cells, when it differs from
+     *  `id`. Distinct per language: it is what a cell is *called* here, and
+     *  therefore what the kernel resolves the document back from. */
+    editorLanguageId?: string;
+    /** The syntax to highlight those cells with when the editor has no grammar
+     *  of its own for `editorLanguageId`. Several languages may share one. Used
+     *  by the web app's Monaco; here it is the package.json grammar that
+     *  delegates, so this is carried and not read. */
+    grammarId?: string;
 }
 
 export interface DirectiveDefinition {
@@ -54,9 +70,23 @@ export const bundledLanguages: LanguageDescriptor[] = [
         languageTags: ['bash', 'zsh', 'sh', 'shell'],
     },
     {
-        id: 'sql', displayName: 'SQL', defaultSelector: '#!sql',
+        id: 'sql', displayName: 'T-SQL', defaultSelector: '#!sql',
         selectors: ['#!sql', '#!sql-connect', '#!sql-bulk', '#!sql-merge', '#!sql-run', '#!sql-deploy'],
         languageTags: ['sql', 'tsql'], hasEditorServices: true, hasConnections: true, configBacked: true,
+        category: 'SQL', editorLanguageId: 'clr-sql', grammarId: 'sql',
+        supportedProviders: ['SqlServer', 'Odbc', 'Jdbc'],
+    },
+    {
+        id: 'oraclesql', displayName: 'Oracle SQL', defaultSelector: '#!oraclesql',
+        selectors: ['#!oraclesql'], languageTags: ['oraclesql', 'plsql'], hasEditorServices: true,
+        category: 'SQL', editorLanguageId: 'clr-oraclesql', grammarId: 'sql',
+        supportedProviders: ['Oracle', 'Odbc', 'Jdbc'],
+    },
+    {
+        id: 'ansisql', displayName: 'SQL (Generic)', defaultSelector: '#!ansisql',
+        selectors: ['#!ansisql'], languageTags: ['ansisql'], hasEditorServices: true,
+        category: 'SQL', editorLanguageId: 'clr-ansisql', grammarId: 'sql',
+        supportedProviders: ['Odbc', 'Jdbc'],
     },
     {
         id: 'dax', displayName: 'DAX', defaultSelector: '#!dax',
@@ -86,6 +116,34 @@ export function setLanguages(languages: LanguageDescriptor[] | undefined | null)
 
 export function onLanguagesChanged(listener: (languages: LanguageDescriptor[]) => void): void {
     listeners.push(listener);
+}
+
+/**
+ * The id VS Code should give a cell in this language.
+ *
+ * Usually the kernel's own id, and for the SQL dialects deliberately not. A
+ * language id is global in VS Code and the built-ins are registered first, so a
+ * cell called `sql` wears the built-in's name in every menu — "SQL", never
+ * "T-SQL", whatever the kernel calls itself — and every SQL extension the user
+ * has installed attaches to it and adds its own completions. `csharp-script`
+ * exists for exactly those two reasons; this is the same move, and the kernel
+ * says which languages want it rather than this file keeping a list.
+ */
+export function editorLanguageFor(language: LanguageDescriptor): string {
+    return language.editorLanguageId ?? language.id;
+}
+
+/**
+ * Back the other way: the cell language behind a VS Code language id.
+ *
+ * Everything that starts from `cell.document.languageId` comes through here.
+ * Matching the kernel's own id as well is not a courtesy — a notebook opened
+ * before the ids changed, or one an older kernel described, still has cells
+ * called `sql`, and they should keep working.
+ */
+export function languageForEditorLanguage(languageId: string): LanguageDescriptor | undefined {
+    return current.find((l) => editorLanguageFor(l) === languageId)
+        ?? current.find((l) => l.id === languageId);
 }
 
 const csharpTags = new Set(['csharp', 'c#', 'cs']);

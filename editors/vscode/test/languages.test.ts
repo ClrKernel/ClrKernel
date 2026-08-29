@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
     bundledLanguages,
     currentLanguages,
+    editorLanguageFor,
+    languageForEditorLanguage,
     languageForTag,
     selectorForTag,
     setLanguages,
@@ -16,6 +20,101 @@ import {
  */
 describe('language registry', () => {
     beforeEach(() => setLanguages(bundledLanguages));
+
+    it('declares every language it ships that VS Code does not already know', () => {
+        // The one thing about a cell language that cannot come from the kernel's
+        // metadata. Behaviour is all descriptor-driven — fences, selectors,
+        // completion, the picker — but *presentation* is static VSIX JSON: a
+        // language VS Code has never heard of renders as plain text and shows its
+        // raw id in the cell's language picker. Add a dialect to the list above
+        // and forget package.json and nothing fails; it just looks broken.
+        const manifest = JSON.parse(readFileSync(
+            fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
+        const declared = new Set<string>(
+            (manifest.contributes.languages as { id: string }[]).map((l) => l.id));
+
+        // The ones VS Code ships itself, which is why they were never declared.
+        const builtIn = new Set(['sql', 'powershell', 'shellscript', 'markdown', 'json', 'yaml']);
+
+        for (const language of bundledLanguages) {
+            const editorId = editorLanguageFor(language);
+            expect(
+                declared.has(editorId) || builtIn.has(editorId),
+                `${language.id}: its editor id ${editorId} is neither declared in package.json `
+                + 'nor a VS Code built-in',
+            ).toBe(true);
+        }
+    });
+
+    it('gives the SQL dialects editor ids of their own, and the names to go with them', () => {
+        // Why they are not just `sql`, `oraclesql`, `ansisql`: a VS Code language
+        // id is global and its built-ins register first, so a cell called `sql`
+        // wears the built-in's name in every menu — "SQL", never "T-SQL",
+        // whatever the kernel calls itself — and every SQL extension the user has
+        // installed attaches to it. `csharp-script` exists for the same reasons.
+        const manifest = JSON.parse(readFileSync(
+            fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
+        const nameOf = (id: string) => (manifest.contributes.languages as
+            { id: string; aliases?: string[] }[]).find((l) => l.id === id)?.aliases?.[0];
+
+        expect(editorLanguageFor(languageForTag('sql')!)).toBe('clr-sql');
+        expect(nameOf('clr-sql')).toBe('T-SQL');
+        expect(nameOf('clr-oraclesql')).toBe('Oracle SQL');
+        expect(nameOf('clr-ansisql')).toBe('SQL (Generic)');
+
+        // And the whole point of an identity: no two languages share one.
+        const editorIds = bundledLanguages.map(editorLanguageFor);
+        expect(new Set(editorIds).size).toBe(editorIds.length);
+    });
+
+    it('resolves a cell back from the id VS Code gave it', () => {
+        // The round trip. Everything that starts from cell.document.languageId
+        // depends on it — routing, the connections status bar, the serializer.
+        expect(languageForEditorLanguage('clr-sql')?.id).toBe('sql');
+        expect(languageForEditorLanguage('clr-oraclesql')?.id).toBe('oraclesql');
+
+        // A notebook opened before the ids changed still has cells called `sql`,
+        // and they keep working.
+        expect(languageForEditorLanguage('sql')?.id).toBe('sql');
+        expect(languageForEditorLanguage('nothing')).toBeUndefined();
+    });
+
+    it('ships the three SQL dialects, each claiming its own fence tags', () => {
+        const dialects = bundledLanguages.filter((l) => l.category === 'SQL');
+        expect(dialects.map((l) => l.id)).toEqual(['sql', 'oraclesql', 'ansisql']);
+
+        // `sql` still means T-SQL. Every notebook already written says it, so the
+        // dialects took new ids rather than this one taking a new meaning.
+        expect(languageForTag('sql')?.id).toBe('sql');
+        expect(languageForTag('tsql')?.id).toBe('sql');
+        expect(languageForTag('oraclesql')?.id).toBe('oraclesql');
+        expect(languageForTag('plsql')?.id).toBe('oraclesql');
+        expect(languageForTag('ansisql')?.id).toBe('ansisql');
+    });
+
+    it('gives each dialect a selector that cannot be swallowed by another', () => {
+        // Dispatch is longest-selector-first in the kernel, but only if the
+        // selectors are distinct in the first place.
+        const selectors = bundledLanguages.flatMap((l) => l.selectors);
+        expect(new Set(selectors).size).toBe(selectors.length);
+        expect(selectorForTag(languageForTag('oraclesql')!, 'oraclesql')).toBe('#!oraclesql');
+        expect(startsWithSelector(languageForTag('oraclesql')!, '#!oraclesql\nSELECT 1 FROM DUAL')).toBe(true);
+        expect(startsWithSelector(languageForTag('sql')!, '#!oraclesql\nSELECT 1')).toBe(false);
+    });
+
+    it('round-trips a dialect cell back to the tag it came from', () => {
+        expect(tagForCell(languageForTag('oraclesql')!, 'SELECT 1 FROM DUAL')).toBe('oraclesql');
+        expect(tagForCell(languageForTag('plsql')!, '#!oraclesql\nSELECT 1 FROM DUAL')).toBe('oraclesql');
+        // ```tsql stays ```tsql, the way ```zsh stays ```zsh.
+        expect(tagForCell(languageForTag('sql')!, '#!sql\nSELECT 1')).toBe('sql');
+    });
+
+    it('says which providers each dialect can run on', () => {
+        const byId = (id: string) => bundledLanguages.find((l) => l.id === id);
+        expect(byId('sql')?.supportedProviders).toEqual(['SqlServer', 'Odbc', 'Jdbc']);
+        expect(byId('oraclesql')?.supportedProviders).toEqual(['Oracle', 'Odbc', 'Jdbc']);
+        expect(byId('ansisql')?.supportedProviders).toEqual(['Odbc', 'Jdbc']);
+    });
 
     it('keeps the bundled defaults when an old kernel serves nothing', () => {
         setLanguages(undefined);

@@ -1,0 +1,371 @@
+/* The token layer. Every colour in the app comes from here.
+ *
+ * Mirrors `theme/palette.ts`, which Monaco reads — `palette.test.ts` fails if
+ * the two drift. Values are hex rather than shadcn's default oklch because
+ * Monaco's theme API parses hex and nothing else.
+ *
+ * A naming trap worth knowing: shadcn's `--accent` is a *subtle hover surface*,
+ * not the brand colour. What this app calls the accent is `--primary`, and it
+ * is the only thing the five themes change.
+ */
+
+:root {
+  /* --- neutral base, fixed under every accent --------------------------- */
+  --background: #faf9f6;
+  --foreground: #22251f;
+  --card: #fffefb;
+  --card-foreground: #22251f;
+  --popover: #fffefb;
+  --popover-foreground: #22251f;
+  --secondary: #f5f3ee;
+  --secondary-foreground: #22251f;
+  --muted: #f5f3ee;
+  --muted-foreground: #6f6b60;
+  --accent: #f3f1ea;
+  --accent-foreground: #22251f;
+  --destructive: #b91c1c;
+  --border: #e6e2d8;
+  --input: #ded9cd;
+
+  /* --- app-specific ----------------------------------------------------- */
+  /* Panels below the canvas: gutters, footers, `pre` blocks, the explorer. */
+  --surface-panel: #f5f3ee;
+  --surface-panel-strong: #eae7de;
+  /* Table row rules, fainter than a region border. */
+  --border-subtle: #efece4;
+  /* The fainter of the two secondary text colours. */
+  --muted-subtle: #8a8577;
+  --grid-header: #f0ede4;
+
+  --row-failed: #fdf1ef;
+  --row-failed-border: #ecc9c5;
+
+  --status-idle: #b6b0a2;
+  --status-running: #1d4ed8;
+  --status-error: #b91c1c;
+  --status-warning: #b45309;
+  --status-success: #15803d;
+
+  /* Environment chips. Semantic, never accent-derived: prod is green because
+     production is production, whichever accent is in force. */
+  --env-test: #b45309;
+  --env-test-bg: #fdf3e3;
+  --env-test-border: #f0dcbb;
+  --env-prod: #0e6e43;
+  --env-prod-bg: #e9f3ec;
+  --env-prod-border: #cfe4d6;
+
+  /* File-kind badges in the explorer. Semantic like the env chips: a notebook
+     is a notebook whichever accent is in force. */
+  --file-notebook: #7c3aed;
+  --file-code: #1d4ed8;
+  --file-config: #0f766e;
+
+  /* Language chips in the contents list. Six hues, assigned to a language by its
+     id rather than configured per language: the kernel says what a language is
+     called in four characters, and which hue it lands on only has to be stable
+     and distinguishable from its neighbours. A seventh language reuses one, which
+     is fine — the letters are what identifies it, the colour only helps you scan.
+     Chosen for the same reason the file badges were: they read as a family. */
+  --lang-1: #1d4ed8;
+  --lang-2: #7c3aed;
+  --lang-3: #0f766e;
+  --lang-4: #b45309;
+  --lang-5: #be123c;
+  --lang-6: #0e6e43;
+
+  /* Code. `--code-bg` must equal Monaco's editor.background, or a seam shows
+     at the cell edge. */
+  --code-bg: #fffefb;
+  --code-fg: #3d4038;
+  --line-number: #c2bcae;
+  --syntax-keyword: #1d4ed8;
+  --syntax-string: #b45309;
+  --syntax-number: #0e6e43;
+  --syntax-directive: #b91c1c;
+  --syntax-comment: #8a8577;
+
+  /* Terminal output. A fixed palette rather than theme colours — ANSI 31 means
+     red whatever accent is in force — but it lives here so the rule that no
+     colour is written outside the token layer holds without exception. */
+  --ansi-black: #6f6b60;
+  --ansi-magenta: #a21caf;
+  --ansi-cyan: #0e7490;
+
+  /* Elevation is *not* how this design separates things — borders are. The
+     only shadows are on layers that genuinely float above the page. */
+  --overlay: rgb(34 37 31 / 0.42);
+  --shadow-popover: 0 4px 14px rgb(0 0 0 / 0.16);
+  --shadow-dialog: 0 12px 36px rgb(0 0 0 / 0.22);
+
+  /* Four radii, from the handoff: controls, cells, cards, pills. */
+  --radius: 7px;
+
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    monospace;
+
+  color-scheme: light;
+}
+
+/* --- accents -------------------------------------------------------------
+ * Each theme overrides exactly five tokens. Anything more and the five stop
+ * looking like one app. Contrast of every pair is asserted in palette.test.ts.
+ */
+:root,
+[data-accent='green'] {
+  --primary: #0e6e43;
+  --primary-hover: #0a5636;
+  --primary-soft: #eef3ee;
+  --primary-foreground: #ffffff;
+  --ring: #0e6e43;
+}
+
+[data-accent='blue'] {
+  --primary: #1d4ed8;
+  --primary-hover: #1739a8;
+  --primary-soft: #edf1fb;
+  --primary-foreground: #ffffff;
+  --ring: #1d4ed8;
+}
+
+[data-accent='violet'] {
+  --primary: #6d28d9;
+  --primary-hover: #571fad;
+  --primary-soft: #f2eefc;
+  --primary-foreground: #ffffff;
+  --ring: #6d28d9;
+}
+
+[data-accent='amber'] {
+  --primary: #b45309;
+  --primary-hover: #8f4107;
+  --primary-soft: #fdf3e3;
+  --primary-foreground: #ffffff;
+  --ring: #b45309;
+}
+
+[data-accent='rose'] {
+  --primary: #be123c;
+  --primary-hover: #980e30;
+  --primary-soft: #fdeef1;
+  --primary-foreground: #ffffff;
+  --ring: #be123c;
+}
+
+/* --- dark ----------------------------------------------------------------
+ * The same design inverted, not a second one: a warm near-black canvas with
+ * cards *above* it and panels below, hierarchy still carried by borders rather
+ * than by shadows. Mirrors the DARK_* groups in palette.ts, and palette.test.ts
+ * fails if the two drift — the same guarantee the light block has.
+ *
+ * `data-theme` is always stamped, including for "system": the inline script in
+ * index.html resolves the OS preference before first paint and writes the answer
+ * here. One source of truth beats a media query and an attribute that can
+ * disagree, and it is what lets the picker override the OS at all.
+ */
+:root[data-theme='dark'] {
+  --background: #191a16;
+  --foreground: #e8e6df;
+  --card: #212320;
+  --card-foreground: #e8e6df;
+  --popover: #282a26;
+  --popover-foreground: #e8e6df;
+  --secondary: #131410;
+  --secondary-foreground: #e8e6df;
+  --muted: #131410;
+  --muted-foreground: #a8a294;
+  --accent: #2a2c27;
+  --accent-foreground: #e8e6df;
+  --destructive: #f2777a;
+  --border: #33352f;
+  --input: #414339;
+
+  --surface-panel: #131410;
+  --surface-panel-strong: #0e0f0c;
+  --border-subtle: #2a2c26;
+  --muted-subtle: #8b8577;
+  --grid-header: #1b1c18;
+
+  --row-failed: #2a1a19;
+  --row-failed-border: #5c3330;
+
+  --status-idle: #757063;
+  --status-running: #8ab4f8;
+  --status-error: #f2777a;
+  --status-warning: #e0a458;
+  --status-success: #5fd39b;
+
+  --env-test: #e0a458;
+  --env-test-bg: #2c2214;
+  --env-test-border: #4a3a20;
+  --env-prod: #5fd39b;
+  --env-prod-bg: #16251c;
+  --env-prod-border: #27452f;
+
+  --file-notebook: #c4a2f7;
+  --file-code: #8ab4f8;
+  --file-config: #5eead4;
+
+  --lang-1: #8ab4f8;
+  --lang-2: #c4a2f7;
+  --lang-3: #5eead4;
+  --lang-4: #e0a458;
+  --lang-5: #f0748f;
+  --lang-6: #5fd39b;
+
+  --code-bg: #212320;
+  --code-fg: #d8d5ca;
+  --line-number: #5c594f;
+  --syntax-keyword: #8ab4f8;
+  --syntax-string: #e0a458;
+  --syntax-number: #7ddba6;
+  --syntax-directive: #f2989a;
+  --syntax-comment: #7f7a6c;
+
+  /* ANSI stays semantic — 31 is red whichever theme is in force — but the two
+     that were chosen to sit on cream would disappear into near-black. */
+  --ansi-black: #a8a294;
+  --ansi-magenta: #d6a0e0;
+  --ansi-cyan: #67d4e8;
+
+  /* Shadows do more work here: on a dark canvas a border alone is a faint line,
+     so a floating layer gets a deeper one to lift off the page. */
+  --overlay: rgb(0 0 0 / 0.62);
+  --shadow-popover: 0 4px 14px rgb(0 0 0 / 0.5);
+  --shadow-dialog: 0 12px 36px rgb(0 0 0 / 0.62);
+
+  color-scheme: dark;
+}
+
+/* The five accents, lightened to sit on near-black. `--primary-foreground` goes
+ * dark for the same reason it is per-accent at all: a fill light enough to read
+ * as the accent against this canvas cannot carry white text at 4.5:1. */
+:root[data-theme='dark'],
+:root[data-theme='dark'][data-accent='green'] {
+  --primary: #3fb27f;
+  --primary-hover: #57c193;
+  --primary-soft: #16241d;
+  --primary-foreground: #0c1a13;
+  --ring: #3fb27f;
+}
+
+:root[data-theme='dark'][data-accent='blue'] {
+  --primary: #8ab4f8;
+  --primary-hover: #a3c4fa;
+  --primary-soft: #182234;
+  --primary-foreground: #0d1526;
+  --ring: #8ab4f8;
+}
+
+:root[data-theme='dark'][data-accent='violet'] {
+  --primary: #b18cf0;
+  --primary-hover: #c3a5f4;
+  --primary-soft: #221a33;
+  --primary-foreground: #150e24;
+  --ring: #b18cf0;
+}
+
+:root[data-theme='dark'][data-accent='amber'] {
+  --primary: #e0a458;
+  --primary-hover: #ecb877;
+  --primary-soft: #2c2214;
+  --primary-foreground: #241703;
+  --ring: #e0a458;
+}
+
+:root[data-theme='dark'][data-accent='rose'] {
+  --primary: #f0748f;
+  --primary-hover: #f591a6;
+  --primary-soft: #31191f;
+  --primary-foreground: #25090f;
+  --ring: #f0748f;
+}
+
+/* Expose the tokens to Tailwind as `bg-background`, `text-muted-foreground`, … */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted-subtle: var(--muted-subtle);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-panel-strong: var(--surface-panel-strong);
+  --color-grid-header: var(--grid-header);
+  --color-row-failed: var(--row-failed);
+  --color-row-failed-border: var(--row-failed-border);
+  --color-status-idle: var(--status-idle);
+  --color-status-running: var(--status-running);
+  --color-status-error: var(--status-error);
+  --color-status-warning: var(--status-warning);
+  --color-status-success: var(--status-success);
+  --color-env-test: var(--env-test);
+  --color-env-test-bg: var(--env-test-bg);
+  --color-env-test-border: var(--env-test-border);
+  --color-env-prod: var(--env-prod);
+  --color-env-prod-bg: var(--env-prod-bg);
+  --color-env-prod-border: var(--env-prod-border);
+  --color-file-notebook: var(--file-notebook);
+  --color-file-code: var(--file-code);
+  --color-file-config: var(--file-config);
+  --color-lang-1: var(--lang-1);
+  --color-lang-2: var(--lang-2);
+  --color-lang-3: var(--lang-3);
+  --color-lang-4: var(--lang-4);
+  --color-lang-5: var(--lang-5);
+  --color-lang-6: var(--lang-6);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-line-number: var(--line-number);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* The type scale, from the handoff: 13.5px body, 13px tables and controls,
+     11.5px chips and labels, 12px for mono paths. Overridden here rather than
+     in each component: `text-sm` is what the CLI-generated components in
+     `components/ui` use for every control, and hand-editing twelve of them
+     would be undone by the next `shadcn add`.
+
+     Absolute px, not rem: rem tracks the browser's default font size, and this
+     design specifies its chrome in pixels. */
+  --text-xs: 11.5px; /* chips, labels, kernel status */
+  --text-xs--line-height: 16px;
+  --text-code: 12px; /* mono paths, ids, cron */
+  --text-code--line-height: 18px;
+  --text-sm: 13px; /* tables, controls */
+  --text-sm--line-height: 19px;
+  --text-base: 13.5px; /* body */
+  --text-base--line-height: 21px;
+  --text-lg: 15px;
+  --text-lg--line-height: 22px;
+  --text-xl: 19px; /* page titles */
+  --text-xl--line-height: 26px;
+
+  /* Controls 7px, cells 8px, cards 9px, pills 999px. Set outright rather than
+     derived from one --radius, because the handoff gives four independent
+     values and `calc(--radius - 1px)` cannot produce them. */
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 7px;
+  --radius-xl: 8px;
+  --radius-2xl: 9px;
+}

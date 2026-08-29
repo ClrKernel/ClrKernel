@@ -32,9 +32,15 @@ dotnet tool update --global ClrKernel
 clrkernel --version
 ```
 
-- [ ] Reports **0.9.1**.
-- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.6.0**; its
-      Changelog tab shows the 0.6.0 entry (per-notebook sessions at the top).
+- [ ] Reports **0.10.0**.
+- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.7.0**; its
+      Changelog tab shows the 0.7.0 entry (languages come from the kernel, at
+      the top).
+- [ ] The two agree: 0.7.0 pins kernel `0.10.*`
+      (`editors/vscode/src/kernelVersion.ts`), so a notebook opens with **no**
+      version warning. A warning here means the tool update above did not take —
+      a running notebook window keeps `clrkernel` locked, so close them and
+      retry, or use the **Update Kernel** button on the warning itself.
 
 ## 2. Build + full test suite from source ⊞
 
@@ -44,8 +50,11 @@ git pull
 .\build.ps1 Format
 ```
 
-- [ ] All three test projects pass on **all three TFMs** (net8.0 / net9.0 /
-      net10.0 — nine `Passed!` lines total).
+- [ ] All **four** test projects pass. The three kernel-tier ones run once per
+      TFM (net8.0 / net9.0 / net10.0); `Studio.UnitTest` is net8.0 only, so
+      expect **ten** `Passed!` lines on a machine with all three runtimes
+      installed. Fewer, all naming the same TFM, means the other runtimes are
+      missing rather than that something was skipped for a reason.
 - [ ] `Format` reports no changes needed.
 
 ## 3. Live SQL tests against this machine ⊞ (SQL)
@@ -425,3 +434,10 @@ clrkernel run "C:\temp\clrkernel test\nb1.nb.md" -o "C:\temp\clrkernel test\out.
 Still outside this run (decide before 1.0: verify, or label experimental):
 **Fabric / Azure AS live connection** (needs a tenant), **Oracle/ODBC/JDBC
 providers**, and marketplace-install UX on a machine that never had the tool.
+
+**ClrKernel.Studio has no section here at all**, and by 1.0 it needs one — it is
+a second shipped tool with its own Windows surface: git worktrees and
+drive-letter paths, the Credential Manager under a service account, and the web
+app itself. §14 covers `clrkernel run` (headless), which is not the same thing as
+the scheduler. Writing that section is its own task; this note exists so 1.0 is
+not signed off on the assumption it was covered.
