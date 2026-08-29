@@ -42,6 +42,11 @@ public class ConnectionsApiTest {
         _options = new JobsOptions {
             DataDir = Path.Combine(_root, "data"),
             NotebooksRoot = Path.Combine(_root, "notebooks"),
+            // Named and absent on purpose. Left unset, the catalog looks for a
+            // kernel on PATH and finds one on any machine with the tool installed —
+            // so what these tests saw depended on the developer, and the answers
+            // differed between a laptop and CI.
+            ClrKernelPath = Path.Combine(_root, "no-such-kernel"),
         };
         _store = EfRunStore.Sqlite(Path.Combine(_options.DataDir, "test.db"));
         _store.Migrate();
@@ -84,8 +89,8 @@ public class ConnectionsApiTest {
         await SignInAsync(UserRole.ServerAdmin);
         var body = await GetJsonAsync("/api/connections/providers");
         var providers = body.GetProperty("providers").EnumerateArray().ToList();
-        // Without a kernel to ask, the answer is what this server can open itself —
-        // which is exactly the set of dialects it carries.
+        // This server's kernel path points at nothing, so there is nobody to ask and
+        // the answer is what it can open itself — exactly the dialects it carries.
         CollectionAssert.AreEquivalent(
             ConnectionDialects.Types.ToArray(),
             providers.Select(p => p.GetProperty("type").GetString()).ToArray());
