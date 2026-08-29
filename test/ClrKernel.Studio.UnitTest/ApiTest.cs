@@ -324,10 +324,16 @@ public class ApiTest {
     /// </summary>
     [TestMethod]
     public async Task Upcoming_runs_come_from_the_crons_and_skip_what_will_not_fire() {
-        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", NewJob("nightly"));
-        var hourly = NewJob("hourly");
-        hourly.Cron = "0 * * * *";
-        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", hourly);
+        // Two crons that can never fall on the same minute: one fires on the hour,
+        // the other at half past. A pair that can tie makes the ordering assertion
+        // below vacuous exactly when it matters, and which of these is next rotates
+        // through the hour, so both orderings get exercised.
+        var onTheHour = NewJob("on-the-hour");
+        onTheHour.Cron = "0 * * * *";
+        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", onTheHour);
+        var halfPast = NewJob("half-past");
+        halfPast.Cron = "30 * * * *";
+        await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", halfPast);
         var off = NewJob("disabled-one");
         off.Enabled = false;
         await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", off);
@@ -339,15 +345,29 @@ public class ApiTest {
         var names = body.GetProperty("upcoming").EnumerateArray()
             .Select(u => u.GetProperty("job").GetString()).ToList();
 
-        CollectionAssert.AreEquivalent(new[] { "nightly", "hourly" }, names,
+        CollectionAssert.AreEquivalent(new[] { "on-the-hour", "half-past" }, names,
             "a job with no cron never fires, and neither does a disabled one");
-        // Soonest first: the dashboard's answer to "what is next" is the first row.
-        Assert.AreEqual("hourly", names[0], "hourly comes before a 02:00 daily");
 
-        var first = body.GetProperty("upcoming")[0];
-        Assert.IsTrue(DateTime.Parse(first.GetProperty("at").GetString()).ToUniversalTime()
-            > DateTime.UtcNow, "an occurrence that has not happened yet");
-        Assert.AreEqual("0 * * * *", first.GetProperty("cron").GetString());
+        var upcoming = body.GetProperty("upcoming").EnumerateArray().ToList();
+        var at = upcoming
+            .Select(u => DateTime.Parse(u.GetProperty("at").GetString()).ToUniversalTime())
+            .ToList();
+
+        // Soonest first: the dashboard's answer to "what is next" is the first row.
+        //
+        // The ordering, not which job wins it. This used to assert that an hourly
+        // cron beats a 02:00 daily, which is false for a whole hour a day — between
+        // 01:00 and 02:00 UTC both fire next at 02:00, and a tie goes to whichever
+        // loaded first. It passed for 23 hours out of 24 and CI found the other one.
+        Assert.AreNotEqual(at[0], at[1], "the fixture's crons must not be able to tie");
+        CollectionAssert.AreEqual(at.OrderBy(t => t).ToList(), at, "soonest first");
+        Assert.IsTrue(at[0] > DateTime.UtcNow, "an occurrence that has not happened yet");
+
+        // Each row carries its own schedule, whatever order they came in.
+        var crons = upcoming.ToDictionary(
+            u => u.GetProperty("job").GetString(), u => u.GetProperty("cron").GetString());
+        Assert.AreEqual("0 * * * *", crons["on-the-hour"]);
+        Assert.AreEqual("30 * * * *", crons["half-past"]);
 
         Assert.AreEqual(1,
             (await _client.GetFromJsonAsync<JsonElement>("/api/schedule/upcoming?limit=1"))
