@@ -1,0 +1,36 @@
+---
+title: ClrKernel
+description: Notebooks as plain markdown. C#, SQL, DAX, PowerShell, shell, HTTP and Mermaid cells in one session.
+template: splash
+editUrl: false
+hero:
+  tagline: Notebooks that are markdown. A .nb.md diffs in a pull request and reviews like source — and runs in VS Code, ClrKernel Studio, JupyterLab, or headless.
+  actions:
+    - text: Get started
+      link: guide/install/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/ClrKernel/ClrKernel
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+import version from '../../data/version.json';
+
+<Code lang="bash" code={`dotnet tool install --global ClrKernel   # ${version.version}`} />
+
+<CardGrid stagger>
+  <Card title="One kernel, many cell languages" icon="puzzle">
+    C# on Roslyn, T-SQL / Oracle / ANSI SQL, DAX, PowerShell, bash/zsh/sh, HTTP and Mermaid — one session, one set of variables. [See the guide](guide/overview/).
+  </Card>
+  <Card title="Runs what you already have" icon="document">
+    `.ipynb`, `.dib` and `.csx` execute without conversion. `#!import` shares helper libraries between notebooks.
+  </Card>
+  <Card title="Samples are notebooks and docs" icon="open-book">
+    Every page under [Samples](samples/hello/) is a `.nb.md` in the repo. Open it in VS Code and run it.
+  </Card>
+  <Card title="Schedule it with Studio" icon="rocket">
+    A web app and cron runner: jobs are files, promotion is gated on green runs, history goes to SQLite, SQL Server or PostgreSQL. [Studio docs](studio/).
+  </Card>
+</CardGrid>

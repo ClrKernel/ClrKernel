@@ -1,0 +1,96 @@
+name: Docs
+
+# Builds https://clrkernel.github.io/ClrKernel/ from the repository itself — README,
+# docs/, samples/, the csproj descriptions, `--help` output and the XML doc comments —
+# and deploys it to GitHub Pages. Nothing on the site is hand-maintained: edit the
+# sources and push. See docs-site/README.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - docs/**
+      - samples/**
+      - src/**
+      - Directory.Build.props
+      - docs-site/**
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. Not cancel-in-progress: cancelling a run that has already
+# reached deploy-pages can leave the Pages deployment stuck in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Restore + build (needed for `--help` capture; docfx does its own design-time build)
+        run: |
+          dotnet restore ClrKernel.slnx
+          dotnet build ClrKernel.slnx -c Release --no-restore
+
+      # Pinned: the API pages are post-processed in sync-content.mjs against the exact
+      # shape DocFX emits — its escaped `<T\>` headings, its `<a id>` title prefixes and
+      # its `Foo.Bar.md` cross-links. An unpinned upgrade that changes any of those
+      # breaks 4,000 links in a build that still goes green. check-links.mjs is the
+      # backstop; this is the reason it rarely has to fire.
+      - name: Install docfx
+        run: dotnet tool install --global docfx --version 2.78.5
+
+      - name: Install site dependencies
+        run: npm ci
+        working-directory: docs-site
+
+      - name: Capture CLI help
+        run: ./scripts/gen-cli-reference.sh
+        working-directory: docs-site
+
+      - name: Generate API reference (XML doc comments -> markdown)
+        run: docfx metadata docfx.json --logLevel warning
+        working-directory: docs-site
+
+      - name: Sync content from README / docs / samples / csproj
+        run: npm run sync
+        working-directory: docs-site
+
+      - name: Build site
+        run: npm run build
+        working-directory: docs-site
+
+      - name: Check internal links
+        run: npm run check
+        working-directory: docs-site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

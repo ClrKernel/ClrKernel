@@ -364,6 +364,8 @@ az CLI or Visual Studio session. See
 [samples/FabricWarehouse.nb.md](samples/FabricWarehouse.nb.md). (Fabric execution
 needs a live tenant, so validate against your own workspace.)
 
+### Headless execution
+
 Headless / scheduled execution needs no Python:
 
 ```bash
