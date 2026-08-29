@@ -1063,13 +1063,6 @@ Two gotchas worth knowing:
 Every setting takes a CLI flag, an environment variable, or a key in
 `settings.json` in the data directory — in that order of precedence.
 
-The `CLRKERNEL_JOBS_*` spelling of every variable below is also read, when the
-`CLRKERNEL_STUDIO_*` one is not set. It is left over from the name this tool had
-while it was being built — it was renamed to Studio before its first release, so
-nothing was ever published as `ClrKernel.Jobs` and there is no migration to do.
-The Settings page names whichever spelling actually supplied a value, so a source
-build set up under the old names says so rather than looking like a default.
-
 | Flag | Environment variable | Default |
 | --- | --- | --- |
 | `--notebooks <dir>` | `CLRKERNEL_STUDIO_NOTEBOOKS` | current directory |

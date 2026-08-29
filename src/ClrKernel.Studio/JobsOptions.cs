@@ -118,12 +118,6 @@ public sealed class JobsOptions {
     public static string DefaultDataDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".clrkernel", "jobs");
 
-    /// <summary>The pre-rename spelling of an environment variable name.</summary>
-    internal static string LegacyEnvName(string name) =>
-        name.StartsWith("CLRKERNEL_STUDIO_", StringComparison.Ordinal)
-            ? "CLRKERNEL_JOBS_" + name["CLRKERNEL_STUDIO_".Length..]
-            : name;
-
     private readonly Dictionary<string, string> _sources = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -160,19 +154,8 @@ public sealed class JobsOptions {
     /// <summary>Builds options from parsed CLI flags, applying the env/settings/default layers.</summary>
     public static JobsOptions Resolve(IReadOnlyDictionary<string, string> cliFlags) {
         string Cli(string name) => cliFlags.TryGetValue(name, out var v) ? v : null;
-        // The `CLRKERNEL_JOBS_` spelling is still read: it is the name this tool
-        // had while it was being built. Nothing was ever published under it — the
-        // rename landed before the first release — so this is for a source build
-        // or a dev script set up back then, not a migration anybody has to do.
-        // `SourceOf` reports whichever name actually supplied the value, so the
-        // settings UI names the one that is in play rather than the one it wanted.
         string Env(string name) =>
-            Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v
-                : Environment.GetEnvironmentVariable(LegacyEnvName(name)) is { Length: > 0 } old
-                    ? old
-                    : null;
-        string EnvNameUsed(string name) =>
-            Environment.GetEnvironmentVariable(name) is { Length: > 0 } ? name : LegacyEnvName(name);
+            Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v : null;
 
         var options = new JobsOptions();
         string Pick(string key, string cliName, string envName, string settingValue, string fallback) {
@@ -181,7 +164,7 @@ public sealed class JobsOptions {
                 return fromCli;
             }
             if (Env(envName) is { } fromEnv) {
-                options._sources[key] = EnvNameUsed(envName);
+                options._sources[key] = envName;
                 return fromEnv;
             }
             if (settingValue != null) {

@@ -174,33 +174,18 @@ public class StoreConfigTest {
     }
 
     /// <summary>
-    /// <c>CLRKERNEL_JOBS_*</c> is the name these variables had while the tool was
-    /// being built, before it was renamed to Studio — which happened before the
-    /// first release, so nothing ever shipped under it. What this pins is that a
-    /// source build or dev script set up back then still gets its value, and that
-    /// the settings UI names the spelling that actually supplied it: a variable
-    /// silently ignored does not fail, it falls back to a default.
+    /// A variable this tool does not know is not read. It answered to
+    /// <c>CLRKERNEL_JOBS_*</c> while it was being built, and that fallback outlived
+    /// the reason for it — nothing ever shipped under the old name, so there was
+    /// nobody to keep working.
     /// </summary>
     [TestMethod]
-    public void The_pre_rename_environment_variables_still_work_and_say_which_one_was_read() {
+    public void Only_the_studio_spelling_is_read() {
         WithEnv("CLRKERNEL_JOBS_STORE", "postgres", () => {
             var resolved = JobsOptions.Resolve(new Dictionary<string, string> { ["data-dir"] = _dir });
-            Assert.AreEqual("postgres", resolved.Store);
-            Assert.AreEqual("CLRKERNEL_JOBS_STORE", resolved.SourceOf("store"),
-                "the message has to name the variable that is actually set, not the new spelling");
-            Assert.IsTrue(resolved.IsExplicit("store"));
+            Assert.AreNotEqual("postgres", resolved.Store);
+            Assert.AreEqual("default", resolved.SourceOf("store"),
+                "an unknown variable leaves the setting at its default, and says so");
         });
     }
-
-    [TestMethod]
-    public void The_new_spelling_wins_when_both_are_set() {
-        WithEnv("CLRKERNEL_JOBS_STORE", "postgres", () => {
-            WithEnv("CLRKERNEL_STUDIO_STORE", "sqlserver", () => {
-                var resolved = JobsOptions.Resolve(new Dictionary<string, string> { ["data-dir"] = _dir });
-                Assert.AreEqual("sqlserver", resolved.Store);
-                Assert.AreEqual("CLRKERNEL_STUDIO_STORE", resolved.SourceOf("store"));
-            });
-        });
-    }
-
 }
