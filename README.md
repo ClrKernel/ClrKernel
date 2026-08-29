@@ -2,34 +2,66 @@
 [![Release](https://github.com/ClrKernel/ClrKernel/actions/workflows/release.yml/badge.svg)](https://github.com/ClrKernel/ClrKernel/actions/workflows/release.yml)
 # ClrKernel
 
-A Jupyter kernel for .NET. C# cells are evaluated with Roslyn's scripting engine
+**Notebooks that are markdown.** A `.nb.md` is prose and fenced code blocks in a
+plain text file — no JSON, no embedded outputs, no execution counts — so it diffs
+in a pull request and reviews like source. The samples in
+[`samples/`](samples/) are notebooks and documentation at the same time, because
+there is nothing else in the file.
+
+It runs your existing notebooks too: `.ipynb`, `.dib` and `.csx` all execute
+without conversion.
+
+C# cells are evaluated with Roslyn's scripting engine
 ([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
-and cells can also be **SQL, DAX, PowerShell, shell (bash/zsh/sh), HTTP, or
-Mermaid** in the same session. Notebooks run interactively in JupyterLab / VS
-Code (Jupyter extension) and headlessly via `nbconvert` or `papermill` —
-including from schedulers like SQL Server Agent.
+and a cell can also be **SQL, DAX, PowerShell, shell (bash/zsh/sh), HTTP, or
+Mermaid** in the same session — one kernel, one set of variables. Cell languages
+are registered rather than built in, so a package can add one
+([below](#extending-the-kernel-your-own-cell-language)).
+
+Four ways to run the same notebook:
+
+| | |
+|---|---|
+| **VS Code** | the [ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks) extension — `.nb.md` opens as a notebook, with completion, diagnostics and per-cell run. No Python, no Jupyter. |
+| **JupyterLab** | a standard Jupyter kernel, for anyone already there |
+| **Headless** | `clrkernel run notebook.nb.md` with papermill-style parameters, for CI and schedulers |
+| **Studio** | a scheduler and web app that runs notebooks as cron jobs — [below](#scheduling-notebooks--clrkernel-studio-preview) |
 
 ClrKernel is a maintained fork of
 [SciSharp/ICSharpCore](https://github.com/SciSharp/ICSharpCore), created after
-Microsoft deprecated .NET Interactive / Polyglot Notebooks (April 2026).
-Relative to upstream it adds: correct headless execution under
+Microsoft deprecated .NET Interactive / Polyglot Notebooks (April 2026). Relative
+to upstream it adds the markdown notebook format and the VS Code extension, the
+non-C# cell languages, Studio, correct headless execution under
 nbclient/papermill, full output capture for `async`/`await` cells, control
 channel + heartbeat + graceful `shutdown_request` handling, patched vulnerable
 dependencies, and the kernelspec shipped inside the NuGet package.
 
 ## Install
 
+The kernel is a dotnet tool, and needs a .NET 8+ runtime (`RollForward=Major`:
+newer majors work):
+
 ```bash
 dotnet tool install --global ClrKernel
+```
+
+For **VS Code**, install the
+[ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks)
+extension and open any `.nb.md`. It finds the tool on your PATH — or offers to
+install it — and nothing else is required.
+
+For **JupyterLab**, register the bundled kernelspec. Jupyter is needed only for
+this path:
+
+```bash
 jupyter kernelspec install "$(clrkernel --kernel-spec-path)" --user --name clrkernel
 jupyter kernelspec list   # should show: clrkernel
 ```
 
-Requires a .NET 8+ runtime (`RollForward=Major`: newer majors work) and Jupyter.
-
 ## Use
 
-Pick the **ClrKernel (C#)** kernel in JupyterLab or VS Code. Cells support
+In VS Code, open a `.nb.md`. In JupyterLab, pick the **ClrKernel (C#)** kernel.
+Either way it is the same session: cells support
 `#r "nuget: Package, Version"` and `#r "path/to/local.dll"` references, with
 REPL-style state persisting across cells.
 
@@ -332,15 +364,24 @@ az CLI or Visual Studio session. See
 [samples/FabricWarehouse.nb.md](samples/FabricWarehouse.nb.md). (Fabric execution
 needs a live tenant, so validate against your own workspace.)
 
-Headless / scheduled execution:
+Headless / scheduled execution needs no Python:
+
+```bash
+clrkernel run etl.nb.md -p run_date 2026-08-04 -o runs/etl_out.ipynb
+```
+
+It takes a `.nb.md`, `.dib`, `.ipynb` or `.csx`, injects papermill-style
+parameters after a cell whose first line is `// parameters`, and writes an
+executed `.ipynb` — the cells with their captured outputs — when you ask for one
+with `-o`. A failing cell exits non-zero, so a job scheduler sees the failure,
+and the output notebook is still written as a diagnostic.
+
+If you already run notebooks through Jupyter's tooling, that works too:
 
 ```bash
 jupyter nbconvert --to notebook --execute --output out.ipynb etl.ipynb
 papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p run_date 2026-08-04
 ```
-
-A failing cell exits non-zero (job schedulers see the failure); papermill also
-persists the partially-executed output notebook as a diagnostic artifact.
 
 ### Scheduling notebooks — ClrKernel Studio (preview)
 
