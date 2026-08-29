@@ -51,8 +51,10 @@ public class NotebookCellsApiTest {
             NotebooksRoot = _root,
             GitEnabled = true,
             // No kernel to probe in tests: languages come back empty, which parses
-            // as C#-only — the documented degraded mode.
-            ClrKernelPath = null,
+            // as C#-only — the documented degraded mode. Named rather than left
+            // null, because null means "look on PATH", and on a machine with the
+            // tool installed that finds a real one.
+            ClrKernelPath = Path.Combine(_root, "no-such-kernel"),
         };
         // From the registry rather than a second instance: a GitService owns the
         // lock that serializes writes to its workspace, and two of them on one

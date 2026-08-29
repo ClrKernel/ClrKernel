@@ -174,31 +174,18 @@ public class StoreConfigTest {
     }
 
     /// <summary>
-    /// The product was renamed from Jobs to Studio after these variables were
-    /// documented. A deployment that sets <c>CLRKERNEL_JOBS_RPID</c> and is quietly
-    /// given <c>localhost</c> instead does not fail — it just stops every passkey
-    /// working, which is the worst way for a rename to land.
+    /// A variable this tool does not know is not read. It answered to
+    /// <c>CLRKERNEL_JOBS_*</c> while it was being built, and that fallback outlived
+    /// the reason for it — nothing ever shipped under the old name, so there was
+    /// nobody to keep working.
     /// </summary>
     [TestMethod]
-    public void The_pre_rename_environment_variables_still_work_and_say_which_one_was_read() {
+    public void Only_the_studio_spelling_is_read() {
         WithEnv("CLRKERNEL_JOBS_STORE", "postgres", () => {
             var resolved = JobsOptions.Resolve(new Dictionary<string, string> { ["data-dir"] = _dir });
-            Assert.AreEqual("postgres", resolved.Store);
-            Assert.AreEqual("CLRKERNEL_JOBS_STORE", resolved.SourceOf("store"),
-                "the message has to name the variable that is actually set, not the new spelling");
-            Assert.IsTrue(resolved.IsExplicit("store"));
+            Assert.AreNotEqual("postgres", resolved.Store);
+            Assert.AreEqual("default", resolved.SourceOf("store"),
+                "an unknown variable leaves the setting at its default, and says so");
         });
     }
-
-    [TestMethod]
-    public void The_new_spelling_wins_when_both_are_set() {
-        WithEnv("CLRKERNEL_JOBS_STORE", "postgres", () => {
-            WithEnv("CLRKERNEL_STUDIO_STORE", "sqlserver", () => {
-                var resolved = JobsOptions.Resolve(new Dictionary<string, string> { ["data-dir"] = _dir });
-                Assert.AreEqual("sqlserver", resolved.Store);
-                Assert.AreEqual("CLRKERNEL_STUDIO_STORE", resolved.SourceOf("store"));
-            });
-        });
-    }
-
 }
