@@ -10,6 +10,12 @@ half a file is in.
 | `docs/images/`, `docs/examples/` | users | yes — as assets the pages link to |
 | `docs/internal/` | us | **no** |
 
+`docs/images/studio/` is generated. `python3 test/tools/studio_screenshots.py` boots a
+throwaway Studio against a temp workspace, signs in with a virtual passkey, runs a
+notebook and captures the three shots `studio.md` embeds. Re-run it when the app's
+look changes; the PNGs are committed because `studio.md` is read on GitHub too, where
+a file generated into `docs-site/public/` would be a broken image.
+
 ## Adding a user document
 
 Write `docs/whatever.md` and push. It publishes itself as a page under **Guide**, and

@@ -8,6 +8,9 @@ schedule, parameters, and dependencies on other jobs. Every run executes in its 
 isolated kernel process, cell by cell, and leaves behind an executed `.ipynb` you
 can open in VS Code or Jupyter.
 
+![The Studio dashboard: run counts and success rate for the last seven days, what is
+running, what failed, and what the crons will fire next](images/studio/dashboard.png)
+
 > Preview. The pieces below work and are covered by tests, but the tool has not had
 > production soak time yet — treat 0.10.x as "try it on real notebooks and tell us
 > what breaks".
@@ -644,6 +647,9 @@ Channels, and Settings at the foot — with the label on hover. The bar across t
 a context strip and nothing else: a breadcrumb saying where you are, a search box, and
 the theme picker. What you can *do* lives on the page, not in the chrome.
 
+![The Files section: a project's notebooks and the `*.jobs.yaml` beside each one, on a
+branch picked from the toolbar](images/studio/files.png)
+
 **The URL names its project**, and that is the rule the whole shape follows:
 
 | | |
@@ -895,6 +901,10 @@ it and everything after; the toolbar adds **Run All** and **Restart kernel**.
 notebook's contents as a tree on the left — for when a notebook is long enough that
 scrolling to find a cell is the slow part. **Normal** is the usual scrolling list of
 cells. The switch is per notebook and is remembered.
+
+![Focus Mode: one Mermaid cell, its source above and the rendered diagram below, with
+the notebook's cells listed on the left and each one's execution count beside
+it](images/studio/focus-mode.png)
 
 - A run stops at the first failure and marks the rest skipped — the same papermill
   semantics a scheduled run uses, so what you see here predicts what the job will do.
