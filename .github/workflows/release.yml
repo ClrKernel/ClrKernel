@@ -92,6 +92,7 @@ jobs:
           dotnet pack src/ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database/ClrKernel.Database.csproj -c Release --no-build -o artifacts/pkg
+          dotnet pack src/ClrKernel.Database.Provider.Postgres/ClrKernel.Database.Provider.Postgres.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.Oracle/ClrKernel.Database.Provider.Oracle.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.Odbc/ClrKernel.Database.Provider.Odbc.csproj -c Release --no-build -o artifacts/pkg
           dotnet pack src/ClrKernel.Database.Provider.Jdbc/ClrKernel.Database.Provider.Jdbc.csproj -c Release --no-build -o artifacts/pkg
