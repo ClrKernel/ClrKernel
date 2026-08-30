@@ -477,6 +477,15 @@ the job that runs it exists.
 worktrees and the run history all stay, and registering the same folder under the
 same slug brings all of it back.
 
+**Where a new project's folder goes.** Registering one asks for a folder, and by
+default that has to be an absolute path the server can write to. Set
+`projectsRoot` (`--projects-root`, `CLRKERNEL_STUDIO_PROJECTS_ROOT`) to a folder
+this server owns and a project becomes a *name* instead: leave the folder empty
+and it is created at `<projectsRoot>/<slug>`. An absolute path still wins, so the
+setting is a default and not a fence. The Docker image sets it to `/projects`,
+because in a container it is otherwise impossible — see
+[docker.md](docker.md#projects).
+
 The file behind all of this is `projects.json` in the data directory, and you can
 write it by hand:
 
@@ -1097,6 +1106,7 @@ Every setting takes a CLI flag, an environment variable, or a key in
 | --- | --- | --- |
 | `--notebooks <dir>` | `CLRKERNEL_STUDIO_NOTEBOOKS` | current directory |
 | `--data-dir <dir>` | `CLRKERNEL_STUDIO_DATA` | `~/.clrkernel/jobs` |
+| `--projects-root <dir>` | `CLRKERNEL_STUDIO_PROJECTS_ROOT` | — (a project needs a full path) |
 | `--store <kind>` | `CLRKERNEL_STUDIO_STORE` | `sqlite` |
 | `--connection-string <cs>` | `CLRKERNEL_STUDIO_CONNECTION` | — |
 | `--clrkernel <path>` | `CLRKERNEL_STUDIO_CLRKERNEL` | PATH, then `~/.dotnet/tools` |

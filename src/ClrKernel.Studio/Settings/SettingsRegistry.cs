@@ -151,6 +151,13 @@ public sealed class SettingsRegistry {
                     WebWritable = false, RestartRequired = true,
                 },
                 new SettingField {
+                    Name = "projectsRoot", Label = "Projects root", Type = "string",
+                    Value = options.ProjectsRoot ?? "", Source = options.SourceOf("projectsRoot"),
+                    WebWritable = false, RestartRequired = true,
+                    Help = "New projects are created under this folder. Empty means a project "
+                        + "has to be given a full path.",
+                },
+                new SettingField {
                     Name = "dataDir", Label = "Data directory", Type = "string",
                     Value = options.DataDir, Source = options.SourceOf("dataDir"),
                     WebWritable = false, RestartRequired = true,

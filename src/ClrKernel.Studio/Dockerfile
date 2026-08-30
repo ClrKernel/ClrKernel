@@ -83,8 +83,14 @@ RUN chmod +x /usr/local/bin/docker-entrypoint /usr/local/bin/clrkernel-studio
 # stored beside what it locks is decoration, so without one this server simply has
 # nowhere to save a password and says so, and passwords arrive as
 # CLRKERNEL_SECRET_* variables instead.
+# /projects is where a *second* project goes. Without it there is nowhere: /data is
+# refused on purpose (it holds the run history), and /notebooks is already the
+# implicit project, so anything under it overlaps and is refused too. Naming it here
+# means `-v studio-projects:/projects` works — a fresh named volume takes its
+# ownership from the directory in the image.
 ENV CLRKERNEL_STUDIO_NOTEBOOKS=/notebooks \
     CLRKERNEL_STUDIO_DATA=/data \
+    CLRKERNEL_STUDIO_PROJECTS_ROOT=/projects \
     CLRKERNEL_STUDIO_CLRKERNEL=/app/kernel/ClrKernel \
     CLRKERNEL_STUDIO_URLS=http://0.0.0.0:5000 \
     CLRKERNEL_STUDIO_STORE=sqlite
@@ -93,8 +99,8 @@ VOLUME ["/data"]
 
 # Runs as the non-root `app` user the .NET images already provide (uid 1654). A
 # named volume inherits this ownership; a bind-mounted host directory does not, so
-# `chown 1654 <dir>` on the host (or pass --user) if you bind-mount /data.
-RUN mkdir -p /data /notebooks && chown -R app /data /notebooks
+# `chown 1654 <dir>` on the host (or pass --user) if you bind-mount /data or /projects.
+RUN mkdir -p /data /notebooks /projects && chown -R app /data /notebooks /projects
 USER app
 
 # The API answers /api/health without an API key precisely so this works.

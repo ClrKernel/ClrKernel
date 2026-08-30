@@ -67,14 +67,18 @@ public static class JobsApi {
 
         // Only what the caller may see. A project they have no grant on is not
         // listed, does not appear in the switcher, and 404s if they guess its id.
-        api.MapGet("/projects", async (HttpContext context, ProjectRegistry projects) => {
-            var visible = await context.VisibleProjectsAsync(projects);
-            return Results.Ok(new {
-                projects = projects.Projects
-                    .Where(p => visible.ContainsKey(p.Slug))
-                    .Select(p => ProjectView.From(p, projects, visible[p.Slug])),
+        api.MapGet("/projects", async (
+            HttpContext context, ProjectRegistry projects, JobsOptions options) => {
+                var visible = await context.VisibleProjectsAsync(projects);
+                return Results.Ok(new {
+                    projects = projects.Projects
+                        .Where(p => visible.ContainsKey(p.Slug))
+                        .Select(p => ProjectView.From(p, projects, visible[p.Slug])),
+                    // Null when the host named none, and the form then has to ask for a
+                    // full path. Sent so the browser does not have to guess which it is.
+                    projectsRoot = options.ProjectsRoot,
+                });
             });
-        });
 
         api.MapGet("/projects/{project}", async (
             HttpContext context, ProjectRegistry projects, string project) =>

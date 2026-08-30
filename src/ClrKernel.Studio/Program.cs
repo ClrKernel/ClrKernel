@@ -39,6 +39,10 @@ public static class Program {
                                      or CLRKERNEL_STUDIO_NOTEBOOKS).
           --data-dir <dir>           Data directory (default: ~/.clrkernel/jobs,
                                      or CLRKERNEL_STUDIO_DATA).
+          --projects-root <dir>      Folder new projects are created under, so one
+                                     can be added by name (or
+                                     CLRKERNEL_STUDIO_PROJECTS_ROOT). Unset means a
+                                     project needs a full path.
           --clrkernel <path>         Path to the clrkernel executable (default:
                                      PATH, then ~/.dotnet/tools).
           --store <kind>             Run-history store: sqlite | sqlserver |
