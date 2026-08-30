@@ -32,7 +32,7 @@ public enum SsasRefresh {
 /// fine from a sibling under <c>ClrKernel.Database.Provider</c> — e.g. <c>…Provider.Fabric</c> —
 /// where the simple name binds to the namespace and fails CS0234. A future provider needing this
 /// type must qualify it as <c>Provider.AnalysisServices.AnalysisServices</c> or alias it with
-/// <c>using</c>. See HANDOFF-17 §5, P7.
+/// <c>using</c>.
 /// </para>
 /// </summary>
 public static class AnalysisServices {

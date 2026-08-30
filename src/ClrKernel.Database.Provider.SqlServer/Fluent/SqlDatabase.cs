@@ -34,7 +34,7 @@ public sealed class SqlDatabase : DataSource {
 
     /// <summary>The connection's descriptive name (e.g. <c>server/database</c>).</summary>
     /// <remarks>Read from the spec on each access rather than captured at construction,
-    /// so a renamed spec still reports its current name — the pre-P4b behaviour.</remarks>
+    /// so a renamed spec still reports its current name.</remarks>
     public override string Name => _spec.Name;
 
     internal SqlConnectionSpec Spec => _spec;

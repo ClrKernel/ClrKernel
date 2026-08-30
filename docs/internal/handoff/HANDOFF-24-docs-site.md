@@ -115,11 +115,36 @@ delete at all.
   made the gap visible, and the fix went in the source.
 - Sample page slugs are `kebab(filename)`: `SqlEtl.nb.md` → `/samples/sqletl/`. Fine,
   but renaming a sample changes its URL.
-- No screenshots of Studio yet beyond what `docs/images/` has. The natural next step is
-  a Playwright job in the workflow that starts `clrkernel-studio serve` against
-  `docs/examples/docker/notebooks` and saves Files / Dashboard / Focus Mode shots into
-  `public/images/studio/` — then a `docs/studio.md` that references them is
-  self-updating too. Left out of this handoff to keep it reviewable.
+- ~~No screenshots of Studio.~~ Done, but **not** the way this bullet proposed.
+  `test/tools/studio_screenshots.py` captures Dashboard / Files / Focus Mode and
+  `docs/studio.md` embeds them. Three things the sketch had wrong:
+  **(1)** they are committed to `docs/images/studio/`, not generated into
+  `docs-site/public/images/` — that directory is gitignored, and `studio.md` is read
+  on GitHub as well as on the site, so generating them would leave broken images on
+  the copy most people see first. The cost is that they go stale unless someone
+  re-runs the script.
+  **(2)** it is a local script, not a workflow job. Capturing needs a signed-in
+  session, and passkeys are the only way in — the harness registers a CDP virtual
+  authenticator before the first navigation and creates a throwaway admin.
+  **(3)** `docs/examples/docker/notebooks` is one notebook and one job, which
+  photographs as an empty app. The fixture is six real `samples/*.nb.md` in folders,
+  three `*.jobs.yaml`, and four seeded runs, in a temp workspace named `analytics`
+  because `git init` puts the folder name in every breadcrumb.
+
+  It now covers all thirteen nav destinations, and what that took was **fixture, not
+  Playwright**: an empty page photographs as a broken one, so Channels and
+  Notifications get seeded rules and destinations, Connections gets a throwaway
+  PostgreSQL from `dev/docker-compose.dbs.yml` with a small `sales` schema, and Diff
+  vs production needed a commit on `test` — the view compares the two branches that
+  *run*, never your own, so writing to `mine` produced a diff of nothing. The
+  Connections shots skip themselves with a printed line when there is no docker
+  rather than leaving the previous PNG in place and looking fresh.
+
+  Every shot asserts something specific before the shutter: the first attempt waited
+  on `svg`, matched a toolbar icon, and produced a perfectly valid screenshot of a
+  cell that was still pending. The Focus Mode shot now waits for **Run all cells** to
+  re-enable and for a diagram inside the output iframe — Mermaid renders client-side
+  in a sandbox, so it is never a node of the parent document.
 - `lastUpdated: true` is inert: the generated pages are gitignored, so Starlight finds no
   history and renders no date at all — harmless, but it does nothing until the script
   passes through the source file's last commit. `editLink.baseUrl` is inert for the same

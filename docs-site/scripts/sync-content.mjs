@@ -2,7 +2,7 @@
 //
 //   README.md               -> guide/*  and contributing/*   (split on ## / ###)
 //   samples/*.nb.md         -> samples/*
-//   docs/studio.md, docker  -> studio/*
+//   docs/*.md               -> studio/* or guide/*  (docs/internal/ is never published)
 //   docs/images/*           -> public/images/*
 //   src/*/*.csproj          -> reference/packages.md  (PackageId + Description)
 //   Directory.Build.props   -> src/data/version.json
@@ -69,7 +69,13 @@ async function reset(dir) {
   await fs.mkdir(dir, { recursive: true });
 }
 
+// Two sources claiming one page would silently keep whichever wrote last — a
+// `docs/install.md` would quietly replace the README's Install guide.
+const written = new Set();
+
 async function write(rel, content) {
+  if (written.has(rel)) throw new Error(`sync-content: two sources both write ${rel}; give one of them a different slug`);
+  written.add(rel);
   const p = path.join(docs, rel);
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, content);
@@ -78,9 +84,37 @@ async function write(rel, content) {
 // Where a repo-relative path lives on the site (or on GitHub if it has no page).
 const pageUrl = {
   samples: (name) => `${base}/samples/${kebab(name.replace(/\.nb\.md$/, ''))}/`,
-  studio: `${base}/studio/`,
-  docker: `${base}/studio/docker/`,
 };
+
+// Every `docs/*.md` is published. `docs/internal/` — the handoff record, the design
+// specs, the verification checklists — is not, and that is the whole rule: the path
+// says which half a file is in. This table only decides *where* a published doc
+// lands, because that is a judgement call; a document that is not listed still gets
+// a page (under guide/, named after the file), so a new one can never go missing
+// without anyone noticing.
+const docsPages = {
+  'studio.md': { dir: 'studio', slug: 'index', order: 0 },
+  'docker.md': { dir: 'studio', slug: 'docker', order: 1 },
+};
+
+const docPages = new Map(); // 'docs/x.md' -> { dest, url, order }
+
+async function planDocs() {
+  const dir = path.join(repo, 'docs');
+  for (const f of (await fs.readdir(dir)).sort()) {
+    // README.md is the folder's own signpost, not documentation.
+    if (!f.endsWith('.md') || f === 'README.md') continue;
+    const cfg = docsPages[f] ?? {};
+    const section = cfg.dir ?? 'guide';
+    const slug = cfg.slug ?? kebab(f.replace(/\.md$/, ''));
+    docPages.set(`docs/${f}`, {
+      dest: `${section}/${slug}.md`,
+      url: `${base}/${section}/${slug === 'index' ? '' : slug + '/'}`,
+      order: cfg.order,
+      listed: f in docsPages,
+    });
+  }
+}
 
 function rewriteLinks(md, fromDir) {
   return md.replace(/\]\(([^)\s]+)\)/g, (m, href) => {
@@ -100,8 +134,8 @@ function rewriteLinks(md, fromDir) {
     const rel = path.posix.normalize(path.posix.join(fromDir, href)).replace(/^\.\//, '');
     let s = rel.match(/^samples\/([^/]+\.nb\.md)$/);
     if (s) return `](${pageUrl.samples(s[1])}${hash})`;
-    if (rel === 'docs/studio.md') return `](${pageUrl.studio}${hash})`;
-    if (rel === 'docs/docker.md') return `](${pageUrl.docker}${hash})`;
+    const doc = docPages.get(rel);
+    if (doc) return `](${doc.url}${hash})`;
     let img = rel.match(/^docs\/images\/(.+)$/);
     if (img) return `](${base}/images/${img[1]})`;
     // Directories and anything without a page: send to GitHub.
@@ -221,22 +255,25 @@ async function syncSamples() {
   return files.length;
 }
 
-// ---------- docs/studio.md, docs/docker.md -> studio/ ----------
+// ---------- docs/*.md -> studio/ + guide/ ----------
 
-async function syncStudioDocs() {
-  const map = [
-    ['docs/studio.md', 'studio/index.md', 0],
-    ['docs/docker.md', 'studio/docker.md', 1],
-  ];
-  for (const [src, dest, order] of map) {
+async function syncDocs() {
+  const unlisted = [];
+  for (const [src, page] of docPages) {
     let md = await fs.readFile(path.join(repo, src), 'utf8');
     const h1 = md.match(/^#\s+(.+)$/m);
     const title = h1 ? h1[1].trim() : path.basename(src, '.md');
     if (h1) md = md.replace(h1[0], '').trimStart();
     md = rewriteLinks(md, 'docs');
     md = demote(md, 1);
-    await write(dest, fm(title, { sidebar: { order } }) + sourceNote(src) + md);
+    const sidebar = page.order !== undefined ? { order: page.order } : undefined;
+    await write(page.dest, fm(title, { sidebar }) + sourceNote(src) + md);
+    if (!page.listed) unlisted.push(`${src} -> ${page.url}`);
   }
+  // Said out loud rather than left to be discovered: a new document published itself,
+  // and where it landed is a guess until someone puts it in `docsPages`.
+  for (const u of unlisted) console.log(`sync-content: not in docsPages, published under guide/: ${u}`);
+  return docPages.size;
 }
 
 // ---------- docs/images -> public/images ----------
@@ -374,14 +411,15 @@ async function fixApi() {
 // ---------- main ----------
 
 for (const d of ['guide', 'samples', 'studio', 'contributing', 'reference']) await reset(path.join(docs, d));
+await planDocs(); // before anything that rewrites a link to a docs/ page
 const version = await syncVersion();
 const n = {
   readme: await syncReadme(),
+  docs: await syncDocs(),
   samples: await syncSamples(),
   packages: await syncPackages(version),
   cli: await syncCli(),
   api: await fixApi(),
 };
-await syncStudioDocs();
 await syncImages();
-console.log(`sync-content: v${version} — ${n.readme} README pages, ${n.samples} samples, ${n.packages} packages, ${n.cli} CLI captures, ${n.api} API pages`);
+console.log(`sync-content: v${version} — ${n.readme} README pages, ${n.docs} docs pages, ${n.samples} samples, ${n.packages} packages, ${n.cli} CLI captures, ${n.api} API pages`);

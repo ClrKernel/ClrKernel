@@ -11,6 +11,7 @@ the landing page is generated from the repository:
 | Guide            | `README.md`, one page per `##` (and per `###` under **Use**)    |
 | Samples          | `samples/*.nb.md` — the notebooks *are* the pages               |
 | Studio           | `docs/studio.md`, `docs/docker.md`                              |
+| Guide (extra)    | any other `docs/*.md` — `docs/internal/` is never published      |
 | Reference → Packages | `<PackageId>` / `<Description>` from every `src/*/*.csproj` |
 | Reference → CLI  | `--help` output captured from the built tools                   |
 | API              | `///` XML doc comments, via [DocFX](https://dotnet.github.io/docfx/) |
@@ -18,7 +19,10 @@ the landing page is generated from the repository:
 | version stamp    | `<Version>` in `Directory.Build.props`                          |
 
 So: to fix a typo in the SQL guide, edit `README.md`. To add a worked example, add a
-`samples/Foo.nb.md`. To document a method, write a `///` summary on it.
+`samples/Foo.nb.md`. To document a method, write a `///` summary on it. To add a page,
+write a `docs/whatever.md` — it publishes itself under **Guide**, and the `docsPages`
+table in `scripts/sync-content.mjs` is where you send it somewhere else. See
+[`docs/README.md`](../docs/README.md) for the published/internal split.
 
 ## Run it locally
 
