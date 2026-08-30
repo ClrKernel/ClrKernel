@@ -93,9 +93,47 @@ const pageUrl = {
 // lands, because that is a judgement call; a document that is not listed still gets
 // a page (under guide/, named after the file), so a new one can never go missing
 // without anyone noticing.
+// docs/studio.md is 59 KB about a dozen separate things, and one page of it is a
+// scroll nobody finishes. It is cut the same way the READMEs are.
+const studioPages = {
+  'ClrKernel Studio': { slug: 'index', order: 0 },
+  Install: { slug: 'install', order: 1 },
+  'Define jobs': { slug: 'jobs', order: 2 },
+  'Run one now': { slug: 'run-one-now', order: 3 },
+  'Serve the scheduler and web UI': { slug: 'serve', order: 4, title: 'Serve the scheduler' },
+  'Accounts and passkeys': { slug: 'accounts', order: 5 },
+  Projects: { slug: 'projects', order: 6 },
+  'Test → prod with git': { slug: 'promotion', order: 7 },
+  'Getting around': { slug: 'getting-around', order: 8 },
+  Overview: { slug: 'dashboard', order: 9, title: 'The dashboard' },
+  Monitoring: { slug: 'monitoring', order: 10 },
+  // Two different Notifications: the channels you configure, and the page that
+  // shows what was sent. One slug each, or they overwrite one another.
+  Notifications: { slug: 'notifications-page', order: 11, title: 'The Notifications page' },
+  'Running something again': { slug: 'rerunning', order: 12 },
+  'The notebook editor': { slug: 'editor', order: 13 },
+  Connections: { slug: 'connections', order: 14 },
+  'Notification channels': { slug: 'channels', order: 15 },
+  'Where things are stored': { slug: 'storage', order: 16 },
+  Retention: { slug: 'retention', order: 17 },
+  API: { slug: 'api', order: 18 },
+  'Configuration reference': { slug: 'configuration', order: 19 },
+  Settings: { slug: 'settings', order: 20 },
+  Docker: { slug: 'docker-quickstart', order: 21, title: 'Docker quickstart' },
+  'Not there yet': { slug: 'not-there-yet', order: 23 },
+  'Local development': { slug: 'studio-local-development', order: 3, dir: 'contributing',
+                         title: 'Studio: local development' },
+};
+
 const docsPages = {
-  'studio.md': { dir: 'studio', slug: 'index', order: 0 },
-  'docker.md': { dir: 'studio', slug: 'docker', order: 1 },
+  'studio.md': {
+    dir: 'studio',
+    split: { table: studioPages, rootTitle: 'ClrKernel Studio',
+             h3Under: ['Getting around'] },
+    // Where a link to `docs/studio.md` lands once it is many pages.
+    slug: 'index', order: 0,
+  },
+  'docker.md': { dir: 'studio', slug: 'docker', order: 22, title: 'Docker' },
 };
 
 const docPages = new Map(); // 'docs/x.md' -> { dest, url, order }
@@ -112,6 +150,9 @@ async function planDocs() {
       dest: `${section}/${slug}.md`,
       url: `${base}/${section}/${slug === 'index' ? '' : slug + '/'}`,
       order: cfg.order,
+      title: cfg.title,
+      split: cfg.split,
+      dir: section,
       listed: f in docsPages,
     });
   }
@@ -194,7 +235,7 @@ function cutIntoPages(text, { table, defaultDir, h3Under, rootTitle, drop = [] }
       const title = h[2].trim();
       if (level === 1) { open(rootTitle, 1); continue; }
       if (level === 2) {
-        nesting = title === h3Under;
+        nesting = (h3Under ?? []).includes(title);
         if (drop.includes(title)) { cur = null; continue; }
         open(title, 2);
         continue;
@@ -271,7 +312,7 @@ const vscodePages = {
 async function syncReadme() {
   const text = await fs.readFile(path.join(repo, 'README.md'), 'utf8');
   const pages = cutIntoPages(text, {
-    table: readmePages, defaultDir: 'guide', h3Under: 'Use',
+    table: readmePages, defaultDir: 'guide', h3Under: ['Use'],
     rootTitle: 'Overview', drop: ['License'],
   });
   return writePages(pages, { source: 'README.md', fromDir: '.', remember: readmeAnchors });
@@ -313,21 +354,29 @@ async function syncSamples() {
 
 async function syncDocs() {
   const unlisted = [];
+  let count = 0;
   for (const [src, page] of docPages) {
-    let md = await fs.readFile(path.join(repo, src), 'utf8');
+    const text = await fs.readFile(path.join(repo, src), 'utf8');
+    if (page.split) {
+      const pages = cutIntoPages(text, { defaultDir: page.dir, ...page.split });
+      count += await writePages(pages, { source: src, fromDir: 'docs' });
+      continue;
+    }
+    let md = text;
     const h1 = md.match(/^#\s+(.+)$/m);
-    const title = h1 ? h1[1].trim() : path.basename(src, '.md');
+    const title = page.title ?? (h1 ? h1[1].trim() : path.basename(src, '.md'));
     if (h1) md = md.replace(h1[0], '').trimStart();
     md = rewriteLinks(md, 'docs');
     md = demote(md, 1);
     const sidebar = page.order !== undefined ? { order: page.order } : undefined;
     await write(page.dest, fm(title, { sidebar }) + sourceNote(src) + md);
+    count += 1;
     if (!page.listed) unlisted.push(`${src} -> ${page.url}`);
   }
   // Said out loud rather than left to be discovered: a new document published itself,
   // and where it landed is a guess until someone puts it in `docsPages`.
   for (const u of unlisted) console.log(`sync-content: not in docsPages, published under guide/: ${u}`);
-  return docPages.size;
+  return count;
 }
 
 // ---------- docs/images -> public/images ----------

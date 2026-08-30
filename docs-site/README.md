@@ -11,7 +11,8 @@ the landing page is generated from the repository:
 | Guide            | `README.md`, one page per `##` (and per `###` under **Use**)    |
 | VS Code          | `editors/vscode/README.md` — the extension's own docs, one page per `##` |
 | Samples          | `samples/*.nb.md` — the notebooks *are* the pages               |
-| Studio           | `docs/studio.md`, `docs/docker.md`                              |
+| Studio           | `docs/studio.md`, split one page per `##` (and per `###` under **Getting around**) |
+| Studio → Docker  | `docs/docker.md`, whole — it is one walkthrough, numbered 1 to 5 |
 | Guide (extra)    | any other `docs/*.md` — `docs/internal/` is never published      |
 | Reference → Packages | `<PackageId>` / `<Description>` from every `src/*/*.csproj` |
 | Reference → CLI  | `--help` output captured from the built tools                   |
