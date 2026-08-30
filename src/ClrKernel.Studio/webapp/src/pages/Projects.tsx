@@ -163,6 +163,11 @@ const BLANK: ProjectWrite = {
 };
 
 /** The fields a project has, shared by the register form and the edit form. */
+/** The folder a name will become, mirroring the server's own rule. */
+function slugOf(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 function Fields({
   value,
   onChange,
@@ -174,6 +179,10 @@ function Fields({
 }) {
   const set = (patch: Partial<ProjectWrite>) => onChange({ ...value, ...patch });
   const mode = REMOTE_MODES.find((m) => m.value === value.remoteMode);
+  // With a projects root, the folder is optional: leaving it empty puts the project
+  // under that root, named after its slug. Without one there is nowhere to default
+  // to, and the field is the only way to say where it goes.
+  const { projectsRoot } = useProjects();
 
   return (
     <div className="grid max-w-[70ch] gap-3">
@@ -184,16 +193,24 @@ function Fields({
 
       {showRoot && (
         <label className="grid gap-1">
-          <span className="text-sm text-muted-foreground">Folder on this server</span>
+          <span className="text-sm text-muted-foreground">
+            Folder on this server{projectsRoot && ' (optional)'}
+          </span>
           <Input
             value={value.root ?? ''}
             onChange={(e) => set({ root: e.target.value })}
-            placeholder="/srv/finance"
+            placeholder={projectsRoot
+              ? `${projectsRoot}/${slugOf(value.name) || 'finance'}`
+              : '/srv/finance'}
             spellCheck={false}
           />
           <span className="text-xs text-muted-subtle">
-            An absolute path on the server. It is created if it is not there yet, and cannot be
-            changed later — the run history describes what happened there.
+            {projectsRoot
+              ? `Leave it empty and the project goes under ${projectsRoot}, named after itself. `
+                + 'A name that is not a full path means the same thing. '
+              : 'An absolute path on the server. '}
+            It is created if it is not there yet, and cannot be changed later — the run history
+            describes what happened there.
           </span>
         </label>
       )}

@@ -20,6 +20,19 @@ namespace ClrKernel.Studio;
 /// </summary>
 public sealed class JobsOptions {
     public string NotebooksRoot { get; set; }
+
+    /// <summary>
+    /// The folder new projects are created under, so registering one is a name rather
+    /// than an absolute path somebody has to guess. Null when the host has not named
+    /// one — then a project still needs a full path, which is the old behaviour and
+    /// the only honest default: there is no folder a server can assume it may write to.
+    /// <para>
+    /// The Docker image sets it, because there the answer is knowable: the container
+    /// owns exactly two writable directories and neither can hold a second project.
+    /// </para>
+    /// </summary>
+    public string ProjectsRoot { get; set; }
+
     public string DataDir { get; set; }
     /// <summary>sqlite | sqlserver | postgres | files. Explicit for serve; sqlite by default elsewhere.</summary>
     public string Store { get; set; } = "sqlite";
@@ -192,6 +205,12 @@ public sealed class JobsOptions {
         options.NotebooksRoot = Path.GetFullPath(Pick(
             "notebooksRoot", "notebooks", "CLRKERNEL_STUDIO_NOTEBOOKS",
             Setting("notebooksRoot"), Directory.GetCurrentDirectory()));
+        var projectsRoot = Pick(
+            "projectsRoot", "projects-root", "CLRKERNEL_STUDIO_PROJECTS_ROOT",
+            Setting("projectsRoot"), null);
+        options.ProjectsRoot = string.IsNullOrWhiteSpace(projectsRoot)
+            ? null
+            : Path.GetFullPath(projectsRoot);
         options.Store = Pick("store", "store", "CLRKERNEL_STUDIO_STORE", Setting("store"), "sqlite");
         options.ConnectionString = Pick(
             "connectionString", "connection-string", "CLRKERNEL_STUDIO_CONNECTION", Setting("connectionString"), null);

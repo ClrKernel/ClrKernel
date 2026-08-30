@@ -9,12 +9,16 @@ export interface ProjectState {
   projects: Project[];
   current: string;
   select: (slug: string) => void;
+  /** The folder new projects are created under, or null when the host named none
+   *  and a project therefore needs a full path. */
+  projectsRoot: string | null;
 }
 
 const ProjectContext = createContext<ProjectState>({
   projects: [],
   current: 'default',
   select: () => undefined,
+  projectsRoot: null,
 });
 
 /**
@@ -48,14 +52,16 @@ export function useCurrentProject(): Project | undefined {
  */
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [projectsRoot, setProjectsRoot] = useState<string | null>(null);
   const [current, setCurrent] = useState<string>(
     () => localStorage.getItem(STORAGE_KEY) ?? 'default',
   );
 
   useEffect(() => {
     api.projects()
-      .then(({ projects: found }) => {
+      .then(({ projects: found, projectsRoot: root }) => {
         setProjects(found);
+        setProjectsRoot(root ?? null);
         // The remembered project may have been unregistered since, and a slug
         // nobody has 404s every request the page makes.
         setCurrent((slug) => (found.some((p) => p.slug === slug) ? slug : found[0]?.slug ?? 'default'));
@@ -78,7 +84,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ProjectContext.Provider value={{ projects, current, select }}>
+    <ProjectContext.Provider value={{ projects, current, select, projectsRoot }}>
       {/* Keyed by the selection: switching projects remounts everything below,
           so no page keeps data it fetched for the project you just left. Every
           page here is project-scoped, so there is nothing worth preserving. */}

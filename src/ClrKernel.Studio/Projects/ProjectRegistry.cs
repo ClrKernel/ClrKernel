@@ -96,7 +96,7 @@ public sealed class ProjectRegistry {
             try {
                 Directory.CreateDirectory(registered.Root);
             } catch (Exception e) when (e is IOException or UnauthorizedAccessException) {
-                throw new ProjectException($"Could not create {registered.Root}: {e.Message}");
+                throw new ProjectException(CannotCreate(registered.Root, e));
             }
 
             _projects = _projects.Append(registered).ToList();
@@ -163,14 +163,30 @@ public sealed class ProjectRegistry {
     /// same *.jobs.yaml, so the same job is scheduled twice under two names.
     /// </summary>
     private string ValidRoot(string root, string slug) {
+        // With a projects root configured, a project is a name: the folder is
+        // `<projectsRoot>/<slug>` and nobody has to know a path on the server. Without
+        // one there is no folder this process can assume it may write to, so the old
+        // rule stands.
+        var parent = _options.ProjectsRoot;
         if (string.IsNullOrWhiteSpace(root)) {
-            throw new ProjectException("A project needs a folder to live in.");
+            if (parent == null) {
+                throw new ProjectException(
+                    "A project needs a folder to live in. Give an absolute path, or set "
+                    + "projectsRoot (--projects-root, CLRKERNEL_STUDIO_PROJECTS_ROOT) so a "
+                    + "project can be a name instead.");
+            }
+            root = Path.Combine(parent, slug);
         }
         // Checked on the input, not on the result: GetFullPath resolves a relative
         // path against the server process's working directory, which would quietly
         // register whatever happens to sit beside the binary.
         if (!Path.IsPathRooted(root.Trim())) {
-            throw new ProjectException("Give the project's folder as an absolute path.");
+            if (parent == null) {
+                throw new ProjectException(
+                    $"Give the project's folder as an absolute path. '{root.Trim()}' is relative, "
+                    + "and there is no projectsRoot for it to be relative to.");
+            }
+            root = Path.Combine(parent, root.Trim());
         }
         string full;
         try {
@@ -200,6 +216,25 @@ public sealed class ProjectRegistry {
             }
         }
         return full;
+    }
+
+    /// <summary>
+    /// Why the folder could not be made, in terms of the thing to do about it. The
+    /// framework's own message names the path and stops — which in a container reads
+    /// as a broken server rather than as "this process may not write there", and the
+    /// two look identical from the browser.
+    /// </summary>
+    private string CannotCreate(string root, Exception e) {
+        var message = $"Could not create {root}: {e.Message}";
+        if (e is not UnauthorizedAccessException) {
+            return message;
+        }
+        var user = Environment.UserName;
+        var where = _options.ProjectsRoot is { } parent
+            ? $"Projects go under {parent}; a folder there needs no extra permission."
+            : "Set projectsRoot (--projects-root, CLRKERNEL_STUDIO_PROJECTS_ROOT) to a folder "
+              + "this server owns, and new projects can go there by name.";
+        return $"{message} The server runs as '{user}' and may not write there. {where}";
     }
 
     private static bool Overlaps(string a, string b) {

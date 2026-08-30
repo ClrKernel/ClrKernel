@@ -311,6 +311,38 @@ would use for plain scheduling.
 
 <a id="bind-mounting-data"></a>
 
+## Projects
+
+A second project needs a folder, and in a container there is exactly one place it
+can go. `/data` is refused on purpose — it holds the run history and the settings,
+not notebooks — and `/notebooks` is already the implicit project, so anything under
+it overlaps and is refused too. Everything else belongs to root, and the server runs
+as uid 1654, so `Could not create /repos` is the honest answer and not a bug.
+
+So the image creates **`/projects`** and points `CLRKERNEL_STUDIO_PROJECTS_ROOT` at
+it. Add a volume for it and a project is a name:
+
+```bash
+docker run -p 5000:5000 \
+  -v "$PWD/notebooks:/notebooks:ro" \
+  -v clrkernel-studio-data:/data \
+  -v clrkernel-studio-projects:/projects \
+  clrkernel-studio
+```
+
+Register **Finance** with the folder left empty and it is created at
+`/projects/finance`. A named volume works because the directory exists in the image
+with the right owner, and a fresh volume takes its ownership from there — which is
+also why mounting a volume at a path the image does *not* create leaves you with a
+root-owned directory and the same denial.
+
+**Bind-mounting `/projects`** has the same caveat as `/data` below: `chown 1654` the
+host directory first, or pass `--user`.
+
+Without the volume the projects still work, but they live in the container's
+writable layer and disappear with it. Studio will not warn you: the folder is
+genuinely there until the container is removed.
+
 ## Bind-mounting /data
 
 A named volume inherits the image's uid 1654. A host directory does not, so the
@@ -345,12 +377,13 @@ docker run --detach --name clrkernel-studio \
 
 ## Configuration
 
-Everything is an environment variable; the image sets the first five itself.
+Everything is an environment variable; the image sets the first six itself.
 
 | variable | what it is |
 | --- | --- |
 | `CLRKERNEL_STUDIO_NOTEBOOKS` | notebooks root — `/notebooks` in the image |
 | `CLRKERNEL_STUDIO_DATA` | run history and artifacts — `/data` |
+| `CLRKERNEL_STUDIO_PROJECTS_ROOT` | where a second project's folder goes — `/projects` |
 | `CLRKERNEL_STUDIO_CLRKERNEL` | the kernel binary — `/app/kernel/ClrKernel` |
 | `CLRKERNEL_STUDIO_URLS` | listen address — `http://0.0.0.0:5000` |
 | `CLRKERNEL_STUDIO_STORE` | `sqlite` \| `postgres` \| `sqlserver` \| `files` |

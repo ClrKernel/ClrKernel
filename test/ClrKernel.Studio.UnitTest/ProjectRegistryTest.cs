@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -26,9 +27,10 @@ public class ProjectRegistryTest {
     [TestCleanup]
     public void Cleanup() => Directory.Delete(_dir, recursive: true);
 
-    private JobsOptions Options(bool git = false) => new() {
+    private JobsOptions Options(bool git = false, string projectsRoot = null) => new() {
         DataDir = Path.Combine(_dir, "data"),
         NotebooksRoot = Path.Combine(_dir, "notebooks"),
+        ProjectsRoot = projectsRoot,
         GitEnabled = git,
     };
 
@@ -226,6 +228,82 @@ public class ProjectRegistryTest {
                 () => registry.Unregister("default")).Message,
             "only project");
     }
+
+    /// <summary>
+    /// With a projects root, registering is a name. Without one it is a full path,
+    /// and that difference is the whole reason the setting exists: in a container the
+    /// two writable folders are the data directory, which is refused on purpose, and
+    /// the notebooks root, which the implicit project already occupies — so there was
+    /// nowhere at all for a second project to go.
+    /// </summary>
+    [TestMethod]
+    public void With_a_projects_root_a_project_is_a_name() {
+        var root = Path.Combine(_dir, "projects");
+        var registry = new ProjectRegistry(Options(projectsRoot: root), NullLoggerFactory.Instance);
+
+        var byNothing = registry.Register(new Project { Name = "Lovable Studio" }, out var made);
+        Assert.AreEqual(Path.Combine(root, "lovable-studio"), byNothing.Root);
+        Assert.IsTrue(made);
+        Assert.IsTrue(Directory.Exists(byNothing.Root));
+
+        // A bare name means the same thing as leaving it empty.
+        var byName = registry.Register(
+            new Project { Name = "Finance", Root = "finance-2027" }, out _);
+        Assert.AreEqual(Path.Combine(root, "finance-2027"), byName.Root);
+
+        // An absolute path still wins — the root is a default, not a jail.
+        var elsewhere = Path.Combine(_dir, "elsewhere");
+        var byPath = registry.Register(new Project { Name = "Other", Root = elsewhere }, out _);
+        Assert.AreEqual(elsewhere, byPath.Root);
+    }
+
+    [TestMethod]
+    public void Without_a_projects_root_a_project_still_needs_a_full_path() {
+        var registry = new ProjectRegistry(Options(), NullLoggerFactory.Instance);
+
+        foreach (var root in new[] { null, "", "finance" }) {
+            var e = Assert.ThrowsExactly<ProjectRegistry.ProjectException>(
+                () => registry.Register(new Project { Name = "Finance", Root = root }, out _));
+            StringAssert.Contains(e.Message, "projectsRoot",
+                "the refusal names the setting that would make this work");
+        }
+    }
+
+    /// <summary>
+    /// The message a person gets when the server may not write where they asked. The
+    /// framework's own is "Access to the path '/repos' is denied", which in a container
+    /// reads as a broken server rather than as a permission this process does not have.
+    /// </summary>
+    [TestMethod]
+    public void A_folder_the_server_cannot_create_says_who_it_is_and_where_to_go_instead() {
+        // The platform check is the call's guard, not an early Assert.Inconclusive:
+        // CA1416 reads the shape and cannot know that Inconclusive throws.
+        if (!OperatingSystem.IsWindows()) {
+            Refused();
+            return;
+        }
+        Assert.Inconclusive("a folder its owner cannot write to needs chmod");
+    }
+
+    [UnsupportedOSPlatform("windows")]
+    private void Refused() {
+        var refused = Path.Combine(_dir, "refused");
+        Directory.CreateDirectory(refused);
+        File.SetUnixFileMode(refused, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try {
+            var registry = new ProjectRegistry(
+                Options(projectsRoot: Path.Combine(_dir, "projects")), NullLoggerFactory.Instance);
+            var e = Assert.ThrowsExactly<ProjectRegistry.ProjectException>(() => registry.Register(
+                new Project { Name = "Nope", Root = Path.Combine(refused, "nope") }, out _));
+
+            StringAssert.Contains(e.Message, Environment.UserName, "who the server is running as");
+            StringAssert.Contains(e.Message, Path.Combine(_dir, "projects"),
+                "and a folder that would have worked");
+        } finally {
+            File.SetUnixFileMode(refused, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
 
     [TestMethod]
     [DataRow("My Notebooks", "my-notebooks")]

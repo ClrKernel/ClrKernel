@@ -529,7 +529,8 @@ export const api = {
   upcoming: (limit = 8) =>
     request<{ upcoming: UpcomingRun[] }>(`/schedule/upcoming?limit=${limit}`),
 
-  projects: () => request<{ projects: Project[] }>('/projects'),
+  projects: () =>
+    request<{ projects: Project[]; projectsRoot: string | null }>('/projects'),
   /** `createdRoot` says the folder was made rather than adopted. */
   registerProject: (write: ProjectWrite) =>
     request<{ project: Project; createdRoot: boolean }>('/projects', {
