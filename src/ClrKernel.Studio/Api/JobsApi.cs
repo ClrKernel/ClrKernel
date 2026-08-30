@@ -87,6 +87,58 @@ public static class JobsApi {
                     found, projects, await context.ProjectRoleAsync(found.Slug)))
                 : NoProject(project)).RequiresProject(ProjectRole.ProjectViewer);
 
+        // Browsing the server's folders, so registering a project is picking one
+        // rather than typing a path from memory and finding out it was wrong after
+        // the project exists. Server admins only — the same gate as registering,
+        // and they can already name any absolute path here.
+        api.MapGet("/server/folders", (
+            ProjectRegistry projects, JobsOptions options, string path) => {
+                var start = string.IsNullOrWhiteSpace(path)
+                    ? options.ProjectsRoot ?? options.NotebooksRoot
+                    : path;
+                if (!Path.IsPathRooted(start)) {
+                    return Results.BadRequest(new { error = "Give an absolute path." });
+                }
+                string full;
+                try {
+                    full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(start));
+                } catch (Exception e) when (e is ArgumentException or NotSupportedException) {
+                    return Results.BadRequest(new { error = $"'{start}' is not a usable path." });
+                }
+                if (!Directory.Exists(full)) {
+                    return Results.NotFound(new { error = $"{full} is not a folder on this server." });
+                }
+                string[] children;
+                try {
+                    children = Directory.GetDirectories(full);
+                } catch (Exception e) when (e is IOException or UnauthorizedAccessException) {
+                    return Results.BadRequest(new {
+                        error = $"Cannot read {full}: {e.Message}",
+                    });
+                }
+                // Folders only, and only their names: this is for choosing where a
+                // project goes, not for reading the disk.
+                var taken = projects.Projects
+                    .Select(p => Path.TrimEndingDirectorySeparator(p.Root))
+                    .ToHashSet(StringComparer.Ordinal);
+                return Results.Ok(new {
+                    path = full,
+                    parent = Path.GetDirectoryName(full),
+                    projectsRoot = options.ProjectsRoot,
+                    folders = children
+                        .Select(Path.TrimEndingDirectorySeparator)
+                        .Where(c => !Path.GetFileName(c).StartsWith('.'))
+                        .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+                        .Select(c => new {
+                            name = Path.GetFileName(c),
+                            path = c,
+                            // Saying so here is cheaper than the overlap refusal after
+                            // the form has been filled in.
+                            taken = taken.Contains(c),
+                        }),
+                });
+            }).AdminOnly();
+
         api.MapPost("/projects", (ProjectRegistry projects, ProjectWrite write) => {
             if (write == null) {
                 return Results.BadRequest(new { error = "A project needs a name and a folder." });
