@@ -22,7 +22,7 @@ Four ways to run the same notebook:
 
 | | |
 |---|---|
-| **VS Code** | the [ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks) extension — `.nb.md` opens as a notebook, with completion, diagnostics and per-cell run. No Python, no Jupyter. |
+| **VS Code** | the [ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks) extension — `.nb.md` opens as a notebook, with completion, diagnostics and per-cell run. No Python, no Jupyter. [Read the extension docs](editors/vscode/README.md). |
 | **JupyterLab** | a standard Jupyter kernel, for anyone already there |
 | **Headless** | `clrkernel run notebook.nb.md` with papermill-style parameters, for CI and schedulers |
 | **Studio** | a scheduler and web app that runs notebooks as cron jobs — [below](#scheduling-notebooks--clrkernel-studio-preview) |

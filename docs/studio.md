@@ -151,7 +151,7 @@ also get a cell editor that runs cells against a live kernel — see
   are cancelled and their kernels killed; runs left behind by a crash are marked
   failed at the next start.
 
-## Notifications
+## Notification channels
 
 Channels live in `notifications.yaml` at the notebooks root; jobs reference them by
 name. **Passwords and tokens are never stored here** — only a *reference* resolved at
@@ -430,7 +430,7 @@ what each is holding, and removing one of those asks twice. Set
 `worktreeIdleDays` (or `--worktree-idle-days`) to change the month, or to `0` to
 sweep nothing.
 
-### Retention
+## Retention
 
 Run history and the artifacts beside it grow without bound. `runRetentionDays`
 (or `--run-retention-days`, `CLRKERNEL_STUDIO_RUN_RETENTION_DAYS`) removes runs
@@ -503,6 +503,12 @@ the project is part of every key.
 time from the secret chain — OS credential store, then `CLRKERNEL_SECRETS_FILE`,
 then `CLRKERNEL_SECRET_*` — the same rule every connection in this repo follows.
 Nothing writes a token to this file.
+
+## Connections
+
+Saved connections are server-wide: one list of shared ones a server admin manages
+and each person's own, whichever project you happen to be looking at. A notebook
+names one by name; the server resolves the credential at use time.
 
 ### What a connection can be
 
