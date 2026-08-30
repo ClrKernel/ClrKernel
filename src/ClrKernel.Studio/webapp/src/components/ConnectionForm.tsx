@@ -70,7 +70,11 @@ export function ConnectionForm({
         setCanPersist(reply.canPersistSecrets);
         setSecretHelp(reply.secretHelp);
         setPrivateReadOnly(reply.privateConnectionsReadOnly);
-        setType((current) => current || reply.providers[0]?.type || '');
+        // Only when there is nothing to choose. Landing on whichever provider
+        // happened to be first means a saved connection can be the wrong type
+        // because nobody noticed the field was already filled in.
+        setType((current) =>
+          current || (reply.providers.length === 1 ? reply.providers[0].type : ''));
       })
       .catch((e) => setError((e as Error).message));
   }, []);
@@ -175,10 +179,10 @@ export function ConnectionForm({
       onClose={onClose}
       footer={
         <>
-          <Button size="sm" disabled={saving || name.trim().length === 0} onClick={save}>
+          <Button size="sm" disabled={saving || name.trim().length === 0 || type === ''} onClick={save}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
-          <Button variant="outline" size="sm" onClick={test} disabled={saving}>
+          <Button variant="outline" size="sm" onClick={test} disabled={saving || type === ''}>
             Test
           </Button>
           <span className="flex-1" />
@@ -225,8 +229,10 @@ export function ConnectionForm({
         {providers != null && providers.length > 1 && (
           <SelectField
             label="Type"
+            required
             value={type}
             onChange={setType}
+            placeholder="(Select a type)"
             disabled={connection != null}
             options={providers.map((p) => ({ value: p.type, label: p.displayName }))}
           />
@@ -261,121 +267,128 @@ export function ConnectionForm({
         </Alert>
       )}
 
-      {/* "Credential", not "Password": under a field list that already ends in
-          Encrypt and Trust server certificate, a heading called Password reads
-          like one more setting rather than the start of a section — and there is
-          a field called Password inside it. */}
-      <FieldSection title="Credential">
-        {secretHelp && (
-          <Alert>
-            <AlertDescription>{secretHelp}</AlertDescription>
-          </Alert>
-        )}
-        {/* Outside the grid: a checkbox is one line tall and a field is three, so
-            sharing a row leaves the checkbox stranded at the top of a tall cell. */}
-        <CheckboxField
-          label={
-            <>
-              Do not store it — ask each session
-              {connection?.secretConfigured && !prompt && (
-                <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
-              )}
-            </>
-          }
-          checked={prompt}
-          onChange={setPrompt}
-        />
-        <FieldGrid>
-        {!prompt && canPersist && (
-          <Field
+      {/* Everything below is about a connection of some type: a password, a
+          read-only login and a row cap all presuppose one. Asking for them
+          before the type is chosen is asking about nothing in particular. */}
+      {provider != null && (
+        <>
+        {/* "Credential", not "Password": under a field list that already ends in
+            Encrypt and Trust server certificate, a heading called Password reads
+            like one more setting rather than the start of a section — and there is
+            a field called Password inside it. */}
+        <FieldSection title="Credential">
+          {secretHelp && (
+            <Alert>
+              <AlertDescription>{secretHelp}</AlertDescription>
+            </Alert>
+          )}
+          {/* Outside the grid: a checkbox is one line tall and a field is three, so
+              sharing a row leaves the checkbox stranded at the top of a tall cell. */}
+          <CheckboxField
             label={
               <>
-                Password
-                {connection?.secretConfigured && (
+                Do not store it — ask each session
+                {connection?.secretConfigured && !prompt && (
                   <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
                 )}
               </>
             }
-            hint={"Kept in this server's credential store. It is never written to the connection "
-              + 'itself, never sent back to a browser, and never lands in a notebook.'}
-          >
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder={connection?.secretConfigured ? 'leave blank to keep the connection one' : ''} />
-          </Field>
-        )}
-        {!prompt && !canPersist && (
-          <Field label="Secret name">
-            <Input value={secretRef} onChange={(e) => setSecretRef(e.target.value)}
-              placeholder="the name of a secret, not the password" />
-          </Field>
-        )}
-        </FieldGrid>
-      </FieldSection>
-
-      {/* Shared connections always need one; private ones do too when the install
-          has asked for it. Rendering this only for shared meant that on such an
-          install a private connection had no field anywhere to make it runnable. */}
-      {(scope === 'shared' || privateReadOnly) && (
-        <FieldSection
-          title="Read-only login"
-          description={scope === 'shared'
-            ? 'Everyone below a server admin runs as this login. Without it they cannot run '
-              + 'against this connection at all — which is honest: no amount of reading the '
-              + 'SQL makes a writable login read-only, so the second credential is the '
-              + 'boundary.'
-            : 'This server requires a read-only login on every connection, private ones '
-              + 'included. Without one this connection cannot be run at all.'}
-        >
+            checked={prompt}
+            onChange={setPrompt}
+          />
           <FieldGrid>
-            <Field label="User">
-              <Input value={readOnlyUser} onChange={(e) => setReadOnlyUser(e.target.value)}
-                placeholder="reader" />
+          {!prompt && canPersist && (
+            <Field
+              label={
+                <>
+                  Password
+                  {connection?.secretConfigured && (
+                    <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
+                  )}
+                </>
+              }
+              hint={"Kept in this server's credential store. It is never written to the connection "
+                + 'itself, never sent back to a browser, and never lands in a notebook.'}
+            >
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder={connection?.secretConfigured ? 'leave blank to keep the connection one' : ''} />
             </Field>
-            {readOnlyUser && canPersist && (
-              <Field
-                label={
-                  <>
-                    Password
-                    {connection?.readOnlySecretConfigured && (
-                      <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
-                    )}
-                  </>
-                }
-              >
-                <Input type="password" value={readOnlyPassword}
-                  onChange={(e) => setReadOnlyPassword(e.target.value)}
-                  placeholder={connection?.readOnlySecretConfigured
-                    ? 'leave blank to keep the connection one' : ''} />
-              </Field>
-            )}
-            {/* The same escape hatch the primary credential has. Without it, a
-                server with no OS credential store could never make any shared
-                connection runnable by a non-admin. */}
-            {readOnlyUser && !canPersist && (
-              <Field label="Secret name">
-                <Input value={readOnlySecretRef}
-                  onChange={(e) => setReadOnlySecretRef(e.target.value)}
-                  placeholder="the name of a secret, not the password" />
-              </Field>
-            )}
+          )}
+          {!prompt && !canPersist && (
+            <Field label="Secret name">
+              <Input value={secretRef} onChange={(e) => setSecretRef(e.target.value)}
+                placeholder="the name of a secret, not the password" />
+            </Field>
+          )}
           </FieldGrid>
         </FieldSection>
-      )}
 
-      <FieldSection title="Limits">
-        <FieldGrid>
-        <Field label="Query timeout (seconds)">
-          <Input value={timeoutSeconds} onChange={(e) => setTimeout(e.target.value)}
-            inputMode="numeric" />
-        </Field>
-        <Field
-          label="Row cap"
-          hint="A SELECT * against a fact table should not be able to take down the browser tab."
-        >
-          <Input value={rowCap} onChange={(e) => setRowCap(e.target.value)} inputMode="numeric" />
+        {/* Shared connections always need one; private ones do too when the install
+            has asked for it. Rendering this only for shared meant that on such an
+            install a private connection had no field anywhere to make it runnable. */}
+        {(scope === 'shared' || privateReadOnly) && (
+          <FieldSection
+            title="Read-only login"
+            description={scope === 'shared'
+              ? 'Everyone below a server admin runs as this login. Without it they cannot run '
+                + 'against this connection at all — which is honest: no amount of reading the '
+                + 'SQL makes a writable login read-only, so the second credential is the '
+                + 'boundary.'
+              : 'This server requires a read-only login on every connection, private ones '
+                + 'included. Without one this connection cannot be run at all.'}
+          >
+            <FieldGrid>
+              <Field label="User">
+                <Input value={readOnlyUser} onChange={(e) => setReadOnlyUser(e.target.value)}
+                  placeholder="reader" />
+              </Field>
+              {readOnlyUser && canPersist && (
+                <Field
+                  label={
+                    <>
+                      Password
+                      {connection?.readOnlySecretConfigured && (
+                        <Badge variant="outline" className="ml-2 font-normal">configured</Badge>
+                      )}
+                    </>
+                  }
+                >
+                  <Input type="password" value={readOnlyPassword}
+                    onChange={(e) => setReadOnlyPassword(e.target.value)}
+                    placeholder={connection?.readOnlySecretConfigured
+                      ? 'leave blank to keep the connection one' : ''} />
+                </Field>
+              )}
+              {/* The same escape hatch the primary credential has. Without it, a
+                  server with no OS credential store could never make any shared
+                  connection runnable by a non-admin. */}
+              {readOnlyUser && !canPersist && (
+                <Field label="Secret name">
+                  <Input value={readOnlySecretRef}
+                    onChange={(e) => setReadOnlySecretRef(e.target.value)}
+                    placeholder="the name of a secret, not the password" />
+                </Field>
+              )}
+            </FieldGrid>
+          </FieldSection>
+        )}
+
+        <FieldSection title="Limits">
+          <FieldGrid>
+          <Field label="Query timeout (seconds)">
+            <Input value={timeoutSeconds} onChange={(e) => setTimeout(e.target.value)}
+              inputMode="numeric" />
           </Field>
-        </FieldGrid>
-      </FieldSection>
+          <Field
+            label="Row cap"
+            hint="A SELECT * against a fact table should not be able to take down the browser tab."
+          >
+            <Input value={rowCap} onChange={(e) => setRowCap(e.target.value)} inputMode="numeric" />
+            </Field>
+          </FieldGrid>
+        </FieldSection>
+        </>
+      )}
 
       {testing && <p className="text-base text-muted-foreground">{testing}</p>}
 

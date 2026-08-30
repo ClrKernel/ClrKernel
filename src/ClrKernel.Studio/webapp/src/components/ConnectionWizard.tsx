@@ -289,6 +289,16 @@ function OneOf({
  * area renders the same descriptors — a provider describes its settings once and
  * both the notebook wizard and the saved-connection form follow it.
  */
+/**
+ * What leaving an enum unset means. The descriptor already declares the default the
+ * provider will apply, so saying only "kernel default" makes the reader guess at the
+ * one thing they came to the dropdown to find out — and for SQL Server the answer is
+ * `integrated`, which is not what anyone typing a password expects.
+ */
+function kernelDefault(setting: ApiConnectionSetting): string {
+  return setting.default ? `(kernel default — ${setting.default})` : '(kernel default)';
+}
+
 export function SettingField({
   setting, value, onChange,
 }: {
@@ -326,8 +336,8 @@ export function SettingField({
         required={setting.required}
         value={String(value ?? '')}
         onChange={onChange}
-        clearLabel="(kernel default)"
-        placeholder="(kernel default)"
+        clearLabel={kernelDefault(setting)}
+        placeholder={kernelDefault(setting)}
         options={setting.enumValues.map((option) => ({ value: option, label: option }))}
       />
     );
