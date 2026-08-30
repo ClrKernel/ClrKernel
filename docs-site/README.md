@@ -9,14 +9,19 @@ the landing page is generated from the repository:
 | Site section     | Source                                                          |
 | ---------------- | --------------------------------------------------------------- |
 | Guide            | `README.md`, one page per `##` (and per `###` under **Use**)    |
+| VS Code          | `editors/vscode/README.md` — the extension's own docs, one page per `##` |
 | Samples          | `samples/*.nb.md` — the notebooks *are* the pages               |
 | Studio           | `docs/studio.md`, `docs/docker.md`                              |
 | Guide (extra)    | any other `docs/*.md` — `docs/internal/` is never published      |
 | Reference → Packages | `<PackageId>` / `<Description>` from every `src/*/*.csproj` |
 | Reference → CLI  | `--help` output captured from the built tools                   |
 | API              | `///` XML doc comments, via [DocFX](https://dotnet.github.io/docfx/) |
-| Contributing     | `README.md` → **Build & test**, **Develop**                     |
+| Contributing     | `README.md` → **Build & test**, **Develop**; the extension README → **Developing this extension** |
 | version stamp    | `<Version>` in `Directory.Build.props`                          |
+
+The extension's README is the truth about the extension — the root README names VS
+Code as one of four ways to run a notebook and links to it, so the page here and the
+one on the Marketplace cannot drift apart.
 
 So: to fix a typo in the SQL guide, edit `README.md`. To add a worked example, add a
 `samples/Foo.nb.md`. To document a method, write a `///` summary on it. To add a page,

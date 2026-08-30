@@ -24,6 +24,7 @@ export default defineConfig({
       },
       sidebar: [
         { label: 'Guide', items: [{ autogenerate: { directory: 'guide' } }] },
+        { label: 'VS Code', items: [{ autogenerate: { directory: 'vscode' } }] },
         { label: 'Samples (runnable notebooks)', items: [{ autogenerate: { directory: 'samples' } }] },
         { label: 'Studio', items: [{ autogenerate: { directory: 'studio' } }] },
         { label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },

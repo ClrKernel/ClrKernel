@@ -1,6 +1,7 @@
 // Generates every page of the docs site (except index.mdx) from the repository.
 //
 //   README.md               -> guide/*  and contributing/*   (split on ## / ###)
+//   editors/vscode/README.md-> vscode/*                      (split on ##)
 //   samples/*.nb.md         -> samples/*
 //   docs/*.md               -> studio/* or guide/*  (docs/internal/ is never published)
 //   docs/images/*           -> public/images/*
@@ -123,6 +124,13 @@ function rewriteLinks(md, fromDir) {
       // README uses one raw.githubusercontent image; bring it local.
       const raw = href.match(/^https:\/\/raw\.githubusercontent\.com\/ClrKernel\/ClrKernel\/main\/docs\/images\/(.+)$/);
       if (raw) return `](${base}/images/${raw[1]})`;
+      // `https://github.com/ClrKernel/ClrKernel#use` — how the extension README
+      // points at the root README, which is a page here.
+      const home = href.match(/^https:\/\/github\.com\/ClrKernel\/ClrKernel\/?(#.+)?$/);
+      if (home) {
+        const owner = home[1] && readmeAnchors.get(home[1].slice(1));
+        return owner ? `](${base}/${owner.dir}/${owner.slug}/)` : `](${base}/)`;
+      }
       const blob = href.startsWith(ghBlob) ? href.slice(ghBlob.length) : null;
       if (!blob) return m;
       href = blob;
@@ -136,6 +144,9 @@ function rewriteLinks(md, fromDir) {
     if (s) return `](${pageUrl.samples(s[1])}${hash})`;
     const doc = docPages.get(rel);
     if (doc) return `](${doc.url}${hash})`;
+    // The link the root README uses to send people to the extension's own docs.
+    // On GitHub it opens the file; here it opens the section built from it.
+    if (rel === 'editors/vscode/README.md') return `](${base}/vscode/${hash})`;
     let img = rel.match(/^docs\/images\/(.+)$/);
     if (img) return `](${base}/images/${img[1]})`;
     // Directories and anything without a page: send to GitHub.
@@ -151,10 +162,81 @@ function demote(md, topLevel) {
   return md.replace(/^(#{1,6})\s/gm, (m, h) => '#'.repeat(Math.max(2, h.length - shift)) + ' ');
 }
 
-// ---------- README -> guide/ + contributing/ ----------
+// ---------- README + the extension's README -> pages ----------
 
-// Nicer slugs and sidebar order than kebab(title) gives. Anything not listed
-// falls back to kebab(title) and sorts alphabetically after these.
+/**
+ * A document's headings become pages: H2 opens one, and inside `h3Under` each H3
+ * does too. Both READMEs go through this — the only difference between them is the
+ * table naming slugs and sidebar order, because a page's URL and its place in the
+ * sidebar are judgement calls and its existence is not.
+ */
+function cutIntoPages(text, { table, defaultDir, h3Under, rootTitle, drop = [] }) {
+  const pages = [];
+  let cur = null, nesting = false, inFence = false;
+  const open = (title, level) => {
+    const cfg = table[title] ?? {};
+    cur = {
+      title: cfg.title ?? title,
+      slug: cfg.slug ?? kebab(title),
+      dir: cfg.dir ?? defaultDir,
+      order: cfg.order,
+      level,
+      body: [],
+      anchors: [anchor(title)],
+    };
+    pages.push(cur);
+  };
+  for (const line of text.split('\n')) {
+    if (/^```/.test(line)) inFence = !inFence;
+    const h = !inFence && line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const level = h[1].length;
+      const title = h[2].trim();
+      if (level === 1) { open(rootTitle, 1); continue; }
+      if (level === 2) {
+        nesting = title === h3Under;
+        if (drop.includes(title)) { cur = null; continue; }
+        open(title, 2);
+        continue;
+      }
+      if (level === 3 && nesting) { open(title, 3); continue; }
+      if (cur) { cur.anchors.push(anchor(title)); cur.body.push(line); }
+      continue;
+    }
+    if (cur) cur.body.push(line);
+  }
+  return pages;
+}
+
+// Which page owns which of the root README's headings. The extension's README links
+// into the root one by fragment, so this has to outlive the call that fills it.
+const readmeAnchors = new Map();
+
+async function writePages(pages, { source, fromDir, remember }) {
+  // "[below](#sql-cells)" must become a link to the page that now owns that heading.
+  const owner = new Map();
+  for (const p of pages) for (const a of p.anchors) if (!owner.has(a)) owner.set(a, p);
+  if (remember) for (const [a, p] of owner) if (!remember.has(a)) remember.set(a, p);
+
+  for (const p of pages) {
+    let body = p.body.join('\n').trim() + '\n';
+    body = body.replace(/\]\(#([^)]+)\)/g, (m, a) => {
+      const to = owner.get(a);
+      if (!to || to === p) return m;
+      const url = `${base}/${to.dir}/${to.slug}/`;
+      return to.anchors[0] === a ? `](${url})` : `](${url}#${a})`;
+    });
+    body = rewriteLinks(body, fromDir);
+    body = demote(body, p.level);
+    await write(`${p.dir}/${p.slug}.md`,
+      fm(p.title, { sidebar: p.order !== undefined ? { order: p.order } : undefined })
+      + sourceNote(source, 'page') + body);
+  }
+  return pages.length;
+}
+
+// Nicer slugs and sidebar order than kebab(title) gives. Anything not listed falls
+// back to kebab(title) and sorts alphabetically after these.
 const readmePages = {
   Overview: { slug: 'overview', order: 0 },
   Install: { slug: 'install', order: 1 },
@@ -171,66 +253,38 @@ const readmePages = {
   Develop: { slug: 'develop', order: 1, dir: 'contributing' },
 };
 
+// The extension's README is the truth about the extension. The root README says what
+// VS Code is one of four ways to do and links here, rather than keeping a second copy
+// that drifts from the one the Marketplace shows.
+const vscodePages = {
+  'ClrKernel Notebooks for VS Code': { slug: 'index', order: 0 },
+  'Quick start': { slug: 'quick-start', order: 1 },
+  Features: { slug: 'features', order: 2 },
+  'Querying data': { slug: 'querying-data', order: 3 },
+  Settings: { slug: 'settings', order: 4 },
+  Requirements: { slug: 'requirements', order: 5 },
+  'How it works': { slug: 'how-it-works', order: 6 },
+  'Developing this extension': {
+    slug: 'vscode-extension', order: 2, dir: 'contributing', title: 'The VS Code extension' },
+};
+
 async function syncReadme() {
   const text = await fs.readFile(path.join(repo, 'README.md'), 'utf8');
-  const lines = text.split('\n');
+  const pages = cutIntoPages(text, {
+    table: readmePages, defaultDir: 'guide', h3Under: 'Use',
+    rootTitle: 'Overview', drop: ['License'],
+  });
+  return writePages(pages, { source: 'README.md', fromDir: '.', remember: readmeAnchors });
+}
 
-  // Pass 1: cut into pages. H2 opens a page; inside "Use", each H3 opens a page.
-  // Everything else (H4+, and H3s outside "Use") stays in its parent page.
-  const pages = [];
-  let cur = null;
-  let inUse = false;
-  let inFence = false;
-  const open = (title, level) => {
-    const cfg = readmePages[title] ?? {};
-    cur = {
-      title: cfg.title ?? title,
-      slug: cfg.slug ?? kebab(title),
-      dir: cfg.dir ?? 'guide',
-      order: cfg.order,
-      level,
-      body: [],
-      anchors: [],
-    };
-    cur.anchors.push(anchor(title));
-    pages.push(cur);
-  };
-  for (const line of lines) {
-    if (/^```/.test(line)) inFence = !inFence;
-    const h = !inFence && line.match(/^(#{1,6})\s+(.*)$/);
-    if (h) {
-      const level = h[1].length;
-      const title = h[2].trim();
-      if (level === 1) { open('Overview', 1); continue; }
-      if (level === 2) { inUse = title === 'Use'; if (title === 'License') { cur = null; continue; } open(title, 2); continue; }
-      if (level === 3 && inUse) { open(title, 3); continue; }
-      if (cur) { cur.anchors.push(anchor(title)); cur.body.push(line); }
-      continue;
-    }
-    if (cur) cur.body.push(line);
-  }
-
-  // Pass 2: cross-page anchors. "[below](#sql-cells)" must become a link to the page
-  // that now owns that heading.
-  const anchorOwner = new Map();
-  for (const p of pages) for (const a of p.anchors) if (!anchorOwner.has(a)) anchorOwner.set(a, p);
-
-  for (const p of pages) {
-    let body = p.body.join('\n').trim() + '\n';
-    body = body.replace(/\]\(#([^)]+)\)/g, (m, a) => {
-      const owner = anchorOwner.get(a);
-      if (!owner || owner === p) return m;
-      const url = `${base}/${owner.dir}/${owner.slug}/`;
-      return owner.anchors[0] === a ? `](${url})` : `](${url}#${a})`;
-    });
-    body = rewriteLinks(body, '.');
-    body = demote(body, p.level);
-    const out = fm(p.title, { sidebar: p.order !== undefined ? { order: p.order } : undefined })
-      + sourceNote('README.md', 'page')
-      + body;
-    await write(`${p.dir}/${p.slug}.md`, out);
-  }
-  return pages.length;
+async function syncExtension() {
+  const source = 'editors/vscode/README.md';
+  const text = await fs.readFile(path.join(repo, source), 'utf8');
+  const pages = cutIntoPages(text, {
+    table: vscodePages, defaultDir: 'vscode',
+    rootTitle: 'ClrKernel Notebooks for VS Code', drop: ['License'],
+  });
+  return writePages(pages, { source, fromDir: 'editors/vscode' });
 }
 
 // ---------- samples/*.nb.md -> samples/ ----------
@@ -410,11 +464,12 @@ async function fixApi() {
 
 // ---------- main ----------
 
-for (const d of ['guide', 'samples', 'studio', 'contributing', 'reference']) await reset(path.join(docs, d));
+for (const d of ['guide', 'vscode', 'samples', 'studio', 'contributing', 'reference']) await reset(path.join(docs, d));
 await planDocs(); // before anything that rewrites a link to a docs/ page
 const version = await syncVersion();
 const n = {
   readme: await syncReadme(),
+  vscode: await syncExtension(), // after the README: it links into those pages
   docs: await syncDocs(),
   samples: await syncSamples(),
   packages: await syncPackages(version),
@@ -422,4 +477,4 @@ const n = {
   api: await fixApi(),
 };
 await syncImages();
-console.log(`sync-content: v${version} — ${n.readme} README pages, ${n.docs} docs pages, ${n.samples} samples, ${n.packages} packages, ${n.cli} CLI captures, ${n.api} API pages`);
+console.log(`sync-content: v${version} — ${n.readme} README pages, ${n.vscode} VS Code pages, ${n.docs} docs pages, ${n.samples} samples, ${n.packages} packages, ${n.cli} CLI captures, ${n.api} API pages`);
