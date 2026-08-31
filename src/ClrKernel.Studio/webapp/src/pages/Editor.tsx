@@ -13,7 +13,7 @@ import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
 import { JobsOverview } from '../components/JobsOverview';
 import { NotebookToolbar } from '../components/NotebookToolbar';
-import { moveNotebookTo, saveNotebookAs } from '../newNotebook';
+import { ensureJobsFile, moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
 import { monaco } from '../monaco/setup';
@@ -33,7 +33,9 @@ import {
 import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
 import { BranchAllows, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
-import { editPath, pathFromSplat, viewOf, type NotebookView } from '../routes';
+import {
+  editPath, jobsFilePath, pathFromSplat, viewOf, type NotebookView,
+} from '../routes';
 import { neighbourCell } from '../toc';
 import {
   cellsToRun,
@@ -181,9 +183,13 @@ export function Editor() {
     15000,
   );
 
+  // Polled, not fetched once: the run that unlocks promotion happens in test,
+  // which is not this page. At `null` the button stayed dark until a save or a
+  // path change happened to refetch, so it read as arbitrary. Same cadence as
+  // the branch standing beside it.
   const { data: promotion, reload: reloadPromotion } = usePolling(
     () => api.promotionStatus(path),
-    null,
+    15000,
     [path],
   );
 
@@ -732,6 +738,24 @@ export function Editor() {
     };
   }, [tab, path]);
 
+  /**
+   * Create-or-open the jobs file paired with this notebook, and go to its form.
+   *
+   * The same act as `+ job` in the Files list, which is where it lived alone —
+   * so the answer to "a notebook with no job cannot prove itself" was a page you
+   * had to know to go back to. Always on your own branch: nothing schedules from
+   * one, so it starts running when you push it.
+   */
+  async function schedule() {
+    setError(null);
+    setNotice(null);
+    try {
+      navigate(jobsFilePath(projectSlug(), 'mine', await ensureJobsFile(path)));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function promote() {
     // Switching a schedule off is not the same act as shipping a change, and a
     // bare "Promote?" reads identically for both. Name each job and say when it
@@ -929,6 +953,7 @@ export function Editor() {
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
         onMove={move}
+        onSchedule={isNotebook ? schedule : undefined}
       />
 
       {/* Focus Mode measures itself to the bottom of this scroller and gives

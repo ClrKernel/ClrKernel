@@ -639,12 +639,19 @@ The loop:
 3. **Run** the notebook's jobs in test — manually or via the API. Test jobs never run
    on a schedule; cron and chaining fire only in prod. Each run records the test
    commit it executed and whether the tree was dirty.
-4. **Promote** from the editor page. The button unlocks only when *every* enabled
-   job on the notebook has a latest test run that succeeded, as written (no ad-hoc
-   parameter overrides, no uncommitted content), with the files unchanged since that
-   run — and only if the promotion would leave prod's dependency graph valid.
-   Blocked promotions list every reason. Promotion is one commit on `main` naming
-   the evidence runs; the prod scheduler picks it up on its next tick.
+4. **Promote** from the editor page — on your own branch or on **test**, whichever
+   you happen to be standing on. It always ships what is committed on test.
+   The gate is unchanged: *every* enabled job on the notebook has a latest test run
+   that succeeded, as written (no ad-hoc parameter overrides, no uncommitted
+   content), with the files unchanged since that run, and the promotion leaves prod's
+   dependency graph valid. Promotion is one commit on `main` naming the evidence
+   runs; the prod scheduler picks it up on its next tick.
+
+   The button is never greyed out. Press it while the gate is unmet and it answers
+   with the steps between here and production — push to test, add a job, run it in
+   test, promote — marking the one you are on, with the server's own refusals under
+   the step they belong to. A project admin is the one who can press it; everyone
+   else sees the button and is told so, rather than being left to wonder where it is.
 
 Deleting a notebook in test is promotable the same way (it removes the files and the
 jobs from prod). Promotion carries the notebook **and** its jobs files as a unit —
@@ -915,18 +922,19 @@ changed lines marked](images/studio/editor-diff.png)
 
 Everything the page can do is on one toolbar row: the tabs on the left, then the kernel
 status, the **Normal | Focus** switch, **Run All**, **Restart kernel**, **Save** and
-**Promote to production**. It stays put while you scroll, and it sheds labels rather
+**Promote to production**. On test the bar is the read-only note, **Copy to my branch**
+and **Promote to production** — promotion is about test → prod, so it belongs on the
+branch being promoted as much as on your own. It stays put while you scroll, and it sheds labels rather
 than wrapping when the window is narrow — below about 1024px the execution controls
 fold into a single menu. The execution controls belong to the Notebook tab and are
 hidden on Source and Diff; saving and promoting are about the document and stay
 everywhere.
 
-Two ⓘ buttons sit in that row. One beside **Save** explains what saving does — every
-save writes to your own branch, and cells you run here never count towards
-promotion. The other appears beside **Promote to production** when promotion is
-blocked, and gives the reasons: usually a job on this notebook that has not had a green
-run yet. Either opens a notice in the corner that fades on its own or closes on
-**Dismiss**. Both used to be permanent banners, one above the notebook and one below
+An ⓘ beside **Save** explains what saving does — every save writes to your own branch,
+and cells you run here never count towards promotion. It opens a notice in the corner
+that fades on its own or closes on **Dismiss**. Promote used to have one beside it too,
+because the button was disabled when blocked and a disabled button swallows the click;
+now the button itself answers. Both used to be permanent banners, one above the notebook and one below
 it; neither changes while you work, so both cost a strip of the screen to repeat
 themselves every time you scrolled past.
 
@@ -937,6 +945,11 @@ Cells run against a **warm kernel** — one per notebook, started on the first r
 kept alive so variables persist between cells and between runs, exactly as they do in
 VS Code. Per cell: ▶ runs it, **▶ above** runs everything before it, **▶ below** runs
 it and everything after; the toolbar adds **Run All** and **Restart kernel**.
+
+The **File** menu holds *Save a copy as…*, *Move or rename…* and — for a notebook —
+*Schedule (add a job)…*, which creates the paired `*.jobs.yaml` on your branch if it is
+not there and opens its form. The same act as `+ job` in the Files list, offered where
+you are when promotion tells you a notebook with no job cannot prove itself.
 
 **Focus Mode** gives one cell the window — its editor above, its output below, with the
 notebook's contents as a tree on the left — for when a notebook is long enough that

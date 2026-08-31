@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BREAKPOINTS, kernelLabel, showsExecution, toolbarLayout } from './notebookToolbar';
+import {
+  BREAKPOINTS, kernelLabel, promoteControl, showsExecution, toolbarLayout,
+} from './notebookToolbar';
 
 describe('toolbarLayout', () => {
   it('shows everything on a wide bar', () => {
@@ -96,5 +98,38 @@ describe('showsExecution', () => {
     expect(showsExecution('edit')).toBe(true);
     expect(showsExecution('source')).toBe(false);
     expect(showsExecution('diff')).toBe(false);
+  });
+});
+
+describe('promoteControl', () => {
+  const admin = { isAdmin: true, isMember: true, eligible: true };
+
+  it('is on the bar on test, which is the branch being promoted', () => {
+    // The bug this replaces: the button lived only on `mine`, so standing on the
+    // branch whose diff the page was showing offered nothing but Copy to my branch.
+    expect(promoteControl('test', admin)).toBe('ready');
+    expect(promoteControl('mine', admin)).toBe('ready');
+  });
+
+  it('is absent where there is nothing to promote from', () => {
+    expect(promoteControl('prod', admin)).toBe('hidden');
+    expect(promoteControl('user-7f3a', admin)).toBe('hidden');
+  });
+
+  it('is blocked, not hidden, for a member who may not promote', () => {
+    // The server wants a project admin; the button used to render enabled for any
+    // member and 403 when pressed. Hiding it instead would leave them asking the
+    // same "where is promote?" question this whole change is about.
+    expect(promoteControl('test', { ...admin, isAdmin: false })).toBe('blocked');
+    expect(promoteControl('mine', { ...admin, isAdmin: false })).toBe('blocked');
+  });
+
+  it('is blocked while the gate is unmet, so pressing it can say why', () => {
+    expect(promoteControl('mine', { ...admin, eligible: false })).toBe('blocked');
+  });
+
+  it('is absent for someone with no part in the project', () => {
+    expect(promoteControl('test', { isAdmin: false, isMember: false, eligible: true }))
+      .toBe('hidden');
   });
 });

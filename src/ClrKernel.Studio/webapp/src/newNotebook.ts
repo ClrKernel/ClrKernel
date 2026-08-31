@@ -148,3 +148,39 @@ export async function moveNotebookTo(from: string, seed: string): Promise<string
   await api.moveNotebook(from, wanted);
   return wanted;
 }
+
+
+/**
+ * The jobs file paired with a notebook. Derived, not stored: `etl.nb.md` is
+ * scheduled by `etl.jobs.yaml` and by nothing else, which is what makes the pair
+ * one promotable unit.
+ */
+export function jobsFileFor(notebook: string): string {
+  return notebook.replace(/\.nb\.md$/i, '') + '.jobs.yaml';
+}
+
+/** The job name a fresh jobs file starts with: the notebook's own. */
+export function firstJobName(notebook: string): string {
+  return (notebook.split('/').pop() ?? 'daily').replace(/\.nb\.md$/i, '');
+}
+
+/**
+ * Create the jobs file beside a notebook, or do nothing if it is already there.
+ *
+ * Returns the path either way, because both answers mean the same thing to the
+ * caller: go and open it. Shared, because "add a job" is now asked from the
+ * Files list *and* from the editor — where the person who needs it is standing
+ * when promotion tells them a notebook with no job cannot prove itself.
+ */
+export async function ensureJobsFile(notebook: string): Promise<string> {
+  const path = jobsFileFor(notebook);
+  try {
+    await createNotebook(path, `jobs:\n  - name: ${firstJobName(notebook)}\n`);
+  } catch (e) {
+    // Already there is not an error — it is where you were going anyway.
+    if (!/already on your branch/i.test((e as Error).message)) {
+      throw e;
+    }
+  }
+  return path;
+}

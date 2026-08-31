@@ -90,8 +90,8 @@ export function NotebookExplorer({
   onCollapse: (collapsed: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const { data, reload } = usePolling(() => api.notebooks(), null);
   const [env, setEnv] = useState('');
+  const { data, reload } = usePolling(() => api.notebooks(), null);
   const [shut, setShut] = useState<Set<string>>(new Set());
   const mayCreate = useIsProjectMember();
 
@@ -133,6 +133,7 @@ export function NotebookExplorer({
 
   return (
     <div
+      aria-label="Explorer"
       className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-muted"
       style={{ width: `${width}px` }}
     >

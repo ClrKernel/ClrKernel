@@ -26,8 +26,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { toast } from 'sonner';
 import type { BranchStanding } from '../api';
 import { STATUS_LABEL, STATUS_TITLE, type SaveStatus } from '../autosave';
-import { kernelLabel, showsExecution, toolbarLayout } from '../notebookToolbar';
-import { useCanRun, useCanWrite } from '../sessionContext';
+import {
+  kernelLabel, promoteControl, showsExecution, toolbarLayout,
+} from '../notebookToolbar';
+import {
+  promotionProgress, type PromotionProgress, type StepState,
+} from '../promotionSteps';
+import {
+  useCanRun, useCanWrite, useIsProjectAdmin, useIsProjectMember,
+} from '../sessionContext';
 
 const RESTART_HINT =
   'Kills the kernel. This is also the only way to stop a cell that will not finish.';
@@ -96,6 +103,8 @@ export interface NotebookToolbarProps {
   /** Where your own branch stands against test. */
   standing: BranchStanding | null;
   onPush: (message: string) => void;
+  /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
+  onSchedule?: () => void;
   onUpdate: () => void;
   /** Which branch is open — `mine`, `test`, `prod`, or `user-<id>`. */
   branch: string;
@@ -153,16 +162,40 @@ function InfoTip({ label, onOpen }: { label: string; onOpen: () => void }) {
   );
 }
 
-function explainBlocked(reasons: string[]): void {
+const STEP_MARK: Record<StepState, string> = { done: '✓', current: '→', todo: '·' };
+
+/**
+ * The steps left, not the complaints made. A list of refusals told the user what
+ * was wrong with the state and never what to do about it, which is how somebody
+ * ends up pushing, adding a job and running it in the wrong order and concluding
+ * the whole thing is broken.
+ */
+function explainBlocked(progress: PromotionProgress): void {
   notice(
     'promotion-blocked',
     'warning',
-    'Not promotable yet',
-    <ul className="mt-1 list-disc space-y-0.5 pl-4">
-      {reasons.map((reason) => (
-        <li key={reason}>{reason}</li>
-      ))}
-    </ul>,
+    'Getting this to production',
+    <>
+      <ol className="mt-1 space-y-1">
+        {progress.steps.map((step) => (
+          <li
+            key={step.label}
+            className={step.state === 'current'
+              ? 'font-semibold'
+              : step.state === 'done' ? 'text-muted-subtle' : undefined}
+          >
+            <span aria-hidden="true" className="mr-1.5">{STEP_MARK[step.state]}</span>
+            {step.label}
+            {step.detail && (
+              <span className="block pl-4 text-sm font-normal text-muted-foreground">
+                {step.detail}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+      {progress.warning && <p className="mt-2">{progress.warning}</p>}
+    </>,
   );
 }
 
@@ -229,6 +262,8 @@ function PushControl({
   standing: BranchStanding | null;
   busy: boolean;
   onPush: (message: string) => void;
+  /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
+  onSchedule?: () => void;
   onUpdate: () => void;
 }) {
   const [message, setMessage] = useState('');
@@ -319,10 +354,23 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   const layout = toolbarLayout(useBarWidth(bar));
   const canWrite = useCanWrite();
   const mayRun = useCanRun();
+  const isAdmin = useIsProjectAdmin();
+  const isMember = useIsProjectMember();
   const execution = showsExecution(props.tab) && props.canRun && mayRun;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
-  const blockedReasons =
-    props.promotion && !props.promotion.eligible ? props.promotion.reasons : [];
+  // Not `canWrite`: promoting is not a write to your branch, and taking the
+  // branch rule from the write rule is what kept this button off the test view.
+  const promote = promoteControl(props.branch, {
+    isAdmin,
+    isMember,
+    eligible: props.promotion?.eligible === true,
+  });
+  const progress = promotionProgress({
+    reasons: props.promotion?.eligible === false ? props.promotion.reasons : [],
+    standing: props.standing,
+    isAdmin,
+    eligible: props.promotion?.eligible === true,
+  });
 
   const runAll = (
     <Button
@@ -539,6 +587,12 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={props.onSaveAs}>Save a copy as…</DropdownMenuItem>
           <DropdownMenuItem onSelect={props.onMove}>Move or rename…</DropdownMenuItem>
+          {/* The same act as `+ job` in the Files list, offered where promotion
+              says a notebook with no job cannot prove itself — which is here,
+              and not on a page you would have to know to go back to. */}
+          {props.onSchedule && (
+            <DropdownMenuItem onSelect={props.onSchedule}>Schedule (add a job)…</DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <SaveStatusChip status={props.saveStatus} onRetry={props.onSave} />
@@ -549,24 +603,27 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         onPush={props.onPush}
         onUpdate={props.onUpdate}
       />
-      <Button
-        size="xs"
-        onClick={props.onPromote}
-        disabled={props.busy || !props.promotion?.eligible}
-        title={props.promotion?.eligible ? 'Ship to production' : undefined}
-      >
-        {props.promotion?.isDeletion
-          ? 'Promote deletion'
-          : layout.shortPromote
-            ? 'Promote'
-            : 'Promote to production'}
-      </Button>
-      {/* Beside the button, not inside it: a disabled button swallows clicks,
-          and this control has to stay clickable precisely when Promote is not. */}
-      {blockedReasons.length > 0 && (
-        <InfoTip label="Why can’t I promote?" onOpen={() => explainBlocked(blockedReasons)} />
-      )}
       </div>
+      )}
+
+      {promote !== 'hidden' && (
+        <Button
+          size="xs"
+          // Never disabled by the gate. Disabling it put the reasons behind a
+          // separate ⓘ — a smaller target than the thing people actually press,
+          // and one that says "there is an explanation somewhere" rather than
+          // giving it. Blocked is a button that answers.
+          variant={promote === 'ready' ? 'default' : 'outline'}
+          disabled={props.busy}
+          onClick={promote === 'ready' ? props.onPromote : () => explainBlocked(progress)}
+          title={promote === 'ready' ? 'Ship to production' : 'What is left before this can ship'}
+        >
+          {props.promotion?.isDeletion
+            ? 'Promote deletion'
+            : layout.shortPromote
+              ? 'Promote'
+              : 'Promote to production'}
+        </Button>
       )}
     </div>
   );

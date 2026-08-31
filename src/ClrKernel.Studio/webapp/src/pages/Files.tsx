@@ -15,7 +15,9 @@ import { Button } from '@/components/ui/button';
 import { api, projectSlug, type TreeNode } from '../api';
 import { BranchOptions, ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { FileBadge } from '../components/FileBadge';
-import { createNotebook, promptForNotebook } from '../newNotebook';
+import {
+  createNotebook, ensureJobsFile, jobsFileFor, promptForNotebook,
+} from '../newNotebook';
 import { loadBranch, saveBranch } from '../prefs';
 import { editPath, jobsFilePath } from '../routes';
 import { useIsProjectAdmin, useIsProjectMember } from '../sessionContext';
@@ -117,15 +119,6 @@ function Node({
   );
 }
 
-/**
- * The jobs file paired with a notebook. Derived, not stored: `etl.nb.md` is
- * scheduled by `etl.jobs.yaml` and by nothing else, which is what makes the pair
- * one promotable unit.
- */
-function jobsFileFor(notebook: string): string {
-  return notebook.replace(/\.nb\.md$/i, '') + '.jobs.yaml';
-}
-
 export function Files() {
   const navigate = useNavigate();
   const mayEdit = useIsProjectMember();
@@ -169,18 +162,11 @@ export function Files() {
    * from a personal branch, so it starts running when you push it to test.
    */
   async function schedule(notebook: string) {
-    const path = jobsFileFor(notebook);
-    const name = (notebook.split('/').pop() ?? 'daily').replace(/\.nb\.md$/i, '');
     try {
-      await createNotebook(path, `jobs:\n  - name: ${name}\n`);
+      navigate(jobsFilePath(projectSlug(), 'mine', await ensureJobsFile(notebook)));
     } catch (e) {
-      // Already there is not an error — it is where you were going anyway.
-      if (!/already on your branch/i.test((e as Error).message)) {
-        setNotice((e as Error).message);
-        return;
-      }
+      setNotice((e as Error).message);
     }
-    navigate(jobsFilePath(projectSlug(), 'mine', path));
   }
 
   const environments = (data?.environments ?? []).filter((e) => e.tree != null);
