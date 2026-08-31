@@ -572,6 +572,204 @@ as the disk it sits on, so keep it out of any git worktree. Nothing sets it for
 you, and a server that gains a real store moves the file's contents into it on
 the next start and deletes it.
 
+## Git remotes
+
+A project's workspace is a real git repository, and Studio can push it to one you
+already have — GitHub, Azure DevOps, GitLab, a bare repo on another box. The example
+below is GitHub because it is the common case; everything except the key-generation
+step is the same anywhere.
+
+### What Studio actually does with a remote
+
+Exactly one thing, and it is worth being precise because the alternative is
+configuring for behaviour that does not exist:
+
+**After a push to test, and after a promotion, the server runs one command:**
+
+```bash
+git push <remote> test:test main:main
+```
+
+That is the whole integration. So:
+
+- **It pushes both branches**, always together. `test` is the test worktree; **`main`
+  is production** — prod is a branch called `main`, so a fresh GitHub repo's default
+  branch is already the right name.
+- **It never fetches, pulls or clones.** Nothing comes back from the remote, ever. The
+  server's copy is the source of truth and the remote is a mirror — a backup, a thing
+  to review commits in, a thing CI can watch.
+- **It is best effort.** A failed push never fails the promotion. That is deliberate:
+  shipping to production must not depend on the network being up. The outcome is
+  recorded rather than swallowed — see [checking it worked](#checking-it-worked).
+- **The commit is already made** before the push happens. A push that fails is not lost
+  work; it is a mirror that has fallen behind, and the next promotion pushes both
+  branches again and catches it up.
+
+> **Three fields on the project form are recorded and not yet acted on:** *Remote
+> mode* (Local / server-authoritative / remote-authoritative), *Remote secret* and
+> *Push personal branches to the remote too*. They are stored in `projects.json` and
+> read back by the form, and no code consults them. In particular **the remote secret
+> is not a credential Studio uses** — authentication is the server process's own, as
+> described next. Set them if you like; nothing reads them.
+
+### How the server authenticates
+
+Git runs with `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND="ssh -oBatchMode=yes"`, so
+it will never stop and ask for anything. It authenticates as **the operating-system
+user the server runs as**, with whatever that user's git and ssh already have. There is
+no credential in Studio's own configuration and nowhere to put one.
+
+That gives two workable shapes:
+
+| | |
+|---|---|
+| **SSH deploy key** (recommended) | A key on the server, `git@github.com:org/repo.git` as the remote. Nothing secret in any Studio file. |
+| **HTTPS credential helper** | A token in the *server user's* git credential store. Never in the remote URL — a URL with a token in it is a credential in config, which is the one thing this tool does not do anywhere else. |
+
+### GitHub, with a deploy key
+
+A **deploy key** rather than a personal access token: it grants one repository to one
+machine, it is not tied to a person who might leave, and revoking it breaks nothing
+else.
+
+**1. Make a key, as the user the server runs as.** For a systemd service or a plain
+shell that is usually a dedicated account:
+
+```bash
+sudo -u clrkernel ssh-keygen -t ed25519 -C "clrkernel-studio on $(hostname)" \
+  -f ~clrkernel/.ssh/id_ed25519 -N ""
+sudo -u clrkernel cat ~clrkernel/.ssh/id_ed25519.pub
+```
+
+**2. Add it to the repository** — GitHub → the repo → **Settings → Deploy keys → Add
+deploy key**. Paste the public key and **tick "Allow write access"**; without it the
+push is refused and everything else looks fine.
+
+**3. Trust the host, once.** With `BatchMode=yes` an unknown host is a failure, not a
+prompt, and the error does not say so plainly:
+
+```bash
+sudo -u clrkernel ssh-keyscan github.com >> ~clrkernel/.ssh/known_hosts
+```
+
+**4. Prove the key works before Studio is involved:**
+
+```bash
+sudo -u clrkernel ssh -T git@github.com
+# "Hi org/repo! You've successfully authenticated, but GitHub does not provide shell access."
+```
+
+That sentence is success. Anything else — a password prompt, `Permission denied
+(publickey)`, `Host key verification failed` — is a problem to fix here, where the
+message is legible, rather than inside a best-effort push that only says it failed.
+
+**5. Tell the project about the remote.** **Settings → Projects → Configure**, and put
+the URL in **Remote**:
+
+```
+git@github.com:your-org/notebooks.git
+```
+
+A full URL needs no git configuration at all — it is handed to `git push` as-is. If you
+would rather use a named remote, add it to the workspace's bare repo and put the *name*
+in the field instead:
+
+```bash
+git --git-dir /srv/notebooks/.repo.git remote add origin git@github.com:your-org/notebooks.git
+```
+
+One remote for every project on the server instead: `--git-remote` /
+`CLRKERNEL_STUDIO_GIT_REMOTE`. A project's own Remote wins where both are set.
+
+### In Docker
+
+The container runs as uid **1654** (`app`), so the key has to be readable by that user
+and in that user's home. Mount it read-only and point `GIT_SSH_COMMAND`'s ssh at it:
+
+```bash
+docker run -p 5000:5000 \
+  -v "$PWD/notebooks:/notebooks" \
+  -v clrkernel-studio-data:/data \
+  -v "$PWD/deploy-key:/home/app/.ssh/id_ed25519:ro" \
+  -v "$PWD/known_hosts:/home/app/.ssh/known_hosts:ro" \
+  clrkernel-studio
+```
+
+`chown 1654 deploy-key && chmod 600 deploy-key` on the host first — ssh refuses a key
+other users can read, and the refusal arrives as a failed push rather than as itself.
+Generate `known_hosts` with `ssh-keyscan github.com > known_hosts`.
+
+### Checking it worked
+
+**Rehearse against a local bare repo first.** It exercises the identical code path with
+nothing to authenticate, so a failure here is configuration and a failure only against
+GitHub is credentials:
+
+```bash
+git init --bare /tmp/origin.git
+# Settings -> Projects -> Configure -> Remote: /tmp/origin.git
+```
+
+Then, in order:
+
+**1. Push a notebook to test.** Open any notebook, **Push to test**, and give it a
+message. This is the first thing that pushes.
+
+**2. Ask the server what happened.** `/api/health` reports the last push per project —
+it is the only place a best-effort failure surfaces, and it needs no sign-in:
+
+```bash
+curl -s localhost:5000/api/health | jq .lastPush
+```
+
+```json
+[ { "project": "default", "at": "2026-08-31T00:47:04Z", "ok": true, "error": null } ]
+```
+
+`ok: false` carries `error` with git's own message, truncated. `null` means nothing has
+tried to push yet — no remote configured, or nothing pushed since the server started.
+
+**3. Look at the remote.** Both branches should be there:
+
+```bash
+git --git-dir /tmp/origin.git branch -a          # test, main
+git --git-dir /tmp/origin.git ls-tree --name-only test
+```
+
+On GitHub the same check is the **branches** page: `test` and `main`, and the commit
+you just made at the tip of `test`.
+
+**4. Promote, and look again.** Promote the notebook to production and re-read
+`.lastPush`: the timestamp moves, and `main` on the remote now carries the promotion
+commit — which names the runs that were its evidence in the message.
+
+**5. Break it on purpose.** This is the check worth doing, because a mirror that has
+silently stopped is worse than no mirror. Point **Remote** at a URL that cannot work
+(`git@github.com:your-org/does-not-exist.git`), push to test, and confirm:
+
+```bash
+curl -s localhost:5000/api/health | jq .lastPush
+# { "ok": false, "error": "ERROR: Repository not found. ..." }
+```
+
+The push failed, `ok` is false with the reason, **and the push to test still
+succeeded** — the commit is on the server's `test` branch either way. That is the
+best-effort promise, and seeing it once is how you know a green `lastPush` means
+something.
+
+**6. Watch it in production use.** `lastPush.at` should move on every push to test and
+every promotion. If it stops moving while people are promoting, the mirror has stalled;
+`error` says why.
+
+### Azure DevOps, GitLab and the rest
+
+The same, with two differences. The remote URL is theirs
+(`git@ssh.dev.azure.com:v3/org/project/repo`), and the equivalent of a deploy key has a
+different name — Azure DevOps calls it an **SSH public key** under your profile's
+security settings, and it is per-user rather than per-repository, so a service account
+is worth the trouble there. Steps 3 to 6 above are unchanged; only the host in
+`ssh-keyscan` and the `ssh -T` output differ.
+
 ## Test → prod with git
 
 Opt in from the browser: **Files** offers it on a project that has not got it, and
