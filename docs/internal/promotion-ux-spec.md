@@ -30,36 +30,40 @@ The client could render Promote from any branch view and it would work identical
 The Diff tab, which *is* shown on test, even renders "what promotion would ship"
 (`Editor.tsx:66-72`) — with no way to ship it from there.
 
-### 1b. Empty prod tree until F5 — **NOT REPRODUCED; this diagnosis was wrong**
+### 1b. Empty prod tree until F5 — real, and it took two wrong answers to confirm
 
-> Corrected while implementing. The reasoning below reads well and the empirical
-> answer contradicts it, so the fix was reverted rather than shipped as a placebo.
->
-> Three browser checks, each run with and without the proposed `[env, refresh]`
-> deps, behaved identically: the branch switch caused exactly **one** tree fetch
-> either way, and a file pushed to test with no navigation in between appeared in
-> the test tree without a reload **both times**. Something already refetches on
-> the switch; the single mount fetch is not what the explorer ends up rendering.
->
-> Two earlier versions of the check passed vacuously before that was clear — one
-> matched the filename in the breadcrumb rather than the tree, and one drove the
-> *breadcrumb's* branch picker, which navigates and so remounts the explorer for
-> free. Worth recording: this is the failure mode the "break it and watch it go
-> red" rule exists to catch, and it caught it.
->
-> The user's symptom is therefore still unexplained. Whatever it was, it was not
-> this. Next time it happens, capture the network tab on the switch.
+`NotebookExplorer.tsx` fetched the tree **once, at mount**:
+`usePolling(() => api.notebooks(), null)` — no interval, no deps. The editor stays
+mounted across files and branches on purpose (`Editor.tsx:154-162`), and
+`api.notebooks()` returns every environment in one payload, so switching the dropdown
+to prod re-slices a payload fetched before the promotion happened. F5 refetches.
+`promote()` reloaded only the promotion status; `push()` had the same gap for test.
 
-The reasoning that turned out not to hold:
+**The record of getting there, because the mistake is instructive.**
 
-`NotebookExplorer.tsx:93` is `usePolling(() => api.notebooks(), null)`: `null` interval,
-no deps, so **one fetch at mount**. The Editor stays mounted across files and branches
-on purpose (`Editor.tsx:154-162`), so that fetch can be minutes old. `promote()`
-(`Editor.tsx:735-770`) reloads only the promotion status. Switching the dropdown to
-`prod` re-slices the cached payload — `api.notebooks()` returns every environment's tree
-in one response (`api.ts:644-645`).
+*First conclusion: not reproduced.* Three browser checks behaved identically with and
+without the fix, so it was reverted rather than shipped as a placebo. That was the
+right call **on the evidence available** and the wrong answer, and two of those three
+checks were broken in ways worth naming:
 
-`push()` has the same gap for the test tree.
+- one matched the filename in the **breadcrumb** rather than the tree — the file was
+  open, so its name was on screen whatever the explorer showed;
+- one drove the **breadcrumb's** branch picker rather than the explorer's, which
+  navigates and therefore remounts the explorer, refetching for free.
+
+*Second conclusion: real.* After the branch was rebased and the bundle rebuilt from a
+clean tree, the corrected check failed **three times out of three**, with the server
+reporting `[['mine', true], ['test', true], ['prod', false]]` for the pushed file
+while the explorer, switched to test, did not list it. The data was there and the UI
+was showing a stale tree. Restoring the fix: **two passes out of two.**
+
+The most likely reason the earlier runs disagreed is a stale `wwwroot` — one of them
+ran `./build.sh Web` from the wrong directory, which fails and leaves the previous
+bundle in place, and that is exactly the trap `.claude/skills/studio-webapp-dev`
+exists to warn about. **A check that cannot fail is not a check, and a check that
+cannot fail because it is testing last week's bundle is worse: it says the opposite of
+the truth with confidence.** Rebuild from the repo root and confirm the build
+succeeded before believing either answer.
 
 ### 1c. Promotion status is also fetched once
 
@@ -129,8 +133,9 @@ docs know it (`docs/studio.md:617-647`); the UI does not teach it.
 ## 4. Phases
 
 **Phase 1 — bugs, shippable today.**
-~~`NotebookExplorer.tsx:93` takes a `refresh` prop~~ — dropped, see 1b.
-`Editor.tsx:184-188` polls at 15s like `branchStanding` beside it. `NotebookToolbar.tsx` uses `useIsProjectAdmin`
+`NotebookExplorer.tsx` takes a `refresh` prop and `[env, refresh]` deps; `Editor.tsx`
+bumps it in `promote()` and `push()`. `Editor.tsx:184-188` polls at 15s like
+`branchStanding` beside it. `NotebookToolbar.tsx` uses `useIsProjectAdmin`
 (`sessionContext.ts:67-69`) so a Member sees a blocked button and the reason, not a 403.
 Checked with Playwright — promote, switch to prod, assert the row without `page.reload()`
 — and by breaking each fix first.

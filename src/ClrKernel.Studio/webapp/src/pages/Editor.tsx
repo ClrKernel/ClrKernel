@@ -183,6 +183,11 @@ export function Editor() {
     15000,
   );
 
+  // A push adds files to test and a promote adds them to prod, and the editor stays
+  // mounted through both — so nothing refetched the tree the explorer is showing.
+  const [treeRefresh, setTreeRefresh] = useState(0);
+  const refreshTree = () => setTreeRefresh((n) => n + 1);
+
   // Polled, not fetched once: the run that unlocks promotion happens in test,
   // which is not this page. At `null` the button stayed dark until a save or a
   // path change happened to refetch, so it read as arbitrary. Same cadence as
@@ -576,6 +581,7 @@ export function Editor() {
       await api.pushToTest(message);
       setNotice('Pushed to test.');
       reloadPromotion();
+      refreshTree();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -786,6 +792,7 @@ export function Editor() {
         `Promoted to production (${result.commitSha.slice(0, 8)}). The prod scheduler picks it up on its next tick.`,
       );
       reloadPromotion();
+      refreshTree();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -900,6 +907,7 @@ export function Editor() {
         width={layout.explorerWidth}
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
+        refresh={treeRefresh}
       />
       {!layout.explorerCollapsed && (
         <Splitter
