@@ -21,6 +21,7 @@ import {
 } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
 import { timeAgo } from '../ipynb';
+import { FolderPicker } from '../components/FolderPicker';
 import { rememberProject, useProjects } from '../projectContext';
 import { useIsServerAdmin } from '../sessionContext';
 
@@ -183,6 +184,7 @@ function Fields({
   // under that root, named after its slug. Without one there is nowhere to default
   // to, and the field is the only way to say where it goes.
   const { projectsRoot } = useProjects();
+  const [browsing, setBrowsing] = useState(false);
 
   return (
     <div className="grid max-w-[70ch] gap-3">
@@ -196,14 +198,26 @@ function Fields({
           <span className="text-sm text-muted-foreground">
             Folder on this server{projectsRoot && ' (optional)'}
           </span>
-          <Input
-            value={value.root ?? ''}
-            onChange={(e) => set({ root: e.target.value })}
-            placeholder={projectsRoot
-              ? `${projectsRoot}/${slugOf(value.name) || 'finance'}`
-              : '/srv/finance'}
-            spellCheck={false}
-          />
+          <div className="flex gap-2">
+            <Input
+              value={value.root ?? ''}
+              onChange={(e) => set({ root: e.target.value })}
+              placeholder={projectsRoot
+                ? `${projectsRoot}/${slugOf(value.name) || 'finance'}`
+                : '/srv/finance'}
+              spellCheck={false}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={() => setBrowsing(true)}>
+              Browse…
+            </Button>
+          </div>
+          {browsing && (
+            <FolderPicker
+              start={value.root?.trim() || projectsRoot}
+              onPick={(picked) => { set({ root: picked }); setBrowsing(false); }}
+              onClose={() => setBrowsing(false)}
+            />
+          )}
           <span className="text-xs text-muted-subtle">
             {projectsRoot
               ? `Leave it empty and the project goes under ${projectsRoot}, named after itself. `
@@ -363,7 +377,7 @@ function writeOf(project: Project): ProjectWrite {
  * anything exists to configure — and is not here yet.
  */
 export function ProjectsSection() {
-  const { projects, current, select } = useProjects();
+  const { projects, current, select, projectsRoot } = useProjects();
   // Registering and forgetting are server-wide: they decide what exists. Everything
   // else on this page a project's own admins can do.
   const isServerAdmin = useIsServerAdmin();
@@ -543,7 +557,11 @@ export function ProjectsSection() {
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
-              disabled={busy || !adding.name.trim() || !adding.root?.trim()}
+              // A folder is required only when there is nowhere to default to.
+              // With a projects root, an empty one means <projectsRoot>/<slug> —
+              // which is what the field says, and what this used to contradict.
+              disabled={busy || !adding.name.trim()
+                || (!projectsRoot && !adding.root?.trim())}
               onClick={() =>
                 run(async () => {
                   const { project: made, createdRoot } = await api.registerProject(adding);

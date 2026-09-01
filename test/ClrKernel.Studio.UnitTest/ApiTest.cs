@@ -628,4 +628,63 @@ public class ApiTest {
         await _client.PostAsJsonAsync("/api/projects/default/branches/default/jobs", NewJob("idle"));
         Assert.AreEqual(HttpStatusCode.NotFound, (await _client.PostAsync("/api/projects/default/branches/default/jobs/idle/cancel", null)).StatusCode);
     }
+
+    /// <summary>
+    /// The folder browser behind "Browse…" when registering a project. It answers
+    /// with folders and nothing else — the question is where something goes, not
+    /// what is on the disk — and it is a server admin's route, the same gate as
+    /// registering.
+    /// </summary>
+    [TestMethod]
+    public async Task Browsing_the_server_lists_folders_and_not_files() {
+        var reply = await _client.GetAsync(
+            "/api/server/folders?path=" + Uri.EscapeDataString(_options.NotebooksRoot));
+        Assert.AreEqual(HttpStatusCode.OK, reply.StatusCode);
+        var listing = JsonSerializer.Deserialize<JsonElement>(
+            await reply.Content.ReadAsStringAsync(), _json);
+
+        var names = listing.GetProperty("folders").EnumerateArray()
+            .Select(f => f.GetProperty("name").GetString()).ToList();
+        CollectionAssert.Contains(names, "etl", "the folder under the notebooks root");
+        CollectionAssert.DoesNotContain(names, "nightly.nb.md", "a file is not a folder");
+        Assert.AreEqual(_options.NotebooksRoot, listing.GetProperty("path").GetString());
+        Assert.IsNotNull(listing.GetProperty("parent").GetString(), "somewhere to go up to");
+    }
+
+    [TestMethod]
+    public async Task Browsing_marks_the_folders_a_project_already_owns() {
+        // The notebooks root itself is the implicit project, so its parent lists it
+        // as taken — which is the case the picker exists to stop you walking into.
+        var parent = Path.GetDirectoryName(_options.NotebooksRoot);
+        var listing = JsonSerializer.Deserialize<JsonElement>(
+            await _client.GetStringAsync("/api/server/folders?path=" + Uri.EscapeDataString(parent)),
+            _json);
+
+        var notebooks = listing.GetProperty("folders").EnumerateArray()
+            .Single(f => f.GetProperty("name").GetString() == "notebooks");
+        Assert.IsTrue(notebooks.GetProperty("taken").GetBoolean());
+    }
+
+    [TestMethod]
+    public async Task Browsing_refuses_a_relative_path_and_one_that_is_not_there() {
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.GetAsync("/api/server/folders?path=notebooks")).StatusCode,
+            "a relative path would resolve against the server's working directory");
+        Assert.AreEqual(HttpStatusCode.NotFound,
+            (await _client.GetAsync(
+                "/api/server/folders?path=" + Uri.EscapeDataString(
+                    Path.Combine(_root, "no-such-folder")))).StatusCode);
+    }
+
+    [TestMethod]
+    public async Task Browsing_the_server_is_a_server_admins_route() {
+        using var member = new HttpClient { BaseAddress = _client.BaseAddress };
+        await TestAuth.SignInAsync(_app, member, UserRole.ServerUser, "Mallory");
+
+        var reply = await member.GetAsync(
+            "/api/server/folders?path=" + Uri.EscapeDataString(_options.NotebooksRoot));
+        Assert.AreNotEqual(HttpStatusCode.OK, reply.StatusCode,
+            "listing the server's folders is not something every signed-in user may do");
+    }
+
 }

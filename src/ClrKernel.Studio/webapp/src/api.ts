@@ -531,6 +531,16 @@ export const api = {
 
   projects: () =>
     request<{ projects: Project[]; projectsRoot: string | null }>('/projects'),
+  /** Folders on the server, for picking where a project goes. Server admins only. */
+  serverFolders: (path?: string) =>
+    request<{
+      path: string;
+      /** Null at the filesystem root, which is where "up" stops. */
+      parent: string | null;
+      projectsRoot: string | null;
+      /** `taken` is a folder some project is already rooted at. */
+      folders: { name: string; path: string; taken: boolean }[];
+    }>(`/server/folders${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   /** `createdRoot` says the folder was made rather than adopted. */
   registerProject: (write: ProjectWrite) =>
     request<{ project: Project; createdRoot: boolean }>('/projects', {

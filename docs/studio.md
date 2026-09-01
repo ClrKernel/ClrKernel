@@ -486,6 +486,12 @@ setting is a default and not a fence. The Docker image sets it to `/projects`,
 because in a container it is otherwise impossible — see
 [docker.md](docker.md#projects).
 
+**Browse…** beside the folder field lists the server's folders so the path can be
+picked rather than remembered, and marks the ones a project already owns — the
+overlap refusal is otherwise something you meet after filling the form in. It lists
+folders and never files, and it is a server admin's route: the same people who can
+register a project, who can already name any absolute path in that field.
+
 The file behind all of this is `projects.json` in the data directory, and you can
 write it by hand:
 
