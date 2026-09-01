@@ -171,7 +171,7 @@ export function CellEditor({
           </div>
 
           {showPreview ? (
-            <div className="cell-preview" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
+            <div className="cell-preview markdown-body" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
               <Markdown>{cell.source}</Markdown>
             </div>
           ) : (

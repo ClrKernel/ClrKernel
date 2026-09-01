@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Markdown from 'react-markdown';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError, api, projectSlug, setBranch,
@@ -44,7 +45,7 @@ import {
   emptyCell,
   fileEditable,
   fileLanguage,
-  isImage,
+  isBinary,
   isJobsFile,
   isScript,
   notebookPaths,
@@ -54,15 +55,19 @@ import {
   mergeStatus,
   moveCell,
   opensAsCells,
+  previewKind,
   pushUndo,
+  readOnlyReason,
   removeCell,
   restoreCells,
   setCellLanguage,
   toApiCells,
   toRunCells,
+  viewFor,
   toSyncCells,
   withIds,
   type EditorCell,
+  type PreviewKind,
 } from '../notebook';
 
 
@@ -111,7 +116,9 @@ export function Editor() {
   const script = isScript(path);
   // A picture is looked at, not opened. Read before the content fetch, because
   // that fetch is `File.ReadAllText` on the server and a PNG through it is noise.
-  const image = isImage(path);
+  const preview = previewKind(path);
+  // No text in it at all, so no Source tab over mojibake and nothing to diff.
+  const binary = isBinary(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
   const [privateConnections, setPrivateConnections] = useState<string[]>([]);
@@ -147,14 +154,11 @@ export function Editor() {
   // file has. Arriving at `/edit/` on a jobs file, or `/overview/` on a notebook,
   // is a link from elsewhere rather than a choice — Source is the honest answer.
   const jobsFile = isJobsFile(path);
-  const tab: NotebookView =
-    // A jobs file arrived at without a view named — a click in the tree, which
-    // builds an `/edit/` link like every other file — opens its form. That is
-    // what the file is for; the YAML tab is the escape hatch, and landing on it
-    // meant reading a form's worth of settings as text every time.
-    asked === 'edit' && jobsFile ? 'overview'
-      : (asked === 'edit' && !cellFile) || (asked === 'overview' && !jobsFile) ? 'source'
-        : asked;
+  // A view that does not belong to this kind of file falls back to the one it
+  // opens at — a jobs file to its form, a picture to its preview. Arriving at
+  // `/edit/` on either is a link from elsewhere rather than a choice: the tree
+  // builds an `/edit/` link for every file it lists.
+  const tab: NotebookView = viewFor(asked, path);
   useEffect(() => {
     if (tab !== asked) {
       navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
@@ -273,7 +277,9 @@ export function Editor() {
   // notebook; everywhere else the cells are.
   // Overview edits the same text `source` holds — it is a form over the file, not
   // a second model — so it saves, diffs and dirties through exactly this path.
-  const editingText = tab === 'source' || tab === 'overview' || !cellFile;
+  // Not `!cellFile`: a picture's view is `preview`, and counting that as text
+  // editing made autosave the owner of a buffer holding a PNG read as a string.
+  const editingText = tab === 'source' || tab === 'overview' || (!cellFile && tab === 'diff');
   const dirty = editingText
     ? source != null && source !== savedSource
     : cells != null && isDirty(cells, saved);
@@ -317,10 +323,11 @@ export function Editor() {
           setReloads((n) => n + 1);
         })
         .catch((e) => live && setError((e as Error).message));
-    } else if (image) {
-      // Nothing to read: the picture is an <img> pointed at its own route. The
-      // text route would answer with File.ReadAllText over a PNG, which is a
-      // screenful of replacement characters and an editor offering to save them.
+    } else if (binary) {
+      // Nothing to read on any tab: the file is served as bytes to an <img> or an
+      // <iframe>. The text route would answer with File.ReadAllText over a PNG,
+      // which is a screenful of replacement characters and an editor offering to
+      // save them.
       setSource('');
       setSavedSource('');
     } else {
@@ -342,7 +349,7 @@ export function Editor() {
     return () => {
       live = false;
     };
-  }, [path, branch, tab, image]);
+  }, [path, branch, tab, binary]);
 
   // Mode and layout are remembered, but nothing here ever reaches the notebook
   // file — how you were looking at it is not part of what it says.
@@ -919,7 +926,7 @@ export function Editor() {
   const focusing = splitLayout && tab === 'edit';
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
-  const fills = focusing || tab === 'source' || tab === 'diff';
+  const fills = focusing || tab === 'source' || tab === 'diff' || tab === 'preview';
 
   return (
     // Somebody else's branch reads exactly like your own and changes in none of
@@ -966,7 +973,9 @@ export function Editor() {
         }}
         isNotebook={cellFile}
         isScript={script}
-        isImage={image}
+        preview={preview}
+        binary={binary}
+        readOnlyReason={readOnlyReason(path)}
         isJobsFile={jobsFile}
         canRun={canRun}
         running={running}
@@ -1175,25 +1184,11 @@ export function Editor() {
         )
       )}
 
-      {tab === 'source' && image && (
-        // Centred on a chequerboard, so transparency reads as transparency rather
-        // than as whatever the theme's background happens to be that day.
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-          <img
-            src={api.notebookImageUrl(branch, path)}
-            alt={path}
-            className="max-h-full max-w-full rounded-lg border border-border object-contain"
-            style={{
-              backgroundColor: 'var(--color-card)',
-              backgroundImage:
-                'repeating-conic-gradient(var(--color-muted) 0% 25%, transparent 0% 50%)',
-              backgroundSize: '16px 16px',
-            }}
-          />
-        </div>
+      {tab === 'preview' && (
+        <FilePreview kind={preview} branch={branch} path={path} source={source} />
       )}
 
-      {tab === 'source' && !image && (
+      {tab === 'source' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {source == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
@@ -1210,7 +1205,7 @@ export function Editor() {
         </div>
       )}
 
-      {tab === 'diff' && !image && (
+      {tab === 'diff' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {prod == null || savedSource == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
@@ -1250,6 +1245,65 @@ export function Editor() {
       </div>
     </div>
     </BranchAllows.Provider>
+  );
+}
+
+/**
+ * The file as it is meant to be looked at.
+ *
+ * Four kinds and one component, because the alternative is four `tab ===
+ * 'preview' &&` blocks in a render that already has five. Which kind it is comes
+ * from the path; what it needs comes from that — a picture and a PDF are served
+ * as bytes and read nothing, markdown renders the text the page already loaded.
+ */
+function FilePreview({
+  kind, branch, path, source,
+}: {
+  kind: PreviewKind | null;
+  branch: string;
+  path: string;
+  /** The file's text, for the one kind that is text. */
+  source: string | null;
+}) {
+  if (kind === 'markdown') {
+    return (
+      <div className="min-h-0 flex-1 overflow-auto px-4 pb-8">
+        {source == null ? (
+          <p className="text-base text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="markdown-body max-w-[80ch]">
+            <Markdown>{source}</Markdown>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const src = api.notebookFileUrl(branch, path);
+  if (kind === 'pdf') {
+    // An <iframe>, so the browser's own PDF viewer renders it with its page
+    // controls. Not <embed>: a failure there is a blank box, where an iframe at
+    // least navigates somewhere you can see.
+    return <iframe src={src} title={path} className="min-h-0 flex-1 border-0 px-4 pb-4" />;
+  }
+
+  // A picture, and an SVG is one here — centred on a chequerboard, so
+  // transparency reads as transparency rather than as whatever the theme's
+  // background happens to be that day.
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+      <img
+        src={src}
+        alt={path}
+        className="max-h-full max-w-full rounded-lg border border-border object-contain"
+        style={{
+          backgroundColor: 'var(--color-card)',
+          backgroundImage:
+            'repeating-conic-gradient(var(--color-muted) 0% 25%, transparent 0% 50%)',
+          backgroundSize: '16px 16px',
+        }}
+      />
+    </div>
   );
 }
 

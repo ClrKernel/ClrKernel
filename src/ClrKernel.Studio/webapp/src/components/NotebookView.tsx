@@ -68,7 +68,7 @@ function Cell({ cell }: { cell: NotebookCell }) {
   const source = joinSource(cell.source);
   if (cell.cell_type === 'markdown') {
     return (
-      <div className="cell cell-markdown">
+      <div className="cell cell-markdown markdown-body">
         <Markdown>{source}</Markdown>
       </div>
     );

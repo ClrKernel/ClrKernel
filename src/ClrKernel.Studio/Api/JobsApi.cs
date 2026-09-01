@@ -359,16 +359,22 @@ public static class JobsApi {
                     : Results.NotFound(new { error = $"No such file: {path}" });
             }).RequiresProject(ProjectRole.ProjectViewer);
 
-        // An image, as bytes, for the one thing text cannot do: show it. Narrow on
+        // A file the browser will *show*, as bytes: a picture or a PDF. Narrow on
         // purpose — this hands the browser a file off the server's disk, so it
-        // serves the types a picture can be and refuses everything else rather
+        // serves the types the preview renders and refuses everything else rather
         // than becoming a general "download any file in the repo" route.
         //
-        // An SVG is a picture and also a document that can carry script, and the
-        // headers are why it can still be served: nosniff pins the type, and a CSP
-        // of `sandbox` with no origins leaves nothing for a crafted one to run or
-        // reach even when someone opens the URL directly instead of in an <img>.
-        scoped.MapGet("/notebooks/image", (
+        // `nosniff` pins the type and the `sandbox` CSP leaves nothing for a
+        // crafted file to run or reach, which is what makes serving the two that
+        // are documents as well as pictures safe: an SVG can carry script, and so
+        // can a PDF.
+        //
+        // One policy for all of them, checked rather than assumed. The strict one
+        // looked like it blanked the PDF viewer — but that was Playwright's
+        // bundled Chromium, which has no PDF viewer at all
+        // (`navigator.pdfViewerEnabled` is false), so the empty frame said nothing
+        // about the header. Real Chrome renders it under this policy.
+        scoped.MapGet("/notebooks/file", (
             HttpContext context, ProjectRegistry projects,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
@@ -381,8 +387,8 @@ public static class JobsApi {
                 if (Readable(scope, branch, path) is not { } resolved) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
-                if (ImageContentType(resolved) is not { } contentType) {
-                    return Results.BadRequest(new { error = "Not an image." });
+                if (PreviewContentType(resolved) is not { } contentType) {
+                    return Results.BadRequest(new { error = "Not a file this shows." });
                 }
                 if (!File.Exists(resolved)) {
                     return Results.NotFound(new { error = $"No such file: {path}" });
@@ -2151,8 +2157,8 @@ public static class JobsApi {
         return resolved;
     }
 
-    /// <summary>The image type this file is, or null when it is not one.</summary>
-    private static string ImageContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+    /// <summary>The type this file is shown as, or null when it is not one this shows.</summary>
+    private static string PreviewContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
         ".png" => "image/png",
         ".jpg" or ".jpeg" => "image/jpeg",
         ".gif" => "image/gif",
@@ -2161,6 +2167,7 @@ public static class JobsApi {
         ".bmp" => "image/bmp",
         ".ico" => "image/x-icon",
         ".svg" => "image/svg+xml",
+        ".pdf" => "application/pdf",
         _ => null,
     };
 

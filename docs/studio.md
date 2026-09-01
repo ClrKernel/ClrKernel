@@ -902,7 +902,7 @@ been honest about living.
 | `/jobs/<project>` | that project's jobs |
 | `/jobs/<project>/<branch>/<name>` | one job |
 | `/files/<project>` | that project's files, on one branch |
-| `/files/<project>/edit\|source\|diff/<branch>/<path>` | one notebook, on one branch, read one of three ways |
+| `/files/<project>/edit\|overview\|preview\|source\|diff/<branch>/<path>` | one file, on one branch, read one of five ways |
 | `/runs/<id>` | one run |
 | `/channels`, `/settings/<section>` | server-wide, so no project |
 
@@ -924,10 +924,11 @@ from. They are three readings of one file, not three permissions: read-only come
 from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
-one. A file that does not parse into cells — an `.ipynb`, a plain `.md`, a
-picture — has no Notebook view and opens at Source. A `*.jobs.yaml` opens at its
-**Overview** — the form is what the file is for, and the YAML tab is the escape
-hatch beside it.
+one. A file that does not parse into cells — an `.ipynb`, a plain `.md` — has no
+Notebook view and opens at Source. A `*.jobs.yaml` opens at its **Overview** — the
+form is what the file is for, and the YAML tab is the escape hatch beside it — and
+a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
+read.
 
 `/files` on its own — what the rail links to, and what you get from a bookmark —
 opens the project you were last in, remembered per browser. Links
@@ -1247,16 +1248,26 @@ file is written back byte for byte: opening one and closing it changes nothing, 
 matters because a save is a commit and a commit invalidates the "unchanged since that
 run" half of the promotion check.
 
-**Pictures open to look at.** PNG, JPEG, GIF, WebP, AVIF, BMP and ICO render on a
-chequerboard so transparency reads as transparency; there is no Save and no diff, because
-there is no text. An **SVG is the exception** and opens as text — it is a document you can
-meaningfully edit — and is served with `nosniff` and a `sandbox` CSP when it is shown as a
-picture, because an SVG can carry script. Anything else binary is listed and read-only.
+**Pictures, PDFs and SVGs open at a Preview.** PNG, JPEG, GIF, WebP, AVIF, BMP and ICO
+render on a chequerboard so transparency reads as transparency. A PDF opens in the
+browser's own viewer, with its page controls. Neither has a Source or a Diff tab: there is
+no text in them to read or to compare two of, and no Save.
+
+An **SVG has both** — it previews as a picture and edits as text — so it opens at its
+Preview with **Source** beside it. The bytes are served with `nosniff` and a `sandbox`
+CSP, which is what makes serving an SVG or a PDF safe: either can carry script, and the
+sandbox leaves it nothing to run or reach. Anything else binary is listed and read-only.
+
+**Markdown previews too.** A `.md` opens at **Source**, because a markdown file in a
+project is usually one you came to change, and **Preview** is the tab beside it. The same
+rendering runs in a notebook's markdown cells and in a finished run's artifact, so all
+three agree about what a document looks like.
 
 The one file this deliberately will not let you edit is **`connections.json`** (and
 `connections.local.json`) in a worktree: those are written from your saved connections
 every time one changes, so an edit here would be deleted and rebuilt with nothing to say
-why. Studio says so and points at the Connections page.
+why. They are also git-excluded, which is a separate fact and not the reason. Opening one
+says so on the toolbar, and points at the Connections page.
 
 ## Docker
 

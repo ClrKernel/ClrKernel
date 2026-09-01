@@ -1,5 +1,6 @@
 import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession, ApiSyncCell, TreeNode } from './api';
 import type { NotebookOutput } from './ipynb';
+import type { NotebookView } from './routes';
 
 /**
  * Notebook editing logic, kept free of React and Monaco so it can be tested
@@ -176,9 +177,104 @@ export function fileEditable(path: string): boolean {
 /** Whether this is a picture — shown rather than opened in an editor. */
 export function isImage(path: string): boolean {
   const name = (path ?? '').toLowerCase();
-  // An `.svg` is both, and text wins: it is a document you can meaningfully edit,
-  // which is what the server's editable rule says about it too.
+  // An `.svg` is both: it previews as a picture and edits as text, so it is not
+  // one of these — the things here have no source to read.
   return !name.endsWith('.svg') && IMAGE_EXTENSIONS.some((e) => name.endsWith(e));
+}
+
+export function isPdf(path: string): boolean {
+  return /\.pdf$/i.test(path ?? '');
+}
+
+/**
+ * A file with no text in it. It gets a preview and nothing else: no Source tab
+ * over mojibake, and no diff — `File.ReadAllText` over a PNG is not a thing to
+ * compare two of.
+ */
+export function isBinary(path: string): boolean {
+  return isImage(path) || isPdf(path);
+}
+
+/**
+ * How a file is meant to be looked at, or null when the only honest answer is
+ * its source.
+ *
+ * An `.svg` and a `.md` are both — a picture and a document you can also edit —
+ * so this says what the Preview tab renders and `viewFor` decides which of the
+ * two you land on.
+ */
+export type PreviewKind = 'image' | 'svg' | 'pdf' | 'markdown';
+
+export function previewKind(path: string): PreviewKind | null {
+  const name = (path ?? '').toLowerCase();
+  if (name.endsWith('.svg')) {
+    return 'svg';
+  }
+  if (isPdf(name)) {
+    return 'pdf';
+  }
+  if (isImage(name)) {
+    return 'image';
+  }
+  // A `.nb.md` has the Notebook view, which renders its prose already.
+  return name.endsWith('.md') && !opensAsCells(name) ? 'markdown' : null;
+}
+
+/**
+ * Which reading of a file to show — the one asked for when the file has it, and
+ * otherwise the one it opens at.
+ *
+ * One function because it is one question, and because the answer has to be the
+ * same in the toolbar (which tabs exist) and in the page (which one is on), or
+ * the URL is corrected to a tab that is not there.
+ *
+ * What a file opens at: its own editor if it has one, the jobs form if it is a
+ * jobs file, a picture if there is nothing to read, and the source otherwise.
+ * Markdown is the deliberate exception — it previews, but it *opens* at Source,
+ * because a `.md` in a project is a file you came to change.
+ */
+export function viewFor(asked: NotebookView, path: string): NotebookView {
+  const opensAt = (): NotebookView =>
+    opensAsCells(path) ? 'edit'
+      : isJobsFile(path) ? 'overview'
+        : isBinary(path) || previewKind(path) === 'svg' ? 'preview'
+          : 'source';
+  switch (asked) {
+    case 'edit':
+      return opensAsCells(path) ? 'edit' : opensAt();
+    case 'overview':
+      return isJobsFile(path) ? 'overview' : opensAt();
+    case 'preview':
+      return previewKind(path) != null ? 'preview' : opensAt();
+    default:
+      // Source and Diff, which every text file has and no picture does.
+      return isBinary(path) ? opensAt() : asked;
+  }
+}
+
+/**
+ * Why this file cannot be written here, or null when it can.
+ *
+ * The toolbar says it out loud, and the reason matters: "not text" is true of a
+ * picture and a lie about `connections.json`, which is text and is written from
+ * your saved connections — the first version of this note said the wrong thing
+ * to the one person who went looking for an answer.
+ */
+export function readOnlyReason(path: string): string | null {
+  if (fileEditable(path)) {
+    return null;
+  }
+  const name = (path ?? '').toLowerCase().split('/').pop() ?? '';
+  if (GENERATED_NAMES.includes(name)) {
+    return 'read-only — written from your saved connections. Edit it on the Connections page.';
+  }
+  if (isPdf(name)) {
+    return 'read-only — a PDF opens to read';
+  }
+  if (isImage(name)) {
+    return 'read-only — a picture opens to look at';
+  }
+  return 'read-only — this file is not text';
 }
 
 /**

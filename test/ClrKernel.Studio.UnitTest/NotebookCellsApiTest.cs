@@ -1014,7 +1014,7 @@ public class NotebookCellsApiTest {
     /// arrives with the headers that stop it being a document as well as a picture.
     /// </summary>
     [TestMethod]
-    public async Task An_image_is_served_as_bytes_and_anything_else_is_refused() {
+    public async Task A_picture_or_a_pdf_is_served_as_bytes_and_anything_else_is_refused() {
         var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
         await _client.PutAsync(
             "/api/projects/default/branches/mine/notebooks/content?path=logo.svg",
@@ -1022,26 +1022,36 @@ public class NotebookCellsApiTest {
         File.WriteAllBytes(Path.Combine(MinePath, "chart.png"), png);
 
         var image = await _client.GetAsync(
-            "/api/projects/default/branches/mine/notebooks/image?path=chart.png");
+            "/api/projects/default/branches/mine/notebooks/file?path=chart.png");
         Assert.AreEqual(HttpStatusCode.OK, image.StatusCode);
         Assert.AreEqual("image/png", image.Content.Headers.ContentType?.MediaType);
         CollectionAssert.AreEqual(png, await image.Content.ReadAsByteArrayAsync());
 
         var svg = await _client.GetAsync(
-            "/api/projects/default/branches/mine/notebooks/image?path=logo.svg");
+            "/api/projects/default/branches/mine/notebooks/file?path=logo.svg");
         Assert.AreEqual("image/svg+xml", svg.Content.Headers.ContentType?.MediaType);
         Assert.AreEqual("nosniff", svg.Headers.GetValues("X-Content-Type-Options").Single());
         StringAssert.Contains(
             svg.Headers.GetValues("Content-Security-Policy").Single(), "sandbox",
             "an svg can carry script; the sandbox is why serving it is safe");
 
+        // A PDF is served too — it is shown in the browser's own viewer, which
+        // needs the bytes and a content type, not text.
+        File.WriteAllBytes(Path.Combine(MinePath, "report.pdf"), "%PDF-1.4\n"u8.ToArray());
+        var pdf = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/file?path=report.pdf");
+        Assert.AreEqual("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
+        StringAssert.Contains(
+            pdf.Headers.GetValues("Content-Security-Policy").Single(), "sandbox",
+            "a PDF can carry script as surely as an SVG can");
+
         Assert.AreEqual(HttpStatusCode.BadRequest,
             (await _client.GetAsync(
-                $"/api/projects/default/branches/mine/notebooks/image?path={_notebook}")).StatusCode,
+                $"/api/projects/default/branches/mine/notebooks/file?path={_notebook}")).StatusCode,
             "not a general download-any-file route");
         Assert.AreEqual(HttpStatusCode.BadRequest,
             (await _client.GetAsync(
-                "/api/projects/default/branches/mine/notebooks/image?path=../../../etc/passwd")).StatusCode);
+                "/api/projects/default/branches/mine/notebooks/file?path=../../../etc/passwd")).StatusCode);
     }
 
     /// <summary>
@@ -1074,7 +1084,7 @@ public class NotebookCellsApiTest {
     /// </summary>
     [TestMethod]
     public async Task Git_storage_is_not_readable_through_the_file_routes() {
-        foreach (var route in new[] { "content", "image" }) {
+        foreach (var route in new[] { "content", "file" }) {
             foreach (var path in new[] { ".git/config", ".git", "reports/../.git/HEAD" }) {
                 var response = await _client.GetAsync(
                     $"/api/projects/default/branches/mine/notebooks/{route}"

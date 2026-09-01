@@ -541,7 +541,7 @@ function OutputPane({
       }}
     >
       {markdown != null ? (
-        <div className="cell-preview focus-markdown-preview">
+        <div className="cell-preview focus-markdown-preview markdown-body">
           <Markdown>{markdown}</Markdown>
         </div>
       ) : outputs.length === 0 ? (

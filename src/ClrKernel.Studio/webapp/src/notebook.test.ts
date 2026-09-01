@@ -9,6 +9,9 @@ import {
   isImage,
   isScript,
   opensAsCells,
+  previewKind,
+  readOnlyReason,
+  viewFor,
   isDirty,
   keepIds,
   languageOptions,
@@ -483,6 +486,59 @@ describe('fileEditable', () => {
     expect(fileEditable('connections.json')).toBe(false);
     expect(fileEditable('team/connections.local.json')).toBe(false);
     expect(fileEditable('')).toBe(false);
+  });
+});
+
+describe('previewKind and viewFor', () => {
+  it('says how a file is meant to be looked at', () => {
+    expect(previewKind('images/chart.png')).toBe('image');
+    expect(previewKind('logo.SVG')).toBe('svg');
+    expect(previewKind('report.pdf')).toBe('pdf');
+    expect(previewKind('README.md')).toBe('markdown');
+    // A .nb.md renders its own prose in the Notebook view; a second one would
+    // be the same document twice.
+    expect(previewKind('reports/daily.nb.md')).toBe(null);
+    expect(previewKind('etl/load.sql')).toBe(null);
+  });
+
+  it('opens each kind of file at the view that suits it', () => {
+    // The tree links every file with an `/edit/` URL, so `edit` is the question
+    // "what does this file open at" for everything that is not a notebook.
+    expect(viewFor('edit', 'reports/daily.nb.md')).toBe('edit');
+    expect(viewFor('edit', 'setup.csx')).toBe('edit');
+    expect(viewFor('edit', 'etl.jobs.yaml')).toBe('overview');
+    expect(viewFor('edit', 'logo.svg')).toBe('preview');
+    expect(viewFor('edit', 'chart.png')).toBe('preview');
+    expect(viewFor('edit', 'report.pdf')).toBe('preview');
+    // Markdown is the exception: it previews, but a `.md` in a project is a file
+    // you came to change, so it opens where you can change it.
+    expect(viewFor('edit', 'README.md')).toBe('source');
+    expect(viewFor('edit', 'etl/load.sql')).toBe('source');
+  });
+
+  it('and refuses a view the file does not have', () => {
+    expect(viewFor('overview', 'chart.png')).toBe('preview');
+    expect(viewFor('preview', 'etl/load.sql')).toBe('source');
+    expect(viewFor('preview', 'etl.jobs.yaml')).toBe('overview');
+    // No source to read and nothing to compare two of.
+    expect(viewFor('source', 'chart.png')).toBe('preview');
+    expect(viewFor('diff', 'report.pdf')).toBe('preview');
+    // What a file does have is left alone.
+    expect(viewFor('source', 'reports/daily.nb.md')).toBe('source');
+    expect(viewFor('diff', 'README.md')).toBe('diff');
+    expect(viewFor('preview', 'logo.svg')).toBe('preview');
+  });
+});
+
+describe('readOnlyReason', () => {
+  it('says why, because the wrong reason is what sends someone looking', () => {
+    expect(readOnlyReason('etl/load.sql')).toBe(null);
+    expect(readOnlyReason('README.md')).toBe(null);
+    // The one that matters: connections.json is text, so "not text" was a lie —
+    // and it is the file somebody actually went looking for an answer about.
+    expect(readOnlyReason('connections.json')).toContain('Connections page');
+    expect(readOnlyReason('chart.png')).toContain('picture');
+    expect(readOnlyReason('report.pdf')).toContain('PDF');
   });
 });
 

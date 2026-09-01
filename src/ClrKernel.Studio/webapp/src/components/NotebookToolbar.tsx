@@ -25,6 +25,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import type { BranchStanding } from '../api';
+import type { PreviewKind } from '../notebook';
 import { STATUS_LABEL, STATUS_TITLE, type SaveStatus } from '../autosave';
 import {
   kernelLabel, promoteControl, showsExecution, toolbarLayout,
@@ -84,8 +85,12 @@ export interface NotebookToolbarProps {
   isNotebook: boolean;
   /** A `.csx`: one cell, so nothing to add cells to or focus on. */
   isScript: boolean;
-  /** A picture: there is no text to diff and nothing to save. */
-  isImage: boolean;
+  /** What the Preview tab would render, or null when the file has no preview. */
+  preview: PreviewKind | null;
+  /** No text in it: no Source tab over mojibake, and nothing to diff. */
+  binary: boolean;
+  /** Why this file cannot be written, or null when it can. */
+  readOnlyReason: string | null;
   /** Only a *.jobs.yaml has an Overview tab — the form over the same file. */
   isJobsFile: boolean;
   canRun: boolean;
@@ -424,12 +429,14 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             <TabsTrigger value="edit">{props.isScript ? 'Script' : 'Notebook'}</TabsTrigger>
           )}
           {props.isJobsFile && <TabsTrigger value="overview">Overview</TabsTrigger>}
-          <TabsTrigger value="source">
-            {props.isJobsFile ? 'YAML' : props.isImage ? 'Preview' : 'Source'}
-          </TabsTrigger>
-          {/* A picture has no text to compare; both sides of the diff come back
-              through the route that reads a file as text. */}
-          {!props.isImage && <TabsTrigger value="diff">Diff vs production</TabsTrigger>}
+          {props.preview != null && <TabsTrigger value="preview">Preview</TabsTrigger>}
+          {/* A picture and a PDF have no source to read, and nothing to compare
+              two of: both sides of a diff come back through the route that reads
+              a file as text. */}
+          {!props.binary && (
+            <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
+          )}
+          {!props.binary && <TabsTrigger value="diff">Diff vs production</TabsTrigger>}
         </TabsList>
       </Tabs>
 
@@ -544,9 +551,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           toolbar that quietly has no Save on it and an editor that ignores your
           typing. Only on your own branch — on test or prod the branch note below
           is the more important of the two, and two notes is noise. */}
-      {props.branch === 'mine' && !props.fileEditable && (
+      {props.branch === 'mine' && props.readOnlyReason != null && (
         <span className="whitespace-nowrap text-xs text-muted-subtle">
-          {props.isImage ? 'read-only — a picture opens to look at' : 'read-only — this file is not text'}
+          {props.readOnlyReason}
         </span>
       )}
 

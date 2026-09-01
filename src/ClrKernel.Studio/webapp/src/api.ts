@@ -645,12 +645,12 @@ export const api = {
     request<{ environments: BranchTree[] }>(`${project()}/notebooks`),
 
   /**
-   * Where the browser fetches a picture from — a URL rather than a call, because
-   * it is what goes in an `<img src>`. The session cookie rides along with it on
-   * its own, the same as every other request here.
+   * Where the browser fetches a file it will *show* — a URL rather than a call,
+   * because it is what goes in an `<img src>` or an `<iframe src>`. The session
+   * cookie rides along with it on its own, the same as every other request here.
    */
-  notebookImageUrl: (env: string, path: string) =>
-    `/api${scope(env)}/notebooks/image?path=${encodeURIComponent(path)}`,
+  notebookFileUrl: (env: string, path: string) =>
+    `/api${scope(env)}/notebooks/file?path=${encodeURIComponent(path)}`,
 
   notebookContent: (env: string, path: string) =>
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)
