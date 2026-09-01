@@ -133,39 +133,130 @@ export function isJobsFile(path: string): boolean {
 }
 
 /**
- * Whether this path may be written on your own branch.
- *
- * Mirrors `NotebookTree.IsEditable`, which is the authority — the server refuses
- * the save either way. This exists so the editor can open a file read-only
- * instead of offering a Save that will be rejected.
- *
- * Everything else is browsable and readable. Widening it is a trust-boundary
- * decision rather than a convenience: a worktree contains its own `.git`, and
- * `.scratch` holds the query editor's buffer.
+ * Text files the browser edits, mirroring `NotebookTree._editableExtensions`.
+ * The server is the authority — it refuses the save either way — and this exists
+ * so the editor can open a file read-only instead of offering a Save that fails.
  */
+const EDITABLE_EXTENSIONS = [
+  '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.properties', '.env',
+  '.txt', '.md', '.csv', '.tsv', '.log', '.rst',
+  '.sql', '.py', '.sh', '.bash', '.zsh', '.ps1', '.psm1', '.r', '.rb', '.lua',
+  '.cs', '.fs', '.fsx', '.vb', '.java', '.go', '.rs',
+  '.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx', '.css', '.scss', '.html', '.htm',
+  '.xml', '.xaml', '.csproj', '.props', '.targets', '.sln', '.svg', '.http',
+  '.nb.md', '.ipynb', '.dib', '.csx',
+];
+
+/** Files whose whole name is the type — `NotebookTree._editableNames`. */
+const EDITABLE_NAMES = [
+  '.gitignore', '.gitattributes', '.editorconfig', '.dockerignore', '.gitmodules',
+  'dockerfile', 'makefile', 'license', 'readme', 'changelog',
+];
+
+/**
+ * Written by the server from the saved connections, not by hand. Listed and
+ * readable; an edit would be deleted and rebuilt the next time a connection
+ * changes, so the server refuses it and points at the Connections page.
+ */
+const GENERATED_NAMES = ['connections.json', 'connections.local.json'];
+
+/** Pictures. Viewable, never editable — an `.svg` is the exception and is text. */
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp', '.ico', '.svg'];
+
+/** Whether this path may be written on your own branch. */
 export function fileEditable(path: string): boolean {
+  const name = (path ?? '').toLowerCase().split('/').pop() ?? '';
+  if (GENERATED_NAMES.includes(name)) {
+    return false;
+  }
+  return EDITABLE_NAMES.includes(name)
+    || EDITABLE_EXTENSIONS.some((e) => name.endsWith(e));
+}
+
+/** Whether this is a picture — shown rather than opened in an editor. */
+export function isImage(path: string): boolean {
   const name = (path ?? '').toLowerCase();
-  return name.endsWith('.jobs.yaml')
-    || ['.nb.md', '.ipynb', '.dib', '.csx'].some((e) => name.endsWith(e));
+  // An `.svg` is both, and text wins: it is a document you can meaningfully edit,
+  // which is what the server's editable rule says about it too.
+  return !name.endsWith('.svg') && IMAGE_EXTENSIONS.some((e) => name.endsWith(e));
+}
+
+/**
+ * Whether this file opens as cells — with run buttons and an output pane —
+ * rather than as one editor over the whole text.
+ *
+ * A `.csx` is one C# cell. The file is the cell body: it stays a plain script on
+ * disk, and the kernel that runs a C# cell is the thing that runs it.
+ *
+ * `.nb.md` and not a plain `.md`: a README is prose, and prose that goes through
+ * the notebook parser and back loses the blank lines at the end of the file.
+ * Mirrors `OpensAsCells` on the server, which refuses the save either way.
+ */
+export function opensAsCells(path: string): boolean {
+  return /\.nb\.md$/i.test(path ?? '') || isScript(path);
+}
+
+/** A script: one cell, and no structure to add cells to. */
+export function isScript(path: string): boolean {
+  return /\.csx$/i.test(path ?? '');
 }
 
 /**
  * The Monaco language for a whole file — the Source tab and the production diff,
  * where there are no cells to ask. A notebook that is not `.nb.md` (`.ipynb`,
- * `.dib`, `.csx`) opens as source, so those need an answer too.
+ * `.dib`) opens as source, so those need an answer too.
  */
+const FILE_LANGUAGES: [string, string][] = [
+  ['.jobs.yaml', 'yaml'],
+  ['.ipynb', 'json'],
+  ['.json', 'json'],
+  ['.jsonc', 'json'],
+  ['.yaml', 'yaml'],
+  ['.yml', 'yaml'],
+  ['.csx', 'csharp'],
+  ['.dib', 'csharp'],
+  ['.cs', 'csharp'],
+  ['.sql', 'sql'],
+  ['.py', 'python'],
+  ['.sh', 'shell'],
+  ['.bash', 'shell'],
+  ['.zsh', 'shell'],
+  ['.ps1', 'powershell'],
+  ['.psm1', 'powershell'],
+  ['.js', 'javascript'],
+  ['.mjs', 'javascript'],
+  ['.cjs', 'javascript'],
+  ['.ts', 'typescript'],
+  ['.tsx', 'typescript'],
+  ['.jsx', 'javascript'],
+  ['.css', 'css'],
+  ['.scss', 'scss'],
+  ['.html', 'html'],
+  ['.htm', 'html'],
+  ['.svg', 'xml'],
+  ['.xml', 'xml'],
+  ['.xaml', 'xml'],
+  ['.csproj', 'xml'],
+  ['.props', 'xml'],
+  ['.targets', 'xml'],
+  ['.toml', 'ini'],
+  ['.ini', 'ini'],
+  ['.cfg', 'ini'],
+  ['.conf', 'ini'],
+  ['.env', 'ini'],
+  ['.go', 'go'],
+  ['.rs', 'rust'],
+  ['.java', 'java'],
+  ['.rb', 'ruby'],
+  ['.lua', 'lua'],
+  ['.md', 'markdown'],
+];
+
 export function fileLanguage(path: string): string {
-  const name = path.toLowerCase();
-  if (name.endsWith('.ipynb')) {
-    return 'json';
-  }
-  if (name.endsWith('.yaml') || name.endsWith('.yml')) {
-    return 'yaml';
-  }
-  if (name.endsWith('.csx') || name.endsWith('.dib')) {
-    return 'csharp';
-  }
-  return 'markdown';
+  const name = (path ?? '').toLowerCase();
+  // Longest first: `.jobs.yaml` before `.yaml`, and `.ipynb` before anything that
+  // ends in `b`. The table is in that order, so the first hit is the right one.
+  return FILE_LANGUAGES.find(([extension]) => name.endsWith(extension))?.[1] ?? 'plaintext';
 }
 
 /** The label shown in a cell's language picker. */

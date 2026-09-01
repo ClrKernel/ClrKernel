@@ -90,11 +90,14 @@ public class NotebookTreeTest {
     [TestMethod]
     public void Every_file_is_listed_and_says_whether_it_can_be_edited() {
         File.WriteAllText(Path.Combine(_root, "etl", "query.sql"), "SELECT 1");
+        File.WriteAllBytes(Path.Combine(_root, "logo.png"), new byte[] { 0x89, 0x50, 0x4E, 0x47 });
         var tree = NotebookTree.Build(_root, new JobCatalog(_root).Load());
 
         var readme = tree.Children.Single(c => c.Name == "readme.txt");
         Assert.AreEqual("file", readme.Kind);
-        Assert.IsFalse(readme.Editable, "a .txt is browsable, not writable");
+        Assert.IsTrue(readme.Editable, "a .txt is text, and text is what this edits");
+        Assert.IsFalse(tree.Children.Single(c => c.Name == "logo.png").Editable,
+            "a picture opens to look at");
 
         var etl = tree.Children.Single(c => c.IsDirectory);
         Assert.AreEqual("file", etl.Children.Single(c => c.Name == "query.sql").Kind);
@@ -113,23 +116,64 @@ public class NotebookTreeTest {
         Assert.IsTrue(NotebookTree.IsEditable("a/b.nb.md"));
         Assert.IsTrue(NotebookTree.IsEditable("a/b.ipynb"));
         Assert.IsTrue(NotebookTree.IsEditable("a/b.JOBS.YAML"));
-        Assert.IsFalse(NotebookTree.IsEditable("a/b.yaml"), "a plain yaml is not a jobs file");
-        Assert.IsFalse(NotebookTree.IsEditable("a/b.txt"));
-        Assert.IsFalse(NotebookTree.IsEditable("a/b.md"), "only .nb.md is a notebook");
+        // Text, whatever kind of text. The tool that opens it is a text editor.
+        Assert.IsTrue(NotebookTree.IsEditable("settings.json"));
+        Assert.IsTrue(NotebookTree.IsEditable("a/b.yaml"));
+        Assert.IsTrue(NotebookTree.IsEditable("a/b.txt"));
+        Assert.IsTrue(NotebookTree.IsEditable("a/b.md"));
+        Assert.IsTrue(NotebookTree.IsEditable("a/logo.svg"), "an svg is a document as well as a picture");
+        Assert.IsTrue(NotebookTree.IsEditable("a/.gitignore"), "a dot-file is still a file");
     }
 
     /// <summary>
-    /// Dot-files are noise: .DS_Store, and the `.*.saving` staging file a crash
-    /// mid-write leaves behind — which is half a notebook and must not look like one.
+    /// The half that stops the widening from being a hole. It is handed a resolved
+    /// absolute path, so git's own storage arrives looking like ordinary files —
+    /// <c>.git/config</c> has no extension and <c>.git/HEAD</c> is not a notebook,
+    /// but <c>.git/description</c> would sail through a plain extension check.
     /// </summary>
     [TestMethod]
-    public void Dot_files_stay_out_of_the_tree() {
+    public void Nothing_under_a_protected_name_is_editable() {
+        Assert.IsFalse(NotebookTree.IsEditable("/w/mine/.git/config"));
+        Assert.IsFalse(NotebookTree.IsEditable("/w/mine/.git/hooks/pre-commit.sh"));
+        Assert.IsFalse(NotebookTree.IsEditable("/w/.repo.git/description"));
+        // Not `.scratch`: it is hidden from the tree because it belongs to the
+        // tool rather than to the project, and the query editor writes to it.
+        Assert.IsTrue(NotebookTree.IsEditable("/w/mine/.scratch/query.sql"));
+        Assert.IsFalse(NotebookTree.IsEditable("/w/mine/.nightly.nb.md.saving"));
+        // And a picture is not text, however editable the folder it sits in is.
+        Assert.IsFalse(NotebookTree.IsEditable("a/chart.png"));
+        Assert.IsFalse(NotebookTree.IsEditable("a/report.pdf"));
+        // Generated from the saved connections, so an edit here would be undone.
+        Assert.IsFalse(NotebookTree.IsEditable("a/connections.json"));
+        Assert.IsFalse(NotebookTree.IsEditable("a/connections.local.json"));
+    }
+
+    /// <summary>
+    /// Dot-files show — a repo's `.gitignore` is a file somebody edits. What stays
+    /// out is git's own storage (a worktree's `.git` is a *file*, so the rule has to
+    /// be by name rather than by kind), the scratch buffer, OS junk, and the
+    /// `.*.saving` staging file a crash mid-write leaves behind — which is half a
+    /// notebook and must not look like one.
+    /// </summary>
+    [TestMethod]
+    public void Git_storage_stays_out_of_the_tree_and_ordinary_dot_files_do_not() {
+        File.WriteAllText(Path.Combine(_root, ".gitignore"), "bin/");
         File.WriteAllText(Path.Combine(_root, ".DS_Store"), "junk");
         File.WriteAllText(Path.Combine(_root, "etl", ".nightly.nb.md.saving"), "half a fi");
-        var tree = NotebookTree.Build(_root, new JobCatalog(_root).Load());
+        // What a worktree actually has at its root: a file, not a directory.
+        File.WriteAllText(Path.Combine(_root, ".git"), "gitdir: /w/.repo.git/worktrees/mine");
+        Directory.CreateDirectory(Path.Combine(_root, ".scratch"));
+        File.WriteAllText(Path.Combine(_root, ".scratch", "query.sql"), "SELECT 1");
 
-        Assert.IsFalse(tree.Children.Any(c => c.Name.StartsWith('.')));
-        var etl = tree.Children.Single(c => c.IsDirectory);
-        Assert.IsFalse(etl.Children.Any(c => c.Name.StartsWith('.')));
+        var tree = NotebookTree.Build(_root, new JobCatalog(_root).Load());
+        var names = tree.Children.Select(c => c.Name).ToList();
+
+        CollectionAssert.Contains(names, ".gitignore");
+        Assert.IsTrue(tree.Children.Single(c => c.Name == ".gitignore").Editable);
+        CollectionAssert.DoesNotContain(names, ".git");
+        CollectionAssert.DoesNotContain(names, ".scratch");
+        CollectionAssert.DoesNotContain(names, ".DS_Store");
+        var etl = tree.Children.Single(c => c.IsDirectory && c.Name == "etl");
+        Assert.IsFalse(etl.Children.Any(c => c.Name.EndsWith(".saving")));
     }
 }

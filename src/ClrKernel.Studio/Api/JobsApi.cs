@@ -351,13 +351,45 @@ public static class JobsApi {
                 }
                 // Rooted at the branch's own tree — resolving against the workspace
                 // would happily reach across into the other worktree.
-                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
-                if (resolved == null) {
+                if (Readable(scope, branch, path) is not { } resolved) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
                 return File.Exists(resolved)
                     ? Results.Text(File.ReadAllText(resolved), "text/plain")
                     : Results.NotFound(new { error = $"No such file: {path}" });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // An image, as bytes, for the one thing text cannot do: show it. Narrow on
+        // purpose — this hands the browser a file off the server's disk, so it
+        // serves the types a picture can be and refuses everything else rather
+        // than becoming a general "download any file in the repo" route.
+        //
+        // An SVG is a picture and also a document that can carry script, and the
+        // headers are why it can still be served: nosniff pins the type, and a CSP
+        // of `sandbox` with no origins leaves nothing for a crafted one to run or
+        // reach even when someone opens the URL directly instead of in an <img>.
+        scoped.MapGet("/notebooks/image", (
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string path) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                if (!Reachable(scope, branch)) {
+                    return Results.NotFound(new { error = $"No branch '{branch}'." });
+                }
+                if (Readable(scope, branch, path) is not { } resolved) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                if (ImageContentType(resolved) is not { } contentType) {
+                    return Results.BadRequest(new { error = "Not an image." });
+                }
+                if (!File.Exists(resolved)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+                context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; sandbox";
+                return Results.File(resolved, contentType);
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPut("/notebooks/content", async (
@@ -403,16 +435,17 @@ public static class JobsApi {
                 if (resolved == null) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
-                if (!resolved.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
-                    !resolved.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
-                    return Results.BadRequest(new { error = "Only executable markdown (.nb.md) opens as cells." });
+                if (!OpensAsCells(resolved)) {
+                    return Results.BadRequest(new {
+                        error = "Only executable markdown (.nb.md) and C# scripts (.csx) open as cells.",
+                    });
                 }
                 if (!File.Exists(resolved)) {
                     return Results.NotFound(new { error = $"No such file: {path}" });
                 }
                 var languages = await kernelLanguages.GetAsync();
                 var text = File.ReadAllText(resolved);
-                var cells = NotebookMarkdown.Parse(text, languages);
+                var cells = ParseCells(resolved, text, languages);
                 return Results.Ok(new {
                     cells = cells.Select((c, i) => CellView.From(c, i, languages)),
                     languages,
@@ -437,9 +470,10 @@ public static class JobsApi {
                 if (EditableTarget(context, scope, branch, path) is not { } target) {
                     return TestWriteError(context, scope, branch, path);
                 }
-                if (!target.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
-                    !target.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
-                    return Results.BadRequest(new { error = "Only executable markdown (.nb.md) saves as cells." });
+                if (!OpensAsCells(target)) {
+                    return Results.BadRequest(new {
+                        error = "Only executable markdown (.nb.md) and C# scripts (.csx) save as cells.",
+                    });
                 }
                 CellWrite write;
                 try {
@@ -455,8 +489,7 @@ public static class JobsApi {
                 }
                 var languages = await kernelLanguages.GetAsync();
                 return SaveToBranch(
-                    context, scope, branch, target, path,
-                    NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
+                    context, scope, branch, target, path, SerializeCells(target, write.Cells, languages));
             }).RequiresProject(ProjectRole.ProjectMember);
 
         // Renaming, and moving out of the scratch folder — one operation, because
@@ -1817,9 +1850,18 @@ public static class JobsApi {
                     : "test and prod are read-only. Edit on your own branch and push to test.",
             });
         }
-        return NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null
-            ? Results.BadRequest(new { error = "Path is outside your branch." })
-            : Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
+        if (NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null) {
+            return Results.BadRequest(new { error = "Path is outside your branch." });
+        }
+        if (NotebookTree.IsGenerated(Path.GetFileName(path))) {
+            return Results.BadRequest(new {
+                error = "This file is written from your saved connections — edit it on the "
+                    + "Connections page. A change here is undone the next time one is saved.",
+            });
+        }
+        return Results.BadRequest(new {
+            error = "That file is not one this edits — notebooks, jobs files and text files are.",
+        });
     }
 
     /// <summary>
@@ -2040,6 +2082,87 @@ public static class JobsApi {
         }
         return invalid;
     }
+
+    /// <summary>
+    /// Whether this file is edited as cells rather than as text.
+    ///
+    /// <para>
+    /// A <c>.csx</c> is one C# cell: the file *is* the cell body, so it opens with a
+    /// run button and an output pane and stays a plain script on disk. That is the
+    /// whole trick — the kernel already runs a C# cell, and a script is one.
+    /// </para>
+    /// <para>
+    /// <c>.nb.md</c> and not a plain <c>.md</c>, which this used to accept. A
+    /// <c>README.md</c> is prose, and prose taken apart into cells and put back
+    /// together comes back *nearly* identical — near enough to look fine and to
+    /// lose the blank lines at the end of the file. That was harmless while every
+    /// save of one was refused; it stopped being harmless when text became
+    /// editable. A plain <c>.md</c> opens at Source and is written as the bytes it
+    /// is, which is what it was all along.
+    /// </para>
+    /// </summary>
+    private static bool OpensAsCells(string path) =>
+        path.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".csx", StringComparison.OrdinalIgnoreCase);
+
+    private static IReadOnlyList<MarkdownCell> ParseCells(
+        string path, string text, IReadOnlyList<LanguageDescriptor> languages) =>
+        path.EndsWith(".csx", StringComparison.OrdinalIgnoreCase)
+            // Verbatim, with no trim: the editor saves what it loaded, and a script
+            // that comes back one newline shorter than it went in is a commit
+            // nobody made — which is what invalidates a notebook's promotion evidence.
+            ? new[] { new MarkdownCell { Kind = CellKind.Code, Tag = "csharp", Source = text } }
+            : NotebookMarkdown.Parse(text, languages);
+
+    private static string SerializeCells(
+        string path, List<CellEdit> cells, IReadOnlyList<LanguageDescriptor> languages) {
+        if (!path.EndsWith(".csx", StringComparison.OrdinalIgnoreCase)) {
+            return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)));
+        }
+        // The one cell, byte for byte. More than one can only come from a client
+        // that offered a button this one does not, and joining them is a better
+        // answer than losing the rest — a `.csx` has nowhere to put a cell break.
+        return cells.Count == 1
+            ? cells[0].Source ?? string.Empty
+            : string.Join("\n\n", cells.Select(c => c.Source ?? string.Empty));
+    }
+
+    /// <summary>
+    /// The absolute path a read may target, or null when it may not.
+    ///
+    /// <para>
+    /// <see cref="NotebookTree.SafeResolve"/> keeps a path inside the branch's
+    /// worktree; this adds the one thing the tree already knows and the read routes
+    /// did not, which is that git's own storage is not a file in the project.
+    /// Hiding <c>.git</c> from the listing while <c>?path=.git/config</c> answered
+    /// is the sort of difference nobody means, and Project Viewer is enough to ask.
+    /// </para>
+    /// </summary>
+    private static string Readable(Scope scope, string branch, string path) {
+        var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
+        if (resolved == null) {
+            return null;
+        }
+        foreach (var segment in path.Split('/', '\\')) {
+            if (NotebookTree.IsProtected(segment)) {
+                return null;
+            }
+        }
+        return resolved;
+    }
+
+    /// <summary>The image type this file is, or null when it is not one.</summary>
+    private static string ImageContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".avif" => "image/avif",
+        ".bmp" => "image/bmp",
+        ".ico" => "image/x-icon",
+        ".svg" => "image/svg+xml",
+        _ => null,
+    };
 
     private static IResult SaveToBranch(
         HttpContext context, Scope scope, string branch, string resolved, string path, string content,

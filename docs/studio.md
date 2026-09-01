@@ -924,8 +924,8 @@ from. They are three readings of one file, not three permissions: read-only come
 from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
-one. A file that does not parse into cells — an `.ipynb`, a `.csx` — has no
-Notebook view and opens at Source.
+one. A file that does not parse into cells — an `.ipynb`, a plain `.md`, a
+picture — has no Notebook view and opens at Source.
 
 `/files` on its own — what the rail links to, and what you get from a bookmark —
 opens the project you were last in, remembered per browser. Links
@@ -1214,6 +1214,42 @@ the jobs file for you, so those jobs are broken until you point them at the new 
 Execution is refused unless you are a Server Admin, the git workflow is on, the file is
 in your own branch, and the path resolves inside your worktree. Reading and diffing still
 work for everyone; only running and saving are gated.
+
+### Everything else in the project
+
+Files lists the **whole project**, not only notebooks and `*.jobs.yaml` — the SQL beside
+the notebook that runs it, a `README.md`, the `.gitignore`. Dot-files are in there too.
+What is left out is git's own storage (`.git`, which in a worktree is a file rather than
+a directory, and the bare `.repo.git`), the scratch buffer the query editor keeps, build
+output (`bin`, `obj`, `node_modules`) and `.DS_Store`.
+
+**Text opens in an editor and saves like anything else.** JSON, YAML, SQL, Python, shell,
+Markdown, `.gitignore` — Monaco with that language's highlighting, and for JSON its
+validation as well, on the Source tab and under the same rules as a notebook: your own
+branch, autosaved, every save a commit. The rule is one function on the server
+(`NotebookTree.IsEditable`), so the toolbar never offers a Save the save route will
+refuse. A plain `.md` is prose and is written as the bytes it is: only a `.nb.md`
+opens as cells, because prose taken apart into cells and put back together loses the
+blank lines at the end of the file, and a save is a commit.
+
+**A `.csx` is one C# cell.** It opens with a run button and an output pane, runs against
+the same warm kernel a notebook uses, and `Console.WriteLine` lands in the output below
+it — and it stays a plain script on disk, with no fences and no cell markers. There is
+nothing to add a cell to and no language to pick, so those controls are not there. The
+file is written back byte for byte: opening one and closing it changes nothing, which
+matters because a save is a commit and a commit invalidates the "unchanged since that
+run" half of the promotion check.
+
+**Pictures open to look at.** PNG, JPEG, GIF, WebP, AVIF, BMP and ICO render on a
+chequerboard so transparency reads as transparency; there is no Save and no diff, because
+there is no text. An **SVG is the exception** and opens as text — it is a document you can
+meaningfully edit — and is served with `nosniff` and a `sandbox` CSP when it is shown as a
+picture, because an SVG can carry script. Anything else binary is listed and read-only.
+
+The one file this deliberately will not let you edit is **`connections.json`** (and
+`connections.local.json`) in a worktree: those are written from your saved connections
+every time one changes, so an edit here would be deleted and rebuilt with nothing to say
+why. Studio says so and points at the Connections page.
 
 ## Docker
 

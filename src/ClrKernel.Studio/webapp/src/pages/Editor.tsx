@@ -44,13 +44,16 @@ import {
   emptyCell,
   fileEditable,
   fileLanguage,
+  isImage,
   isJobsFile,
+  isScript,
   notebookPaths,
   insertCell,
   isDirty,
   keepIds,
   mergeStatus,
   moveCell,
+  opensAsCells,
   pushUndo,
   removeCell,
   restoreCells,
@@ -100,7 +103,15 @@ export function Editor() {
   // Set during render, not in an effect, because the polls below start in effects
   // and would otherwise make their first request against the branch you left.
   setBranch(branch);
-  const isNotebook = /\.(nb\.)?md$/i.test(path);
+  // Which files open as cells — a `.nb.md`, and a `.csx`, which is one C# cell.
+  // Not the same question as "is this markdown": scheduling and the cells API say
+  // yes to both, and the two cell-level things a script has no room for (adding a
+  // cell, picking a language for it) are off separately in `script`.
+  const cellFile = opensAsCells(path);
+  const script = isScript(path);
+  // A picture is looked at, not opened. Read before the content fetch, because
+  // that fetch is `File.ReadAllText` on the server and a PNG through it is noise.
+  const image = isImage(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
   const [privateConnections, setPrivateConnections] = useState<string[]>([]);
@@ -137,7 +148,7 @@ export function Editor() {
   // is a link from elsewhere rather than a choice — Source is the honest answer.
   const jobsFile = isJobsFile(path);
   const tab: NotebookView =
-    (asked === 'edit' && !isNotebook) || (asked === 'overview' && !jobsFile) ? 'source' : asked;
+    (asked === 'edit' && !cellFile) || (asked === 'overview' && !jobsFile) ? 'source' : asked;
   useEffect(() => {
     if (tab !== asked) {
       navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
@@ -244,7 +255,7 @@ export function Editor() {
   // BranchAllows provider, so its own hook call reads the value from outside it.
   // Which branch may run is `allows.run`, and the controls themselves ask
   // useCanRun() from inside.
-  const canRun = canWrite && isNotebook && !(sessionError != null && session == null);
+  const canRun = canWrite && cellFile && !(sessionError != null && session == null);
   const running = (session?.running ?? false) || pollFast;
   const runState = mergeStatus(cells ?? [], session, ranSource.current);
 
@@ -252,7 +263,7 @@ export function Editor() {
   // notebook; everywhere else the cells are.
   // Overview edits the same text `source` holds — it is a form over the file, not
   // a second model — so it saves, diffs and dirties through exactly this path.
-  const editingText = tab === 'source' || tab === 'overview' || !isNotebook;
+  const editingText = tab === 'source' || tab === 'overview' || !cellFile;
   const dirty = editingText
     ? source != null && source !== savedSource
     : cells != null && isDirty(cells, saved);
@@ -296,6 +307,12 @@ export function Editor() {
           setReloads((n) => n + 1);
         })
         .catch((e) => live && setError((e as Error).message));
+    } else if (image) {
+      // Nothing to read: the picture is an <img> pointed at its own route. The
+      // text route would answer with File.ReadAllText over a PNG, which is a
+      // screenful of replacement characters and an editor offering to save them.
+      setSource('');
+      setSavedSource('');
     } else {
       api
         .notebookContent(branch, path)
@@ -315,7 +332,7 @@ export function Editor() {
     return () => {
       live = false;
     };
-  }, [path, branch, tab]);
+  }, [path, branch, tab, image]);
 
   // Mode and layout are remembered, but nothing here ever reaches the notebook
   // file — how you were looking at it is not part of what it says.
@@ -459,16 +476,16 @@ export function Editor() {
   // reason to want completion is that you have not run anything yet. Failures are
   // not reported here: the status poll below is what tells the user, once.
   useEffect(() => {
-    if (isNotebook && allows.run) {
+    if (cellFile && allows.run) {
       api.startSession(path).catch(() => undefined);
     }
-  }, [path, branch, isNotebook, allows.run]);
+  }, [path, branch, cellFile, allows.run]);
 
   // What the editor has open, told to the kernel on a debounce. Language features
   // answer about documents the server holds, so this is what makes them work at all
   // — and it is authoritative, so a deleted cell stops contributing its symbols.
   useEffect(() => {
-    if (!isNotebook || cells == null || !canRun || !allows.run) {
+    if (!cellFile || cells == null || !canRun || !allows.run) {
       return;
     }
     let followUp: ReturnType<typeof setTimeout> | undefined;
@@ -492,7 +509,7 @@ export function Editor() {
         clearTimeout(followUp);
       }
     };
-  }, [path, branch, isNotebook, cells, canRun, allows.run, reloadSession]);
+  }, [path, branch, cellFile, cells, canRun, allows.run, reloadSession]);
 
   /**
    * Asks once before anything runs against production, naming what it is about to
@@ -606,7 +623,7 @@ export function Editor() {
       setSource(text);
       setSavedSource(text);
       setReloads((n) => n + 1);
-      if (isNotebook) {
+      if (cellFile) {
         const reloaded = await api.notebookCells(branch, path);
         setCells(keepIds(reloaded.cells, []));
         setSaved(reloaded.cells);
@@ -937,7 +954,9 @@ export function Editor() {
           await flush();
           navigate(editPath(projectSlug(), branch, path, next as NotebookView));
         }}
-        isNotebook={isNotebook}
+        isNotebook={cellFile}
+        isScript={script}
+        isImage={image}
         isJobsFile={jobsFile}
         canRun={canRun}
         running={running}
@@ -961,7 +980,7 @@ export function Editor() {
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
         onMove={move}
-        onSchedule={isNotebook ? schedule : undefined}
+        onSchedule={cellFile ? schedule : undefined}
       />
 
       {/* Focus Mode measures itself to the bottom of this scroller and gives
@@ -990,7 +1009,7 @@ export function Editor() {
             {/* Run All, Restart, the kernel badge and the mode toggle all live
                 in the one toolbar now. What is left here is the notices, which
                 are about this notebook rather than about the page. */}
-            {!canRun && isNotebook && (
+            {!canRun && cellFile && (
               <p className="px-4 text-base text-muted-foreground">
                 Running cells is unavailable here: {sessionError}
               </p>
@@ -1083,7 +1102,9 @@ export function Editor() {
               />
             ) : (
               <div className="px-4">
-            <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
+            {!script && (
+              <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
+            )}
             {cells.map((cell, index) => (
               // The reload counter is in the key so a file replaced under the
               // editor — a merge from test — redraws its cells rather than
@@ -1111,14 +1132,17 @@ export function Editor() {
                   onCopy={() => copyCell(index)}
                   onPaste={(where) => pasteCell(where === 'above' ? index : index + 1)}
                   onRun={(mode) => run(index, mode)}
+                  single={script}
                   cleared={cleared.has(cell.id)}
                   onClearOutput={() => setCleared((current) => new Set(current).add(cell.id))}
                   onConnect={() => setConnectFor(index)}
                 />
-                <CellInserter
-                  always={index === cells.length - 1}
-                  onInsert={(kind) => insertAt(index + 1, kind)}
-                />
+                {!script && (
+                  <CellInserter
+                    always={index === cells.length - 1}
+                    onInsert={(kind) => insertAt(index + 1, kind)}
+                  />
+                )}
               </div>
             ))}
               </div>
@@ -1141,7 +1165,25 @@ export function Editor() {
         )
       )}
 
-      {tab === 'source' && (
+      {tab === 'source' && image && (
+        // Centred on a chequerboard, so transparency reads as transparency rather
+        // than as whatever the theme's background happens to be that day.
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+          <img
+            src={api.notebookImageUrl(branch, path)}
+            alt={path}
+            className="max-h-full max-w-full rounded-lg border border-border object-contain"
+            style={{
+              backgroundColor: 'var(--color-card)',
+              backgroundImage:
+                'repeating-conic-gradient(var(--color-muted) 0% 25%, transparent 0% 50%)',
+              backgroundSize: '16px 16px',
+            }}
+          />
+        </div>
+      )}
+
+      {tab === 'source' && !image && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {source == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
@@ -1158,7 +1200,7 @@ export function Editor() {
         </div>
       )}
 
-      {tab === 'diff' && (
+      {tab === 'diff' && !image && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {prod == null || savedSource == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>

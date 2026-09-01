@@ -59,6 +59,9 @@ interface Props {
   cleared: boolean;
   /** Something has been cut or copied, so Paste has somewhere to come from. */
   clipboard: boolean;
+  /** The whole file is this one cell — a `.csx`. Structure and the language
+   *  picker go away; running it does not. */
+  single?: boolean;
   onChange: (source: string) => void;
   onLanguage: (value: string) => void;
   onMove: (to: number) => void;
@@ -80,8 +83,12 @@ interface Props {
 export function CellEditor({
   cell, index, count, languages, path, diagnostics, connectionId, connectionType, run, canRun,
   busy, cleared, clipboard, onChange, onLanguage, onMove, onDelete, onCut, onCopy, onPaste, onRun,
-  onClearOutput, onConnect,
+  onClearOutput, onConnect, single = false,
 }: Props) {
+  // A `.csx` is the one cell there is: no cell to move it above, none to delete it
+  // in favour of, and no language to change it to — the file's extension is the
+  // language. Hiding those is what makes it read as a script rather than as a
+  // notebook that happens to have one cell.
   const isMarkdown = cell.kind === 'markdown';
   const [editing, setEditing] = useState(false);
   const showPreview = isMarkdown && !editing && cell.source.trim().length > 0;
@@ -145,7 +152,7 @@ export function CellEditor({
                 </Button>
               </>
             )}
-            {canWrite && (
+            {canWrite && !single && (
               <>
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onMove(index - 1)} disabled={index === 0} title="Move up">
                   ↑
@@ -201,7 +208,7 @@ export function CellEditor({
                 ⛁ Connect
               </Button>
             )}
-            {canWrite ? (
+            {canWrite && !single ? (
               <Select value={picked} onValueChange={onLanguage}>
                 <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
                   {/* Its own label rather than the selected item's markup: the
@@ -214,7 +221,8 @@ export function CellEditor({
                 </SelectContent>
               </Select>
             ) : (
-              // A viewer sees which language a cell is, but cannot change it.
+              // A viewer sees which language a cell is, but cannot change it — and
+              // so does a script, whose language its extension already decided.
               <span className="px-1.5 text-sm text-muted-subtle">
                 {languageLabelFor(picked, languages)}
               </span>

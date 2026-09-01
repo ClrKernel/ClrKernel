@@ -82,6 +82,10 @@ export interface NotebookToolbarProps {
   onTab: (tab: string) => void;
   /** Only a .nb.md has a Notebook tab; anything else opens straight to Source. */
   isNotebook: boolean;
+  /** A `.csx`: one cell, so nothing to add cells to or focus on. */
+  isScript: boolean;
+  /** A picture: there is no text to diff and nothing to save. */
+  isImage: boolean;
   /** Only a *.jobs.yaml has an Overview tab — the form over the same file. */
   isJobsFile: boolean;
   canRun: boolean;
@@ -357,6 +361,8 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   const isAdmin = useIsProjectAdmin();
   const isMember = useIsProjectMember();
   const execution = showsExecution(props.tab) && props.canRun && mayRun;
+  // One cell is already all of it. Focus Mode shows one cell at a time.
+  const focusable = !props.isScript;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
   // Not `canWrite`: promoting is not a write to your branch, and taking the
   // branch rule from the write rule is what kept this button off the test view.
@@ -414,10 +420,16 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
     >
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
         <TabsList variant="line">
-          {props.isNotebook && <TabsTrigger value="edit">Notebook</TabsTrigger>}
+          {props.isNotebook && (
+            <TabsTrigger value="edit">{props.isScript ? 'Script' : 'Notebook'}</TabsTrigger>
+          )}
           {props.isJobsFile && <TabsTrigger value="overview">Overview</TabsTrigger>}
-          <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
-          <TabsTrigger value="diff">Diff vs production</TabsTrigger>
+          <TabsTrigger value="source">
+            {props.isJobsFile ? 'YAML' : props.isImage ? 'Preview' : 'Source'}
+          </TabsTrigger>
+          {/* A picture has no text to compare; both sides of the diff come back
+              through the route that reads a file as text. */}
+          {!props.isImage && <TabsTrigger value="diff">Diff vs production</TabsTrigger>}
         </TabsList>
       </Tabs>
 
@@ -438,6 +450,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           </span>
           )}
 
+          {focusable && (
           <ToggleGroup
             type="single"
             variant="outline"
@@ -457,6 +470,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
               Focus
             </ToggleGroupItem>
           </ToggleGroup>
+          )}
 
           <Separator orientation="vertical" className="h-5" />
 
@@ -506,7 +520,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
 
       {/* The Normal|Focus switch is not a write, so it stays for viewers — Focus
           Mode is a reading layout as much as an editing one. */}
-      {!execution && showsExecution(props.tab) && (
+      {!execution && showsExecution(props.tab) && focusable && (
         <div className="flex items-center gap-2">
           <ToggleGroup
             type="single"
@@ -532,7 +546,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           is the more important of the two, and two notes is noise. */}
       {props.branch === 'mine' && !props.fileEditable && (
         <span className="whitespace-nowrap text-xs text-muted-subtle">
-          read-only — only notebooks and <code className="font-mono">*.jobs.yaml</code> are editable
+          {props.isImage ? 'read-only — a picture opens to look at' : 'read-only — this file is not text'}
         </span>
       )}
 

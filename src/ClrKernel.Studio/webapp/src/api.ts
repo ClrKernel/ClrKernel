@@ -644,6 +644,14 @@ export const api = {
   notebooks: () =>
     request<{ environments: BranchTree[] }>(`${project()}/notebooks`),
 
+  /**
+   * Where the browser fetches a picture from — a URL rather than a call, because
+   * it is what goes in an `<img src>`. The session cookie rides along with it on
+   * its own, the same as every other request here.
+   */
+  notebookImageUrl: (env: string, path: string) =>
+    `/api${scope(env)}/notebooks/image?path=${encodeURIComponent(path)}`,
+
   notebookContent: (env: string, path: string) =>
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
