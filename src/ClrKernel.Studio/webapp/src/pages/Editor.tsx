@@ -1,5 +1,5 @@
+import { MarkdownBody } from '../components/MarkdownBody';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Markdown from 'react-markdown';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError, api, projectSlug, setBranch,
@@ -1271,8 +1271,8 @@ function FilePreview({
         {source == null ? (
           <p className="text-base text-muted-foreground">Loading…</p>
         ) : (
-          <div className="markdown-body max-w-[80ch]">
-            <Markdown>{source}</Markdown>
+          <div className="max-w-[80ch]">
+            <MarkdownBody>{source}</MarkdownBody>
           </div>
         )}
       </div>

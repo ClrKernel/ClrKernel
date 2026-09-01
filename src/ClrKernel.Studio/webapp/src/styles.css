@@ -282,10 +282,21 @@
   .markdown-body h3 {
     font-size: 1rem;
   }
-  .markdown-body h4,
-  .markdown-body h5,
-  .markdown-body h6 {
+  .markdown-body h4 {
     font-size: 0.9375rem;
+  }
+  /* The deep levels differ by weight and colour rather than by size: below h4
+     there is not enough size left to tell one from the next, and four headings
+     that all look alike is the same problem as no headings at all. */
+  .markdown-body h5 {
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+  }
+  .markdown-body h6 {
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .markdown-body ul {
@@ -313,9 +324,12 @@
     color: var(--muted-foreground);
   }
 
-  /* Inline code only. A fenced block is `pre > code` and paints itself. */
+  /* Inline code only. A fenced block is `pre > code` and paints itself.
+     `--muted`, not `--code-bg`: the latter is exactly Monaco's editor background,
+     which is all but white — a chip of it on a page this colour is invisible, and
+     an inline-code mark that cannot be seen is not a mark. */
   .markdown-body :not(pre) > code {
-    background: var(--code-bg);
+    background: var(--muted);
     border-radius: 4px;
     padding: 0.1em 0.3em;
     font-family: var(--font-mono);
@@ -344,6 +358,25 @@
   .markdown-body th {
     font-weight: 600;
     background: var(--muted);
+  }
+
+  /* GFM. A task list is a list whose markers are checkboxes, so the bullet has to
+     go or every item wears both. */
+  .markdown-body li.task-list-item {
+    list-style: none;
+    margin-left: -1.25rem;
+  }
+  .markdown-body li.task-list-item input {
+    margin-right: 0.45rem;
+    /* The checkbox is a rendering of the source, not a control: react-markdown
+       renders it disabled, and this says so rather than leaving a dimmed box that
+       looks broken. */
+    accent-color: var(--primary);
+    vertical-align: baseline;
+  }
+
+  .markdown-body del {
+    color: var(--muted-foreground);
   }
 
   .markdown-body hr {

@@ -1,3 +1,4 @@
+import { MarkdownBody } from './MarkdownBody';
 import { MoreHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +17,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { LanguageOptions, StatusBadge, languageLabelFor } from './common';
-import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import type { LspDiagnostic } from '../monaco/lsp';
 import { useCellEditor } from '../monaco/useMonaco';
@@ -171,8 +171,8 @@ export function CellEditor({
           </div>
 
           {showPreview ? (
-            <div className="cell-preview markdown-body" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
-              <Markdown>{cell.source}</Markdown>
+            <div className="cell-preview" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
+              <MarkdownBody>{cell.source}</MarkdownBody>
             </div>
           ) : (
             <CellBody

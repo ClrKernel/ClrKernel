@@ -1259,9 +1259,15 @@ CSP, which is what makes serving an SVG or a PDF safe: either can carry script, 
 sandbox leaves it nothing to run or reach. Anything else binary is listed and read-only.
 
 **Markdown previews too.** A `.md` opens at **Source**, because a markdown file in a
-project is usually one you came to change, and **Preview** is the tab beside it. The same
-rendering runs in a notebook's markdown cells and in a finished run's artifact, so all
-three agree about what a document looks like.
+project is usually one you came to change, and **Preview** is the tab beside it. It is
+GitHub-flavoured — tables, task lists, strikethrough and bare URLs, none of which plain
+CommonMark has — and raw HTML is escaped and shown rather than rendered: a document in a
+repository is not a place to run markup from.
+
+The same renderer draws a notebook's markdown cells and a finished run's artifact, so all
+four agree about what a document looks like. `samples/markdownPreviewTest.md` is every
+construct on one page — copy it into your notebooks folder and open its Preview to see
+what a change to the rendering did.
 
 The one file this deliberately will not let you edit is **`connections.json`** (and
 `connections.local.json`) in a worktree: those are written from your saved connections

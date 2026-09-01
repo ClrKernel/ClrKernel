@@ -1,3 +1,4 @@
+import { MarkdownBody } from './MarkdownBody';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CollapsedRail, StatusBadge } from './common';
-import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useFocusEditor } from '../monaco/useMonaco';
 import { useCanRun, useCanWrite } from '../sessionContext';
@@ -541,8 +541,8 @@ function OutputPane({
       }}
     >
       {markdown != null ? (
-        <div className="cell-preview focus-markdown-preview markdown-body">
-          <Markdown>{markdown}</Markdown>
+        <div className="cell-preview focus-markdown-preview">
+          <MarkdownBody>{markdown}</MarkdownBody>
         </div>
       ) : outputs.length === 0 ? (
         <p className="focus-empty">{empty}</p>
