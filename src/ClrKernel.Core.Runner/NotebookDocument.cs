@@ -139,9 +139,29 @@ public static class NotebookDocument {
     /// <summary>Splits a .dib document into cells by #! section markers. C# and
     /// registered-language sections execute; other kernels' sections stay prose.</summary>
     public static IReadOnlyList<NotebookCell> ParseDib(
+        string content, IReadOnlyList<LanguageDescriptor> languages = null) =>
+        DibSections(content, languages)
+            // Execution wants the selector line back: a `#!sql` section is a cell the
+            // engine has to be told the language of. Conversion wants the opposite —
+            // hence the split, rather than un-prepending it afterwards.
+            .Select(s => new NotebookCell(s.Kind,
+                s.Language == null ? s.Text : s.Language.BlockForTag(s.Tag, s.Text)))
+            .ToList();
+
+    /// <summary>One <c>.dib</c> section, before anything is done to its body.</summary>
+    public readonly record struct DibSection(
+        CellKind Kind, string Tag, LanguageDescriptor Language, string Text);
+
+    /// <summary>
+    /// Splits a <c>.dib</c> on its <c>#!</c> markers, keeping each section's tag beside
+    /// its text. The one parse: <see cref="ParseDib"/> projects it for execution and the
+    /// converter projects it for markdown, so the two can never disagree about where a
+    /// cell begins.
+    /// </summary>
+    public static IReadOnlyList<DibSection> DibSections(
         string content, IReadOnlyList<LanguageDescriptor> languages = null) {
         var byTag = LanguageDescriptor.ByTag(languages);
-        var cells = new List<NotebookCell>();
+        var sections = new List<DibSection>();
         var current = new List<string>();
         var kind = CellKind.Code; // leading content defaults to C#
         LanguageDescriptor sectionLanguage = null;
@@ -150,8 +170,7 @@ public static class NotebookDocument {
         void Flush() {
             var text = string.Join("\n", current).Trim();
             if (text.Length > 0) {
-                cells.Add(new NotebookCell(kind,
-                    sectionLanguage == null ? text : sectionLanguage.BlockForTag(sectionTag, text)));
+                sections.Add(new DibSection(kind, sectionTag, sectionLanguage, text));
             }
             current.Clear();
         }
@@ -170,7 +189,7 @@ public static class NotebookDocument {
         }
         Flush();
 
-        return cells;
+        return sections;
     }
 
     /// <summary>Reads .ipynb cells (source only; existing outputs are dropped — we re-execute).</summary>

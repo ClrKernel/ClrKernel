@@ -246,6 +246,15 @@ function cutIntoPages(text, { table, defaultDir, h3Under, rootTitle, drop = [] }
     }
     if (cur) cur.body.push(line);
   }
+  // A document that ends inside a fence was mis-read: every heading after the
+  // opener was treated as code, so those pages simply do not exist. It cost three
+  // of them once, and the only symptom was a page count nobody was checking.
+  if (inFence) {
+    console.log(
+      `sync-content: WARNING ${rootTitle} ends inside an unclosed code fence — `
+      + 'headings after it became part of a cell and their pages are missing. '
+      + 'A line starting with ``` opens a fence even mid-sentence.');
+  }
   return pages;
 }
 
@@ -289,7 +298,8 @@ const readmePages = {
   'Analysis Services (SSAS / Fabric)': { slug: 'analysis-services', order: 7 },
   'Fabric warehouse writes': { slug: 'fabric-warehouse', order: 8 },
   'Headless execution': { slug: 'headless', order: 9 },
-  'Scheduling notebooks — ClrKernel Studio (preview)': { slug: 'scheduling', order: 10, title: 'Scheduling with Studio' },
+  'Converting a notebook': { slug: 'converting', order: 10 },
+  'Scheduling notebooks — ClrKernel Studio (preview)': { slug: 'scheduling', order: 11, title: 'Scheduling with Studio' },
   'Build & test': { slug: 'build-and-test', order: 0, dir: 'contributing' },
   Develop: { slug: 'develop', order: 1, dir: 'contributing' },
 };
