@@ -9,7 +9,8 @@ in a pull request and reviews like source. The samples in
 there is nothing else in the file.
 
 It runs your existing notebooks too: `.ipynb`, `.dib` and `.csx` all execute
-without conversion.
+without conversion — and `clrkernel convert notes.dib` rewrites one *as* a `.nb.md`
+when you want it to start diffing like the rest of your repo.
 
 C# cells are evaluated with Roslyn's scripting engine
 ([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
@@ -377,6 +378,25 @@ parameters after a cell whose first line is `// parameters`, and writes an
 executed `.ipynb` — the cells with their captured outputs — when you ask for one
 with `-o`. A failing cell exits non-zero, so a job scheduler sees the failure,
 and the output notebook is still written as a diagnostic.
+
+### Converting a notebook
+
+`.ipynb`, `.dib` and `.csx` run as they are, so converting is a choice rather than a
+step. Make it when you want the file to review like source:
+
+```bash
+clrkernel convert notes.dib                 # writes notes.nb.md beside it
+clrkernel convert q3.ipynb -o reports/q3.nb.md
+```
+
+Nothing is executed. Prose stays prose, each code cell becomes a fenced block tagged
+with the language it already had — a `#!zsh` section stays tagged `zsh` rather than
+being normalised to `bash`, because those are different shells — and an `.ipynb`'s
+**stored outputs are dropped**. That last one is the point rather than a limitation:
+results committed alongside code are what stops a notebook diffing, and re-running
+gives them back.
+
+It refuses to overwrite an existing file; pass `-o` to put it somewhere else.
 
 If you already run notebooks through Jupyter's tooling, that works too:
 
