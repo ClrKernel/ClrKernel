@@ -925,7 +925,9 @@ from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
 one. A file that does not parse into cells — an `.ipynb`, a plain `.md`, a
-picture — has no Notebook view and opens at Source.
+picture — has no Notebook view and opens at Source. A `*.jobs.yaml` opens at its
+**Overview** — the form is what the file is for, and the YAML tab is the escape
+hatch beside it.
 
 `/files` on its own — what the rail links to, and what you get from a bookmark —
 opens the project you were last in, remembered per browser. Links
@@ -1152,7 +1154,8 @@ you are when promotion tells you a notebook with no job cannot prove itself.
 **Focus Mode** gives one cell the window — its editor above, its output below, with the
 notebook's contents as a tree on the left — for when a notebook is long enough that
 scrolling to find a cell is the slow part. **Normal** is the usual scrolling list of
-cells. The switch is per notebook and is remembered.
+cells. The switch is per notebook and is remembered. A `.csx` is always in this layout,
+without the contents tree: it is one cell, and this is the shape that suits one cell.
 
 ![Focus Mode: one Mermaid cell, its source above and the rendered diagram below, with
 the notebook's cells listed on the left and each one's execution count beside
@@ -1232,10 +1235,14 @@ refuse. A plain `.md` is prose and is written as the bytes it is: only a `.nb.md
 opens as cells, because prose taken apart into cells and put back together loses the
 blank lines at the end of the file, and a save is a commit.
 
-**A `.csx` is one C# cell.** It opens with a run button and an output pane, runs against
-the same warm kernel a notebook uses, and `Console.WriteLine` lands in the output below
-it — and it stays a plain script on disk, with no fences and no cell markers. There is
-nothing to add a cell to and no language to pick, so those controls are not there. The
+**A `.csx` is one C# cell.** It opens in Focus Mode's shape and stays there — the editor
+filling the height above, what the script printed below, and a bar between them you drag
+to decide how much of each. There is no contents tree beside it and no **Normal | Focus**
+switch in the toolbar: one cell has no second sensible arrangement. It runs against the
+same warm kernel a notebook uses, `Console.WriteLine` lands in the pane below, and it
+stays a plain script on disk with no fences and no cell markers. Nothing to add a cell
+to, no language to pick, no cell above or below to run, so none of those controls are
+there. The
 file is written back byte for byte: opening one and closing it changes nothing, which
 matters because a save is a commit and a commit invalidates the "unchanged since that
 run" half of the promotion check.

@@ -148,7 +148,13 @@ export function Editor() {
   // is a link from elsewhere rather than a choice — Source is the honest answer.
   const jobsFile = isJobsFile(path);
   const tab: NotebookView =
-    (asked === 'edit' && !cellFile) || (asked === 'overview' && !jobsFile) ? 'source' : asked;
+    // A jobs file arrived at without a view named — a click in the tree, which
+    // builds an `/edit/` link like every other file — opens its form. That is
+    // what the file is for; the YAML tab is the escape hatch, and landing on it
+    // meant reading a form's worth of settings as text every time.
+    asked === 'edit' && jobsFile ? 'overview'
+      : (asked === 'edit' && !cellFile) || (asked === 'overview' && !jobsFile) ? 'source'
+        : asked;
   useEffect(() => {
     if (tab !== asked) {
       navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
@@ -178,6 +184,10 @@ export function Editor() {
   // Focus Mode: one cell at a time. Per notebook, so switching files takes you
   // back to how you were working in that file.
   const [mode, setMode] = useState<'normal' | 'focus'>(() => loadNotebookState(path).mode ?? 'normal');
+  // Editor above, output below, a bar between them — Focus Mode's shape. A script
+  // is always in it: there is no second sensible arrangement for one cell, which
+  // is why the toolbar offers it no Normal|Focus switch either.
+  const splitLayout = mode === 'focus' || script;
   const [activeId, setActiveId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(() => loadLayout());
   // The source each cell had when it was last run, so an edit can dim its output
@@ -386,10 +396,10 @@ export function Editor() {
   // Focus Mode owns the viewport: the work area is fixed to it and each pane
   // scrolls on its own, so the page behind must not scroll as well.
   useEffect(() => {
-    const on = mode === 'focus' && tab === 'edit';
+    const on = splitLayout && tab === 'edit';
     document.body.classList.toggle('focus-mode-on', on);
     return () => document.body.classList.remove('focus-mode-on');
-  }, [mode, tab]);
+  }, [splitLayout, tab]);
 
   // Leaving Focus Mode puts you back where you were in the list rather than at
   // the top — round-tripping should not cost you your place.
@@ -906,7 +916,7 @@ export function Editor() {
     setNotice('Connection cell added. Run it to open the connection.');
   }
 
-  const focusing = mode === 'focus' && tab === 'edit';
+  const focusing = splitLayout && tab === 'edit';
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
   const fills = focusing || tab === 'source' || tab === 'diff';
@@ -1057,7 +1067,7 @@ export function Editor() {
               </Alert>
             )}
 
-            {mode === 'focus' ? (
+            {splitLayout ? (
               <FocusMode
                 cells={cells}
                 path={path}
@@ -1068,6 +1078,7 @@ export function Editor() {
                 busy={running}
                 cleared={cleared}
                 connectionType={connectionType}
+                single={script}
                 layout={layout}
                 onActivate={activate}
                 onChange={(cellId, value) =>
@@ -1132,7 +1143,6 @@ export function Editor() {
                   onCopy={() => copyCell(index)}
                   onPaste={(where) => pasteCell(where === 'above' ? index : index + 1)}
                   onRun={(mode) => run(index, mode)}
-                  single={script}
                   cleared={cleared.has(cell.id)}
                   onClearOutput={() => setCleared((current) => new Set(current).add(cell.id))}
                   onConnect={() => setConnectFor(index)}
