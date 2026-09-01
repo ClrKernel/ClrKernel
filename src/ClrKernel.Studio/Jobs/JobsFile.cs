@@ -39,8 +39,10 @@ public sealed class JobsFile {
         _deserializer.Deserialize<JobsFile>(File.ReadAllText(path)) ?? new JobsFile();
 
     /// <summary>
-    /// Writes a jobs file. Round-trips through <see cref="Load"/> first so an edit
-    /// that would produce an unloadable file fails before touching the disk.
+    /// Writes a jobs file. Round-trips through <see cref="Load(string, string)"/>
+    /// first so an edit that would produce an unloadable file fails before touching
+    /// the disk. (The overload is named because there are two, and an unqualified
+    /// cref picks one of them with a warning rather than asking.)
     /// </summary>
     public static void Write(string path, JobsFile file, string notebooksRoot) {
         var yaml = _serializer.Serialize(file);
