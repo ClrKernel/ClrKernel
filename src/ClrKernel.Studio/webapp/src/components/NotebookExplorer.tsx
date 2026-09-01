@@ -80,6 +80,7 @@ export function NotebookExplorer({
   width,
   collapsed,
   onCollapse,
+  refresh = 0,
 }: {
   /** The notebook currently open, highlighted in the tree. */
   path: string;
@@ -88,10 +89,20 @@ export function NotebookExplorer({
   width: number;
   collapsed: boolean;
   onCollapse: (collapsed: boolean) => void;
+  /**
+   * Bumped by whatever just changed a branch's contents. One fetch at mount was
+   * enough while this component came and went, but the editor stays mounted across
+   * files and branches on purpose — so after a push or a promote, switching the
+   * dropdown showed a tree fetched before either happened, and the files were not
+   * there until the page was reloaded.
+   */
+  refresh?: number;
 }) {
   const navigate = useNavigate();
-  const { data, reload } = usePolling(() => api.notebooks(), null);
   const [env, setEnv] = useState('');
+  // `env` is a dep too: one request when the dropdown moves, and it is what makes
+  // somebody else's promotion visible without a reload.
+  const { data, reload } = usePolling(() => api.notebooks(), null, [env, refresh]);
   const [shut, setShut] = useState<Set<string>>(new Set());
   const mayCreate = useIsProjectMember();
 
@@ -133,6 +144,7 @@ export function NotebookExplorer({
 
   return (
     <div
+      aria-label="Explorer"
       className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-muted"
       style={{ width: `${width}px` }}
     >

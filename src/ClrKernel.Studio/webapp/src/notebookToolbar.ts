@@ -138,3 +138,39 @@ export function kernelLabel(
 export function showsExecution(tab: string): boolean {
   return tab === 'edit';
 }
+
+/**
+ * Whether the Promote button is on the bar, and whether pressing it ships.
+ *
+ * Promotion is about test → prod. It is not a write to your own branch, and the
+ * only reason it used to appear exclusively there is that it had been put inside
+ * the toolbar's `canWrite` cluster, next to Save and Push, which *are* writes to
+ * your branch. Standing on test — the branch being promoted, and the branch whose
+ * diff the page was already showing — offered nothing but "Copy to my branch".
+ *
+ * The server never had that opinion: the promote call names `test` itself and
+ * refuses every other branch, so the same button works from either view.
+ *
+ * `'blocked'` is a button that renders and answers. Disabling it put the reasons
+ * behind a separate ⓘ, which is a smaller target than the thing people press.
+ */
+export type PromoteControl = 'hidden' | 'blocked' | 'ready';
+
+export function promoteControl(
+  branch: string,
+  { isAdmin, isMember, eligible }: {
+    isAdmin: boolean; isMember: boolean; eligible: boolean;
+  },
+): PromoteControl {
+  // Prod is what you promote *to*, and somebody else's branch is not in the
+  // pipeline at all.
+  if (branch !== 'mine' && branch !== 'test') {
+    return 'hidden';
+  }
+  if (!isMember) {
+    return 'hidden';
+  }
+  // Shown to members who may not press it, deliberately: hiding it re-creates
+  // "where is promote?" for everybody below admin. The refusal explains.
+  return isAdmin && eligible ? 'ready' : 'blocked';
+}

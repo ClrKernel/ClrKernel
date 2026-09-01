@@ -84,7 +84,11 @@ public static class Promotion {
             .Where(j => Same(j.SourceFileRelative, jobsPath)).ToList();
 
         if (!testNotebook && !testYaml && !prodNotebook && !prodYaml) {
-            return Refused($"Nothing to promote: '{path}' exists in neither environment.");
+            // The next step, not only the fact. Said to somebody who is very
+            // likely looking at that file on their own branch, where "exists in
+            // neither environment" is true and reads as a contradiction.
+            return Refused(
+                $"Nothing to promote: '{path}' exists in neither environment — push it to test first.");
         }
 
         // A schedule whose notebook is missing is the state this whole pairing rule
