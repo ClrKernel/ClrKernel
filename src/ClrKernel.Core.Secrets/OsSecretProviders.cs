@@ -11,17 +11,17 @@ namespace ClrKernel.Core.Secrets;
 /// fall back to environment variables.
 /// </summary>
 public static class OsSecretProvider {
-    public const string ServiceName = "ClrKernel";
-
-    public static ISecretProvider TryCreate() {
+    /// <param name="prefix">The configuration prefix, used as the store's service name.</param>
+    public static ISecretProvider TryCreate(string prefix = null) {
+        var serviceName = SecretPrefix.OrDefault(prefix);
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) {
-            return new KeychainSecretProvider();
+            return new KeychainSecretProvider(serviceName);
         }
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-            return new WindowsCredentialSecretProvider();
+            return new WindowsCredentialSecretProvider(serviceName);
         }
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && SecretToolAvailable()) {
-            return new LibSecretSecretProvider();
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && SecretToolAvailable(serviceName)) {
+            return new LibSecretSecretProvider(serviceName);
         }
         return null;
     }
@@ -43,7 +43,7 @@ public static class OsSecretProvider {
     /// stderr, which is the whole discriminator, since both exit 1.
     /// </para>
     /// </summary>
-    private static bool SecretToolAvailable() {
+    private static bool SecretToolAvailable(string serviceName) {
         try {
             var psi = new ProcessStartInfo("secret-tool") {
                 RedirectStandardOutput = true,
@@ -51,7 +51,7 @@ public static class OsSecretProvider {
                 UseShellExecute = false,
             };
             foreach (var arg in new[] {
-                "lookup", "service", OsSecretProvider.ServiceName, "account", "__probe__",
+                "lookup", "service", serviceName, "account", "__probe__",
             }) {
                 psi.ArgumentList.Add(arg);
             }
@@ -81,12 +81,22 @@ public static class OsSecretProvider {
 
 /// <summary>macOS Keychain via the <c>security</c> CLI (generic passwords).</summary>
 internal sealed class KeychainSecretProvider : ISecretProvider {
+    private readonly string _serviceName;
+
+    /// <param name="prefix">The configuration prefix, used as the keychain service name.</param>
+    public KeychainSecretProvider(string prefix = null) {
+        _serviceName = SecretPrefix.OrDefault(prefix);
+    }
+
     public string Name => "keychain";
     public bool CanStore => true;
 
+    /// <summary>The keychain service every item here is filed under.</summary>
+    public string ServiceName => _serviceName;
+
     public bool TryGet(string key, out string secret) {
         var r = ProcessRunner.Run("security",
-            new[] { "find-generic-password", "-a", key, "-s", OsSecretProvider.ServiceName, "-w" });
+            new[] { "find-generic-password", "-a", key, "-s", _serviceName, "-w" });
         if (r.ExitCode == 0) {
             secret = r.StandardOutput.TrimEnd('\n', '\r');
             return true;
@@ -99,7 +109,7 @@ internal sealed class KeychainSecretProvider : ISecretProvider {
         // -U replaces an existing item. Passing the secret via argv is a known,
         // transient local-visibility trade-off of the `security` CLI.
         var r = ProcessRunner.Run("security",
-            new[] { "add-generic-password", "-a", key, "-s", OsSecretProvider.ServiceName, "-w", secret ?? string.Empty, "-U" });
+            new[] { "add-generic-password", "-a", key, "-s", _serviceName, "-w", secret ?? string.Empty, "-U" });
         if (r.ExitCode != 0) {
             throw new InvalidOperationException($"Keychain store failed: {r.StandardError.Trim()}");
         }
@@ -107,18 +117,28 @@ internal sealed class KeychainSecretProvider : ISecretProvider {
 
     public void Delete(string key) {
         ProcessRunner.Run("security",
-            new[] { "delete-generic-password", "-a", key, "-s", OsSecretProvider.ServiceName });
+            new[] { "delete-generic-password", "-a", key, "-s", _serviceName });
     }
 }
 
 /// <summary>Linux Secret Service via <c>secret-tool</c> (secret read from stdin).</summary>
 internal sealed class LibSecretSecretProvider : ISecretProvider {
+    private readonly string _serviceName;
+
+    /// <param name="prefix">The configuration prefix, used as the <c>service</c> attribute.</param>
+    public LibSecretSecretProvider(string prefix = null) {
+        _serviceName = SecretPrefix.OrDefault(prefix);
+    }
+
     public string Name => "libsecret";
     public bool CanStore => true;
 
+    /// <summary>The <c>service</c> attribute every item here is stored with.</summary>
+    public string ServiceName => _serviceName;
+
     public bool TryGet(string key, out string secret) {
         var r = ProcessRunner.Run("secret-tool",
-            new[] { "lookup", "service", OsSecretProvider.ServiceName, "account", key });
+            new[] { "lookup", "service", _serviceName, "account", key });
         if (r.ExitCode == 0 && !string.IsNullOrEmpty(r.StandardOutput)) {
             secret = r.StandardOutput.TrimEnd('\n', '\r');
             return true;
@@ -130,8 +150,8 @@ internal sealed class LibSecretSecretProvider : ISecretProvider {
     public void Set(string key, string secret) {
         // secret-tool reads the secret from stdin, so it never appears on argv.
         var r = ProcessRunner.Run("secret-tool",
-            new[] { "store", "--label", OsSecretProvider.ServiceName + " " + key,
-                    "service", OsSecretProvider.ServiceName, "account", key },
+            new[] { "store", "--label", _serviceName + " " + key,
+                    "service", _serviceName, "account", key },
             stdin: secret ?? string.Empty);
         if (r.ExitCode != 0) {
             throw new InvalidOperationException($"libsecret store failed: {r.StandardError.Trim()}");
@@ -140,7 +160,7 @@ internal sealed class LibSecretSecretProvider : ISecretProvider {
 
     public void Delete(string key) {
         ProcessRunner.Run("secret-tool",
-            new[] { "clear", "service", OsSecretProvider.ServiceName, "account", key });
+            new[] { "clear", "service", _serviceName, "account", key });
     }
 }
 
