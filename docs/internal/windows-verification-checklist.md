@@ -10,6 +10,30 @@ bottom; each item is *do this → expect this*. Tags:
 
 Record P/F and notes in the sign-off table at the end.
 
+## What CI now does for you
+
+The `windows` job in `.github/workflows/ci.yml` runs on `windows-latest` on every
+push, and covers the parts of this list a machine can answer:
+
+- The whole .NET suite on Windows, which had only ever run on Linux — path
+  separators, CRLF, file locking, `File.SetUnixFileMode` guards.
+- **§2** — the global tool packs, installs, reports its version, and `clrkernel lsp`
+  starts and *stays running* on stdio rather than exiting.
+- **§4, §13 in part** — a notebook runs headlessly on Windows paths with CRLF, state
+  carries from one cell to the next, and the executed `.ipynb` holds the output.
+- **§16 in part** — Credential Manager round-trips through `SecretStore`, including a
+  reference with a colon in it (`WindowsCredentialTest`).
+
+It is a **VM, not a container**: `mcr.microsoft.com/windows*` images need a Windows
+host in Windows-containers mode — no macOS can run one at all, and none of this needs
+a container anyway, since what is being tested is a user profile, a PATH and a
+credential store.
+
+What CI cannot do, and why the rest of this list stays: anything in the VS Code UI
+(the ⊞ duplicate-completion and squiggle items need C# Dev Kit installed and a real
+editor), interactive Entra sign-in, and any backend needing a licence, a tenant or a
+driver — SSAS, Fabric, Oracle, ODBC.
+
 ---
 
 ## 1. Pre-flight — clean environment
@@ -351,14 +375,21 @@ store. Everything in it was verified on macOS — the Keychain item, the
 `CLRKERNEL_SECRETS_FILE` file and the `CLRKERNEL_SECRET_*` variable each resolving a
 real PostgreSQL password — except this, which needs Windows:
 
-- [ ] Save a connection password from Studio, then find it under **Credential Manager →
-      Windows Credentials** as `ClrKernel:<ref>`, and confirm a cell resolves it.
-- [ ] Write one *by hand* with `cmdkey /generic:ClrKernel:<ref> /user:ClrKernel
-      /pass:"..."` and see whether a cell reads it back. **This is the open question.**
-      `WindowsCredentialSecretProvider` writes the blob as UTF-16 and reads it with
-      `Marshal.PtrToStringUni`; if `cmdkey` encodes differently the value comes back as
-      mojibake rather than as an error, which is the worst shape a wrong answer can take.
-      `docs/secrets.md` deliberately does not print that command until somebody has run
-      it — it tells Windows users to save from the app or use the environment variable.
-- [ ] A reference containing a colon (`pg:demo` → target `ClrKernel:pg:demo`) round-trips,
-      since the target name then has two of them.
+`WindowsCredentialTest` in `Studio.UnitTest` now answers most of this on every push;
+these are what is left, and what the test's own result tells you.
+
+- [x] Round-trip through `SecretStore` — stored, then read back by a *second* store so
+      the in-memory cache cannot be what answered. Automated.
+- [x] A reference containing a colon (`pg:demo` → target `ClrKernel:pg:demo`, which has
+      two) round-trips. Automated.
+- [ ] **The open question: is a credential written by `cmdkey` one the provider can
+      read?** `A_credential_written_by_cmdkey_is_never_read_back_as_the_wrong_value`
+      asks it every push. It cannot assert the answer — nobody knows it yet — so it
+      asserts the part that matters either way: found-and-equal passes, not-found is
+      inconclusive with a message saying so, and *found-and-different* fails, because
+      that is a connection failing with a wrong password rather than a missing one.
+      **Read that test's result in the first Windows CI run and record the answer here**;
+      `docs/secrets.md` stays silent about `cmdkey` until it says found-and-equal.
+- [ ] Save a connection password from Studio's own editor and find it under
+      **Credential Manager → Windows Credentials** as `ClrKernel:<ref>`. The API path is
+      covered; that it is the item a person can see in the UI is not.
