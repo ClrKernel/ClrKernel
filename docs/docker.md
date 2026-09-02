@@ -462,7 +462,8 @@ Linux libsecret come first in the chain and are already there.
 > re-encrypted either.
 
 **From the environment.** A value can also arrive as `CLRKERNEL_SECRET_<REF>`,
-upper-cased with non-alphanumerics as `_`. This wins over nothing — it is
+upper-cased with non-alphanumerics as `_` — [secrets.md](secrets.md) has the naming rules
+and the rest of the chain. This wins over nothing — it is
 consulted last — but it needs no writable volume, which is what you want when
 something else already manages the secret:
 

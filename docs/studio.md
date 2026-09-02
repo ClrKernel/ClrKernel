@@ -566,6 +566,9 @@ volume, unlocked at start with a password you supply as a file
 save a password, says so, and takes them as `CLRKERNEL_SECRET_*` variables
 instead. See [docker.md](docker.md#passwords).
 
+For how a reference is looked up, what it is called in each store, and how to set one by
+hand, see [secrets.md](secrets.md).
+
 `CLRKERNEL_SECRETS_FILE` names a plain JSON file as a last resort for a machine
 with no credential store at all. It is owner-only and unencrypted — as protected
 as the disk it sits on, so keep it out of any git worktree. Nothing sets it for

@@ -343,3 +343,22 @@ CLRKERNEL_TEST_ORACLE="User Id=clrkernel;Password=DevOnly1;Data Source=localhost
 CLRKERNEL_TEST_REQUIRE_LIVE=1 \
   dotnet test test/ClrKernel.Database.UnitTest -f net8.0 --filter ClassName~OracleDialectLiveTest
 ```
+
+## 16. Credential Manager, written by hand — **open**
+
+`docs/secrets.md` documents the secret chain and how a reference is spelled in each
+store. Everything in it was verified on macOS — the Keychain item, the
+`CLRKERNEL_SECRETS_FILE` file and the `CLRKERNEL_SECRET_*` variable each resolving a
+real PostgreSQL password — except this, which needs Windows:
+
+- [ ] Save a connection password from Studio, then find it under **Credential Manager →
+      Windows Credentials** as `ClrKernel:<ref>`, and confirm a cell resolves it.
+- [ ] Write one *by hand* with `cmdkey /generic:ClrKernel:<ref> /user:ClrKernel
+      /pass:"..."` and see whether a cell reads it back. **This is the open question.**
+      `WindowsCredentialSecretProvider` writes the blob as UTF-16 and reads it with
+      `Marshal.PtrToStringUni`; if `cmdkey` encodes differently the value comes back as
+      mojibake rather than as an error, which is the worst shape a wrong answer can take.
+      `docs/secrets.md` deliberately does not print that command until somebody has run
+      it — it tells Windows users to save from the app or use the environment variable.
+- [ ] A reference containing a colon (`pg:demo` → target `ClrKernel:pg:demo`) round-trips,
+      since the target name then has two of them.
