@@ -635,7 +635,9 @@ public static class JobsApi {
                 }
 
                 var languages = session.Languages;
-                var cells = request.Cells.Select(c => c.ToCell(languages)).ToList();
+                var cells = request.Cells
+                    .Select(c => RunOn(c.ToCell(languages), c.Connection, languages))
+                    .ToList();
                 var ids = request.Cells.Select((c, i) => c.Id ?? $"run{i}").ToList();
                 // The run continues after the response: a long cell must not hold an
                 // HTTP request open, and the editor polls status for progress.
@@ -2196,6 +2198,48 @@ public static class JobsApi {
         return resolved;
     }
 
+    /// <summary>
+    /// The cell as it should run against a chosen connection, or unchanged when no
+    /// connection was chosen.
+    ///
+    /// <para>
+    /// Written as the selector the cell would have got anyway plus the
+    /// <c>--connection</c> its language already accepts — <c>#!sql</c> and
+    /// <c>#!dax</c> both take one. <see cref="LanguageDescriptor.BlockForTag"/>
+    /// leaves a source that already starts with a selector alone, so this is the
+    /// same line it would have written, with a flag on it.
+    /// </para>
+    /// <para>
+    /// **At run time only, never on disk.** This is the whole point of the picker:
+    /// you point a `.sql` at one connection, run it, point it at another and run it
+    /// again, and the file is the same file throughout. A cell whose text already
+    /// names a connection is left alone — what the file says wins over a dropdown.
+    /// </para>
+    /// </summary>
+    private static MarkdownCell RunOn(
+        MarkdownCell cell, string connection, IReadOnlyList<LanguageDescriptor> languages) {
+        if (string.IsNullOrWhiteSpace(connection) || cell.Kind != CellKind.Code) {
+            return cell;
+        }
+        var language = NotebookMarkdown.LanguageForTag(cell.Tag, languages);
+        if (language?.HasConnections != true || language.SelectorForTag(cell.Tag) is not { } selector) {
+            return cell;
+        }
+        if (cell.Source.TrimStart().StartsWith("#!", StringComparison.Ordinal)) {
+            return cell;
+        }
+        // Quoted, because a connection name is a display name — "Warehouse (dev)"
+        // is one somebody will have.
+        var directive = $"{selector} --connection \"{connection.Replace("\"", "\\\"")}\"";
+        return new MarkdownCell {
+            Kind = cell.Kind,
+            Tag = cell.Tag,
+            Source = directive + "\n" + cell.Source,
+            BlankLinesAfter = cell.BlankLinesAfter,
+            Closed = cell.Closed,
+        };
+    }
+
     /// <summary>The largest file this reads as text. The write route's own cap, so
     /// what opens is what can be saved rather than a buffer that is refused when you
     /// try.</summary>
@@ -2645,6 +2689,10 @@ public sealed class CellEdit {
     /// <summary>The editor's cell id, used as the kernel cellId so display
     /// notifications land on the right cell. Ignored on save.</summary>
     public string Id { get; set; }
+
+    /// <summary>The connection this run should use, by name. Run only — it is a
+    /// choice made in the toolbar and it never reaches the file.</summary>
+    public string Connection { get; set; }
     public string Kind { get; set; }
     public string Tag { get; set; }
     public string LanguageId { get; set; }

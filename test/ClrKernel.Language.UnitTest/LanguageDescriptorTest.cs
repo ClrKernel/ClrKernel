@@ -50,6 +50,12 @@ public class LanguageDescriptorTest {
         Assert.AreEqual("#!sql", sql.DefaultSelector);
         CollectionAssert.AreEqual(new[] { "sql", "tsql" }, sql.LanguageTags.ToList());
         Assert.IsTrue(sql.HasConnections);
+        // Every dialect, not only T-SQL: they share one session and so share its
+        // connections. Only `sql` declaring them left `#!ansisql` cells with no
+        // connection button and a picker with nothing to offer.
+        foreach (var id in new[] { "sql", "ansisql", "oraclesql" }) {
+            Assert.IsTrue(descriptors.Single(d => d.Id == id).HasConnections, id);
+        }
         Assert.IsTrue(sql.ConfigBacked, "SQL connections load from connections.json");
         Assert.AreEqual(6, sql.Directives.Count);
 
@@ -89,8 +95,22 @@ public class LanguageDescriptorTest {
             descriptors.Single(d => d.Id == "sql").SupportedProviders.ToList());
         CollectionAssert.AreEqual(new[] { "Oracle", "Odbc", "Jdbc" },
             descriptors.Single(d => d.Id == "oraclesql").SupportedProviders.ToList());
-        CollectionAssert.AreEqual(new[] { "Odbc", "Jdbc" },
+        // Postgres is here and not under a dialect of its own: it is a first-party
+        // provider that no SQL cell could run on, so a PostgreSQL connection was
+        // reachable from C# and from the query editor and refused by every cell.
+        CollectionAssert.AreEqual(new[] { "Postgres", "Odbc", "Jdbc" },
             descriptors.Single(d => d.Id == "ansisql").SupportedProviders.ToList());
+
+        // The property behind all three, stated once: every first-party provider
+        // that speaks SQL is carried by some dialect. A provider no dialect claims
+        // is one nothing can query, which is how Postgres came to be missing.
+        var carried = descriptors
+            .SelectMany(d => d.SupportedProviders ?? System.Array.Empty<string>())
+            .Distinct(System.StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var provider in new[] { "SqlServer", "Oracle", "Postgres", "Odbc", "Jdbc" }) {
+            CollectionAssert.Contains(carried, provider,
+                $"{provider} connections would be refused by every SQL cell.");
+        }
     }
 
     [TestMethod]

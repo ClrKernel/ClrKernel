@@ -91,6 +91,9 @@ export interface NotebookToolbarProps {
   binary: boolean;
   /** Why this file cannot be written, or null when it can. */
   readOnlyReason: string | null;
+  /** The connection picker, for a query file that is one cell and names no
+   *  connection of its own. Absent for everything else. */
+  connectionPicker?: React.ReactNode;
   /** Only a *.jobs.yaml has an Overview tab — the form over the same file. */
   isJobsFile: boolean;
   canRun: boolean;
@@ -445,6 +448,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
 
       {execution && (
         <div className="flex items-center gap-2">
+          {/* Before the kernel badge and the run controls: which database this
+              runs against is the thing to check before pressing Run, not after. */}
+          {props.connectionPicker}
           {/* Information before controls: you read what the kernel is doing
               before you reach the buttons that change it. */}
           {layout.showKernel && (

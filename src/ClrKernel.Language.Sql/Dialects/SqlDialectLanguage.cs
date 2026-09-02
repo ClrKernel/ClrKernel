@@ -83,7 +83,21 @@ public abstract class SqlDialectLanguage : ICellLanguage {
     /// the others would be contributing the same assemblies a second time.</summary>
     public virtual ScriptContribution ScriptContribution => null;
 
-    public virtual IConnectionCatalog Connections => null;
+    /// <summary>
+    /// The session's connections, for the editor's connection UI.
+    ///
+    /// <para>
+    /// On the base and not on one dialect: the three share one
+    /// <see cref="SqlSession"/>, so they share its connections, and only T-SQL
+    /// declaring them meant <c>#!ansisql</c> and <c>#!oraclesql</c> reported having
+    /// none — no connection button beside those cells, and nothing for a picker to
+    /// list. A dialect is which words are legal, not which connections exist.
+    /// </para>
+    /// </summary>
+    public virtual IConnectionCatalog Connections =>
+        _connections ??= new SqlConnectionCatalog(Session);
+
+    private IConnectionCatalog _connections;
 
     public ICellLanguageServices Services =>
         _services ??= new SqlCellLanguageServices(Session, this);
@@ -102,9 +116,12 @@ public abstract class SqlDialectLanguage : ICellLanguage {
     /// then run it in this dialect.</summary>
     protected object ExecuteQuery(CellInvocation cell) {
         var inline = SqlDirectives.SelectorConnection(cell.FirstLine);
+        // Quoted on the way into the comment. The selector line honours quotes, so
+        // `--connection "Warehouse (dev)"` arrives here whole; writing it into the
+        // comment bare handed the reader a name that ended at the first space.
         var cellText = string.IsNullOrEmpty(inline)
             ? cell.Body
-            : "-- connections " + inline + "\n" + cell.Body;
+            : "-- connections \"" + inline.Replace("\"", string.Empty) + "\"\n" + cell.Body;
         return Session.Execute(cellText, this);
     }
 

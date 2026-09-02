@@ -200,6 +200,9 @@ export interface RunCell {
 
 /** One notebook cell as the server parses and writes it. */
 export interface ApiCell {
+  /** The connection this run should use, by name. Sent on a run and never on a
+   *  save — the file does not name it. */
+  connection?: string;
   id?: string;
   kind: 'code' | 'markdown';
   /** The code-block tag as written ("sql", "zsh"); null for prose. Preserved on

@@ -1,4 +1,6 @@
-import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession, ApiSyncCell, TreeNode } from './api';
+import type {
+  ApiCell, ApiCellRun, ApiConnection, ApiLanguage, ApiSession, ApiSyncCell, TreeNode,
+} from './api';
 import type { NotebookOutput } from './ipynb';
 import type { NotebookView } from './routes';
 
@@ -626,8 +628,42 @@ export function keepIds(reloaded: ApiCell[], previous: EditorCell[]): EditorCell
  * everything under its position in the request — "run cell five" alone would
  * come back as cell one.
  */
-export function toRunCells(cells: EditorCell[]): ApiCell[] {
-  return toApiCells(cells).map((cell, i) => ({ ...cell, id: cells[i].id }));
+export function toRunCells(cells: EditorCell[], connection?: string | null): ApiCell[] {
+  return toApiCells(cells).map((cell, i) => ({
+    ...cell,
+    id: cells[i].id,
+    // Run only. The server writes it as the `--connection` flag on the selector
+    // line it would have added anyway, so the file on disk never mentions it —
+    // which is what lets one file be run against two connections in a row.
+    ...(connection ? { connection } : {}),
+  }));
+}
+
+/**
+ * The connections a file's language can actually run on, and why the others
+ * cannot.
+ *
+ * The language declares which connection `$type`s carry it and the connection
+ * knows its own, so this is the join — the same one the kernel makes before it
+ * runs a cell. Marking them here means the refusal arrives in the picker rather
+ * than as a failed run.
+ */
+export function connectionChoices(
+  connections: ApiConnection[],
+  language: ApiLanguage | null | undefined,
+): { connection: ApiConnection; runnable: boolean; why: string | null }[] {
+  const supported = language?.supportedProviders;
+  return connections.map((connection) => {
+    const runnable = supported == null || supported.length === 0
+      || supported.some((t) => t.toLowerCase() === (connection.type ?? '').toLowerCase());
+    return {
+      connection,
+      runnable,
+      why: runnable ? null
+        : `${language?.displayName ?? 'This language'} does not run on `
+          + `${connection.type} — it runs on ${supported!.join(', ')}.`,
+    };
+  });
 }
 
 /** True when the notebook differs from what was loaded — drives the Save button. */

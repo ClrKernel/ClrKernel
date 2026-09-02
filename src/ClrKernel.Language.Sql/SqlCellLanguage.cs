@@ -62,11 +62,6 @@ public sealed class SqlCellLanguage : SqlDialectLanguage {
     // package (SqlSession, SqlGlobals) and the provider (SqlDatabase, BulkCopyOptions,
     // MergeSpec, BulkCopyResult). These are string literals resolved when a cell
     // compiles, so a stale one builds clean and only fails at run time.
-    /// <summary>The session's connections, for the editor's connection UI.</summary>
-    public override IConnectionCatalog Connections => _connections ??= new SqlConnectionCatalog(Session);
-
-    private IConnectionCatalog _connections;
-
     public override ScriptContribution ScriptContribution { get; } = new ScriptContribution(
         references: new[] { typeof(SqlSession).Assembly, typeof(BulkCopyOptions).Assembly },
         imports: new[] {

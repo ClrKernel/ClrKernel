@@ -1260,9 +1260,20 @@ language to pick, no cell above or below to run, so none of those controls are t
 It is the same cell it would be in a notebook, which is the point: a `.sql` file resolves
 its connection exactly as a `#!sql` cell does — from the `connections.json` Studio writes
 into your worktree from the Connections page — so a saved connection is all one needs and
-`#!sql-connect` is not required. `sql` means T-SQL, so a `.sql` file runs on SQL Server,
-ODBC and JDBC connections; for the others, name the file for the dialect
-(`.ansisql`, `.plsql`) or use a notebook, where the language picker is. The
+`#!sql-connect` is not required.
+
+**A query file picks its connection from the toolbar.** The dropdown lists what you can
+see, shared connections first and your own below, and the choice rides on the *run*:
+nothing is written to the file, so you can point the same `.sql` at test, run it, point it
+at production and run it again with git seeing nothing. It is not remembered between
+openings — which database you last ran a query against is the thing you least want
+inherited silently a week later — and it holds while the file is open.
+
+A connection a file's dialect cannot carry is listed and refused in the dropdown, with the
+reason on it, rather than accepted and failed at run time. `sql` means T-SQL, so a `.sql`
+file runs on SQL Server, ODBC and JDBC; `.ansisql` is generic SQL and adds PostgreSQL;
+`.plsql` and `.oraclesql` are Oracle. A notebook needs no dropdown — it says which
+connection it uses in its own text, which travels with the file. The
 file is written back byte for byte: opening one and closing it changes nothing, which
 matters because a save is a commit and a commit invalidates the "unchanged since that
 run" half of the promotion check.

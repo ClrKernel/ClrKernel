@@ -6,6 +6,7 @@ import {
   type ApiCell, type ApiJobsProblem, type ApiLanguage,
 } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
+import { ConnectionPicker } from '../components/ConnectionPicker';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -122,6 +123,16 @@ export function Editor() {
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
   const [privateConnections, setPrivateConnections] = useState<string[]>([]);
+  /**
+   * Which connection a one-cell query file runs against, chosen in the toolbar.
+   *
+   * Reset when the path changes rather than remembered: which database you last
+   * ran a query against is the thing you least want inherited silently the next
+   * time you open it. It holds while the file is open, which is what makes "run,
+   * point somewhere else, run again" the whole gesture it is meant to be.
+   */
+  const [runConnection, setRunConnection] = useState<string | null>(null);
+  useEffect(() => setRunConnection(null), [path]);
   /**
    * The saved connection this notebook queries, for schema completion in its SQL
    * cells. The notebook names a connection; the id is this reader's lookup of that
@@ -714,7 +725,7 @@ export function Editor() {
       // file says. Writing first anyway: a run is the moment you would most mind
       // discovering that the last thing you typed was still only in the browser.
       await flush();
-      await api.runCells(path, toRunCells(toRun));
+      await api.runCells(path, toRunCells(toRun, runConnection));
       for (const cell of toRun) {
         ranSource.current[cell.id] = cell.source;
       }
@@ -927,6 +938,12 @@ export function Editor() {
   }
 
   const focusing = splitLayout && tab === 'edit';
+  // A query file: one cell, and a language that has connections. A notebook says
+  // which connection it uses in its own text, so it needs no dropdown — and a
+  // `.sh` has nothing to connect to.
+  const pickable = script && cells?.length === 1
+    ? connectableLanguage(cells[0].languageId, languages) ?? null
+    : null;
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
   const fills = focusing || tab === 'source' || tab === 'diff' || tab === 'preview';
@@ -979,6 +996,13 @@ export function Editor() {
         preview={preview}
         binary={binary}
         readOnlyReason={readOnlyReason(path)}
+        connectionPicker={pickable ? (
+          <ConnectionPicker
+            language={pickable}
+            value={runConnection}
+            onChange={setRunConnection}
+          />
+        ) : undefined}
         isJobsFile={jobsFile}
         canRun={canRun}
         running={running}

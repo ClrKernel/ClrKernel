@@ -162,6 +162,27 @@ public sealed partial class SqlSession {
         }
 
         var inConfig = SqlTarget.ProviderTypesInConfig();
+
+        // A SqlServer node in connections.json belongs in the registry, which is the
+        // path that can open one — the generic provider path cannot, and answered
+        // "this session cannot open the SqlServer provider" for a connection sitting
+        // right there in config. It reached the registry only when a
+        // `#!sql-connect --name x` cell put it there, so a notebook that named a
+        // saved connection and nothing else did not work; a one-cell `.sql` file,
+        // which has nowhere to put that directive, could not work at all.
+        //
+        // Loaded lazily here, which is what ShellSession already does for its own
+        // saved targets.
+        if (IsSqlServerInConfig(requestedName, inConfig)) {
+            LoadFromConfig();
+            if (!string.IsNullOrWhiteSpace(requestedName)) {
+                if (_registry.TryGet(requestedName, out var loaded)) {
+                    return SqlTarget.ForSqlServer(loaded);
+                }
+            } else if (!_registry.IsEmpty) {
+                return SqlTarget.ForSqlServer(_registry.Resolve(null));
+            }
+        }
         if (!string.IsNullOrWhiteSpace(requestedName)) {
             if (inConfig.TryGetValue(requestedName, out var type)) {
                 return SqlTarget.ForProvider(requestedName, type);
@@ -189,6 +210,20 @@ public sealed partial class SqlSession {
                 $"Name one: {string.Join(", ", inConfig.Keys)}.");
         }
         return SqlTarget.ForSqlServer(_registry.Resolve(null));
+    }
+
+    /// <summary>
+    /// Whether the connection this cell wants is a SQL Server one that config knows
+    /// about — by name, or the only one there when the cell named none.
+    /// </summary>
+    private static bool IsSqlServerInConfig(
+        string requestedName, IReadOnlyDictionary<string, string> inConfig) {
+        if (!string.IsNullOrWhiteSpace(requestedName)) {
+            return inConfig.TryGetValue(requestedName, out var type)
+                && string.Equals(type, "SqlServer", StringComparison.OrdinalIgnoreCase);
+        }
+        return inConfig.Count == 1
+            && string.Equals(inConfig.Values.First(), "SqlServer", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
