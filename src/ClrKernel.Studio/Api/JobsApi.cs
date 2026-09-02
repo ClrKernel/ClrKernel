@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ClrKernel.Core.Runner;
@@ -354,9 +355,12 @@ public static class JobsApi {
                 if (Readable(scope, branch, path) is not { } resolved) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
-                return File.Exists(resolved)
-                    ? Results.Text(File.ReadAllText(resolved), "text/plain")
-                    : Results.NotFound(new { error = $"No such file: {path}" });
+                if (!File.Exists(resolved)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                return ReadAsText(resolved) is { } text
+                    ? Results.Text(text, "text/plain")
+                    : Results.BadRequest(new { error = NotTextReason(resolved) });
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         // A file the browser will *show*, as bytes: a picture or a PDF. Narrow on
@@ -441,15 +445,18 @@ public static class JobsApi {
                 if (resolved == null) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
-                if (!OpensAsCells(resolved)) {
-                    return Results.BadRequest(new {
-                        error = "Only executable markdown (.nb.md) and C# scripts (.csx) open as cells.",
-                    });
-                }
                 if (!File.Exists(resolved)) {
                     return Results.NotFound(new { error = $"No such file: {path}" });
                 }
+                // The languages first: which files open as cells depends on them —
+                // a `.sql` is a cell because some language claims the `sql` tag.
                 var languages = await kernelLanguages.GetAsync();
+                if (!OpensAsCells(resolved, languages)) {
+                    return Results.BadRequest(new {
+                        error = "Only executable markdown (.nb.md) and files named for a "
+                            + "language the kernel runs open as cells.",
+                    });
+                }
                 var text = File.ReadAllText(resolved);
                 var cells = ParseCells(resolved, text, languages);
                 return Results.Ok(new {
@@ -476,11 +483,6 @@ public static class JobsApi {
                 if (EditableTarget(context, scope, branch, path) is not { } target) {
                     return TestWriteError(context, scope, branch, path);
                 }
-                if (!OpensAsCells(target)) {
-                    return Results.BadRequest(new {
-                        error = "Only executable markdown (.nb.md) and C# scripts (.csx) save as cells.",
-                    });
-                }
                 CellWrite write;
                 try {
                     write = await JsonSerializer.DeserializeAsync<CellWrite>(context.Request.Body, _bodyJson);
@@ -494,6 +496,12 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
                 }
                 var languages = await kernelLanguages.GetAsync();
+                if (!OpensAsCells(target, languages)) {
+                    return Results.BadRequest(new {
+                        error = "Only executable markdown (.nb.md) and files named for a "
+                            + "language the kernel runs save as cells.",
+                    });
+                }
                 return SaveToBranch(
                     context, scope, branch, target, path, SerializeCells(target, write.Cells, languages));
             }).RequiresProject(ProjectRole.ProjectMember);
@@ -2090,7 +2098,7 @@ public static class JobsApi {
     }
 
     /// <summary>
-    /// Whether this file is edited as cells rather than as text.
+    /// The fence tag a whole file is one cell of, or null when it is not one.
     ///
     /// <para>
     /// A <c>.csx</c> is one C# cell: the file *is* the cell body, so it opens with a
@@ -2098,31 +2106,62 @@ public static class JobsApi {
     /// whole trick — the kernel already runs a C# cell, and a script is one.
     /// </para>
     /// <para>
+    /// The rest is <em>derived, not listed</em>: a file whose extension is a fence
+    /// tag some registered language claims is one cell of that language. <c>.sql</c>
+    /// is a <c>sql</c> cell because <c>SqlCellLanguage</c> says <c>sql</c> is one of
+    /// its tags, and a language added by a <c>#r</c>-loaded package brings its own
+    /// extension with it without anything here being edited. It also keeps the tag
+    /// the file was named with, so a <c>.zsh</c> runs as zsh and not as whichever
+    /// shell tag happens to be listed first.
+    /// </para>
+    /// <para>
+    /// <c>.csx</c> is the one that has to be named, because its extension is not its
+    /// tag — nothing calls a C# fence <c>csx</c>.
+    /// </para>
+    /// </summary>
+    private static string SingleCellTag(string path, IReadOnlyList<LanguageDescriptor> languages) {
+        var extension = Path.GetExtension(path).TrimStart('.');
+        if (extension.Length == 0) {
+            return null;
+        }
+        if (extension.Equals("csx", StringComparison.OrdinalIgnoreCase)) {
+            return "csharp";
+        }
+        return languages?.Any(l => l.LanguageTags?.Contains(extension, StringComparer.OrdinalIgnoreCase) == true)
+            == true
+            ? extension.ToLowerInvariant()
+            : null;
+    }
+
+    /// <summary>
+    /// Whether this file is edited as cells rather than as text.
+    ///
+    /// <para>
     /// <c>.nb.md</c> and not a plain <c>.md</c>, which this used to accept. A
     /// <c>README.md</c> is prose, and prose taken apart into cells and put back
     /// together comes back *nearly* identical — near enough to look fine and to
     /// lose the blank lines at the end of the file. That was harmless while every
     /// save of one was refused; it stopped being harmless when text became
-    /// editable. A plain <c>.md</c> opens at Source and is written as the bytes it
-    /// is, which is what it was all along.
+    /// editable. A plain <c>.md</c> opens at its preview and is written as the bytes
+    /// it is, which is what it was all along.
     /// </para>
     /// </summary>
-    private static bool OpensAsCells(string path) =>
+    private static bool OpensAsCells(string path, IReadOnlyList<LanguageDescriptor> languages) =>
         path.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".csx", StringComparison.OrdinalIgnoreCase);
+        || SingleCellTag(path, languages) != null;
 
     private static IReadOnlyList<MarkdownCell> ParseCells(
         string path, string text, IReadOnlyList<LanguageDescriptor> languages) =>
-        path.EndsWith(".csx", StringComparison.OrdinalIgnoreCase)
+        SingleCellTag(path, languages) is { } tag
             // Verbatim, with no trim: the editor saves what it loaded, and a script
             // that comes back one newline shorter than it went in is a commit
             // nobody made — which is what invalidates a notebook's promotion evidence.
-            ? new[] { new MarkdownCell { Kind = CellKind.Code, Tag = "csharp", Source = text } }
+            ? new[] { new MarkdownCell { Kind = CellKind.Code, Tag = tag, Source = text } }
             : NotebookMarkdown.Parse(text, languages);
 
     private static string SerializeCells(
         string path, List<CellEdit> cells, IReadOnlyList<LanguageDescriptor> languages) {
-        if (!path.EndsWith(".csx", StringComparison.OrdinalIgnoreCase)) {
+        if (SingleCellTag(path, languages) == null) {
             return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)));
         }
         // The one cell, byte for byte. More than one can only come from a client
@@ -2156,6 +2195,52 @@ public static class JobsApi {
         }
         return resolved;
     }
+
+    /// <summary>The largest file this reads as text. The write route's own cap, so
+    /// what opens is what can be saved rather than a buffer that is refused when you
+    /// try.</summary>
+    private const int _textLimit = 2_000_000;
+
+    /// <summary>
+    /// The file as text, or null when it is not text.
+    ///
+    /// <para>
+    /// By content rather than by extension. The tree lists the whole project now, so
+    /// what arrives here is whatever a repository happens to contain — a
+    /// <c>.xlsx</c>, a <c>.parquet</c>, a font — and an extension allowlist would
+    /// have to be right about all of them forever. A NUL byte is what no text file
+    /// has and every one of those does; a `.ndjson` nobody thought of still opens.
+    /// </para>
+    /// <para>
+    /// The size check comes first and is the more important of the two:
+    /// <c>File.ReadAllText</c> over a 40 MB file built a 40 MB string and sent it,
+    /// which is what happens the first time somebody clicks the parquet file beside
+    /// their notebook.
+    /// </para>
+    /// </summary>
+    private static string ReadAsText(string path) {
+        var info = new FileInfo(path);
+        if (info.Length > _textLimit) {
+            return null;
+        }
+        var bytes = File.ReadAllBytes(path);
+        // The whole file, not a prefix: a NUL half way through is as binary as one
+        // at the start, and 2 MB is already the ceiling.
+        //
+        // Decoded rather than File.ReadAllText, which strips a byte-order mark —
+        // and the save writes none, so opening a BOM'd file and saving it used to
+        // drop the BOM. Keeping it as U+FEFF in the buffer is what makes that a
+        // round trip.
+        return Array.IndexOf(bytes, (byte)0) >= 0 ? null : Encoding.UTF8.GetString(bytes);
+    }
+
+    /// <summary>Which of the two it was, because "cannot open" without a reason is
+    /// the thing that sends somebody looking through the code.</summary>
+    private static string NotTextReason(string path) =>
+        new FileInfo(path).Length > _textLimit
+            ? $"That file is {new FileInfo(path).Length / 1_000_000.0:0.#} MB. "
+                + $"This opens files up to {_textLimit / 1_000_000} MB — the same limit it saves."
+            : "That is a binary file, so there is nothing to show as text.";
 
     /// <summary>The type this file is shown as, or null when it is not one this shows.</summary>
     private static string PreviewContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {

@@ -1227,6 +1227,13 @@ What is left out is git's own storage (`.git`, which in a worktree is a file rat
 a directory, and the bare `.repo.git`), the scratch buffer the query editor keeps, build
 output (`bin`, `obj`, `node_modules`) and `.DS_Store`.
 
+**A file that is not text opens to a reason rather than to noise.** A `.xlsx`, a
+`.parquet`, a font — the tree lists whatever the repository contains, and reading one as
+text is a screenful of replacement characters. The check is the content and not the
+extension, so a `.ndjson` nobody thought of opens fine and a spreadsheet does not; and
+there is a 2 MB ceiling, the same one saving has, because `File.ReadAllText` over the
+40 MB parquet beside your notebook builds a 40 MB string and sends it.
+
 **Text opens in an editor and saves like anything else.** JSON, YAML, SQL, Python, shell,
 Markdown, `.gitignore` — Monaco with that language's highlighting, and for JSON its
 validation as well, on the Source tab and under the same rules as a notebook: your own
@@ -1236,14 +1243,26 @@ refuse. A plain `.md` is prose and is written as the bytes it is: only a `.nb.md
 opens as cells, because prose taken apart into cells and put back together loses the
 blank lines at the end of the file, and a save is a commit.
 
-**A `.csx` is one C# cell.** It opens in Focus Mode's shape and stays there — the editor
-filling the height above, what the script printed below, and a bar between them you drag
-to decide how much of each. There is no contents tree beside it and no **Normal | Focus**
-switch in the toolbar: one cell has no second sensible arrangement. It runs against the
-same warm kernel a notebook uses, `Console.WriteLine` lands in the pane below, and it
-stays a plain script on disk with no fences and no cell markers. Nothing to add a cell
-to, no language to pick, no cell above or below to run, so none of those controls are
-there. The
+**A file named for a language the kernel runs is one cell of it.** A `.csx` is a C# cell,
+a `.sql` is a `#!sql` cell, and so are `.ps1`, `.sh`, `.zsh`, `.http`, `.dax`, `.mermaid`
+and the SQL dialects `.tsql`, `.ansisql`, `.plsql` and `.oraclesql`. Nothing lists those:
+a file whose extension is a fence tag some registered language claims *is* a cell of it,
+so a language added by a `#r`-loaded package brings its extension with it. The tag the
+file was named with is the one that runs, so a `.zsh` runs as zsh and not as bash.
+
+It opens in Focus Mode's shape and stays there — the editor filling the height above,
+what it printed below, and a bar between them you drag to decide how much of each. There
+is no contents tree beside it and no **Normal | Focus** switch: one cell has no second
+sensible arrangement. It runs against the same warm kernel a notebook uses, and it stays
+a plain script on disk with no fences and no cell markers. Nothing to add a cell to, no
+language to pick, no cell above or below to run, so none of those controls are there.
+
+It is the same cell it would be in a notebook, which is the point: a `.sql` file resolves
+its connection exactly as a `#!sql` cell does — from the `connections.json` Studio writes
+into your worktree from the Connections page — so a saved connection is all one needs and
+`#!sql-connect` is not required. `sql` means T-SQL, so a `.sql` file runs on SQL Server,
+ODBC and JDBC connections; for the others, name the file for the dialect
+(`.ansisql`, `.plsql`) or use a notebook, where the language picker is. The
 file is written back byte for byte: opening one and closing it changes nothing, which
 matters because a save is a commit and a commit invalidates the "unchanged since that
 run" half of the promotion check.

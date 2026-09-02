@@ -341,7 +341,10 @@ export function Editor() {
           setSavedSource(text);
           setReloads((n) => n + 1);
         })
-        .catch(() => live && setError(`Could not load ${path}.`));
+        // The server's own reason, not a generic one: it is the half that says
+        // *why* — too big, or not text at all — and a file that will not open is
+        // exactly when somebody needs to be told which.
+        .catch((e) => live && setError((e as Error).message || `Could not load ${path}.`));
     }
     // Two switches in quick succession are two requests, and they can come back
     // in either order. Whichever one is no longer the view on screen drops its
@@ -1191,7 +1194,9 @@ export function Editor() {
       {tab === 'source' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {source == null ? (
-            <p className="text-base text-muted-foreground">Loading…</p>
+            // Nothing, once the read has failed: the banner above already says
+            // why, and "Loading…" under it says the opposite for ever.
+            error != null ? null : <p className="text-base text-muted-foreground">Loading…</p>
           ) : (
             <SourceEditor
               value={source}

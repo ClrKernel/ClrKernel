@@ -499,6 +499,7 @@ describe('previewKind and viewFor', () => {
     // be the same document twice.
     expect(previewKind('reports/daily.nb.md')).toBe(null);
     expect(previewKind('etl/load.sql')).toBe(null);
+    expect(previewKind('notes.txt')).toBe(null);
   });
 
   it('opens each kind of file at the view that suits it', () => {
@@ -514,15 +515,17 @@ describe('previewKind and viewFor', () => {
     // the tab beside it.
     expect(viewFor('edit', 'README.md')).toBe('preview');
     // And a file with no preview opens at the only reading it has.
-    expect(viewFor('edit', 'etl/load.sql')).toBe('source');
+    expect(viewFor('edit', 'etl/load.sql')).toBe('edit');
+    expect(viewFor('edit', 'notes.txt')).toBe('source');
   });
 
   it('and refuses a view the file does not have', () => {
     expect(viewFor('overview', 'chart.png')).toBe('preview');
-    expect(viewFor('preview', 'etl/load.sql')).toBe('source');
+    expect(viewFor('preview', 'etl/load.sql')).toBe('edit');
     expect(viewFor('preview', 'etl.jobs.yaml')).toBe('overview');
     // No source to read and nothing to compare two of.
     expect(viewFor('source', 'chart.png')).toBe('preview');
+    expect(viewFor('source', 'etl/load.sql')).toBe('source');
     expect(viewFor('diff', 'report.pdf')).toBe('preview');
     // What a file does have is left alone.
     expect(viewFor('source', 'reports/daily.nb.md')).toBe('source');
@@ -572,5 +575,6 @@ describe('opensAsCells', () => {
     expect(opensAsCells('old.ipynb')).toBe(false);
     expect(opensAsCells('legacy.dib')).toBe(false);
     expect(opensAsCells('etl.jobs.yaml')).toBe(false);
+    expect(opensAsCells('notes.md')).toBe(false);
   });
 });

@@ -654,7 +654,23 @@ export const api = {
 
   notebookContent: (env: string, path: string) =>
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))),
+      // A raw fetch rather than `request`, because the body is the file and not
+      // JSON — but a *refusal* is JSON like every other one here, and it carries
+      // the reason. Rejecting with the status code alone threw that away, which
+      // put "Could not load x" on screen for a file the server had just explained.
+      .then(async (r) => {
+        if (r.ok) {
+          return r.text();
+        }
+        const body = await r.text();
+        let message = `${r.status} ${r.statusText}`;
+        try {
+          message = (JSON.parse(body) as { error?: string }).error ?? message;
+        } catch {
+          // Not JSON; the status line is all there is.
+        }
+        throw new ApiError(r.status, message);
+      }),
   /**
    * `keepalive` for the write that happens as the page goes away. An ordinary
    * fetch is cancelled with the document; a keepalive one is not, at the cost of

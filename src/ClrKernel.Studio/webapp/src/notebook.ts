@@ -141,7 +141,8 @@ export function isJobsFile(path: string): boolean {
 const EDITABLE_EXTENSIONS = [
   '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.properties', '.env',
   '.txt', '.md', '.csv', '.tsv', '.log', '.rst',
-  '.sql', '.py', '.sh', '.bash', '.zsh', '.ps1', '.psm1', '.r', '.rb', '.lua',
+  '.sql', '.tsql', '.ansisql', '.oraclesql', '.plsql', '.dax', '.mermaid', '.mmd',
+  '.py', '.sh', '.bash', '.zsh', '.ps1', '.psm1', '.r', '.rb', '.lua',
   '.cs', '.fs', '.fsx', '.vb', '.java', '.go', '.rs',
   '.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx', '.css', '.scss', '.html', '.htm',
   '.xml', '.xaml', '.csproj', '.props', '.targets', '.sln', '.svg', '.http',
@@ -278,11 +279,35 @@ export function readOnlyReason(path: string): string | null {
 }
 
 /**
+ * Extensions that are one cell of the language they are named for.
+ *
+ * The server derives this from the kernel's own `LanguageTags` — a `.sql` is a
+ * `sql` cell because some registered language claims the `sql` tag — and cannot
+ * be asked before the tabs are drawn, so this is the shipped set written out.
+ * Same arrangement as `bundledLanguages` in the VS Code extension, and the same
+ * failure if it drifts: a language loaded at run time by `#r` opens its files at
+ * Source instead of as a cell. Nothing breaks; one file type is less convenient
+ * until this list catches up.
+ *
+ * `.csx` is here because its extension is not its tag — nothing calls a C# fence
+ * `csx`.
+ */
+const SINGLE_CELL_EXTENSIONS = [
+  '.csx',
+  // Every tag the shipped languages claim, including the SQL dialects: a
+  // `.ansisql` is an ANSI SQL cell for the same reason a `.sql` is a T-SQL one.
+  // Written out in full rather than guessed at — the first version listed the
+  // obvious ones, and a `.ansisql` then opened at Source while the server was
+  // perfectly willing to run it.
+  '.sql', '.tsql', '.ansisql', '.oraclesql', '.plsql',
+  '.dax', '.http', '.mermaid',
+  '.ps1', '.pwsh', '.powershell',
+  '.sh', '.bash', '.zsh', '.shell',
+];
+
+/**
  * Whether this file opens as cells — with run buttons and an output pane —
  * rather than as one editor over the whole text.
- *
- * A `.csx` is one C# cell. The file is the cell body: it stays a plain script on
- * disk, and the kernel that runs a C# cell is the thing that runs it.
  *
  * `.nb.md` and not a plain `.md`: a README is prose, and prose that goes through
  * the notebook parser and back loses the blank lines at the end of the file.
@@ -292,9 +317,13 @@ export function opensAsCells(path: string): boolean {
   return /\.nb\.md$/i.test(path ?? '') || isScript(path);
 }
 
-/** A script: one cell, and no structure to add cells to. */
+/**
+ * One cell, and no structure to add cells to: the file *is* the cell body, and
+ * it stays a plain `.sql` or `.csx` on disk with no fences and no cell markers.
+ */
 export function isScript(path: string): boolean {
-  return /\.csx$/i.test(path ?? '');
+  const name = (path ?? '').toLowerCase();
+  return SINGLE_CELL_EXTENSIONS.some((e) => name.endsWith(e));
 }
 
 /**

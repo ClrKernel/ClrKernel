@@ -1093,4 +1093,91 @@ public class NotebookCellsApiTest {
             }
         }
     }
+
+    /// <summary>
+    /// A file named for a language the kernel runs is one cell of it — derived from
+    /// the language's own fence tags rather than a list here, so a `.sql` is a `sql`
+    /// cell because `SqlCellLanguage` claims `sql`. The seeded descriptors in this
+    /// fixture are what makes `zsh` one and `py` not.
+    /// </summary>
+    [TestMethod]
+    public async Task A_file_named_for_a_language_is_one_cell_of_it() {
+        Assert.AreEqual(HttpStatusCode.OK, (await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=report.sql",
+            new StringContent("SELECT 1\n"))).StatusCode);
+
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/projects/default/branches/mine/notebooks/cells?path=report.sql");
+        var cells = body.GetProperty("cells").EnumerateArray().ToList();
+        Assert.AreEqual(1, cells.Count);
+        Assert.AreEqual("sql", cells[0].GetProperty("tag").GetString());
+        Assert.AreEqual("SELECT 1\n", cells[0].GetProperty("source").GetString());
+
+        // The tag the file was named with, not the language's first one: `zsh` and
+        // `bash` are one language and two shells.
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=deploy.zsh",
+            new StringContent("echo hi\n"));
+        var shell = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/projects/default/branches/mine/notebooks/cells?path=deploy.zsh");
+        Assert.AreEqual("zsh", shell.GetProperty("cells").EnumerateArray().Single()
+            .GetProperty("tag").GetString());
+
+        // And a language this kernel does not have is a text file.
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=etl.py",
+            new StringContent("print(1)\n"));
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.GetAsync(
+                "/api/projects/default/branches/mine/notebooks/cells?path=etl.py")).StatusCode);
+    }
+
+    /// <summary>
+    /// Every extension that opens as a cell must also be writable. One that opened
+    /// runnable and read-only would be the worst of both, and the two lists are
+    /// separate, so nothing but a test keeps them in step.
+    /// </summary>
+    [TestMethod]
+    public void Everything_that_runs_as_a_cell_can_also_be_saved() {
+        foreach (var extension in new[] {
+            ".csx", ".sql", ".tsql", ".ansisql", ".oraclesql", ".plsql",
+            ".dax", ".http", ".mermaid", ".ps1", ".sh", ".bash", ".zsh",
+        }) {
+            Assert.IsTrue(NotebookTree.IsEditable("a/file" + extension), extension);
+        }
+    }
+
+    /// <summary>
+    /// The tree lists whatever a repository contains. A `.xlsx` read as text is a
+    /// screenful of replacement characters, and a big one is a string the size of
+    /// the file — the first person to click the parquet beside their notebook found
+    /// out which.
+    /// </summary>
+    [TestMethod]
+    public async Task A_binary_or_oversized_file_is_refused_rather_than_read_as_text() {
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=keep.txt",
+            new StringContent("hello\n"));
+        var directory = MinePath;
+
+        File.WriteAllBytes(Path.Combine(directory, "book.xlsx"),
+            new byte[] { 0x50, 0x4B, 0x03, 0x04, 0x00, 0x00, 0x01 });
+        var binary = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=book.xlsx");
+        Assert.AreEqual(HttpStatusCode.BadRequest, binary.StatusCode);
+        StringAssert.Contains(await binary.Content.ReadAsStringAsync(), "binary file");
+
+        File.WriteAllBytes(Path.Combine(directory, "big.log"), new byte[2_000_001]);
+        var big = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=big.log");
+        Assert.AreEqual(HttpStatusCode.BadRequest, big.StatusCode);
+
+        // And text still opens, whatever its extension. The check is the content,
+        // not an allowlist, so a `.ndjson` nobody listed is fine.
+        File.WriteAllText(Path.Combine(directory, "events.ndjson"), "{\"a\":1}\n");
+        var text = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=events.ndjson");
+        Assert.AreEqual(HttpStatusCode.OK, text.StatusCode);
+        Assert.AreEqual("{\"a\":1}\n", await text.Content.ReadAsStringAsync());
+    }
 }

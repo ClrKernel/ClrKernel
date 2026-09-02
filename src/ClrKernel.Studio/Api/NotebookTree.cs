@@ -109,11 +109,17 @@ public static class NotebookTree {
     /// Text files the browser edits. Deliberately generous: a file somebody
     /// expects to change and finds read-only for no reason they can see reads as
     /// a bug, and everything here is text that a text editor is the right tool for.
+    /// <para>
+    /// Every extension a cell language claims as a fence tag has to be in here.
+    /// Those open as one runnable cell (see <c>SingleCellTag</c>), and one that
+    /// opened runnable and read-only would be the worst of both.
+    /// </para>
     /// </summary>
     private static readonly string[] _editableExtensions = {
         ".json", ".jsonc", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".properties", ".env",
         ".txt", ".md", ".csv", ".tsv", ".log", ".rst",
-        ".sql", ".py", ".sh", ".bash", ".zsh", ".ps1", ".psm1", ".r", ".rb", ".lua",
+        ".sql", ".tsql", ".ansisql", ".oraclesql", ".plsql", ".dax", ".mermaid", ".mmd",
+        ".py", ".sh", ".bash", ".zsh", ".ps1", ".psm1", ".r", ".rb", ".lua",
         ".cs", ".fs", ".fsx", ".vb", ".java", ".go", ".rs",
         ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".css", ".scss", ".html", ".htm",
         ".xml", ".xaml", ".csproj", ".props", ".targets", ".sln", ".svg", ".http",
