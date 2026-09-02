@@ -14,12 +14,33 @@ public class ShellTest {
         new(Directory.GetCurrentDirectory(), NullLogger.Instance);
 
     // Windows agents may not have bash; every test skips rather than fails there.
+    /// <summary>
+    /// Skips unless this machine has a shell that actually runs something.
+    ///
+    /// <para>
+    /// The exit code, not just the absence of an exception: `ShellSession` reports a
+    /// failure in its result rather than throwing, so "bash is here" was true on
+    /// Windows — `System32\bash.exe` is WSL's launcher and exists whether or not a
+    /// distribution does. With none installed it printed "you can resolve this by
+    /// installing a distribution" and exited 1, and every bash test in this file
+    /// failed on an assertion about `echo` rather than skipping.
+    /// </para>
+    /// </summary>
     private static void RequireShell(string shell) {
         try {
-            var session = new ShellSession();
-            session.ExecuteAsync(shell, "exit 0", null).GetAwaiter().GetResult();
+            var result = new ShellSession().ExecuteAsync(shell, "exit 0", null)
+                .GetAwaiter().GetResult();
+            if (result.ExitCode != 0) {
+                Assert.Inconclusive(
+                    $"{shell} is on this machine but cannot run anything (exit "
+                    + $"{result.ExitCode}): {result.Output?.Trim()}");
+            }
         } catch (ShellCellException) {
             Assert.Inconclusive($"{shell} is not available on this machine.");
+        } catch (Exception e) when (e is not AssertInconclusiveException) {
+            // No such binary at all: a Win32Exception on Windows, and the same
+            // shape of "this machine cannot" as the two above.
+            Assert.Inconclusive($"{shell} could not be started here: {e.Message}");
         }
     }
 
