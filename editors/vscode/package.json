@@ -138,8 +138,8 @@
           ".sql"
         ],
         "icon": {
-          "light": "./images/tsql.svg.png",
-          "dark": "./images/tsql.svg.png"
+          "light": "./images/tsql-icon.svg",
+          "dark": "./images/tsql-icon.svg"
         },
         "configuration": "./language-configuration.sql-dialect.json"
       }
