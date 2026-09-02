@@ -229,15 +229,15 @@ export function previewKind(path: string): PreviewKind | null {
  * the URL is corrected to a tab that is not there.
  *
  * What a file opens at: its own editor if it has one, the jobs form if it is a
- * jobs file, a picture if there is nothing to read, and the source otherwise.
- * Markdown is the deliberate exception — it previews, but it *opens* at Source,
- * because a `.md` in a project is a file you came to change.
+ * jobs file, its preview if it has one, and the source otherwise. Markdown
+ * included — a document opens as the document, the way a picture opens as the
+ * picture, and Source is the tab beside it.
  */
 export function viewFor(asked: NotebookView, path: string): NotebookView {
   const opensAt = (): NotebookView =>
     opensAsCells(path) ? 'edit'
       : isJobsFile(path) ? 'overview'
-        : isBinary(path) || previewKind(path) === 'svg' ? 'preview'
+        : previewKind(path) != null ? 'preview'
           : 'source';
   switch (asked) {
     case 'edit':

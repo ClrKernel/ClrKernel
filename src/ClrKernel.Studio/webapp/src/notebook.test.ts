@@ -510,9 +510,10 @@ describe('previewKind and viewFor', () => {
     expect(viewFor('edit', 'logo.svg')).toBe('preview');
     expect(viewFor('edit', 'chart.png')).toBe('preview');
     expect(viewFor('edit', 'report.pdf')).toBe('preview');
-    // Markdown is the exception: it previews, but a `.md` in a project is a file
-    // you came to change, so it opens where you can change it.
-    expect(viewFor('edit', 'README.md')).toBe('source');
+    // A document opens as the document, the same as a picture does. Source is
+    // the tab beside it.
+    expect(viewFor('edit', 'README.md')).toBe('preview');
+    // And a file with no preview opens at the only reading it has.
     expect(viewFor('edit', 'etl/load.sql')).toBe('source');
   });
 
@@ -526,6 +527,7 @@ describe('previewKind and viewFor', () => {
     // What a file does have is left alone.
     expect(viewFor('source', 'reports/daily.nb.md')).toBe('source');
     expect(viewFor('diff', 'README.md')).toBe('diff');
+    expect(viewFor('source', 'README.md')).toBe('source');
     expect(viewFor('preview', 'logo.svg')).toBe('preview');
   });
 });

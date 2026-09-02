@@ -924,8 +924,8 @@ from. They are three readings of one file, not three permissions: read-only come
 from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
-one. A file that does not parse into cells — an `.ipynb`, a plain `.md` — has no
-Notebook view and opens at Source. A `*.jobs.yaml` opens at its **Overview** — the
+one. A file that does not parse into cells — an `.ipynb`, a `.csv` — has no Notebook
+view and opens at Source. A `*.jobs.yaml` opens at its **Overview** — the
 form is what the file is for, and the YAML tab is the escape hatch beside it — and
 a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
 read.
@@ -1258,8 +1258,8 @@ Preview with **Source** beside it. The bytes are served with `nosniff` and a `sa
 CSP, which is what makes serving an SVG or a PDF safe: either can carry script, and the
 sandbox leaves it nothing to run or reach. Anything else binary is listed and read-only.
 
-**Markdown previews too.** A `.md` opens at **Source**, because a markdown file in a
-project is usually one you came to change, and **Preview** is the tab beside it. It is
+**Markdown previews too.** A `.md` opens at its **Preview** — a document opens as the
+document, the same way a picture does — with **Source** the tab beside it. It is
 GitHub-flavoured — tables, task lists, strikethrough and bare URLs, none of which plain
 CommonMark has — and raw HTML is escaped and shown rather than rendered: a document in a
 repository is not a place to run markup from.
