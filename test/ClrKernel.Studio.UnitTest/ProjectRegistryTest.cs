@@ -25,7 +25,7 @@ public class ProjectRegistryTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_dir, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_dir);
 
     private JobsOptions Options(bool git = false, string projectsRoot = null) => new() {
         DataDir = Path.Combine(_dir, "data"),

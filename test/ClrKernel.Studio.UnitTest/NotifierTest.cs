@@ -50,7 +50,7 @@ public class NotifierTest {
     public async Task Cleanup() {
         await _listener.StopAsync();
         await _listener.DisposeAsync();
-        Directory.Delete(_root, recursive: true);
+        TempDirectory.Delete(_root);
     }
 
     private string Url(string path) => _listener.Urls.First() + path;

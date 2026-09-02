@@ -211,4 +211,22 @@ public class SqlEngineRoutingTest {
         }
         Assert.IsTrue(threw);
     }
+
+    /// <summary>
+    /// A connection is named by a person, so its name has spaces in it. Both halves
+    /// of the path have to keep them: the flag on the selector line, and the comment
+    /// the dialects rewrite it into. Splitting on the space asked for a connection
+    /// called "Warehouse" and reported it missing — which is the message you get
+    /// while looking straight at "Warehouse (dev)" in the list.
+    /// </summary>
+    [TestMethod]
+    public void A_connection_name_with_spaces_survives_both_halves_of_the_path() {
+        Assert.AreEqual("Warehouse (dev)",
+            SqlDirectives.SelectorConnection("#!sql --connection \"Warehouse (dev)\""));
+        Assert.AreEqual("Warehouse (dev)",
+            SqlDirectives.ParseCell("-- connections \"Warehouse (dev)\"\nSELECT 1").ConnectionName);
+        // Unquoted and single-word is unchanged, and a list still takes the first.
+        Assert.AreEqual("dw", SqlDirectives.ParseCell("-- connections dw\nSELECT 1").ConnectionName);
+        Assert.AreEqual("dw", SqlDirectives.ParseCell("-- connections dw, other\nSELECT 1").ConnectionName);
+    }
 }

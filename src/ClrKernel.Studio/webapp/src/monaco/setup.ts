@@ -1,5 +1,9 @@
 import * as monaco from 'monaco-editor';
 import EditorWorker from './editor.worker?worker';
+import CssWorker from './css.worker?worker';
+import HtmlWorker from './html.worker?worker';
+import JsonWorker from './json.worker?worker';
+import TsWorker from './ts.worker?worker';
 import { FONT_MONO, paletteFor, type ThemeName } from '../theme/palette';
 
 /**
@@ -8,11 +12,42 @@ import { FONT_MONO, paletteFor, type ThemeName } from '../theme/palette';
  * works offline and inside the container, where Monaco's default CDN loader
  * would simply fail.
  *
- * One worker serves every language: we ship no language services (no IntelliSense
- * from the kernel yet), so the TypeScript/JSON/CSS/HTML workers would be dead
- * weight. Syntax highlighting is tokenizer-only and needs no worker at all.
+ * A worker per language service, because Files opens whole files now and not
+ * only notebook cells.
+ *
+ * C# and SQL are the kernel's business and need none of these — highlighting is
+ * tokenizer-only. But Monaco's own JSON, CSS, HTML and TypeScript contributions
+ * each want a *worker* of their own the moment a file of that language is
+ * opened, and `getWorker` is consulted before the fallback they carry: with only
+ * the plain editor worker wired up, opening a `.json` filled the console with
+ * "Missing requestHandler or method: doComplete" and quietly answered nothing.
+ *
+ * Free, as it turns out. `workerManager.js` in the package does
+ * `new Worker(new URL('ts.worker.js', import.meta.url))`, which Vite sees
+ * statically — so all four chunks are emitted whether or not anything here names
+ * them, and they are fetched only when a file of that language is opened.
  */
-self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+self.MonacoEnvironment = {
+  getWorker: (_id: string, label: string) => {
+    switch (label) {
+      case 'json':
+        return new JsonWorker();
+      case 'css':
+      case 'scss':
+      case 'less':
+        return new CssWorker();
+      case 'html':
+      case 'handlebars':
+      case 'razor':
+        return new HtmlWorker();
+      case 'typescript':
+      case 'javascript':
+        return new TsWorker();
+      default:
+        return new EditorWorker();
+    }
+  },
+};
 
 /**
  * One theme, defined from the shared palette so the editor's background is the

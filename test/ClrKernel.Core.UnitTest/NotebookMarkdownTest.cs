@@ -89,8 +89,30 @@ public class NotebookMarkdownTest {
         var text = File.ReadAllText(Path.Combine(SamplesDirectory, name));
         var cells = NotebookMarkdown.Parse(text, Languages());
 
-        Assert.AreEqual(text, NotebookMarkdown.Serialize(cells),
+        Assert.AreEqual(text, NotebookMarkdown.Serialize(cells, NotebookMarkdown.NewlineOf(text)),
             $"{name} does not survive Parse → Serialize; saving it from the web editor would rewrite the file");
+    }
+
+    /// <summary>
+    /// The same corpus with Windows line endings, which is what git checks out on
+    /// Windows and therefore what the file on that machine actually is.
+    ///
+    /// <para>
+    /// Reading the file from disk only tests this on a Windows machine; converting
+    /// it here tests it everywhere. It went unnoticed until the suite first ran on
+    /// Windows, where every sample failed by exactly its own line count.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [DynamicData(nameof(Samples))]
+    public void A_notebook_with_windows_line_endings_round_trips_byte_for_byte(string name) {
+        var text = File.ReadAllText(Path.Combine(SamplesDirectory, name))
+            .Replace("\r\n", "\n").Replace("\n", "\r\n");
+        var cells = NotebookMarkdown.Parse(text, Languages());
+
+        Assert.AreEqual(text, NotebookMarkdown.Serialize(cells, NotebookMarkdown.NewlineOf(text)),
+            $"{name} with CRLF does not survive Parse → Serialize; saving it from the web "
+            + "editor on Windows would rewrite every line in the file");
     }
 
     [TestMethod]

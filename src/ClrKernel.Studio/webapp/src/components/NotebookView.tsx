@@ -1,5 +1,5 @@
+import { MarkdownBody } from './MarkdownBody';
 import DOMPurify from 'dompurify';
-import Markdown from 'react-markdown';
 import { SandboxedHtml } from './SandboxedHtml';
 import {
   isInjectedParameters,
@@ -69,7 +69,7 @@ function Cell({ cell }: { cell: NotebookCell }) {
   if (cell.cell_type === 'markdown') {
     return (
       <div className="cell cell-markdown">
-        <Markdown>{source}</Markdown>
+        <MarkdownBody>{source}</MarkdownBody>
       </div>
     );
   }

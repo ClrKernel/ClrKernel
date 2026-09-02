@@ -127,6 +127,9 @@ const studioPages = {
 };
 
 const docsPages = {
+  // Right after the database pages: SQL, the other databases, SSAS and Fabric all
+  // end at "and where does the password live".
+  'secrets.md': { slug: 'secrets', order: 9, title: 'Passwords and secrets' },
   'studio.md': {
     dir: 'studio',
     split: { table: studioPages, rootTitle: 'ClrKernel Studio',
@@ -185,7 +188,16 @@ function rewriteLinks(md, fromDir) {
     let s = rel.match(/^samples\/([^/]+\.nb\.md)$/);
     if (s) return `](${pageUrl.samples(s[1])}${hash})`;
     const doc = docPages.get(rel);
-    if (doc) return `](${doc.url}${hash})`;
+    if (doc) {
+      // A document that became many pages: the anchor belongs to one of them, and
+      // the index it used to be does not have it.
+      const owner = hash && splitAnchors.get(`${rel}${hash}`);
+      if (owner) {
+        const url = `${base}/${owner.dir}/${owner.slug}/`;
+        return `](${owner.anchors[0] === hash.slice(1) ? url : url + hash})`;
+      }
+      return `](${doc.url}${hash})`;
+    }
     // The link the root README uses to send people to the extension's own docs.
     // On GitHub it opens the file; here it opens the section built from it.
     if (rel === 'editors/vscode/README.md') return `](${base}/vscode/${hash})`;
@@ -263,6 +275,10 @@ function cutIntoPages(text, { table, defaultDir, h3Under, rootTitle, drop = [] }
 // into the root one by fragment, so this has to outlive the call that fills it.
 const readmeAnchors = new Map();
 
+/** `docs/x.md#anchor` -> the page that owns that heading, for documents that are
+ *  split into several. Filled before anything is written; see `syncDocs`. */
+const splitAnchors = new Map();
+
 async function writePages(pages, { source, fromDir, remember }) {
   // "[below](#sql-cells)" must become a link to the page that now owns that heading.
   const owner = new Map();
@@ -298,9 +314,9 @@ const readmePages = {
   'Other databases (Oracle, ODBC, JDBC)': { slug: 'other-databases', order: 6 },
   'Analysis Services (SSAS / Fabric)': { slug: 'analysis-services', order: 7 },
   'Fabric warehouse writes': { slug: 'fabric-warehouse', order: 8 },
-  'Headless execution': { slug: 'headless', order: 9 },
-  'Converting a notebook': { slug: 'converting', order: 10 },
-  'Scheduling notebooks — ClrKernel Studio (preview)': { slug: 'scheduling', order: 11, title: 'Scheduling with Studio' },
+  'Headless execution': { slug: 'headless', order: 10 },
+  'Converting a notebook': { slug: 'converting', order: 11 },
+  'Scheduling notebooks — ClrKernel Studio (preview)': { slug: 'scheduling', order: 12, title: 'Scheduling with Studio' },
   'Build & test': { slug: 'build-and-test', order: 0, dir: 'contributing' },
   Develop: { slug: 'develop', order: 1, dir: 'contributing' },
 };
@@ -366,11 +382,32 @@ async function syncSamples() {
 async function syncDocs() {
   const unlisted = [];
   let count = 0;
+  const sources = new Map();
+  for (const [src] of docPages) {
+    sources.set(src, await fs.readFile(path.join(repo, src), 'utf8'));
+  }
+
+  // Split documents are cut before anything is written, so that a link from
+  // another document into one of their sections — `studio.md#git-remotes` — can
+  // be pointed at the page that ends up owning that heading. Writing in file
+  // order instead meant `secrets.md` was rewritten before `studio.md` had been
+  // cut, and its links landed on the studio index, which has no such anchor.
+  const cut = new Map();
   for (const [src, page] of docPages) {
-    const text = await fs.readFile(path.join(repo, src), 'utf8');
+    if (!page.split) continue;
+    const pages = cutIntoPages(sources.get(src), { defaultDir: page.dir, ...page.split });
+    cut.set(src, pages);
+    for (const p of pages) {
+      for (const a of p.anchors) {
+        if (!splitAnchors.has(`${src}#${a}`)) splitAnchors.set(`${src}#${a}`, p);
+      }
+    }
+  }
+
+  for (const [src, page] of docPages) {
+    const text = sources.get(src);
     if (page.split) {
-      const pages = cutIntoPages(text, { defaultDir: page.dir, ...page.split });
-      count += await writePages(pages, { source: src, fromDir: 'docs' });
+      count += await writePages(cut.get(src), { source: src, fromDir: 'docs' });
       continue;
     }
     let md = text;

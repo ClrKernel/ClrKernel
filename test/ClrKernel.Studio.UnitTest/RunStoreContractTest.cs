@@ -37,7 +37,7 @@ public class RunStoreContractTest {
     [TestCleanup]
     public void Cleanup() {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_dir, recursive: true);
+        TempDirectory.Delete(_dir);
     }
 
     private static string LiveConnectionString(string kind) => kind switch {

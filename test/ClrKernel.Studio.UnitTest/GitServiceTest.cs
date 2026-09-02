@@ -23,7 +23,7 @@ public class GitServiceTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_dir, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_dir);
 
     private void WriteTest(string relative, string content) {
         var path = Path.Combine(_git.TestPath, relative);

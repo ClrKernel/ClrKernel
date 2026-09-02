@@ -103,7 +103,7 @@ public class NotebookCellsApiTest {
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try {
-            Directory.Delete(_root, recursive: true);
+            TempDirectory.Delete(_root);
         } catch (IOException) {
             // A kernel probe may still hold a handle; the temp dir is disposable.
         }
@@ -735,9 +735,9 @@ public class NotebookCellsApiTest {
             (await MoveAsync(_notebook, "../escaped.nb.md")).StatusCode);
         Assert.AreEqual(HttpStatusCode.BadRequest,
             (await MoveAsync("../outside.nb.md", "fine.nb.md")).StatusCode);
-        // Not a notebook.
+        // Not a file this writes — a picture is not a destination for a notebook.
         Assert.AreEqual(HttpStatusCode.BadRequest,
-            (await MoveAsync(_notebook, "notes.txt")).StatusCode);
+            (await MoveAsync(_notebook, "chart.png")).StatusCode);
         // Not your branch.
         var onTest = await _client.PostAsJsonAsync(
             $"/api/projects/default/branches/test/notebooks/move?path={_notebook}",
@@ -933,4 +933,279 @@ public class NotebookCellsApiTest {
             "a finished run is not in flight");
     }
 
+    /// <summary>
+    /// A <c>.csx</c> is one C# cell — that is the whole of "a script you can run in
+    /// the browser". The file is the cell body, so the round trip has to be exact
+    /// to the byte: the editor autosaves on open, and a script that comes back one
+    /// newline shorter is a commit nobody made, which is what invalidates the
+    /// promotion evidence a green run left.
+    /// </summary>
+    [TestMethod]
+    public async Task A_script_opens_as_one_cell_and_saves_back_byte_for_byte() {
+        // Both hazards in one pass: CRLF, and no trailing newline. A trim anywhere
+        // in the path eats one of them.
+        const string script = "// setup\r\nvar x = 1;\r\nConsole.WriteLine(x);";
+        // Through the route: a personal worktree is created on its owner's first
+        // write, so writing to the directory directly is writing to nowhere.
+        Assert.AreEqual(HttpStatusCode.OK, (await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=hello.csx",
+            new StringContent(script))).StatusCode);
+
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/projects/default/branches/mine/notebooks/cells?path=hello.csx");
+        var cells = body.GetProperty("cells").EnumerateArray().ToList();
+
+        Assert.AreEqual(1, cells.Count);
+        Assert.AreEqual("code", cells[0].GetProperty("kind").GetString());
+        Assert.AreEqual("csharp", cells[0].GetProperty("tag").GetString());
+        Assert.AreEqual(script, cells[0].GetProperty("source").GetString(),
+            "the file is the cell — no fence, no selector, no trim");
+
+        var saved = await _client.PutAsJsonAsync(
+            "/api/projects/default/branches/mine/notebooks/cells?path=hello.csx",
+            new { cells = body.GetProperty("cells") }, _json);
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+
+        Assert.AreEqual(script, File.ReadAllText(Path.Combine(MinePath, "hello.csx")),
+            "opening a script and saving it must not rewrite it");
+    }
+
+    /// <summary>
+    /// Text is edited as text. A <c>.json</c> saving through the cells route would
+    /// come back wrapped in a fence, so the two routes have to disagree about it.
+    /// </summary>
+    [TestMethod]
+    public async Task A_json_file_is_written_as_text_and_refused_as_cells() {
+        const string json = "{\n  \"retries\": 3\n}\n";
+        var saved = await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=settings.json",
+            new StringContent(json));
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode, await saved.Content.ReadAsStringAsync());
+        Assert.AreEqual(json, File.ReadAllText(Path.Combine(MinePath, "settings.json")));
+
+        var asCells = await _client.PutAsJsonAsync(
+            "/api/projects/default/branches/mine/notebooks/cells?path=settings.json",
+            new { cells = new object[] { new { kind = "code", source = "{}" } } }, _json);
+        Assert.AreEqual(HttpStatusCode.BadRequest, asCells.StatusCode);
+        Assert.AreEqual(json, File.ReadAllText(Path.Combine(MinePath, "settings.json")),
+            "and the refusal left the file alone");
+    }
+
+    /// <summary>
+    /// The exception to "any .json": the connection files in a worktree are written
+    /// from the saved connections, and <see cref="ConnectionMaterializer"/> deletes
+    /// and rebuilds them whenever one changes. An edit accepted here would come
+    /// undone with no sign of why, so it is refused with somewhere to go instead.
+    /// </summary>
+    [TestMethod]
+    public async Task The_generated_connection_files_are_not_editable() {
+        foreach (var name in new[] { "connections.json", "connections.local.json" }) {
+            var response = await _client.PutAsync(
+                $"/api/projects/default/branches/mine/notebooks/content?path={name}",
+                new StringContent("{}"));
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, name);
+            StringAssert.Contains(await response.Content.ReadAsStringAsync(), "Connections page", name);
+        }
+    }
+
+    /// <summary>
+    /// The route that hands the browser bytes off the server's disk. Narrow by
+    /// design — an image is the one thing the text route cannot carry — and an SVG
+    /// arrives with the headers that stop it being a document as well as a picture.
+    /// </summary>
+    [TestMethod]
+    public async Task A_picture_or_a_pdf_is_served_as_bytes_and_anything_else_is_refused() {
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=logo.svg",
+            new StringContent("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"));
+        File.WriteAllBytes(Path.Combine(MinePath, "chart.png"), png);
+
+        var image = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/file?path=chart.png");
+        Assert.AreEqual(HttpStatusCode.OK, image.StatusCode);
+        Assert.AreEqual("image/png", image.Content.Headers.ContentType?.MediaType);
+        CollectionAssert.AreEqual(png, await image.Content.ReadAsByteArrayAsync());
+
+        var svg = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/file?path=logo.svg");
+        Assert.AreEqual("image/svg+xml", svg.Content.Headers.ContentType?.MediaType);
+        Assert.AreEqual("nosniff", svg.Headers.GetValues("X-Content-Type-Options").Single());
+        StringAssert.Contains(
+            svg.Headers.GetValues("Content-Security-Policy").Single(), "sandbox",
+            "an svg can carry script; the sandbox is why serving it is safe");
+
+        // A PDF is served too — it is shown in the browser's own viewer, which
+        // needs the bytes and a content type, not text.
+        File.WriteAllBytes(Path.Combine(MinePath, "report.pdf"), "%PDF-1.4\n"u8.ToArray());
+        var pdf = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/file?path=report.pdf");
+        Assert.AreEqual("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
+        StringAssert.Contains(
+            pdf.Headers.GetValues("Content-Security-Policy").Single(), "sandbox",
+            "a PDF can carry script as surely as an SVG can");
+
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.GetAsync(
+                $"/api/projects/default/branches/mine/notebooks/file?path={_notebook}")).StatusCode,
+            "not a general download-any-file route");
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.GetAsync(
+                "/api/projects/default/branches/mine/notebooks/file?path=../../../etc/passwd")).StatusCode);
+    }
+
+    /// <summary>
+    /// Prose is written as prose. A README taken apart into cells and put back
+    /// together comes back *nearly* identical — near enough to look right, and
+    /// short by the blank lines at the end of the file. It never mattered while
+    /// every save of a plain `.md` was refused; making text editable is what would
+    /// have turned it into a commit nobody made.
+    /// </summary>
+    [TestMethod]
+    public async Task A_prose_readme_is_written_as_text_and_never_as_cells() {
+        const string readme = "A Title\n=======\n\nSome prose with a list:\n\n"
+            + "  - one\n  - two\n\nAn indented code block:\n\n    var x = 1;\n\nEnd.\n\n\n";
+        Assert.AreEqual(HttpStatusCode.OK, (await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=README.md",
+            new StringContent(readme))).StatusCode);
+        Assert.AreEqual(readme, File.ReadAllText(Path.Combine(MinePath, "README.md")),
+            "the text route writes the bytes it was given");
+
+        var asCells = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/cells?path=README.md");
+        Assert.AreEqual(HttpStatusCode.BadRequest, asCells.StatusCode,
+            "and it does not open as cells, so nothing can save it as cells either");
+    }
+
+    /// <summary>
+    /// The tree hides git's own storage; so must the routes that read a file.
+    /// Answering `?path=.git/config` while leaving it out of the listing is a
+    /// difference nobody meant, and a Project Viewer is enough to ask.
+    /// </summary>
+    [TestMethod]
+    public async Task Git_storage_is_not_readable_through_the_file_routes() {
+        foreach (var route in new[] { "content", "file" }) {
+            foreach (var path in new[] { ".git/config", ".git", "reports/../.git/HEAD" }) {
+                var response = await _client.GetAsync(
+                    $"/api/projects/default/branches/mine/notebooks/{route}"
+                    + $"?path={Uri.EscapeDataString(path)}");
+                Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, $"{route} {path}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A file named for a language the kernel runs is one cell of it — derived from
+    /// the language's own fence tags rather than a list here, so a `.sql` is a `sql`
+    /// cell because `SqlCellLanguage` claims `sql`. The seeded descriptors in this
+    /// fixture are what makes `zsh` one and `py` not.
+    /// </summary>
+    [TestMethod]
+    public async Task A_file_named_for_a_language_is_one_cell_of_it() {
+        Assert.AreEqual(HttpStatusCode.OK, (await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=report.sql",
+            new StringContent("SELECT 1\n"))).StatusCode);
+
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/projects/default/branches/mine/notebooks/cells?path=report.sql");
+        var cells = body.GetProperty("cells").EnumerateArray().ToList();
+        Assert.AreEqual(1, cells.Count);
+        Assert.AreEqual("sql", cells[0].GetProperty("tag").GetString());
+        Assert.AreEqual("SELECT 1\n", cells[0].GetProperty("source").GetString());
+
+        // The tag the file was named with, not the language's first one: `zsh` and
+        // `bash` are one language and two shells.
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=deploy.zsh",
+            new StringContent("echo hi\n"));
+        var shell = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/projects/default/branches/mine/notebooks/cells?path=deploy.zsh");
+        Assert.AreEqual("zsh", shell.GetProperty("cells").EnumerateArray().Single()
+            .GetProperty("tag").GetString());
+
+        // And a language this kernel does not have is a text file.
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=etl.py",
+            new StringContent("print(1)\n"));
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await _client.GetAsync(
+                "/api/projects/default/branches/mine/notebooks/cells?path=etl.py")).StatusCode);
+    }
+
+    /// <summary>
+    /// Every extension that opens as a cell must also be writable. One that opened
+    /// runnable and read-only would be the worst of both, and the two lists are
+    /// separate, so nothing but a test keeps them in step.
+    /// </summary>
+    [TestMethod]
+    public void Everything_that_runs_as_a_cell_can_also_be_saved() {
+        foreach (var extension in new[] {
+            ".csx", ".sql", ".tsql", ".ansisql", ".oraclesql", ".plsql",
+            ".dax", ".http", ".mermaid", ".ps1", ".sh", ".bash", ".zsh",
+        }) {
+            Assert.IsTrue(NotebookTree.IsEditable("a/file" + extension), extension);
+        }
+    }
+
+    /// <summary>
+    /// The tree lists whatever a repository contains. A `.xlsx` read as text is a
+    /// screenful of replacement characters, and a big one is a string the size of
+    /// the file — the first person to click the parquet beside their notebook found
+    /// out which.
+    /// </summary>
+    [TestMethod]
+    public async Task A_binary_or_oversized_file_is_refused_rather_than_read_as_text() {
+        await _client.PutAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=keep.txt",
+            new StringContent("hello\n"));
+        var directory = MinePath;
+
+        File.WriteAllBytes(Path.Combine(directory, "book.xlsx"),
+            new byte[] { 0x50, 0x4B, 0x03, 0x04, 0x00, 0x00, 0x01 });
+        var binary = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=book.xlsx");
+        Assert.AreEqual(HttpStatusCode.BadRequest, binary.StatusCode);
+        StringAssert.Contains(await binary.Content.ReadAsStringAsync(), "binary file");
+
+        File.WriteAllBytes(Path.Combine(directory, "big.log"), new byte[2_000_001]);
+        var big = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=big.log");
+        Assert.AreEqual(HttpStatusCode.BadRequest, big.StatusCode);
+
+        // And text still opens, whatever its extension. The check is the content,
+        // not an allowlist, so a `.ndjson` nobody listed is fine.
+        File.WriteAllText(Path.Combine(directory, "events.ndjson"), "{\"a\":1}\n");
+        var text = await _client.GetAsync(
+            "/api/projects/default/branches/mine/notebooks/content?path=events.ndjson");
+        Assert.AreEqual(HttpStatusCode.OK, text.StatusCode);
+        Assert.AreEqual("{\"a\":1}\n", await text.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// A notebook with Windows line endings is saved back with them.
+    ///
+    /// <para>
+    /// git checks `.nb.md` out as CRLF on Windows, and the parser normalises — so
+    /// opening one there and saving it rewrote every line in the file. Silent, a
+    /// diff on everything, and it invalidates the "unchanged since that run" half of
+    /// the promotion check for a notebook nobody edited.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task A_notebook_with_CRLF_is_saved_back_with_CRLF() {
+        var crlf = _source.Replace("\n", "\r\n");
+        Assert.AreEqual(HttpStatusCode.OK, (await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={_notebook}",
+            new StringContent(crlf))).StatusCode);
+
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}");
+        var saved = await _client.PutAsJsonAsync(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}",
+            new { cells = body.GetProperty("cells") }, _json);
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+
+        Assert.AreEqual(crlf, File.ReadAllText(Path.Combine(MinePath, _notebook)),
+            "opening a CRLF notebook and saving it must not re-line-end the file");
+    }
 }

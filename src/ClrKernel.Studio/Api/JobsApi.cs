@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ClrKernel.Core.Runner;
@@ -351,13 +352,54 @@ public static class JobsApi {
                 }
                 // Rooted at the branch's own tree — resolving against the workspace
                 // would happily reach across into the other worktree.
-                var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
-                if (resolved == null) {
+                if (Readable(scope, branch, path) is not { } resolved) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
-                return File.Exists(resolved)
-                    ? Results.Text(File.ReadAllText(resolved), "text/plain")
-                    : Results.NotFound(new { error = $"No such file: {path}" });
+                if (!File.Exists(resolved)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                return ReadAsText(resolved) is { } text
+                    ? Results.Text(text, "text/plain")
+                    : Results.BadRequest(new { error = NotTextReason(resolved) });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // A file the browser will *show*, as bytes: a picture or a PDF. Narrow on
+        // purpose — this hands the browser a file off the server's disk, so it
+        // serves the types the preview renders and refuses everything else rather
+        // than becoming a general "download any file in the repo" route.
+        //
+        // `nosniff` pins the type and the `sandbox` CSP leaves nothing for a
+        // crafted file to run or reach, which is what makes serving the two that
+        // are documents as well as pictures safe: an SVG can carry script, and so
+        // can a PDF.
+        //
+        // One policy for all of them, checked rather than assumed. The strict one
+        // looked like it blanked the PDF viewer — but that was Playwright's
+        // bundled Chromium, which has no PDF viewer at all
+        // (`navigator.pdfViewerEnabled` is false), so the empty frame said nothing
+        // about the header. Real Chrome renders it under this policy.
+        scoped.MapGet("/notebooks/file", (
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string path) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                if (!Reachable(scope, branch)) {
+                    return Results.NotFound(new { error = $"No branch '{branch}'." });
+                }
+                if (Readable(scope, branch, path) is not { } resolved) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                if (PreviewContentType(resolved) is not { } contentType) {
+                    return Results.BadRequest(new { error = "Not a file this shows." });
+                }
+                if (!File.Exists(resolved)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+                context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; sandbox";
+                return Results.File(resolved, contentType);
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPut("/notebooks/content", async (
@@ -403,16 +445,20 @@ public static class JobsApi {
                 if (resolved == null) {
                     return Results.BadRequest(new { error = "Path is outside the notebooks root." });
                 }
-                if (!resolved.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
-                    !resolved.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
-                    return Results.BadRequest(new { error = "Only executable markdown (.nb.md) opens as cells." });
-                }
                 if (!File.Exists(resolved)) {
                     return Results.NotFound(new { error = $"No such file: {path}" });
                 }
+                // The languages first: which files open as cells depends on them —
+                // a `.sql` is a cell because some language claims the `sql` tag.
                 var languages = await kernelLanguages.GetAsync();
+                if (!OpensAsCells(resolved, languages)) {
+                    return Results.BadRequest(new {
+                        error = "Only executable markdown (.nb.md) and files named for a "
+                            + "language the kernel runs open as cells.",
+                    });
+                }
                 var text = File.ReadAllText(resolved);
-                var cells = NotebookMarkdown.Parse(text, languages);
+                var cells = ParseCells(resolved, text, languages);
                 return Results.Ok(new {
                     cells = cells.Select((c, i) => CellView.From(c, i, languages)),
                     languages,
@@ -437,10 +483,6 @@ public static class JobsApi {
                 if (EditableTarget(context, scope, branch, path) is not { } target) {
                     return TestWriteError(context, scope, branch, path);
                 }
-                if (!target.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase) &&
-                    !target.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) {
-                    return Results.BadRequest(new { error = "Only executable markdown (.nb.md) saves as cells." });
-                }
                 CellWrite write;
                 try {
                     write = await JsonSerializer.DeserializeAsync<CellWrite>(context.Request.Body, _bodyJson);
@@ -454,9 +496,14 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "Too many cells (1000 limit)." });
                 }
                 var languages = await kernelLanguages.GetAsync();
+                if (!OpensAsCells(target, languages)) {
+                    return Results.BadRequest(new {
+                        error = "Only executable markdown (.nb.md) and files named for a "
+                            + "language the kernel runs save as cells.",
+                    });
+                }
                 return SaveToBranch(
-                    context, scope, branch, target, path,
-                    NotebookMarkdown.Serialize(write.Cells.Select(c => c.ToCell(languages))));
+                    context, scope, branch, target, path, SerializeCells(target, write.Cells, languages));
             }).RequiresProject(ProjectRole.ProjectMember);
 
         // Renaming, and moving out of the scratch folder — one operation, because
@@ -588,7 +635,9 @@ public static class JobsApi {
                 }
 
                 var languages = session.Languages;
-                var cells = request.Cells.Select(c => c.ToCell(languages)).ToList();
+                var cells = request.Cells
+                    .Select(c => RunOn(c.ToCell(languages), c.Connection, languages))
+                    .ToList();
                 var ids = request.Cells.Select((c, i) => c.Id ?? $"run{i}").ToList();
                 // The run continues after the response: a long cell must not hold an
                 // HTTP request open, and the editor polls status for progress.
@@ -1817,9 +1866,18 @@ public static class JobsApi {
                     : "test and prod are read-only. Edit on your own branch and push to test.",
             });
         }
-        return NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null
-            ? Results.BadRequest(new { error = "Path is outside your branch." })
-            : Results.BadRequest(new { error = "Only notebooks and *.jobs.yaml are editable here." });
+        if (NotebookTree.SafeResolve(scope.Git.PathFor(branch), path) == null) {
+            return Results.BadRequest(new { error = "Path is outside your branch." });
+        }
+        if (NotebookTree.IsGenerated(Path.GetFileName(path))) {
+            return Results.BadRequest(new {
+                error = "This file is written from your saved connections — edit it on the "
+                    + "Connections page. A change here is undone the next time one is saved.",
+            });
+        }
+        return Results.BadRequest(new {
+            error = "That file is not one this edits — notebooks, jobs files and text files are.",
+        });
     }
 
     /// <summary>
@@ -2040,6 +2098,213 @@ public static class JobsApi {
         }
         return invalid;
     }
+
+    /// <summary>
+    /// The fence tag a whole file is one cell of, or null when it is not one.
+    ///
+    /// <para>
+    /// A <c>.csx</c> is one C# cell: the file *is* the cell body, so it opens with a
+    /// run button and an output pane and stays a plain script on disk. That is the
+    /// whole trick — the kernel already runs a C# cell, and a script is one.
+    /// </para>
+    /// <para>
+    /// The rest is <em>derived, not listed</em>: a file whose extension is a fence
+    /// tag some registered language claims is one cell of that language. <c>.sql</c>
+    /// is a <c>sql</c> cell because <c>SqlCellLanguage</c> says <c>sql</c> is one of
+    /// its tags, and a language added by a <c>#r</c>-loaded package brings its own
+    /// extension with it without anything here being edited. It also keeps the tag
+    /// the file was named with, so a <c>.zsh</c> runs as zsh and not as whichever
+    /// shell tag happens to be listed first.
+    /// </para>
+    /// <para>
+    /// <c>.csx</c> is the one that has to be named, because its extension is not its
+    /// tag — nothing calls a C# fence <c>csx</c>.
+    /// </para>
+    /// </summary>
+    private static string SingleCellTag(string path, IReadOnlyList<LanguageDescriptor> languages) {
+        var extension = Path.GetExtension(path).TrimStart('.');
+        if (extension.Length == 0) {
+            return null;
+        }
+        if (extension.Equals("csx", StringComparison.OrdinalIgnoreCase)) {
+            return "csharp";
+        }
+        return languages?.Any(l => l.LanguageTags?.Contains(extension, StringComparer.OrdinalIgnoreCase) == true)
+            == true
+            ? extension.ToLowerInvariant()
+            : null;
+    }
+
+    /// <summary>
+    /// Whether this file is edited as cells rather than as text.
+    ///
+    /// <para>
+    /// <c>.nb.md</c> and not a plain <c>.md</c>, which this used to accept. A
+    /// <c>README.md</c> is prose, and prose taken apart into cells and put back
+    /// together comes back *nearly* identical — near enough to look fine and to
+    /// lose the blank lines at the end of the file. That was harmless while every
+    /// save of one was refused; it stopped being harmless when text became
+    /// editable. A plain <c>.md</c> opens at its preview and is written as the bytes
+    /// it is, which is what it was all along.
+    /// </para>
+    /// </summary>
+    private static bool OpensAsCells(string path, IReadOnlyList<LanguageDescriptor> languages) =>
+        path.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase)
+        || SingleCellTag(path, languages) != null;
+
+    private static IReadOnlyList<MarkdownCell> ParseCells(
+        string path, string text, IReadOnlyList<LanguageDescriptor> languages) =>
+        SingleCellTag(path, languages) is { } tag
+            // Verbatim, with no trim: the editor saves what it loaded, and a script
+            // that comes back one newline shorter than it went in is a commit
+            // nobody made — which is what invalidates a notebook's promotion evidence.
+            ? new[] { new MarkdownCell { Kind = CellKind.Code, Tag = tag, Source = text } }
+            : NotebookMarkdown.Parse(text, languages);
+
+    private static string SerializeCells(
+        string path, List<CellEdit> cells, IReadOnlyList<LanguageDescriptor> languages) {
+        if (SingleCellTag(path, languages) == null) {
+            // The endings the file already has, not the ones this platform prefers:
+            // git checks a notebook out with CRLF on Windows, and saving it back with
+            // LF is a diff on every line of a file whose content did not change.
+            var newline = File.Exists(path)
+                ? NotebookMarkdown.NewlineOf(File.ReadAllText(path))
+                : "\n";
+            return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)), newline);
+        }
+        // The one cell, byte for byte. More than one can only come from a client
+        // that offered a button this one does not, and joining them is a better
+        // answer than losing the rest — a `.csx` has nowhere to put a cell break.
+        return cells.Count == 1
+            ? cells[0].Source ?? string.Empty
+            : string.Join("\n\n", cells.Select(c => c.Source ?? string.Empty));
+    }
+
+    /// <summary>
+    /// The absolute path a read may target, or null when it may not.
+    ///
+    /// <para>
+    /// <see cref="NotebookTree.SafeResolve"/> keeps a path inside the branch's
+    /// worktree; this adds the one thing the tree already knows and the read routes
+    /// did not, which is that git's own storage is not a file in the project.
+    /// Hiding <c>.git</c> from the listing while <c>?path=.git/config</c> answered
+    /// is the sort of difference nobody means, and Project Viewer is enough to ask.
+    /// </para>
+    /// </summary>
+    private static string Readable(Scope scope, string branch, string path) {
+        var resolved = NotebookTree.SafeResolve(RootOf(scope, branch), path);
+        if (resolved == null) {
+            return null;
+        }
+        foreach (var segment in path.Split('/', '\\')) {
+            if (NotebookTree.IsProtected(segment)) {
+                return null;
+            }
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// The cell as it should run against a chosen connection, or unchanged when no
+    /// connection was chosen.
+    ///
+    /// <para>
+    /// Written as the selector the cell would have got anyway plus the
+    /// <c>--connection</c> its language already accepts — <c>#!sql</c> and
+    /// <c>#!dax</c> both take one. <see cref="LanguageDescriptor.BlockForTag"/>
+    /// leaves a source that already starts with a selector alone, so this is the
+    /// same line it would have written, with a flag on it.
+    /// </para>
+    /// <para>
+    /// **At run time only, never on disk.** This is the whole point of the picker:
+    /// you point a `.sql` at one connection, run it, point it at another and run it
+    /// again, and the file is the same file throughout. A cell whose text already
+    /// names a connection is left alone — what the file says wins over a dropdown.
+    /// </para>
+    /// </summary>
+    private static MarkdownCell RunOn(
+        MarkdownCell cell, string connection, IReadOnlyList<LanguageDescriptor> languages) {
+        if (string.IsNullOrWhiteSpace(connection) || cell.Kind != CellKind.Code) {
+            return cell;
+        }
+        var language = NotebookMarkdown.LanguageForTag(cell.Tag, languages);
+        if (language?.HasConnections != true || language.SelectorForTag(cell.Tag) is not { } selector) {
+            return cell;
+        }
+        if (cell.Source.TrimStart().StartsWith("#!", StringComparison.Ordinal)) {
+            return cell;
+        }
+        // Quoted, because a connection name is a display name — "Warehouse (dev)"
+        // is one somebody will have.
+        var directive = $"{selector} --connection \"{connection.Replace("\"", "\\\"")}\"";
+        return new MarkdownCell {
+            Kind = cell.Kind,
+            Tag = cell.Tag,
+            Source = directive + "\n" + cell.Source,
+            BlankLinesAfter = cell.BlankLinesAfter,
+            Closed = cell.Closed,
+        };
+    }
+
+    /// <summary>The largest file this reads as text. The write route's own cap, so
+    /// what opens is what can be saved rather than a buffer that is refused when you
+    /// try.</summary>
+    private const int _textLimit = 2_000_000;
+
+    /// <summary>
+    /// The file as text, or null when it is not text.
+    ///
+    /// <para>
+    /// By content rather than by extension. The tree lists the whole project now, so
+    /// what arrives here is whatever a repository happens to contain — a
+    /// <c>.xlsx</c>, a <c>.parquet</c>, a font — and an extension allowlist would
+    /// have to be right about all of them forever. A NUL byte is what no text file
+    /// has and every one of those does; a `.ndjson` nobody thought of still opens.
+    /// </para>
+    /// <para>
+    /// The size check comes first and is the more important of the two:
+    /// <c>File.ReadAllText</c> over a 40 MB file built a 40 MB string and sent it,
+    /// which is what happens the first time somebody clicks the parquet file beside
+    /// their notebook.
+    /// </para>
+    /// </summary>
+    private static string ReadAsText(string path) {
+        var info = new FileInfo(path);
+        if (info.Length > _textLimit) {
+            return null;
+        }
+        var bytes = File.ReadAllBytes(path);
+        // The whole file, not a prefix: a NUL half way through is as binary as one
+        // at the start, and 2 MB is already the ceiling.
+        //
+        // Decoded rather than File.ReadAllText, which strips a byte-order mark —
+        // and the save writes none, so opening a BOM'd file and saving it used to
+        // drop the BOM. Keeping it as U+FEFF in the buffer is what makes that a
+        // round trip.
+        return Array.IndexOf(bytes, (byte)0) >= 0 ? null : Encoding.UTF8.GetString(bytes);
+    }
+
+    /// <summary>Which of the two it was, because "cannot open" without a reason is
+    /// the thing that sends somebody looking through the code.</summary>
+    private static string NotTextReason(string path) =>
+        new FileInfo(path).Length > _textLimit
+            ? $"That file is {new FileInfo(path).Length / 1_000_000.0:0.#} MB. "
+                + $"This opens files up to {_textLimit / 1_000_000} MB — the same limit it saves."
+            : "That is a binary file, so there is nothing to show as text.";
+
+    /// <summary>The type this file is shown as, or null when it is not one this shows.</summary>
+    private static string PreviewContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".avif" => "image/avif",
+        ".bmp" => "image/bmp",
+        ".ico" => "image/x-icon",
+        ".svg" => "image/svg+xml",
+        ".pdf" => "application/pdf",
+        _ => null,
+    };
 
     private static IResult SaveToBranch(
         HttpContext context, Scope scope, string branch, string resolved, string path, string content,
@@ -2430,6 +2695,10 @@ public sealed class CellEdit {
     /// <summary>The editor's cell id, used as the kernel cellId so display
     /// notifications land on the right cell. Ignored on save.</summary>
     public string Id { get; set; }
+
+    /// <summary>The connection this run should use, by name. Run only — it is a
+    /// choice made in the toolbar and it never reaches the file.</summary>
+    public string Connection { get; set; }
     public string Kind { get; set; }
     public string Tag { get; set; }
     public string LanguageId { get; set; }

@@ -28,6 +28,100 @@ jobs:
       - name: Test
         run: dotnet test ClrKernel.slnx -c Release --no-build
 
+  # The suite has only ever run on Linux, and the tool's users are largely on
+  # Windows. Path separators, CRLF, file locking and the credential manager are
+  # all things that differ there and that nothing was checking.
+  #
+  # A real VM rather than a Windows container: `mcr.microsoft.com/windows*` images
+  # need a Windows host with Windows-containers mode, which no runner here has and
+  # no Mac can have at all — and this needs a Credential Manager and a user
+  # profile, which is what a VM is and a container is not.
+  windows:
+    name: Build + test on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore ClrKernel.slnx
+
+      - name: Build
+        run: dotnet build ClrKernel.slnx -c Release --no-restore
+
+      # Formatting is checked once, on Linux: it is the same file either way, and
+      # a second opinion about line endings is not worth a job failing over.
+      - name: Test
+        run: dotnet test ClrKernel.slnx -c Release --no-build
+
+      # What the Windows checklist calls §2: the tool installs, is on PATH, and
+      # the extension's entry point starts. Ordinary commands, so they are checked
+      # by machine now rather than read off a list once per release.
+      - name: Install the global tool and start it
+        shell: pwsh
+        run: |
+          dotnet pack src/ClrKernel/ClrKernel.csproj -c Release --no-build -o artifacts
+          dotnet tool install --global --add-source artifacts ClrKernel
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          $reported = clrkernel --version
+          if (-not $reported) { throw "clrkernel --version printed nothing" }
+          Write-Host "clrkernel reports $reported"
+
+          # `lsp` waits on stdio: it is what the extension launches, and what it
+          # must not do is exit.
+          #
+          # Started through .NET rather than Start-Process so *this* process holds
+          # the write end of its stdin and never writes: the child blocks on a read
+          # that cannot reach end-of-stream, which is precisely "waiting on stdio".
+          # `-RedirectStandardInput NUL` does not mean the null device to
+          # PowerShell — it resolves NUL as a relative path and refuses the call.
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = 'clrkernel'
+          $psi.Arguments = 'lsp'
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $p = [System.Diagnostics.Process]::Start($psi)
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            Write-Host $p.StandardError.ReadToEnd()
+            throw "clrkernel lsp exited with $($p.ExitCode) instead of waiting on stdio"
+          }
+          $p.Kill()
+
+      # A notebook end to end, on Windows paths and with CRLF in the file — which
+      # is the point, so it is written here rather than taken from `samples/`.
+      # `hello.nb.md` would have been the obvious choice and calls httpbin, which
+      # would make this job amber for reasons that have nothing to do with Windows.
+      - name: Run a notebook headlessly
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          New-Item -ItemType Directory -Force -Path run-check | Out-Null
+          Set-Content -Path run-check/smoke.nb.md -Value @'
+          # Windows smoke
+
+          ```csharp
+          var greeting = "hello";
+          ```
+
+          ```csharp
+          Console.WriteLine($"{greeting} from {System.IO.Path.DirectorySeparatorChar}");
+          ```
+          '@
+          clrkernel run run-check/smoke.nb.md --output run-check/out.ipynb
+          if (-not (Test-Path run-check/out.ipynb)) { throw "no artifact was written" }
+          # State carried from the first cell to the second, and the artifact holds
+          # what it printed rather than an empty output list.
+          if ((Get-Content run-check/out.ipynb -Raw) -notmatch 'hello from') {
+            Get-Content run-check/out.ipynb -Raw
+            throw "the executed notebook does not contain the cell's output"
+          }
+
   extension:
     name: VS Code extension (compile + unit tests)
     runs-on: ubuntu-latest

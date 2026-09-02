@@ -566,6 +566,9 @@ volume, unlocked at start with a password you supply as a file
 save a password, says so, and takes them as `CLRKERNEL_SECRET_*` variables
 instead. See [docker.md](docker.md#passwords).
 
+For how a reference is looked up, what it is called in each store, and how to set one by
+hand, see [secrets.md](secrets.md).
+
 `CLRKERNEL_SECRETS_FILE` names a plain JSON file as a last resort for a machine
 with no credential store at all. It is owner-only and unencrypted — as protected
 as the disk it sits on, so keep it out of any git worktree. Nothing sets it for
@@ -902,7 +905,7 @@ been honest about living.
 | `/jobs/<project>` | that project's jobs |
 | `/jobs/<project>/<branch>/<name>` | one job |
 | `/files/<project>` | that project's files, on one branch |
-| `/files/<project>/edit\|source\|diff/<branch>/<path>` | one notebook, on one branch, read one of three ways |
+| `/files/<project>/edit\|overview\|preview\|source\|diff/<branch>/<path>` | one file, on one branch, read one of five ways |
 | `/runs/<id>` | one run |
 | `/channels`, `/settings/<section>` | server-wide, so no project |
 
@@ -924,8 +927,11 @@ from. They are three readings of one file, not three permissions: read-only come
 from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
-one. A file that does not parse into cells — an `.ipynb`, a `.csx` — has no
-Notebook view and opens at Source.
+one. A file that does not parse into cells — an `.ipynb`, a `.csv` — has no Notebook
+view and opens at Source. A `*.jobs.yaml` opens at its **Overview** — the
+form is what the file is for, and the YAML tab is the escape hatch beside it — and
+a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
+read.
 
 `/files` on its own — what the rail links to, and what you get from a bookmark —
 opens the project you were last in, remembered per browser. Links
@@ -1152,7 +1158,8 @@ you are when promotion tells you a notebook with no job cannot prove itself.
 **Focus Mode** gives one cell the window — its editor above, its output below, with the
 notebook's contents as a tree on the left — for when a notebook is long enough that
 scrolling to find a cell is the slow part. **Normal** is the usual scrolling list of
-cells. The switch is per notebook and is remembered.
+cells. The switch is per notebook and is remembered. A `.csx` is always in this layout,
+without the contents tree: it is one cell, and this is the shape that suits one cell.
 
 ![Focus Mode: one Mermaid cell, its source above and the rendered diagram below, with
 the notebook's cells listed on the left and each one's execution count beside
@@ -1214,6 +1221,97 @@ the jobs file for you, so those jobs are broken until you point them at the new 
 Execution is refused unless you are a Server Admin, the git workflow is on, the file is
 in your own branch, and the path resolves inside your worktree. Reading and diffing still
 work for everyone; only running and saving are gated.
+
+### Everything else in the project
+
+Files lists the **whole project**, not only notebooks and `*.jobs.yaml` — the SQL beside
+the notebook that runs it, a `README.md`, the `.gitignore`. Dot-files are in there too.
+What is left out is git's own storage (`.git`, which in a worktree is a file rather than
+a directory, and the bare `.repo.git`), the scratch buffer the query editor keeps, build
+output (`bin`, `obj`, `node_modules`) and `.DS_Store`.
+
+**A file that is not text opens to a reason rather than to noise.** A `.xlsx`, a
+`.parquet`, a font — the tree lists whatever the repository contains, and reading one as
+text is a screenful of replacement characters. The check is the content and not the
+extension, so a `.ndjson` nobody thought of opens fine and a spreadsheet does not; and
+there is a 2 MB ceiling, the same one saving has, because `File.ReadAllText` over the
+40 MB parquet beside your notebook builds a 40 MB string and sends it.
+
+**Text opens in an editor and saves like anything else.** JSON, YAML, SQL, Python, shell,
+Markdown, `.gitignore` — Monaco with that language's highlighting, and for JSON its
+validation as well, on the Source tab and under the same rules as a notebook: your own
+branch, autosaved, every save a commit. The rule is one function on the server
+(`NotebookTree.IsEditable`), so the toolbar never offers a Save the save route will
+refuse. A plain `.md` is prose and is written as the bytes it is: only a `.nb.md`
+opens as cells, because prose taken apart into cells and put back together loses the
+blank lines at the end of the file, and a save is a commit.
+
+**A file named for a language the kernel runs is one cell of it.** A `.csx` is a C# cell,
+a `.sql` is a `#!sql` cell, and so are `.ps1`, `.sh`, `.zsh`, `.http`, `.dax`, `.mermaid`
+and the SQL dialects `.tsql`, `.ansisql`, `.plsql` and `.oraclesql`. Nothing lists those:
+a file whose extension is a fence tag some registered language claims *is* a cell of it,
+so a language added by a `#r`-loaded package brings its extension with it. The tag the
+file was named with is the one that runs, so a `.zsh` runs as zsh and not as bash.
+
+It opens in Focus Mode's shape and stays there — the editor filling the height above,
+what it printed below, and a bar between them you drag to decide how much of each. There
+is no contents tree beside it and no **Normal | Focus** switch: one cell has no second
+sensible arrangement. It runs against the same warm kernel a notebook uses, and it stays
+a plain script on disk with no fences and no cell markers. Nothing to add a cell to, no
+language to pick, no cell above or below to run, so none of those controls are there.
+
+It is the same cell it would be in a notebook, which is the point: a `.sql` file resolves
+its connection exactly as a `#!sql` cell does — from the `connections.json` Studio writes
+into your worktree from the Connections page — so a saved connection is all one needs and
+`#!sql-connect` is not required.
+
+**A query file picks its connection from the toolbar.** The dropdown lists what you can
+see, shared connections first and your own below, and the choice rides on the *run*:
+nothing is written to the file, so you can point the same `.sql` at test, run it, point it
+at production and run it again with git seeing nothing. It is not remembered between
+openings — which database you last ran a query against is the thing you least want
+inherited silently a week later — and it holds while the file is open.
+
+A connection a file's dialect cannot carry is listed and refused in the dropdown, with the
+reason on it, rather than accepted and failed at run time. `sql` means T-SQL, so a `.sql`
+file runs on SQL Server, ODBC and JDBC; `.ansisql` is generic SQL and adds PostgreSQL;
+`.plsql` and `.oraclesql` are Oracle. A notebook needs no dropdown — it says which
+connection it uses in its own text, which travels with the file.
+
+SQL Server, PostgreSQL, Analysis Services and Fabric are **built into the kernel**, so a
+cell opens one without a `#r` — in Studio and in VS Code alike, since both drive the same
+kernel. Oracle, ODBC and JDBC stay opt-in: their drivers are large, and a notebook that
+wants one says `#r "nuget: ClrKernel.Database.Provider.Oracle"`. The
+file is written back byte for byte: opening one and closing it changes nothing, which
+matters because a save is a commit and a commit invalidates the "unchanged since that
+run" half of the promotion check.
+
+**Pictures, PDFs and SVGs open at a Preview.** PNG, JPEG, GIF, WebP, AVIF, BMP and ICO
+render on a chequerboard so transparency reads as transparency. A PDF opens in the
+browser's own viewer, with its page controls. Neither has a Source or a Diff tab: there is
+no text in them to read or to compare two of, and no Save.
+
+An **SVG has both** — it previews as a picture and edits as text — so it opens at its
+Preview with **Source** beside it. The bytes are served with `nosniff` and a `sandbox`
+CSP, which is what makes serving an SVG or a PDF safe: either can carry script, and the
+sandbox leaves it nothing to run or reach. Anything else binary is listed and read-only.
+
+**Markdown previews too.** A `.md` opens at its **Preview** — a document opens as the
+document, the same way a picture does — with **Source** the tab beside it. It is
+GitHub-flavoured — tables, task lists, strikethrough and bare URLs, none of which plain
+CommonMark has — and raw HTML is escaped and shown rather than rendered: a document in a
+repository is not a place to run markup from.
+
+The same renderer draws a notebook's markdown cells and a finished run's artifact, so all
+four agree about what a document looks like. `samples/markdownPreviewTest.md` is every
+construct on one page — copy it into your notebooks folder and open its Preview to see
+what a change to the rendering did.
+
+The one file this deliberately will not let you edit is **`connections.json`** (and
+`connections.local.json`) in a worktree: those are written from your saved connections
+every time one changes, so an edit here would be deleted and rebuilt with nothing to say
+why. They are also git-excluded, which is a separate fact and not the reason. Opening one
+says so on the toolbar, and points at the Connections page.
 
 ## Docker
 

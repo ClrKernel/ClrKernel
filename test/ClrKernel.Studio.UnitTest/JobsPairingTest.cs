@@ -20,7 +20,7 @@ public class JobsPairingTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_dir, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_dir);
 
     [TestMethod]
     public void The_base_name_is_the_name_minus_its_known_extension() {

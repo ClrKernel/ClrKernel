@@ -1,3 +1,4 @@
+import { MarkdownBody } from '../components/MarkdownBody';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -5,6 +6,7 @@ import {
   type ApiCell, type ApiJobsProblem, type ApiLanguage,
 } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
+import { ConnectionPicker } from '../components/ConnectionPicker';
 import { ConnectionWizard } from '../components/ConnectionWizard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -44,22 +46,29 @@ import {
   emptyCell,
   fileEditable,
   fileLanguage,
+  isBinary,
   isJobsFile,
+  isScript,
   notebookPaths,
   insertCell,
   isDirty,
   keepIds,
   mergeStatus,
   moveCell,
+  opensAsCells,
+  previewKind,
   pushUndo,
+  readOnlyReason,
   removeCell,
   restoreCells,
   setCellLanguage,
   toApiCells,
   toRunCells,
+  viewFor,
   toSyncCells,
   withIds,
   type EditorCell,
+  type PreviewKind,
 } from '../notebook';
 
 
@@ -100,10 +109,30 @@ export function Editor() {
   // Set during render, not in an effect, because the polls below start in effects
   // and would otherwise make their first request against the branch you left.
   setBranch(branch);
-  const isNotebook = /\.(nb\.)?md$/i.test(path);
+  // Which files open as cells — a `.nb.md`, and a `.csx`, which is one C# cell.
+  // Not the same question as "is this markdown": scheduling and the cells API say
+  // yes to both, and the two cell-level things a script has no room for (adding a
+  // cell, picking a language for it) are off separately in `script`.
+  const cellFile = opensAsCells(path);
+  const script = isScript(path);
+  // A picture is looked at, not opened. Read before the content fetch, because
+  // that fetch is `File.ReadAllText` on the server and a PNG through it is noise.
+  const preview = previewKind(path);
+  // No text in it at all, so no Source tab over mojibake and nothing to diff.
+  const binary = isBinary(path);
 
   const [cells, setCells] = useState<EditorCell[] | null>(null);
   const [privateConnections, setPrivateConnections] = useState<string[]>([]);
+  /**
+   * Which connection a one-cell query file runs against, chosen in the toolbar.
+   *
+   * Reset when the path changes rather than remembered: which database you last
+   * ran a query against is the thing you least want inherited silently the next
+   * time you open it. It holds while the file is open, which is what makes "run,
+   * point somewhere else, run again" the whole gesture it is meant to be.
+   */
+  const [runConnection, setRunConnection] = useState<string | null>(null);
+  useEffect(() => setRunConnection(null), [path]);
   /**
    * The saved connection this notebook queries, for schema completion in its SQL
    * cells. The notebook names a connection; the id is this reader's lookup of that
@@ -136,8 +165,11 @@ export function Editor() {
   // file has. Arriving at `/edit/` on a jobs file, or `/overview/` on a notebook,
   // is a link from elsewhere rather than a choice — Source is the honest answer.
   const jobsFile = isJobsFile(path);
-  const tab: NotebookView =
-    (asked === 'edit' && !isNotebook) || (asked === 'overview' && !jobsFile) ? 'source' : asked;
+  // A view that does not belong to this kind of file falls back to the one it
+  // opens at — a jobs file to its form, a picture to its preview. Arriving at
+  // `/edit/` on either is a link from elsewhere rather than a choice: the tree
+  // builds an `/edit/` link for every file it lists.
+  const tab: NotebookView = viewFor(asked, path);
   useEffect(() => {
     if (tab !== asked) {
       navigate(editPath(projectSlug(), branch, path, tab), { replace: true });
@@ -167,6 +199,10 @@ export function Editor() {
   // Focus Mode: one cell at a time. Per notebook, so switching files takes you
   // back to how you were working in that file.
   const [mode, setMode] = useState<'normal' | 'focus'>(() => loadNotebookState(path).mode ?? 'normal');
+  // Editor above, output below, a bar between them — Focus Mode's shape. A script
+  // is always in it: there is no second sensible arrangement for one cell, which
+  // is why the toolbar offers it no Normal|Focus switch either.
+  const splitLayout = mode === 'focus' || script;
   const [activeId, setActiveId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutPrefs>(() => loadLayout());
   // The source each cell had when it was last run, so an edit can dim its output
@@ -244,7 +280,7 @@ export function Editor() {
   // BranchAllows provider, so its own hook call reads the value from outside it.
   // Which branch may run is `allows.run`, and the controls themselves ask
   // useCanRun() from inside.
-  const canRun = canWrite && isNotebook && !(sessionError != null && session == null);
+  const canRun = canWrite && cellFile && !(sessionError != null && session == null);
   const running = (session?.running ?? false) || pollFast;
   const runState = mergeStatus(cells ?? [], session, ranSource.current);
 
@@ -252,7 +288,9 @@ export function Editor() {
   // notebook; everywhere else the cells are.
   // Overview edits the same text `source` holds — it is a form over the file, not
   // a second model — so it saves, diffs and dirties through exactly this path.
-  const editingText = tab === 'source' || tab === 'overview' || !isNotebook;
+  // Not `!cellFile`: a picture's view is `preview`, and counting that as text
+  // editing made autosave the owner of a buffer holding a PNG read as a string.
+  const editingText = tab === 'source' || tab === 'overview' || (!cellFile && tab === 'diff');
   const dirty = editingText
     ? source != null && source !== savedSource
     : cells != null && isDirty(cells, saved);
@@ -296,6 +334,13 @@ export function Editor() {
           setReloads((n) => n + 1);
         })
         .catch((e) => live && setError((e as Error).message));
+    } else if (binary) {
+      // Nothing to read on any tab: the file is served as bytes to an <img> or an
+      // <iframe>. The text route would answer with File.ReadAllText over a PNG,
+      // which is a screenful of replacement characters and an editor offering to
+      // save them.
+      setSource('');
+      setSavedSource('');
     } else {
       api
         .notebookContent(branch, path)
@@ -307,7 +352,10 @@ export function Editor() {
           setSavedSource(text);
           setReloads((n) => n + 1);
         })
-        .catch(() => live && setError(`Could not load ${path}.`));
+        // The server's own reason, not a generic one: it is the half that says
+        // *why* — too big, or not text at all — and a file that will not open is
+        // exactly when somebody needs to be told which.
+        .catch((e) => live && setError((e as Error).message || `Could not load ${path}.`));
     }
     // Two switches in quick succession are two requests, and they can come back
     // in either order. Whichever one is no longer the view on screen drops its
@@ -315,7 +363,7 @@ export function Editor() {
     return () => {
       live = false;
     };
-  }, [path, branch, tab]);
+  }, [path, branch, tab, binary]);
 
   // Mode and layout are remembered, but nothing here ever reaches the notebook
   // file — how you were looking at it is not part of what it says.
@@ -369,10 +417,10 @@ export function Editor() {
   // Focus Mode owns the viewport: the work area is fixed to it and each pane
   // scrolls on its own, so the page behind must not scroll as well.
   useEffect(() => {
-    const on = mode === 'focus' && tab === 'edit';
+    const on = splitLayout && tab === 'edit';
     document.body.classList.toggle('focus-mode-on', on);
     return () => document.body.classList.remove('focus-mode-on');
-  }, [mode, tab]);
+  }, [splitLayout, tab]);
 
   // Leaving Focus Mode puts you back where you were in the list rather than at
   // the top — round-tripping should not cost you your place.
@@ -459,16 +507,16 @@ export function Editor() {
   // reason to want completion is that you have not run anything yet. Failures are
   // not reported here: the status poll below is what tells the user, once.
   useEffect(() => {
-    if (isNotebook && allows.run) {
+    if (cellFile && allows.run) {
       api.startSession(path).catch(() => undefined);
     }
-  }, [path, branch, isNotebook, allows.run]);
+  }, [path, branch, cellFile, allows.run]);
 
   // What the editor has open, told to the kernel on a debounce. Language features
   // answer about documents the server holds, so this is what makes them work at all
   // — and it is authoritative, so a deleted cell stops contributing its symbols.
   useEffect(() => {
-    if (!isNotebook || cells == null || !canRun || !allows.run) {
+    if (!cellFile || cells == null || !canRun || !allows.run) {
       return;
     }
     let followUp: ReturnType<typeof setTimeout> | undefined;
@@ -492,7 +540,7 @@ export function Editor() {
         clearTimeout(followUp);
       }
     };
-  }, [path, branch, isNotebook, cells, canRun, allows.run, reloadSession]);
+  }, [path, branch, cellFile, cells, canRun, allows.run, reloadSession]);
 
   /**
    * Asks once before anything runs against production, naming what it is about to
@@ -606,7 +654,7 @@ export function Editor() {
       setSource(text);
       setSavedSource(text);
       setReloads((n) => n + 1);
-      if (isNotebook) {
+      if (cellFile) {
         const reloaded = await api.notebookCells(branch, path);
         setCells(keepIds(reloaded.cells, []));
         setSaved(reloaded.cells);
@@ -677,7 +725,7 @@ export function Editor() {
       // file says. Writing first anyway: a run is the moment you would most mind
       // discovering that the last thing you typed was still only in the browser.
       await flush();
-      await api.runCells(path, toRunCells(toRun));
+      await api.runCells(path, toRunCells(toRun, runConnection));
       for (const cell of toRun) {
         ranSource.current[cell.id] = cell.source;
       }
@@ -889,10 +937,16 @@ export function Editor() {
     setNotice('Connection cell added. Run it to open the connection.');
   }
 
-  const focusing = mode === 'focus' && tab === 'edit';
+  const focusing = splitLayout && tab === 'edit';
+  // A query file: one cell, and a language that has connections. A notebook says
+  // which connection it uses in its own text, so it needs no dropdown — and a
+  // `.sh` has nothing to connect to.
+  const pickable = script && cells?.length === 1
+    ? connectableLanguage(cells[0].languageId, languages) ?? null
+    : null;
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
-  const fills = focusing || tab === 'source' || tab === 'diff';
+  const fills = focusing || tab === 'source' || tab === 'diff' || tab === 'preview';
 
   return (
     // Somebody else's branch reads exactly like your own and changes in none of
@@ -937,7 +991,18 @@ export function Editor() {
           await flush();
           navigate(editPath(projectSlug(), branch, path, next as NotebookView));
         }}
-        isNotebook={isNotebook}
+        isNotebook={cellFile}
+        isScript={script}
+        preview={preview}
+        binary={binary}
+        readOnlyReason={readOnlyReason(path)}
+        connectionPicker={pickable ? (
+          <ConnectionPicker
+            language={pickable}
+            value={runConnection}
+            onChange={setRunConnection}
+          />
+        ) : undefined}
         isJobsFile={jobsFile}
         canRun={canRun}
         running={running}
@@ -961,7 +1026,7 @@ export function Editor() {
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
         onMove={move}
-        onSchedule={isNotebook ? schedule : undefined}
+        onSchedule={cellFile ? schedule : undefined}
       />
 
       {/* Focus Mode measures itself to the bottom of this scroller and gives
@@ -990,7 +1055,7 @@ export function Editor() {
             {/* Run All, Restart, the kernel badge and the mode toggle all live
                 in the one toolbar now. What is left here is the notices, which
                 are about this notebook rather than about the page. */}
-            {!canRun && isNotebook && (
+            {!canRun && cellFile && (
               <p className="px-4 text-base text-muted-foreground">
                 Running cells is unavailable here: {sessionError}
               </p>
@@ -1038,7 +1103,7 @@ export function Editor() {
               </Alert>
             )}
 
-            {mode === 'focus' ? (
+            {splitLayout ? (
               <FocusMode
                 cells={cells}
                 path={path}
@@ -1049,6 +1114,7 @@ export function Editor() {
                 busy={running}
                 cleared={cleared}
                 connectionType={connectionType}
+                single={script}
                 layout={layout}
                 onActivate={activate}
                 onChange={(cellId, value) =>
@@ -1083,7 +1149,9 @@ export function Editor() {
               />
             ) : (
               <div className="px-4">
-            <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
+            {!script && (
+              <CellInserter always={cells.length === 0} onInsert={(kind) => insertAt(0, kind)} />
+            )}
             {cells.map((cell, index) => (
               // The reload counter is in the key so a file replaced under the
               // editor — a merge from test — redraws its cells rather than
@@ -1115,10 +1183,12 @@ export function Editor() {
                   onClearOutput={() => setCleared((current) => new Set(current).add(cell.id))}
                   onConnect={() => setConnectFor(index)}
                 />
-                <CellInserter
-                  always={index === cells.length - 1}
-                  onInsert={(kind) => insertAt(index + 1, kind)}
-                />
+                {!script && (
+                  <CellInserter
+                    always={index === cells.length - 1}
+                    onInsert={(kind) => insertAt(index + 1, kind)}
+                  />
+                )}
               </div>
             ))}
               </div>
@@ -1141,10 +1211,16 @@ export function Editor() {
         )
       )}
 
+      {tab === 'preview' && (
+        <FilePreview kind={preview} branch={branch} path={path} source={source} />
+      )}
+
       {tab === 'source' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {source == null ? (
-            <p className="text-base text-muted-foreground">Loading…</p>
+            // Nothing, once the read has failed: the banner above already says
+            // why, and "Loading…" under it says the opposite for ever.
+            error != null ? null : <p className="text-base text-muted-foreground">Loading…</p>
           ) : (
             <SourceEditor
               value={source}
@@ -1198,6 +1274,65 @@ export function Editor() {
       </div>
     </div>
     </BranchAllows.Provider>
+  );
+}
+
+/**
+ * The file as it is meant to be looked at.
+ *
+ * Four kinds and one component, because the alternative is four `tab ===
+ * 'preview' &&` blocks in a render that already has five. Which kind it is comes
+ * from the path; what it needs comes from that — a picture and a PDF are served
+ * as bytes and read nothing, markdown renders the text the page already loaded.
+ */
+function FilePreview({
+  kind, branch, path, source,
+}: {
+  kind: PreviewKind | null;
+  branch: string;
+  path: string;
+  /** The file's text, for the one kind that is text. */
+  source: string | null;
+}) {
+  if (kind === 'markdown') {
+    return (
+      <div className="min-h-0 flex-1 overflow-auto px-4 pb-8">
+        {source == null ? (
+          <p className="text-base text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="max-w-[80ch]">
+            <MarkdownBody>{source}</MarkdownBody>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const src = api.notebookFileUrl(branch, path);
+  if (kind === 'pdf') {
+    // An <iframe>, so the browser's own PDF viewer renders it with its page
+    // controls. Not <embed>: a failure there is a blank box, where an iframe at
+    // least navigates somewhere you can see.
+    return <iframe src={src} title={path} className="min-h-0 flex-1 border-0 px-4 pb-4" />;
+  }
+
+  // A picture, and an SVG is one here — centred on a chequerboard, so
+  // transparency reads as transparency rather than as whatever the theme's
+  // background happens to be that day.
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+      <img
+        src={src}
+        alt={path}
+        className="max-h-full max-w-full rounded-lg border border-border object-contain"
+        style={{
+          backgroundColor: 'var(--color-card)',
+          backgroundImage:
+            'repeating-conic-gradient(var(--color-muted) 0% 25%, transparent 0% 50%)',
+          backgroundSize: '16px 16px',
+        }}
+      />
+    </div>
   );
 }
 

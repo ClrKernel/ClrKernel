@@ -63,7 +63,7 @@ public class QueriesApiTest {
             await _app.DisposeAsync();
         }
         try {
-            Directory.Delete(_root, recursive: true);
+            TempDirectory.Delete(_root);
         } catch (IOException) {
             // A file the host still holds; the temp directory is disposable.
         }

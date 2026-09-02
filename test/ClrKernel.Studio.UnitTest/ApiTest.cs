@@ -64,7 +64,7 @@ public class ApiTest {
             await _app.DisposeAsync();
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_root, recursive: true);
+        TempDirectory.Delete(_root);
     }
 
     private string NotebookPath => Path.Combine(_root, "notebooks", "etl", "nightly.nb.md");

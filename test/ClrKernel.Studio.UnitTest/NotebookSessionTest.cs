@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -566,10 +567,21 @@ public class NotebookSessionTest {
 
     [TestMethod]
     public void A_path_with_a_space_is_escaped_so_the_kernel_can_parse_it_back() {
-        var session = new NotebookSession("s", "/tmp/my notebooks/a b.nb.md", null);
+        // A real absolute path for whichever platform this is, not a literal Unix
+        // one: `new Uri` refuses `/tmp/...` on Windows because it is not rooted
+        // there, and NotebookSession then falls back to the unescaped path — so the
+        // assertion was about the fallback rather than about the escaping.
+        var path = Path.Combine(Path.GetTempPath(), "my notebooks", "a b.nb.md");
+        var uri = new NotebookSession("s", path, null).CellUri("c0");
+
         // The other half of the round trip — that the server unescapes this back to
         // the file — is pinned by NotebookKeyTest, which can see it.
-        Assert.AreEqual("vscode-notebook-cell:/tmp/my%20notebooks/a%20b.nb.md#c0", session.CellUri("c0"));
+        StringAssert.StartsWith(uri, "vscode-notebook-cell:");
+        StringAssert.Contains(uri, "my%20notebooks");
+        StringAssert.Contains(uri, "a%20b.nb.md");
+        StringAssert.EndsWith(uri, "#c0");
+        Assert.IsFalse(uri.Contains(' '),
+            $"a space has to be escaped rather than carried into the URI: {uri}");
     }
 
     [TestMethod]

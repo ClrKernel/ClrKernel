@@ -229,8 +229,25 @@ public static class SqlDirectives {
         return false;
     }
 
-    private static string FirstToken(string s) =>
-        s.Split(new[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+    /// <summary>
+    /// The first value on a directive comment's argument — one token, or one quoted
+    /// phrase.
+    ///
+    /// <para>
+    /// Quoted, because a connection is named by a person: "Warehouse (dev)" is a
+    /// name somebody has, and splitting on the space asked for a connection called
+    /// <c>Warehouse</c> and reported it missing. The quotes come off, so an unquoted
+    /// single-word name behaves exactly as before.
+    /// </para>
+    /// </summary>
+    private static string FirstToken(string s) {
+        var trimmed = (s ?? string.Empty).Trim();
+        if (trimmed.StartsWith('"') || trimmed.StartsWith('\'')) {
+            return DirectiveParser.Tokenize(trimmed).FirstOrDefault();
+        }
+        return trimmed.Split(new[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+    }
 
     /// <summary>Reads the connection name from a <c>#!sql --connections name</c>
     /// selector line, or null when absent.</summary>

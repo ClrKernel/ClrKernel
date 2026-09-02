@@ -56,8 +56,12 @@ describe('the view is a URL', () => {
   it('is read back out of a path, and only out of one that has one', () => {
     expect(viewOf('/files/default/source/mine/etl.nb.md')).toBe('source');
     expect(viewOf('/files/default/diff/mine/etl.nb.md')).toBe('diff');
+    expect(viewOf('/files/default/preview/mine/logo.svg')).toBe('preview');
     expect(viewOf('/files/default')).toBeNull();
-    expect(viewOf('/files/default/preview/mine/etl.nb.md')).toBeNull();
+    // A segment that is not a view reads as none, rather than as a view nothing
+    // renders. `preview` used to be this example, which is what makes the case
+    // worth keeping: the list is the authority and it grew.
+    expect(viewOf('/files/default/render/mine/etl.nb.md')).toBeNull();
     expect(viewOf('/jobs/default/test/nightly')).toBeNull();
   });
 

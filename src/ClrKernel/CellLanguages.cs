@@ -49,6 +49,14 @@ public static class CellLanguages {
             new ScriptContribution(
                 references: new[] { typeof(FabricConnection).Assembly },
                 imports: new[] { "ClrKernel.Database.Provider.Fabric" }),
+            // PostgreSQL, the same way and for a second reason: DataSourceCatalog
+            // finds a provider by scanning *loaded* assemblies, and a project
+            // reference nothing touches is not loaded. Naming the type here is what
+            // brings it in, so `#!ansisql` on a Postgres connection opens it and
+            // `Postgres.Connect(...)` works in a C# cell — both without a `#r`.
+            new ScriptContribution(
+                references: new[] { typeof(Database.Provider.Postgres.Postgres).Assembly },
+                imports: new[] { "ClrKernel.Database.Provider.Postgres" }),
         };
         // The connection types shipped in the kernel. Opt-in providers
         // (Oracle/Odbc/Jdbc) register theirs when #r loads them into a session.
@@ -56,6 +64,7 @@ public static class CellLanguages {
             Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
             Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
             Database.Provider.Fabric.FabricConnectionProvider.Descriptor,
+            Database.Provider.Postgres.PostgresConnectionProvider.Descriptor,
             Language.Shell.SshConnectionProvider.Descriptor,
             Language.PowerShell.PwshConnectionProvider.Descriptor,
         };

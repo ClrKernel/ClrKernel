@@ -6,6 +6,12 @@ import {
   copyOfCell,
   fileEditable,
   fileLanguage,
+  isImage,
+  isScript,
+  opensAsCells,
+  previewKind,
+  readOnlyReason,
+  viewFor,
   isDirty,
   keepIds,
   languageOptions,
@@ -90,6 +96,15 @@ describe('fileLanguage', () => {
     expect(fileLanguage('etl.jobs.yaml')).toBe('yaml');
     expect(fileLanguage('setup.csx')).toBe('csharp');
     expect(fileLanguage('legacy.dib')).toBe('csharp');
+    expect(fileLanguage('connections.json')).toBe('json');
+    expect(fileLanguage('etl/load.sql')).toBe('sql');
+    expect(fileLanguage('deploy.ps1')).toBe('powershell');
+    expect(fileLanguage('logo.svg')).toBe('xml');
+    // Longest first, or `.jobs.yaml` is a `.yaml` and `.nb.md` is markdown by
+    // luck rather than by rule.
+    expect(fileLanguage('a/b.JOBS.YAML')).toBe('yaml');
+    // A file nobody planned for still opens; plaintext is an editor, not a refusal.
+    expect(fileLanguage('LICENSE')).toBe('plaintext');
   });
 });
 
@@ -448,20 +463,118 @@ describe('notebookPaths', () => {
 });
 
 describe('fileEditable', () => {
-  it('is true for notebooks and jobs files', () => {
+  it('is true for notebooks, jobs files and text', () => {
     expect(fileEditable('reports/daily.nb.md')).toBe(true);
     expect(fileEditable('old.ipynb')).toBe(true);
     expect(fileEditable('scratch.csx')).toBe(true);
     expect(fileEditable('reports/daily.JOBS.YAML')).toBe(true);
+    expect(fileEditable('settings.json')).toBe(true);
+    expect(fileEditable('readme.txt')).toBe(true);
+    expect(fileEditable('docker-compose.yaml')).toBe(true);
+    expect(fileEditable('notes.md')).toBe(true);
+    expect(fileEditable('.gitignore')).toBe(true);
+    expect(fileEditable('assets/logo.svg')).toBe(true);
   });
 
-  it('and false for everything else Files now lists', () => {
-    // The reason this exists: the tree shows the whole project, so the editor has
-    // to open a .txt read-only rather than offering a Save the server refuses.
-    expect(fileEditable('readme.txt')).toBe(false);
-    expect(fileEditable('docker-compose.yaml')).toBe(false);
-    expect(fileEditable('notes.md')).toBe(false);
+  it('and false for what a text editor cannot open, or would not keep', () => {
+    // A picture opens to look at. Offering Save on one would be offering a write
+    // the server refuses — `NotebookTree.IsEditable` is the same rule.
+    expect(fileEditable('images/chart.png')).toBe(false);
+    expect(fileEditable('report.pdf')).toBe(false);
+    // Written from the saved connections. An edit here is deleted and rebuilt the
+    // next time a connection changes, so it is refused with somewhere to go.
+    expect(fileEditable('connections.json')).toBe(false);
+    expect(fileEditable('team/connections.local.json')).toBe(false);
     expect(fileEditable('')).toBe(false);
   });
 });
 
+describe('previewKind and viewFor', () => {
+  it('says how a file is meant to be looked at', () => {
+    expect(previewKind('images/chart.png')).toBe('image');
+    expect(previewKind('logo.SVG')).toBe('svg');
+    expect(previewKind('report.pdf')).toBe('pdf');
+    expect(previewKind('README.md')).toBe('markdown');
+    // A .nb.md renders its own prose in the Notebook view; a second one would
+    // be the same document twice.
+    expect(previewKind('reports/daily.nb.md')).toBe(null);
+    expect(previewKind('etl/load.sql')).toBe(null);
+    expect(previewKind('notes.txt')).toBe(null);
+  });
+
+  it('opens each kind of file at the view that suits it', () => {
+    // The tree links every file with an `/edit/` URL, so `edit` is the question
+    // "what does this file open at" for everything that is not a notebook.
+    expect(viewFor('edit', 'reports/daily.nb.md')).toBe('edit');
+    expect(viewFor('edit', 'setup.csx')).toBe('edit');
+    expect(viewFor('edit', 'etl.jobs.yaml')).toBe('overview');
+    expect(viewFor('edit', 'logo.svg')).toBe('preview');
+    expect(viewFor('edit', 'chart.png')).toBe('preview');
+    expect(viewFor('edit', 'report.pdf')).toBe('preview');
+    // A document opens as the document, the same as a picture does. Source is
+    // the tab beside it.
+    expect(viewFor('edit', 'README.md')).toBe('preview');
+    // And a file with no preview opens at the only reading it has.
+    expect(viewFor('edit', 'etl/load.sql')).toBe('edit');
+    expect(viewFor('edit', 'notes.txt')).toBe('source');
+  });
+
+  it('and refuses a view the file does not have', () => {
+    expect(viewFor('overview', 'chart.png')).toBe('preview');
+    expect(viewFor('preview', 'etl/load.sql')).toBe('edit');
+    expect(viewFor('preview', 'etl.jobs.yaml')).toBe('overview');
+    // No source to read and nothing to compare two of.
+    expect(viewFor('source', 'chart.png')).toBe('preview');
+    expect(viewFor('source', 'etl/load.sql')).toBe('source');
+    expect(viewFor('diff', 'report.pdf')).toBe('preview');
+    // What a file does have is left alone.
+    expect(viewFor('source', 'reports/daily.nb.md')).toBe('source');
+    expect(viewFor('diff', 'README.md')).toBe('diff');
+    expect(viewFor('source', 'README.md')).toBe('source');
+    expect(viewFor('preview', 'logo.svg')).toBe('preview');
+  });
+});
+
+describe('readOnlyReason', () => {
+  it('says why, because the wrong reason is what sends someone looking', () => {
+    expect(readOnlyReason('etl/load.sql')).toBe(null);
+    expect(readOnlyReason('README.md')).toBe(null);
+    // The one that matters: connections.json is text, so "not text" was a lie —
+    // and it is the file somebody actually went looking for an answer about.
+    expect(readOnlyReason('connections.json')).toContain('Connections page');
+    expect(readOnlyReason('chart.png')).toContain('picture');
+    expect(readOnlyReason('report.pdf')).toContain('PDF');
+  });
+});
+
+describe('isImage', () => {
+  it('is what gets shown rather than opened — and an svg is not one of them', () => {
+    expect(isImage('images/chart.png')).toBe(true);
+    expect(isImage('a/Photo.JPEG')).toBe(true);
+    expect(isImage('favicon.ico')).toBe(true);
+    // Both a picture and a document, and the document wins: it is text you can
+    // meaningfully edit, which is what the server says about it too.
+    expect(isImage('logo.svg')).toBe(false);
+    expect(isImage('notes.md')).toBe(false);
+    expect(isImage('')).toBe(false);
+  });
+});
+
+describe('opensAsCells', () => {
+  it('is the notebook editor: markdown, and a script as its one cell', () => {
+    expect(opensAsCells('reports/daily.nb.md')).toBe(true);
+    expect(opensAsCells('setup.CSX')).toBe(true);
+    // Prose, not a notebook. Through the cell parser and back it loses the blank
+    // lines at the end of the file, which as a save is a commit nobody made.
+    expect(opensAsCells('README.md')).toBe(false);
+    expect(fileEditable('README.md')).toBe(true);
+    expect(isScript('setup.CSX')).toBe(true);
+    expect(isScript('reports/daily.nb.md')).toBe(false);
+    // These are notebooks the runner reads, but not ones the cells route parses:
+    // they open as source, which is why the two predicates are not one.
+    expect(opensAsCells('old.ipynb')).toBe(false);
+    expect(opensAsCells('legacy.dib')).toBe(false);
+    expect(opensAsCells('etl.jobs.yaml')).toBe(false);
+    expect(opensAsCells('notes.md')).toBe(false);
+  });
+});

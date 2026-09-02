@@ -1,5 +1,8 @@
-import type { ApiCell, ApiCellRun, ApiLanguage, ApiSession, ApiSyncCell, TreeNode } from './api';
+import type {
+  ApiCell, ApiCellRun, ApiConnection, ApiLanguage, ApiSession, ApiSyncCell, TreeNode,
+} from './api';
 import type { NotebookOutput } from './ipynb';
+import type { NotebookView } from './routes';
 
 /**
  * Notebook editing logic, kept free of React and Monaco so it can be tested
@@ -133,39 +136,254 @@ export function isJobsFile(path: string): boolean {
 }
 
 /**
- * Whether this path may be written on your own branch.
- *
- * Mirrors `NotebookTree.IsEditable`, which is the authority — the server refuses
- * the save either way. This exists so the editor can open a file read-only
- * instead of offering a Save that will be rejected.
- *
- * Everything else is browsable and readable. Widening it is a trust-boundary
- * decision rather than a convenience: a worktree contains its own `.git`, and
- * `.scratch` holds the query editor's buffer.
+ * Text files the browser edits, mirroring `NotebookTree._editableExtensions`.
+ * The server is the authority — it refuses the save either way — and this exists
+ * so the editor can open a file read-only instead of offering a Save that fails.
  */
+const EDITABLE_EXTENSIONS = [
+  '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.properties', '.env',
+  '.txt', '.md', '.csv', '.tsv', '.log', '.rst',
+  '.sql', '.tsql', '.ansisql', '.oraclesql', '.plsql', '.dax', '.mermaid', '.mmd',
+  '.py', '.sh', '.bash', '.zsh', '.ps1', '.psm1', '.r', '.rb', '.lua',
+  '.cs', '.fs', '.fsx', '.vb', '.java', '.go', '.rs',
+  '.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx', '.css', '.scss', '.html', '.htm',
+  '.xml', '.xaml', '.csproj', '.props', '.targets', '.sln', '.svg', '.http',
+  '.nb.md', '.ipynb', '.dib', '.csx',
+];
+
+/** Files whose whole name is the type — `NotebookTree._editableNames`. */
+const EDITABLE_NAMES = [
+  '.gitignore', '.gitattributes', '.editorconfig', '.dockerignore', '.gitmodules',
+  'dockerfile', 'makefile', 'license', 'readme', 'changelog',
+];
+
+/**
+ * Written by the server from the saved connections, not by hand. Listed and
+ * readable; an edit would be deleted and rebuilt the next time a connection
+ * changes, so the server refuses it and points at the Connections page.
+ */
+const GENERATED_NAMES = ['connections.json', 'connections.local.json'];
+
+/** Pictures. Viewable, never editable — an `.svg` is the exception and is text. */
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp', '.ico', '.svg'];
+
+/** Whether this path may be written on your own branch. */
 export function fileEditable(path: string): boolean {
+  const name = (path ?? '').toLowerCase().split('/').pop() ?? '';
+  if (GENERATED_NAMES.includes(name)) {
+    return false;
+  }
+  return EDITABLE_NAMES.includes(name)
+    || EDITABLE_EXTENSIONS.some((e) => name.endsWith(e));
+}
+
+/** Whether this is a picture — shown rather than opened in an editor. */
+export function isImage(path: string): boolean {
   const name = (path ?? '').toLowerCase();
-  return name.endsWith('.jobs.yaml')
-    || ['.nb.md', '.ipynb', '.dib', '.csx'].some((e) => name.endsWith(e));
+  // An `.svg` is both: it previews as a picture and edits as text, so it is not
+  // one of these — the things here have no source to read.
+  return !name.endsWith('.svg') && IMAGE_EXTENSIONS.some((e) => name.endsWith(e));
+}
+
+export function isPdf(path: string): boolean {
+  return /\.pdf$/i.test(path ?? '');
+}
+
+/**
+ * A file with no text in it. It gets a preview and nothing else: no Source tab
+ * over mojibake, and no diff — `File.ReadAllText` over a PNG is not a thing to
+ * compare two of.
+ */
+export function isBinary(path: string): boolean {
+  return isImage(path) || isPdf(path);
+}
+
+/**
+ * How a file is meant to be looked at, or null when the only honest answer is
+ * its source.
+ *
+ * An `.svg` and a `.md` are both — a picture and a document you can also edit —
+ * so this says what the Preview tab renders and `viewFor` decides which of the
+ * two you land on.
+ */
+export type PreviewKind = 'image' | 'svg' | 'pdf' | 'markdown';
+
+export function previewKind(path: string): PreviewKind | null {
+  const name = (path ?? '').toLowerCase();
+  if (name.endsWith('.svg')) {
+    return 'svg';
+  }
+  if (isPdf(name)) {
+    return 'pdf';
+  }
+  if (isImage(name)) {
+    return 'image';
+  }
+  // A `.nb.md` has the Notebook view, which renders its prose already.
+  return name.endsWith('.md') && !opensAsCells(name) ? 'markdown' : null;
+}
+
+/**
+ * Which reading of a file to show — the one asked for when the file has it, and
+ * otherwise the one it opens at.
+ *
+ * One function because it is one question, and because the answer has to be the
+ * same in the toolbar (which tabs exist) and in the page (which one is on), or
+ * the URL is corrected to a tab that is not there.
+ *
+ * What a file opens at: its own editor if it has one, the jobs form if it is a
+ * jobs file, its preview if it has one, and the source otherwise. Markdown
+ * included — a document opens as the document, the way a picture opens as the
+ * picture, and Source is the tab beside it.
+ */
+export function viewFor(asked: NotebookView, path: string): NotebookView {
+  const opensAt = (): NotebookView =>
+    opensAsCells(path) ? 'edit'
+      : isJobsFile(path) ? 'overview'
+        : previewKind(path) != null ? 'preview'
+          : 'source';
+  switch (asked) {
+    case 'edit':
+      return opensAsCells(path) ? 'edit' : opensAt();
+    case 'overview':
+      return isJobsFile(path) ? 'overview' : opensAt();
+    case 'preview':
+      return previewKind(path) != null ? 'preview' : opensAt();
+    default:
+      // Source and Diff, which every text file has and no picture does.
+      return isBinary(path) ? opensAt() : asked;
+  }
+}
+
+/**
+ * Why this file cannot be written here, or null when it can.
+ *
+ * The toolbar says it out loud, and the reason matters: "not text" is true of a
+ * picture and a lie about `connections.json`, which is text and is written from
+ * your saved connections — the first version of this note said the wrong thing
+ * to the one person who went looking for an answer.
+ */
+export function readOnlyReason(path: string): string | null {
+  if (fileEditable(path)) {
+    return null;
+  }
+  const name = (path ?? '').toLowerCase().split('/').pop() ?? '';
+  if (GENERATED_NAMES.includes(name)) {
+    return 'read-only — written from your saved connections. Edit it on the Connections page.';
+  }
+  if (isPdf(name)) {
+    return 'read-only — a PDF opens to read';
+  }
+  if (isImage(name)) {
+    return 'read-only — a picture opens to look at';
+  }
+  return 'read-only — this file is not text';
+}
+
+/**
+ * Extensions that are one cell of the language they are named for.
+ *
+ * The server derives this from the kernel's own `LanguageTags` — a `.sql` is a
+ * `sql` cell because some registered language claims the `sql` tag — and cannot
+ * be asked before the tabs are drawn, so this is the shipped set written out.
+ * Same arrangement as `bundledLanguages` in the VS Code extension, and the same
+ * failure if it drifts: a language loaded at run time by `#r` opens its files at
+ * Source instead of as a cell. Nothing breaks; one file type is less convenient
+ * until this list catches up.
+ *
+ * `.csx` is here because its extension is not its tag — nothing calls a C# fence
+ * `csx`.
+ */
+const SINGLE_CELL_EXTENSIONS = [
+  '.csx',
+  // Every tag the shipped languages claim, including the SQL dialects: a
+  // `.ansisql` is an ANSI SQL cell for the same reason a `.sql` is a T-SQL one.
+  // Written out in full rather than guessed at — the first version listed the
+  // obvious ones, and a `.ansisql` then opened at Source while the server was
+  // perfectly willing to run it.
+  '.sql', '.tsql', '.ansisql', '.oraclesql', '.plsql',
+  '.dax', '.http', '.mermaid',
+  '.ps1', '.pwsh', '.powershell',
+  '.sh', '.bash', '.zsh', '.shell',
+];
+
+/**
+ * Whether this file opens as cells — with run buttons and an output pane —
+ * rather than as one editor over the whole text.
+ *
+ * `.nb.md` and not a plain `.md`: a README is prose, and prose that goes through
+ * the notebook parser and back loses the blank lines at the end of the file.
+ * Mirrors `OpensAsCells` on the server, which refuses the save either way.
+ */
+export function opensAsCells(path: string): boolean {
+  return /\.nb\.md$/i.test(path ?? '') || isScript(path);
+}
+
+/**
+ * One cell, and no structure to add cells to: the file *is* the cell body, and
+ * it stays a plain `.sql` or `.csx` on disk with no fences and no cell markers.
+ */
+export function isScript(path: string): boolean {
+  const name = (path ?? '').toLowerCase();
+  return SINGLE_CELL_EXTENSIONS.some((e) => name.endsWith(e));
 }
 
 /**
  * The Monaco language for a whole file — the Source tab and the production diff,
  * where there are no cells to ask. A notebook that is not `.nb.md` (`.ipynb`,
- * `.dib`, `.csx`) opens as source, so those need an answer too.
+ * `.dib`) opens as source, so those need an answer too.
  */
+const FILE_LANGUAGES: [string, string][] = [
+  ['.jobs.yaml', 'yaml'],
+  ['.ipynb', 'json'],
+  ['.json', 'json'],
+  ['.jsonc', 'json'],
+  ['.yaml', 'yaml'],
+  ['.yml', 'yaml'],
+  ['.csx', 'csharp'],
+  ['.dib', 'csharp'],
+  ['.cs', 'csharp'],
+  ['.sql', 'sql'],
+  ['.py', 'python'],
+  ['.sh', 'shell'],
+  ['.bash', 'shell'],
+  ['.zsh', 'shell'],
+  ['.ps1', 'powershell'],
+  ['.psm1', 'powershell'],
+  ['.js', 'javascript'],
+  ['.mjs', 'javascript'],
+  ['.cjs', 'javascript'],
+  ['.ts', 'typescript'],
+  ['.tsx', 'typescript'],
+  ['.jsx', 'javascript'],
+  ['.css', 'css'],
+  ['.scss', 'scss'],
+  ['.html', 'html'],
+  ['.htm', 'html'],
+  ['.svg', 'xml'],
+  ['.xml', 'xml'],
+  ['.xaml', 'xml'],
+  ['.csproj', 'xml'],
+  ['.props', 'xml'],
+  ['.targets', 'xml'],
+  ['.toml', 'ini'],
+  ['.ini', 'ini'],
+  ['.cfg', 'ini'],
+  ['.conf', 'ini'],
+  ['.env', 'ini'],
+  ['.go', 'go'],
+  ['.rs', 'rust'],
+  ['.java', 'java'],
+  ['.rb', 'ruby'],
+  ['.lua', 'lua'],
+  ['.md', 'markdown'],
+];
+
 export function fileLanguage(path: string): string {
-  const name = path.toLowerCase();
-  if (name.endsWith('.ipynb')) {
-    return 'json';
-  }
-  if (name.endsWith('.yaml') || name.endsWith('.yml')) {
-    return 'yaml';
-  }
-  if (name.endsWith('.csx') || name.endsWith('.dib')) {
-    return 'csharp';
-  }
-  return 'markdown';
+  const name = (path ?? '').toLowerCase();
+  // Longest first: `.jobs.yaml` before `.yaml`, and `.ipynb` before anything that
+  // ends in `b`. The table is in that order, so the first hit is the right one.
+  return FILE_LANGUAGES.find(([extension]) => name.endsWith(extension))?.[1] ?? 'plaintext';
 }
 
 /** The label shown in a cell's language picker. */
@@ -410,8 +628,42 @@ export function keepIds(reloaded: ApiCell[], previous: EditorCell[]): EditorCell
  * everything under its position in the request — "run cell five" alone would
  * come back as cell one.
  */
-export function toRunCells(cells: EditorCell[]): ApiCell[] {
-  return toApiCells(cells).map((cell, i) => ({ ...cell, id: cells[i].id }));
+export function toRunCells(cells: EditorCell[], connection?: string | null): ApiCell[] {
+  return toApiCells(cells).map((cell, i) => ({
+    ...cell,
+    id: cells[i].id,
+    // Run only. The server writes it as the `--connection` flag on the selector
+    // line it would have added anyway, so the file on disk never mentions it —
+    // which is what lets one file be run against two connections in a row.
+    ...(connection ? { connection } : {}),
+  }));
+}
+
+/**
+ * The connections a file's language can actually run on, and why the others
+ * cannot.
+ *
+ * The language declares which connection `$type`s carry it and the connection
+ * knows its own, so this is the join — the same one the kernel makes before it
+ * runs a cell. Marking them here means the refusal arrives in the picker rather
+ * than as a failed run.
+ */
+export function connectionChoices(
+  connections: ApiConnection[],
+  language: ApiLanguage | null | undefined,
+): { connection: ApiConnection; runnable: boolean; why: string | null }[] {
+  const supported = language?.supportedProviders;
+  return connections.map((connection) => {
+    const runnable = supported == null || supported.length === 0
+      || supported.some((t) => t.toLowerCase() === (connection.type ?? '').toLowerCase());
+    return {
+      connection,
+      runnable,
+      why: runnable ? null
+        : `${language?.displayName ?? 'This language'} does not run on `
+          + `${connection.type} — it runs on ${supported!.join(', ')}.`,
+    };
+  });
 }
 
 /** True when the notebook differs from what was loaded — drives the Save button. */

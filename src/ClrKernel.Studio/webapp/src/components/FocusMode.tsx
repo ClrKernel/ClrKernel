@@ -1,3 +1,4 @@
+import { MarkdownBody } from './MarkdownBody';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CollapsedRail, StatusBadge } from './common';
-import Markdown from 'react-markdown';
 import type { ApiLanguage } from '../api';
 import { useFocusEditor } from '../monaco/useMonaco';
 import { useCanRun, useCanWrite } from '../sessionContext';
@@ -66,7 +66,7 @@ const MIN_PANE = 80;
  */
 export function FocusMode({
   cells, path, languages, runState, activeId, canRun, busy, cleared, layout, clipboard,
-  connectionType,
+  connectionType, single = false,
   onActivate, onChange, onLanguage, onRun, onClearOutput, onLayout, onDelete, onInsert,
   onMove, onCut, onCopy, onPaste,
 }: {
@@ -93,6 +93,16 @@ export function FocusMode({
   onMove: (from: number, to: number) => void;
   /** Something has been cut or copied, so Paste has somewhere to come from. */
   clipboard: boolean;
+  /**
+   * The whole file is this one cell — a `.csx`.
+   *
+   * The two panes and the bar between them are the whole point of this layout and
+   * are exactly what a script wants: code above, what it printed below, and you
+   * decide how much of each. What goes is everything that is about *choosing* a
+   * cell or changing which cells there are — the contents tree, the language
+   * picker, delete, cut/copy/paste. There is one cell and it is the file.
+   */
+  single?: boolean;
   onCut: (cellId: string) => void;
   onCopy: (cellId: string) => void;
   onPaste: (cellId: string, where: 'above' | 'below') => void;
@@ -300,7 +310,7 @@ export function FocusMode({
 
   return (
     <div className="focus-shell" ref={work}>
-      {layout.sidebarCollapsed ? (
+      {single ? null : layout.sidebarCollapsed ? (
         <CollapsedRail
           label="Show contents"
           onExpand={() => onLayout({ ...layout, sidebarCollapsed: false })}
@@ -382,8 +392,8 @@ export function FocusMode({
       <div className="focus-work">
         {active == null ? (
           <div className="focus-empty-state">
-            <p>This notebook has no cells.</p>
-            {canWrite && (
+            <p>{single ? 'This script is empty.' : 'This notebook has no cells.'}</p>
+            {canWrite && !single && (
               <Button variant="outline" size="sm" className="h-6 px-2 text-sm" onClick={() => onInsert(null, 'code')}>
                 + Code
               </Button>
@@ -393,7 +403,7 @@ export function FocusMode({
           <>
             <div className="focus-cell-toolbar">
               <span className="focus-cell-title">
-                Cell [{activeRun?.executionCount ?? ' '}]
+                {single ? 'Script' : 'Cell'} [{activeRun?.executionCount ?? ' '}]
               </span>
               {canRun && mayRun && !isMarkdown && (
                 <Button variant="outline" size="sm" className="h-6 px-2 text-sm"
@@ -419,7 +429,7 @@ export function FocusMode({
                 Clear output
               </Button>
               )}
-              {canWrite ? (
+              {canWrite && !single ? (
               <Select value={picked} onValueChange={(value) => onLanguage(active.id, value)}>
                 <SelectTrigger size="sm" className="h-6 w-auto gap-1 border-0 bg-transparent px-1.5 text-sm shadow-none" aria-label="Cell language">
                   <SelectValue>{languageLabelFor(picked, languages)}</SelectValue>
@@ -428,12 +438,12 @@ export function FocusMode({
                   <LanguageOptions languages={languages} providerType={connectionType} />
                 </SelectContent>
               </Select>
-              ) : (
+              ) : single ? null : (
                 <span className="px-1.5 text-sm text-muted-subtle">
                   {languageLabelFor(picked, languages)}
                 </span>
               )}
-              {canWrite && (
+              {canWrite && !single && (
               <>
               <Button variant="outline" size="sm" className="h-6 px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => onDelete(active.id)}
@@ -472,6 +482,9 @@ export function FocusMode({
               outputs={outputs}
               stale={activeRun?.stale ?? false}
               markdown={isMarkdown ? active.source : null}
+              empty={single
+                ? 'No output — run this script to see what it prints.'
+                : 'No output — run this cell to see results.'}
             />
           </>
         )}
@@ -486,12 +499,14 @@ export function FocusMode({
  * back to the bottom yourself.
  */
 function OutputPane({
-  cellId, outputs, stale, markdown,
+  cellId, outputs, stale, markdown, empty,
 }: {
   cellId: string;
   outputs: CellRunState['outputs'];
   stale: boolean;
   markdown: string | null;
+  /** What to say before anything has run. */
+  empty: string;
 }) {
   const box = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
@@ -527,10 +542,10 @@ function OutputPane({
     >
       {markdown != null ? (
         <div className="cell-preview focus-markdown-preview">
-          <Markdown>{markdown}</Markdown>
+          <MarkdownBody>{markdown}</MarkdownBody>
         </div>
       ) : outputs.length === 0 ? (
-        <p className="focus-empty">No output — run this cell to see results.</p>
+        <p className="focus-empty">{empty}</p>
       ) : (
         outputs.map((output, i) => <Output key={i} output={output} />)
       )}

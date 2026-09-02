@@ -25,6 +25,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import type { BranchStanding } from '../api';
+import type { PreviewKind } from '../notebook';
 import { STATUS_LABEL, STATUS_TITLE, type SaveStatus } from '../autosave';
 import {
   kernelLabel, promoteControl, showsExecution, toolbarLayout,
@@ -82,6 +83,17 @@ export interface NotebookToolbarProps {
   onTab: (tab: string) => void;
   /** Only a .nb.md has a Notebook tab; anything else opens straight to Source. */
   isNotebook: boolean;
+  /** A `.csx`: one cell, so nothing to add cells to or focus on. */
+  isScript: boolean;
+  /** What the Preview tab would render, or null when the file has no preview. */
+  preview: PreviewKind | null;
+  /** No text in it: no Source tab over mojibake, and nothing to diff. */
+  binary: boolean;
+  /** Why this file cannot be written, or null when it can. */
+  readOnlyReason: string | null;
+  /** The connection picker, for a query file that is one cell and names no
+   *  connection of its own. Absent for everything else. */
+  connectionPicker?: React.ReactNode;
   /** Only a *.jobs.yaml has an Overview tab — the form over the same file. */
   isJobsFile: boolean;
   canRun: boolean;
@@ -357,6 +369,8 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
   const isAdmin = useIsProjectAdmin();
   const isMember = useIsProjectMember();
   const execution = showsExecution(props.tab) && props.canRun && mayRun;
+  // One cell is already all of it. Focus Mode shows one cell at a time.
+  const focusable = !props.isScript;
   const kernel = kernelLabel(props.session, props.running, layout.showKernelVersion);
   // Not `canWrite`: promoting is not a write to your branch, and taking the
   // branch rule from the write rule is what kept this button off the test view.
@@ -414,10 +428,18 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
     >
       <Tabs value={props.tab} onValueChange={props.onTab} className="h-full">
         <TabsList variant="line">
-          {props.isNotebook && <TabsTrigger value="edit">Notebook</TabsTrigger>}
+          {props.isNotebook && (
+            <TabsTrigger value="edit">{props.isScript ? 'Script' : 'Notebook'}</TabsTrigger>
+          )}
           {props.isJobsFile && <TabsTrigger value="overview">Overview</TabsTrigger>}
-          <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
-          <TabsTrigger value="diff">Diff vs production</TabsTrigger>
+          {props.preview != null && <TabsTrigger value="preview">Preview</TabsTrigger>}
+          {/* A picture and a PDF have no source to read, and nothing to compare
+              two of: both sides of a diff come back through the route that reads
+              a file as text. */}
+          {!props.binary && (
+            <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
+          )}
+          {!props.binary && <TabsTrigger value="diff">Diff vs production</TabsTrigger>}
         </TabsList>
       </Tabs>
 
@@ -426,6 +448,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
 
       {execution && (
         <div className="flex items-center gap-2">
+          {/* Before the kernel badge and the run controls: which database this
+              runs against is the thing to check before pressing Run, not after. */}
+          {props.connectionPicker}
           {/* Information before controls: you read what the kernel is doing
               before you reach the buttons that change it. */}
           {layout.showKernel && (
@@ -438,6 +463,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           </span>
           )}
 
+          {focusable && (
           <ToggleGroup
             type="single"
             variant="outline"
@@ -457,6 +483,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
               Focus
             </ToggleGroupItem>
           </ToggleGroup>
+          )}
 
           <Separator orientation="vertical" className="h-5" />
 
@@ -506,7 +533,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
 
       {/* The Normal|Focus switch is not a write, so it stays for viewers — Focus
           Mode is a reading layout as much as an editing one. */}
-      {!execution && showsExecution(props.tab) && (
+      {!execution && showsExecution(props.tab) && focusable && (
         <div className="flex items-center gap-2">
           <ToggleGroup
             type="single"
@@ -530,9 +557,9 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           toolbar that quietly has no Save on it and an editor that ignores your
           typing. Only on your own branch — on test or prod the branch note below
           is the more important of the two, and two notes is noise. */}
-      {props.branch === 'mine' && !props.fileEditable && (
+      {props.branch === 'mine' && props.readOnlyReason != null && (
         <span className="whitespace-nowrap text-xs text-muted-subtle">
-          read-only — only notebooks and <code className="font-mono">*.jobs.yaml</code> are editable
+          {props.readOnlyReason}
         </span>
       )}
 

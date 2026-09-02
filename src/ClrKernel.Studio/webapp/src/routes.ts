@@ -14,13 +14,19 @@
  * you can link to, reload into, and go back from.
  *
  * `edit` is the notebook editor and `overview` is the jobs form; each belongs to
- * one kind of file, and the toolbar offers whichever fits. `source` and `diff`
- * are the two every file has.
+ * one kind of file, and the toolbar offers whichever fits. `preview` is the file
+ * as it is meant to be looked at rather than as the bytes it is made of — a
+ * picture, a PDF, an SVG, rendered markdown. `source` and `diff` are the two
+ * every *text* file has; a picture has neither, because there is nothing to read
+ * or compare.
+ *
+ * Which one a file opens at is `viewFor` in `notebook.ts`, beside the predicates
+ * it asks — this module knows how to write the URL, not what a file is.
  *
  * Not to be confused with read-only, which is not a view: that comes from the
  * branch, and every one of these is read-only on a branch that is not yours.
  */
-export const NOTEBOOK_VIEWS = ['edit', 'overview', 'source', 'diff'] as const;
+export const NOTEBOOK_VIEWS = ['edit', 'overview', 'preview', 'source', 'diff'] as const;
 export type NotebookView = (typeof NOTEBOOK_VIEWS)[number];
 
 /**

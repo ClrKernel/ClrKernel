@@ -23,6 +23,18 @@ public static class Program {
         CellLanguages.RegisterDefaults();
         Formatting.Html.HtmlFormatters.RegisterDefaults();
 
+        // Before mode dispatch, and before the connection-file fallback below: an
+        // unrecognised first argument is treated as a Jupyter connection file, so
+        // `clrkernel --version` opened a file called "--version" and died with a
+        // FileNotFoundException and a stack trace. It is the first thing anyone
+        // types, and the Windows release checklist has been asking for it for
+        // longer than it has worked.
+        if (args.Length >= 1 && args[0] is "--version" or "version") {
+            Console.WriteLine(
+                typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "unknown");
+            return 0;
+        }
+
         // Kernel-spec queries are terminal — answer and exit before mode dispatch.
         if (args.Length >= 1 && args[0] is "--kernel-spec-path" or "--kernel-spec-details") {
             using var kf = CreateLoggerFactory();
@@ -183,6 +195,7 @@ public static class Program {
               convert <notebook> [-o <out>]           Rewrite a .dib/.ipynb/.csx as executable
                                                       markdown (.nb.md). Nothing is executed.
 
+              --version                               Print the version and exit.
               --kernel-spec-path                      Print the bundled kernel-spec directory.
               --kernel-spec-details                   Print the bundled kernel.json details.
               -h, --help                              Show this help.

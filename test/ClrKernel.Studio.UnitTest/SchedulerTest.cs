@@ -65,7 +65,7 @@ public class SchedulerTest {
     [TestCleanup]
     public void Cleanup() {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_root, recursive: true);
+        TempDirectory.Delete(_root);
     }
 
     /// <summary>

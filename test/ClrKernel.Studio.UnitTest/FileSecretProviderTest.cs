@@ -25,7 +25,7 @@ public class FileSecretProviderTest {
     [TestCleanup]
     public void Cleanup() {
         if (Directory.Exists(_dir)) {
-            Directory.Delete(_dir, recursive: true);
+            TempDirectory.Delete(_dir);
         }
     }
 

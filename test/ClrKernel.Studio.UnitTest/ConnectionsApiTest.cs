@@ -70,7 +70,7 @@ public class ConnectionsApiTest {
         }
 
         try {
-            Directory.Delete(_root, recursive: true);
+            TempDirectory.Delete(_root);
         } catch (IOException) {
             // A file the host still holds; the temp directory is disposable either way.
         }

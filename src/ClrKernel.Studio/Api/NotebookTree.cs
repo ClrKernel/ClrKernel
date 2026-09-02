@@ -79,18 +79,98 @@ public static class NotebookTree {
         _notebookExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// Never written, whatever the extension says.
+    ///
+    /// <para>
+    /// Git's own storage is the point of it: a worktree's <c>.git</c> is a *file*
+    /// and the bare repo is a directory called <c>.repo.git</c>, so the check is by
+    /// name rather than by kind. <c>.name.saving</c> is the staging file a save
+    /// leaves behind if it crashes mid-write — half a notebook, and writing *to* it
+    /// would be writing to a name the next atomic save renames over.
+    /// </para>
+    /// </summary>
+    public static bool IsProtected(string name) =>
+        name.Equals(".git", StringComparison.OrdinalIgnoreCase)
+        || name.Equals(".repo.git", StringComparison.OrdinalIgnoreCase)
+        || (name.StartsWith('.') && name.EndsWith(".saving", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Never listed. Everything <see cref="IsProtected"/> covers, plus two things
+    /// that are written but not browsed: <c>.scratch</c> is the query editor's own
+    /// buffer — it belongs to the tool, not to the project — and <c>.DS_Store</c> is
+    /// noise the operating system leaves lying around.
+    /// </summary>
+    public static bool IsHidden(string name) =>
+        IsProtected(name)
+        || name.Equals(GitService.ScratchDirectory, StringComparison.OrdinalIgnoreCase)
+        || name.Equals(".DS_Store", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Text files the browser edits. Deliberately generous: a file somebody
+    /// expects to change and finds read-only for no reason they can see reads as
+    /// a bug, and everything here is text that a text editor is the right tool for.
+    /// <para>
+    /// Every extension a cell language claims as a fence tag has to be in here.
+    /// Those open as one runnable cell (see <c>SingleCellTag</c>), and one that
+    /// opened runnable and read-only would be the worst of both.
+    /// </para>
+    /// </summary>
+    private static readonly string[] _editableExtensions = {
+        ".json", ".jsonc", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".properties", ".env",
+        ".txt", ".md", ".csv", ".tsv", ".log", ".rst",
+        ".sql", ".tsql", ".ansisql", ".oraclesql", ".plsql", ".dax", ".mermaid", ".mmd",
+        ".py", ".sh", ".bash", ".zsh", ".ps1", ".psm1", ".r", ".rb", ".lua",
+        ".cs", ".fs", ".fsx", ".vb", ".java", ".go", ".rs",
+        ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".css", ".scss", ".html", ".htm",
+        ".xml", ".xaml", ".csproj", ".props", ".targets", ".sln", ".svg", ".http",
+    };
+
+    /// <summary>
+    /// Written by the server rather than by hand. Listed and readable — it is worth
+    /// being able to see what the kernel will read — but an edit here is one
+    /// <see cref="ConnectionMaterializer"/> deletes and rebuilds on the next change,
+    /// so offering it would be offering a save that quietly comes undone.
+    /// Connections are edited on the Connections page.
+    /// </summary>
+    public static bool IsGenerated(string name) =>
+        name.Equals(ConnectionMaterializer.SharedFileName, StringComparison.OrdinalIgnoreCase)
+        || name.Equals(ConnectionMaterializer.PrivateFileName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Files with no extension worth having one — matched whole.</summary>
+    private static readonly string[] _editableNames = {
+        ".gitignore", ".gitattributes", ".editorconfig", ".dockerignore", ".gitmodules",
+        "dockerfile", "makefile", "license", "readme", "changelog",
+    };
+
+    /// <summary>
     /// What may be written on your own branch. The one definition: the tree reports
     /// it per node and <c>EditableTarget</c> enforces it, so the UI cannot come to a
     /// different conclusion from the route that refuses the save.
     /// <para>
-    /// Everything else is browsable and readable but not writable. Widening this to
-    /// arbitrary files is a trust-boundary decision, not a convenience: paths under
-    /// a worktree include its <c>.git</c> file, and `.scratch` holds the query
-    /// editor's buffer.
+    /// Notebooks, jobs files and text. What is left out is binary — an image opens
+    /// to look at, and a <c>.dll</c> does not open at all — plus anything under a
+    /// <see cref="IsProtected"/> name: this is handed a resolved absolute path, so
+    /// <c>.git/config</c> arrives looking like an ordinary file with no extension.
     /// </para>
     /// </summary>
-    public static bool IsEditable(string path) =>
-        IsNotebook(path) || path.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase);
+    public static bool IsEditable(string path) {
+        if (string.IsNullOrEmpty(path)) {
+            return false;
+        }
+        foreach (var segment in path.Split('/', '\\')) {
+            if (IsProtected(segment)) {
+                return false;
+            }
+        }
+        var name = Path.GetFileName(path);
+        if (IsGenerated(name)) {
+            return false;
+        }
+        return IsNotebook(name)
+            || name.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase)
+            || _editableNames.Contains(name, StringComparer.OrdinalIgnoreCase)
+            || _editableExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// The notebooks/jobs-files tree under the root, with each notebook annotated
@@ -114,8 +194,10 @@ public static class NotebookTree {
 
         foreach (var sub in Directory.EnumerateDirectories(directory).OrderBy(d => d, StringComparer.OrdinalIgnoreCase)) {
             var name = Path.GetFileName(sub);
-            // Skip noise that never holds notebooks (.repo.git falls under the dot rule).
-            if (name.StartsWith('.') || name is "bin" or "obj" or "node_modules") {
+            // Dot-folders are listed now — a project's `.github` and `.vscode` are
+            // files somebody edits. What stays out is git's own storage, the scratch
+            // buffer, and build output nobody wrote by hand.
+            if (IsHidden(name) || name is "bin" or "obj" or "node_modules") {
                 continue;
             }
             var node = BuildDirectory(root, sub, jobsByNotebook);
@@ -127,10 +209,10 @@ public static class NotebookTree {
         foreach (var file in Directory.EnumerateFiles(directory).OrderBy(f => f, StringComparer.OrdinalIgnoreCase)) {
             var name = Path.GetFileName(file);
             // Every file, not only notebooks and jobs files: this is a browser over
-            // the project now. Dot-files stay out — .DS_Store, and the `.*.saving`
-            // staging file a save leaves behind if it crashes mid-write, are noise
-            // rather than things anyone came here to open.
-            if (name.StartsWith('.')) {
+            // the project now, and that includes the dot-files a repo keeps at its
+            // root. `.git` is one of them here — a worktree's is a file pointing at
+            // the real one — which is why IsHidden is by name rather than by kind.
+            if (IsHidden(name)) {
                 continue;
             }
             var isJobsFile = name.EndsWith(".jobs.yaml", StringComparison.OrdinalIgnoreCase);
