@@ -14,16 +14,16 @@ import {
 describe('compareKernelVersion', () => {
     it('accepts the supported line, however many parts the version has', () => {
         // The server reports an assembly version (four parts) though the package has three.
-        expect(compareKernelVersion('0.10.0.0')).toBe('ok');
-        expect(compareKernelVersion('0.10.0')).toBe('ok');
+        expect(compareKernelVersion('0.11.0.0')).toBe('ok');
+        expect(compareKernelVersion('0.11.0')).toBe('ok');
     });
 
     it('treats a patch release of the same line as compatible', () => {
-        expect(compareKernelVersion('0.10.7.0')).toBe('ok');
+        expect(compareKernelVersion('0.11.7.0')).toBe('ok');
     });
 
     it('flags a newer kernel — the case this guard exists for', () => {
-        expect(compareKernelVersion('0.11.0.0')).toBe('newer');
+        expect(compareKernelVersion('0.12.0.0')).toBe('newer');
         expect(compareKernelVersion('1.0.0.0')).toBe('newer');
     });
 
@@ -32,9 +32,9 @@ describe('compareKernelVersion', () => {
         expect(compareKernelVersion('0.7.9.0')).toBe('older');
     });
 
-    it('flags a same-line kernel below the minimum patch — 0.9.0 lacks RPCs this build calls', () => {
-        expect(compareKernelVersion('0.9.0.0')).toBe('older');
-        expect(compareKernelVersion('0.9.0')).toBe('older');
+    it('flags the previous line as older — 0.10 cannot open a Postgres connection', () => {
+        expect(compareKernelVersion('0.10.0.0')).toBe('older');
+        expect(compareKernelVersion('0.10.9')).toBe('older');
     });
 
     it('says nothing useful rather than guessing when the version is missing or junk', () => {
@@ -48,22 +48,22 @@ describe('compareKernelVersion', () => {
 
 describe('kernelVersionWarning', () => {
     it('tells the user what is installed and how to get back', () => {
-        const warning = kernelVersionWarning('newer', '0.10.0.0');
-        expect(warning).toContain('0.10.0.0');
+        const warning = kernelVersionWarning('newer', '0.12.0.0');
+        expect(warning).toContain('0.12.0.0');
         expect(warning).toContain(SUPPORTED_KERNEL_LABEL);
         expect(warning).toContain(SUPPORTED_KERNEL_RANGE);
     });
 
     it('says cells still run, because they do — only connection management breaks', () => {
-        expect(kernelVersionWarning('newer', '0.10.0.0')).toContain('still run');
+        expect(kernelVersionWarning('newer', '0.12.0.0')).toContain('still run');
     });
 
     it('asks for an update when the kernel is behind', () => {
-        expect(kernelVersionWarning('older', '0.7.0.0')).toContain('dotnet tool update');
+        expect(kernelVersionWarning('older', '0.10.0.0')).toContain('dotnet tool update');
     });
 
     it('stays quiet when the pair is fine or unknown', () => {
-        expect(kernelVersionWarning('ok', '0.9.1.0')).toBeUndefined();
+        expect(kernelVersionWarning('ok', '0.11.1.0')).toBeUndefined();
         expect(kernelVersionWarning('unknown', undefined)).toBeUndefined();
     });
 });

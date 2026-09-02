@@ -12,7 +12,7 @@ can open in VS Code or Jupyter.
 running, what failed, and what the crons will fire next](images/studio/dashboard.png)
 
 > Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.10.x as "try it on real notebooks and tell us
+> production soak time yet — treat 0.11.x as "try it on real notebooks and tell us
 > what breaks".
 
 ## Install
