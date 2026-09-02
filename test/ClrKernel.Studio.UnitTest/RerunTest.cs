@@ -42,7 +42,7 @@ public class RerunTest {
     [TestCleanup]
     public void Cleanup() {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_dir, recursive: true);
+        TempDirectory.Delete(_dir);
     }
 
     private void CommitTest(string relative, string content, string message = "edit") =>

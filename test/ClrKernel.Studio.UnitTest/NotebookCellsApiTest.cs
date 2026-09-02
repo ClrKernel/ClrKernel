@@ -103,7 +103,7 @@ public class NotebookCellsApiTest {
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try {
-            Directory.Delete(_root, recursive: true);
+            TempDirectory.Delete(_root);
         } catch (IOException) {
             // A kernel probe may still hold a handle; the temp dir is disposable.
         }
@@ -1179,5 +1179,33 @@ public class NotebookCellsApiTest {
             "/api/projects/default/branches/mine/notebooks/content?path=events.ndjson");
         Assert.AreEqual(HttpStatusCode.OK, text.StatusCode);
         Assert.AreEqual("{\"a\":1}\n", await text.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// A notebook with Windows line endings is saved back with them.
+    ///
+    /// <para>
+    /// git checks `.nb.md` out as CRLF on Windows, and the parser normalises — so
+    /// opening one there and saving it rewrote every line in the file. Silent, a
+    /// diff on everything, and it invalidates the "unchanged since that run" half of
+    /// the promotion check for a notebook nobody edited.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task A_notebook_with_CRLF_is_saved_back_with_CRLF() {
+        var crlf = _source.Replace("\n", "\r\n");
+        Assert.AreEqual(HttpStatusCode.OK, (await _client.PutAsync(
+            $"/api/projects/default/branches/mine/notebooks/content?path={_notebook}",
+            new StringContent(crlf))).StatusCode);
+
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}");
+        var saved = await _client.PutAsJsonAsync(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}",
+            new { cells = body.GetProperty("cells") }, _json);
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+
+        Assert.AreEqual(crlf, File.ReadAllText(Path.Combine(MinePath, _notebook)),
+            "opening a CRLF notebook and saving it must not re-line-end the file");
     }
 }

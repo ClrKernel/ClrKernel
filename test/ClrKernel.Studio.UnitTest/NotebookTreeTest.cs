@@ -24,7 +24,7 @@ public class NotebookTreeTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_root, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_root);
 
     [TestMethod]
     public void A_path_inside_the_root_resolves() {

@@ -23,7 +23,7 @@ public class RunStoreTest {
     [TestCleanup]
     public void Cleanup() {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_dir, recursive: true);
+        TempDirectory.Delete(_dir);
     }
 
     private static Run NewRun(string job = "nightly", RunStatus status = RunStatus.Running) => new() {

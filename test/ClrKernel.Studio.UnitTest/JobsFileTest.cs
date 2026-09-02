@@ -18,7 +18,7 @@ public class JobsFileTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_dir, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_dir);
 
     /// <summary>
     /// Writes `test.jobs.yaml` with `test.nb.md` beside it — the pairing every

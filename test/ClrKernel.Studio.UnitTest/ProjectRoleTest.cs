@@ -85,7 +85,7 @@ public class ProjectRoleTest {
             await _app.DisposeAsync();
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_root, recursive: true);
+        TempDirectory.Delete(_root);
     }
 
     private async Task<HttpClient> ClientFor(UserRole role, params (string Project, ProjectRole Role)[] grants) {

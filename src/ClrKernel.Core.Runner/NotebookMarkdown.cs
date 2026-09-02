@@ -165,6 +165,38 @@ public static class NotebookMarkdown {
 
     /// <summary>Writes cells back to executable markdown, preserving each cell's
     /// spacing. A new cell defaults to one blank line, matching the usual layout.</summary>
+    /// <summary>
+    /// The line ending a document uses, for handing back to <see cref="Serialize"/>.
+    ///
+    /// <para>
+    /// Whichever there are more of, so one stray ending in a file does not decide it.
+    /// It matters because git checks a notebook out with CRLF on Windows: the parser
+    /// normalises, so without this the editor saved every notebook back with its line
+    /// endings changed — a diff on every line, a commit nobody made, and a notebook's
+    /// promotion evidence gone with it.
+    /// </para>
+    /// </summary>
+    public static string NewlineOf(string content) {
+        if (string.IsNullOrEmpty(content)) {
+            return "\n";
+        }
+        var crlf = 0;
+        for (var i = content.IndexOf("\r\n", StringComparison.Ordinal); i >= 0;
+             i = content.IndexOf("\r\n", i + 2, StringComparison.Ordinal)) {
+            crlf++;
+        }
+        var lf = content.Count(c => c == '\n');
+        return crlf * 2 >= lf ? "\r\n" : "\n";
+    }
+
+    /// <param name="newline">The ending to write. <see cref="NewlineOf"/> of the file
+    /// being replaced, so a save changes what was edited and not every line.</param>
+    public static string Serialize(IEnumerable<MarkdownCell> cells, string newline) =>
+        // Built with "\n" throughout and translated once at the end: nothing in the
+        // builder emits a '\r', and the cells cannot hold one either — Parse
+        // normalises before it splits.
+        newline == "\n" ? Serialize(cells) : Serialize(cells).Replace("\n", newline);
+
     public static string Serialize(IEnumerable<MarkdownCell> cells) {
         var list = (cells ?? Enumerable.Empty<MarkdownCell>()).ToList();
         var text = new StringBuilder();

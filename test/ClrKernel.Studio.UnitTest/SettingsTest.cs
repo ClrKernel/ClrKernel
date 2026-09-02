@@ -22,7 +22,7 @@ public class SettingsTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_dir, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_dir);
 
     private JobsOptions Options(Dictionary<string, string> flags = null) {
         flags ??= new Dictionary<string, string>();

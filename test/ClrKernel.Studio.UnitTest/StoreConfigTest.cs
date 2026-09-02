@@ -21,7 +21,7 @@ public class StoreConfigTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_dir, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_dir);
 
     /// <summary>Runs a block with an environment variable set, restoring it after.</summary>
     private static void WithEnv(string name, string value, Action body) {

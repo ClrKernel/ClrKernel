@@ -30,7 +30,7 @@ public class EnvironmentMigrationTest {
     [TestCleanup]
     public void Cleanup() {
         SqliteConnection.ClearAllPools();
-        Directory.Delete(_dir, recursive: true);
+        TempDirectory.Delete(_dir);
     }
 
     /// <summary>One runs row in the pre-projects schema, which had no project column.</summary>

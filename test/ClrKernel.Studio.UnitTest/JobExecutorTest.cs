@@ -33,7 +33,7 @@ public class JobExecutorTest {
     [TestCleanup]
     public void Cleanup() {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_dir, recursive: true);
+        TempDirectory.Delete(_dir);
     }
 
     /// <summary>Speaks the serve protocol: ok cells return 42, "throw" cells error, "Display" cells notify.</summary>

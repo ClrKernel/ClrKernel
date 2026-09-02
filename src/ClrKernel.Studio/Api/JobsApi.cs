@@ -2164,7 +2164,13 @@ public static class JobsApi {
     private static string SerializeCells(
         string path, List<CellEdit> cells, IReadOnlyList<LanguageDescriptor> languages) {
         if (SingleCellTag(path, languages) == null) {
-            return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)));
+            // The endings the file already has, not the ones this platform prefers:
+            // git checks a notebook out with CRLF on Windows, and saving it back with
+            // LF is a diff on every line of a file whose content did not change.
+            var newline = File.Exists(path)
+                ? NotebookMarkdown.NewlineOf(File.ReadAllText(path))
+                : "\n";
+            return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)), newline);
         }
         // The one cell, byte for byte. More than one can only come from a client
         // that offered a button this one does not, and joining them is a better

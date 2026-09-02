@@ -65,7 +65,7 @@ public class ConnectionMaterializerTest {
         Assert.AreEqual(0, _warnings.Count,
             "materializing must not quietly give up: " + string.Join(" | ", _warnings));
         try {
-            Directory.Delete(_root, recursive: true);
+            TempDirectory.Delete(_root);
         } catch (IOException) {
             // A handle git has not let go of yet; the temp directory is disposable.
         }

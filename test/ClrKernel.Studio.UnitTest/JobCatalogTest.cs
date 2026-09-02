@@ -17,7 +17,7 @@ public class JobCatalogTest {
     }
 
     [TestCleanup]
-    public void Cleanup() => Directory.Delete(_root, recursive: true);
+    public void Cleanup() => TempDirectory.Delete(_root);
 
     private void Write(string relativePath, string content) {
         var path = Path.Combine(_root, relativePath);

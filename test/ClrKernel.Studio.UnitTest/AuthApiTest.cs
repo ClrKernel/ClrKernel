@@ -63,7 +63,7 @@ public class AuthApiTest {
             await _app.DisposeAsync();
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_root, recursive: true);
+        TempDirectory.Delete(_root);
     }
 
     private async Task<HttpClient> ClientFor(UserRole role, string name = null) {
