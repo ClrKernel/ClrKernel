@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.0] - 2026-09-02
+
+**Needs kernel 0.11.x.** No change to what the extension does — the pairing moves
+because the kernel it talks to gained a connection type it can now offer.
+
+- **PostgreSQL without a `#r`.** The kernel ships the PostgreSQL provider, so a
+  `#!ansisql` cell opens a Postgres connection and `Postgres.Connect(…)` works in
+  a C# cell with nothing loaded first. The connection button offers PostgreSQL on
+  the strength of that; against kernel 0.10 it would offer a connection the cell
+  could not open.
+- **Generic SQL runs on PostgreSQL.** `#!ansisql` declared only ODBC and JDBC, so
+  a first-party Postgres connection was refused by every SQL cell in the kernel.
+- **All three SQL dialects report their connections**, not only `#!sql` — so
+  `#!ansisql` and `#!oraclesql` cells get the connection button too.
+- **A connection name with a space** (`Warehouse (dev)`) can be selected per cell.
+  The name was cut at the first space, and the cell then asked for a connection
+  that did not exist.
+- **A notebook is saved with the line endings it had.** git checks `.nb.md` out as
+  CRLF on Windows; opening and saving one rewrote every line in the file.
+
 ## [0.7.0] - 2026-08-19
 
 **Needs kernel 0.10.x.** The extension no longer hard-codes any language: it

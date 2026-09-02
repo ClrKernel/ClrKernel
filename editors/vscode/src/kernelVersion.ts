@@ -9,19 +9,22 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.10.*';
+export const SUPPORTED_KERNEL_RANGE = '0.11.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.10.x';
+export const SUPPORTED_KERNEL_LABEL = '0.11.x';
 
-/** The lowest kernel in the line that carries every RPC this build calls
- *  (0.10.0 added the language-descriptor handshake, clrkernel/languages, and
- *  clrkernel/connections/describe). A kernel below this within the same line
- *  reads as 'older', so the update flow triggers. */
-export const SUPPORTED_KERNEL_MIN = '0.10.0';
+/** The lowest kernel in the line that carries every RPC this build calls.
+ *
+ *  0.11.0 adds no `clrkernel/*` method: the RPC surface is exactly 0.10.0's, and
+ *  the pairing moves only because the check below compares major.minor. What is
+ *  new in the kernel this build expects is PostgreSQL in the box — an
+ *  `#!ansisql` cell opens a Postgres connection without a `#r`, which the
+ *  connection UI offers and 0.10 would refuse. */
+export const SUPPORTED_KERNEL_MIN = '0.11.0';
 
 const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 10;
+const SUPPORTED_MINOR = 11;
 const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
