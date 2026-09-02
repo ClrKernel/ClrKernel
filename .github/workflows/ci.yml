@@ -66,17 +66,32 @@ jobs:
           dotnet pack src/ClrKernel/ClrKernel.csproj -c Release --no-build -o artifacts
           dotnet tool install --global --add-source artifacts ClrKernel
           $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
-          clrkernel --version
+          $reported = clrkernel --version
+          if (-not $reported) { throw "clrkernel --version printed nothing" }
+          Write-Host "clrkernel reports $reported"
+
           # `lsp` waits on stdio: it is what the extension launches, and what it
-          # must not do is exit. Give it a moment and check it is still there.
-          $p = Start-Process clrkernel -ArgumentList 'lsp' -PassThru -NoNewWindow `
-                 -RedirectStandardInput NUL -RedirectStandardOutput lsp.out -RedirectStandardError lsp.err
+          # must not do is exit.
+          #
+          # Started through .NET rather than Start-Process so *this* process holds
+          # the write end of its stdin and never writes: the child blocks on a read
+          # that cannot reach end-of-stream, which is precisely "waiting on stdio".
+          # `-RedirectStandardInput NUL` does not mean the null device to
+          # PowerShell — it resolves NUL as a relative path and refuses the call.
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = 'clrkernel'
+          $psi.Arguments = 'lsp'
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $p = [System.Diagnostics.Process]::Start($psi)
           Start-Sleep -Seconds 5
           if ($p.HasExited) {
-            Get-Content lsp.err -ErrorAction SilentlyContinue
+            Write-Host $p.StandardError.ReadToEnd()
             throw "clrkernel lsp exited with $($p.ExitCode) instead of waiting on stdio"
           }
-          Stop-Process -Id $p.Id -Force
+          $p.Kill()
 
       # A notebook end to end, on Windows paths and with CRLF in the file — which
       # is the point, so it is written here rather than taken from `samples/`.
