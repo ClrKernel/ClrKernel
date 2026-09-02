@@ -23,33 +23,65 @@ public sealed class SecretStore {
     private readonly List<ISecretProvider> _providers = new List<ISecretProvider>();
     private readonly InMemorySecretProvider _cache;
     private readonly bool _useCache;
+    private readonly string _prefix;
 
-    public SecretStore(bool cacheLocally = true) {
+    public SecretStore(bool cacheLocally = true)
+        : this(SecretPrefix.Default, cacheLocally) { }
+
+    /// <param name="prefix">The configuration prefix every provider in the default
+    /// chain is built with.</param>
+    /// <param name="cacheLocally">Whether to front the chain with an in-memory cache.</param>
+    public SecretStore(string prefix, bool cacheLocally = true)
+        : this(prefix, cacheLocally, buildDefaultChain: true) { }
+
+    /// <param name="buildDefaultChain">False for a store whose chain the caller
+    /// supplies. Worth having rather than building the default chain and clearing
+    /// it: the Linux branch of <see cref="OsSecretProvider.TryCreate"/> spawns
+    /// <c>secret-tool</c> to probe the keyring, which a discarded chain pays for
+    /// and never uses.</param>
+    private SecretStore(string prefix, bool cacheLocally, bool buildDefaultChain) {
+        _prefix = SecretPrefix.OrDefault(prefix);
         _useCache = cacheLocally;
         _cache = new InMemorySecretProvider();
+        if (!buildDefaultChain) {
+            return;
+        }
         if (_useCache) {
             _providers.Add(_cache);
         }
-        var os = OsSecretProvider.TryCreate();
+        var os = OsSecretProvider.TryCreate(_prefix);
         if (os != null) {
             _providers.Add(os);
         }
         // After the OS store, so a laptop keeps using the Keychain; before the
         // environment, so a server that has neither can still be written to.
-        var file = FileSecretProvider.TryCreate();
+        var file = FileSecretProvider.TryCreate(_prefix);
         if (file != null) {
             _providers.Add(file);
         }
-        _providers.Add(new EnvironmentSecretProvider());
+        _providers.Add(new EnvironmentSecretProvider(_prefix));
     }
 
     /// <summary>A store backed only by the given providers (used by tests).</summary>
-    public static SecretStore ForProviders(params ISecretProvider[] providers) {
-        var store = new SecretStore(cacheLocally: false);
-        store._providers.Clear();
+    public static SecretStore ForProviders(params ISecretProvider[] providers) =>
+        ForProviders(SecretPrefix.Default, providers);
+
+    /// <summary>
+    /// The same, under a given prefix. It is what the store quotes in "set this
+    /// variable" messages; the providers keep whatever prefix each was built with.
+    /// </summary>
+    public static SecretStore ForProviders(string prefix, params ISecretProvider[] providers) {
+        var store = new SecretStore(prefix, cacheLocally: false, buildDefaultChain: false);
         store._providers.AddRange(providers);
         return store;
     }
+
+    /// <summary>The configuration prefix this store and its default chain use.</summary>
+    public string Prefix => _prefix;
+
+    /// <summary>The environment variable <paramref name="key"/> resolves from. The
+    /// one place a caller should build such a name.</summary>
+    public string EnvName(string key) => EnvironmentSecretProvider.EnvName(key, _prefix);
 
     /// <summary>Inserts a provider ahead of the environment fallback (e.g. a PAM).</summary>
     public void AddProvider(ISecretProvider provider) {
@@ -104,7 +136,7 @@ public sealed class SecretStore {
             (CanPersist
                 ? "Store one from the SQL connection panel, or set the "
                 : "Nothing here can store one: set the ") +
-            $"{EnvironmentSecretProvider.EnvName(key)} environment variable" +
+            $"{EnvName(key)} environment variable" +
             (CanPersist ? "." : ", or give this machine a credential store."));
     }
 
