@@ -6,14 +6,25 @@ namespace ClrKernel.Core.Secrets;
 /// <summary>
 /// Windows Credential Manager (generic credentials) via advapi32. The secret
 /// is stored as a UTF-16 blob under target name
-/// <c>ClrKernel:&lt;key&gt;</c>, persisted for the local machine's current user.
-/// Only instantiated on Windows (see <see cref="OsSecretProvider.TryCreate"/>).
+/// <c>&lt;prefix&gt;:&lt;key&gt;</c> — <c>ClrKernel:&lt;key&gt;</c> by default —
+/// persisted for the local machine's current user. Only instantiated on Windows
+/// (see <see cref="OsSecretProvider.TryCreate"/>).
 /// </summary>
 internal sealed class WindowsCredentialSecretProvider : ISecretProvider {
+    private readonly string _serviceName;
+
+    /// <param name="prefix">The configuration prefix that starts every target name.</param>
+    public WindowsCredentialSecretProvider(string prefix = null) {
+        _serviceName = SecretPrefix.OrDefault(prefix);
+    }
+
     public string Name => "credential-manager";
     public bool CanStore => true;
 
-    private static string Target(string key) => OsSecretProvider.ServiceName + ":" + key;
+    /// <summary>The prefix every target name here starts with.</summary>
+    public string ServiceName => _serviceName;
+
+    private string Target(string key) => _serviceName + ":" + key;
 
     public bool TryGet(string key, out string secret) {
         secret = null;

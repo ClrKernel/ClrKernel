@@ -1,3 +1,4 @@
+using System;
 using ClrKernel.Core.Secrets;
 using ClrKernel.Database.Provider.SqlServer;
 using Microsoft.Data.SqlClient;
@@ -19,7 +20,55 @@ public class SqlSecretTest {
 
     [TestMethod]
     public void Environment_provider_maps_key_to_var_name() {
-        Assert.AreEqual("CLRKERNEL_SECRET_SQL_ANALYTICS", EnvironmentSecretProvider.EnvName("sql:analytics"));
+        Assert.AreEqual("CLRKERNEL_SECRET_SQL_ANALYTICS", new EnvironmentSecretProvider().EnvName("sql:analytics"));
+    }
+
+    /// <summary>
+    /// A consumer that embeds this under its own name gets its own variables. The
+    /// default has to stay exactly as it was, or every existing deployment's
+    /// CLRKERNEL_SECRET_* variables stop being read.
+    /// </summary>
+    [TestMethod]
+    public void Environment_provider_uses_the_configured_prefix() {
+        var acme = new EnvironmentSecretProvider("Acme");
+        Assert.AreEqual("ACME_SECRET_", acme.VariablePrefix);
+        Assert.AreEqual("ACME_SECRET_SQL_ANALYTICS", acme.EnvName("sql:analytics"));
+
+        Assert.AreEqual("ACME_SECRET_SQL_ANALYTICS", EnvironmentSecretProvider.EnvName("sql:analytics", "Acme"));
+        Assert.AreEqual(EnvironmentSecretProvider.DefaultVariablePrefix,
+            new EnvironmentSecretProvider(null).VariablePrefix);
+    }
+
+    [TestMethod]
+    public void Environment_provider_reads_the_prefixed_variable() {
+        Environment.SetEnvironmentVariable("ACME_SECRET_SQL_ANALYTICS", "s3cret");
+        try {
+            Assert.IsTrue(new EnvironmentSecretProvider("Acme").TryGet("sql:analytics", out var got));
+            Assert.AreEqual("s3cret", got);
+            Assert.IsFalse(new EnvironmentSecretProvider().TryGet("sql:analytics", out _),
+                "the default prefix must not see another consumer's variables");
+        } finally {
+            Environment.SetEnvironmentVariable("ACME_SECRET_SQL_ANALYTICS", null);
+        }
+    }
+
+    /// <summary>The prefix reaches the chain the store builds, and the message it
+    /// prints when a secret is missing names the variable that would fix it.</summary>
+    [TestMethod]
+    public void Store_carries_the_prefix_into_its_messages() {
+        var store = new SecretStore("Acme", cacheLocally: false);
+        Assert.AreEqual("Acme", store.Prefix);
+        Assert.AreEqual("ACME_SECRET_SQL_MISSING", store.EnvName("sql:missing"));
+
+        var message = Assert.Throws<SecretNotFoundException>(
+            () => store.Resolve("sql:missing")).Message;
+        StringAssert.Contains(message, "ACME_SECRET_SQL_MISSING");
+    }
+
+    [TestMethod]
+    public void File_provider_path_variable_follows_the_prefix() {
+        Assert.AreEqual(FileSecretProvider.PathVariable, FileSecretProvider.PathVariableFor(null));
+        Assert.AreEqual("ACME_SECRETS_FILE", FileSecretProvider.PathVariableFor("Acme"));
     }
 
     [TestMethod]

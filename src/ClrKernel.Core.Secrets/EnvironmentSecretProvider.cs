@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 
 namespace ClrKernel.Core.Secrets;
 /// <summary>
@@ -12,7 +11,23 @@ namespace ClrKernel.Core.Secrets;
 /// Read-only: it never writes secrets back to the environment.
 /// </summary>
 public sealed class EnvironmentSecretProvider : ISecretProvider {
-    public const string Prefix = "CLRKERNEL_SECRET_";
+    /// <summary>The variable prefix a default-constructed provider uses.</summary>
+    public const string DefaultVariablePrefix = "CLRKERNEL_SECRET_";
+
+    private readonly string _prefix;
+
+    /// <param name="prefix">The configuration prefix, not the variable prefix
+    /// itself: "Acme" yields <c>ACME_SECRET_*</c>.</param>
+    public EnvironmentSecretProvider(string prefix = null) {
+        _prefix = SecretPrefix.OrDefault(prefix);
+        VariablePrefix = VariablePrefixFor(_prefix);
+    }
+
+    /// <summary>The configuration prefix this provider was built with.</summary>
+    public string Prefix => _prefix;
+
+    /// <summary>What every derived variable name starts with (e.g. <c>CLRKERNEL_SECRET_</c>).</summary>
+    public string VariablePrefix { get; }
 
     public string Name => "env";
     public bool CanStore => false;
@@ -32,11 +47,19 @@ public sealed class EnvironmentSecretProvider : ISecretProvider {
     public void Delete(string key) =>
         throw new NotSupportedException("The environment secret provider is read-only.");
 
-    public static string EnvName(string key) {
-        var sb = new StringBuilder(Prefix, Prefix.Length + key.Length);
-        foreach (var c in key) {
-            sb.Append(char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_');
+    /// <summary>The variable name <paramref name="key"/> resolves from — the name
+    /// to quote at somebody who has to set one.</summary>
+    public string EnvName(string key) => EnvName(key, _prefix);
+
+    /// <summary>The same, for a caller holding a prefix rather than a provider.</summary>
+    public static string EnvName(string key, string prefix) {
+        if (key == null) {
+            throw new ArgumentNullException(nameof(key));
         }
-        return sb.ToString();
+        return VariablePrefixFor(SecretPrefix.OrDefault(prefix)) + SecretPrefix.ToEnvironmentName(key);
     }
+
+    /// <summary>The variable prefix a given configuration prefix produces.</summary>
+    public static string VariablePrefixFor(string prefix) =>
+        SecretPrefix.ToEnvironmentToken(prefix) + "_SECRET_";
 }

@@ -218,7 +218,7 @@ public sealed class ConnectionStore {
         if (!CanPersistSecrets) {
             throw new ConnectionException(
                 "This server has nowhere to keep a password, so one cannot be saved here. " +
-                $"Set the {EnvironmentSecretProvider.EnvName(secretRef)} environment variable instead, " +
+                $"Set the {_secrets.EnvName(secretRef)} environment variable instead, " +
                 "or give this server a keyring and try again.");
         }
         _secrets.Store(secretRef, password);

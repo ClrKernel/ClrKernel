@@ -24,6 +24,7 @@ namespace ClrKernel.Core.Secrets;
 /// </summary>
 public sealed class FileSecretProvider : ISecretProvider {
     /// <summary>
+    /// The variable a default-prefixed provider reads its path from.
     /// Deliberately not <c>CLRKERNEL_SECRET_FILE</c>: that is the variable a
     /// secret named "file" would resolve from, and the two would collide.
     /// </summary>
@@ -36,9 +37,15 @@ public sealed class FileSecretProvider : ISecretProvider {
         _path = path ?? throw new ArgumentNullException(nameof(path));
     }
 
+    /// <summary>The path variable a given configuration prefix names — "Acme"
+    /// gives <c>ACME_SECRETS_FILE</c>.</summary>
+    public static string PathVariableFor(string prefix) =>
+        SecretPrefix.ToEnvironmentToken(prefix) + "_SECRETS_FILE";
+
     /// <summary>The configured provider, or null when the variable is unset.</summary>
-    public static FileSecretProvider TryCreate() =>
-        Environment.GetEnvironmentVariable(PathVariable) is { Length: > 0 } path
+    /// <param name="prefix">The configuration prefix naming the path variable.</param>
+    public static FileSecretProvider TryCreate(string prefix = null) =>
+        Environment.GetEnvironmentVariable(PathVariableFor(prefix)) is { Length: > 0 } path
             ? new FileSecretProvider(path)
             : null;
 
