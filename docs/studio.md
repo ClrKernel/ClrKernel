@@ -1273,7 +1273,12 @@ A connection a file's dialect cannot carry is listed and refused in the dropdown
 reason on it, rather than accepted and failed at run time. `sql` means T-SQL, so a `.sql`
 file runs on SQL Server, ODBC and JDBC; `.ansisql` is generic SQL and adds PostgreSQL;
 `.plsql` and `.oraclesql` are Oracle. A notebook needs no dropdown — it says which
-connection it uses in its own text, which travels with the file. The
+connection it uses in its own text, which travels with the file.
+
+SQL Server, PostgreSQL, Analysis Services and Fabric are **built into the kernel**, so a
+cell opens one without a `#r` — in Studio and in VS Code alike, since both drive the same
+kernel. Oracle, ODBC and JDBC stay opt-in: their drivers are large, and a notebook that
+wants one says `#r "nuget: ClrKernel.Database.Provider.Oracle"`. The
 file is written back byte for byte: opening one and closing it changes nothing, which
 matters because a save is a commit and a commit invalidates the "unchanged since that
 run" half of the promotion check.

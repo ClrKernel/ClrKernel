@@ -169,4 +169,41 @@ public class SqlSessionConfigTest {
             try { Directory.Delete(dir, recursive: true); } catch { }
         }
     }
+
+    /// <summary>
+    /// A connection defined only in the `.local` overlay opens, and one defined in
+    /// both is taken from the overlay.
+    ///
+    /// <para>
+    /// Every private connection Studio materialises lives only in
+    /// `connections.local.json`. Load looked at the shared file alone, so such a
+    /// connection could be listed by the resolver, named on a cell, and then refused
+    /// with "not found in: connections.json" — about a file it was never in.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_connection_in_the_local_overlay_loads_and_wins() {
+        var dir = Path.Combine(Path.GetTempPath(), "clrkernel-local-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try {
+            File.WriteAllText(Path.Combine(dir, "connections.json"),
+                """{ "shared": { "$type": "Postgres", "server": "shared-host", "database": "d" } }""");
+            File.WriteAllText(Path.Combine(dir, "connections.local.json"),
+                """
+                {
+                  "mine": { "$type": "Postgres", "server": "private-host", "database": "d" },
+                  "shared": { "$type": "Postgres", "server": "overlaid-host", "database": "d" }
+                }
+                """);
+
+            // Only in the overlay: it was invisible before.
+            Assert.AreEqual("private-host",
+                ConnectionConfig.Load("mine", startDirectory: dir).Get("server"));
+            // In both: the overlay wins, which is what `.local` means.
+            Assert.AreEqual("overlaid-host",
+                ConnectionConfig.Load("shared", startDirectory: dir).Get("server"));
+        } finally {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

@@ -39,6 +39,11 @@
     <ProjectReference Include="../ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
     <ProjectReference Include="../ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />
+    <!-- PostgreSQL ships in the kernel rather than being #r'd per notebook: it is a
+         first-party provider, and a `#!ansisql` cell pointed at a Postgres
+         connection could otherwise resolve it and then fail to open it. Oracle,
+         ODBC and JDBC stay opt-in — their drivers are the heavy ones. -->
+    <ProjectReference Include="../ClrKernel.Database.Provider.Postgres/ClrKernel.Database.Provider.Postgres.csproj" />
   </ItemGroup>
   <!-- this will include the kernel spec in the nuget pkg, reference properly -->
   <ItemGroup>

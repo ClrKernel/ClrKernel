@@ -92,7 +92,8 @@ public sealed class ConnectionConfig {
             throw new ArgumentException("name is required.", nameof(name));
         }
         secrets ??= new SecretStore();
-        var files = CandidateFiles(env, startDirectory ?? Directory.GetCurrentDirectory(), maxParents).ToList();
+        var files = CandidateFiles(
+            env, startDirectory ?? Directory.GetCurrentDirectory(), maxParents, includeLocal: true).ToList();
         if (files.Count == 0) {
             throw new ConnectionConfigException(
                 $"No connection config file found (looked for {string.Join(" / ", FileNames(env))} up to {maxParents} parents of '{startDirectory ?? Directory.GetCurrentDirectory()}').");
@@ -341,11 +342,33 @@ public sealed class ConnectionConfig {
         yield return $"connections{suffix}.local.json";
     }
 
-    private static IEnumerable<string> CandidateFiles(string env, string startDirectory, int maxParents) {
+    /// <summary>
+    /// The config files to consider, nearest directory first.
+    ///
+    /// <para>
+    /// <paramref name="includeLocal"/> brings in the <c>.local</c> overlay, and puts
+    /// it <em>before</em> the shared file in each directory: <see cref="Load"/>
+    /// returns the first match, and the overlay is defined to win over a shared
+    /// entry of the same name. <see cref="FindFiles"/> orders them the other way for
+    /// the opposite reason — its callers apply every file in turn, so there the
+    /// overlay has to come last.
+    /// </para>
+    /// <para>
+    /// It was off for <see cref="Load"/> entirely, which is how a connection defined
+    /// only in <c>connections.local.json</c> — every private connection Studio
+    /// materialises — could be listed, resolved and named, and then not opened:
+    /// "not found in: connections.json", about a file it was never in.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<string> CandidateFiles(
+        string env, string startDirectory, int maxParents, bool includeLocal = false) {
         var dir = new DirectoryInfo(startDirectory);
         var depth = 0;
         while (dir != null && depth++ <= maxParents) {
-            foreach (var fileName in FileNames(env)) {
+            var names = includeLocal
+                ? LocalFileNames(env).Concat(FileNames(env))
+                : FileNames(env);
+            foreach (var fileName in names) {
                 var path = Path.Combine(dir.FullName, fileName);
                 if (File.Exists(path)) {
                     yield return path;

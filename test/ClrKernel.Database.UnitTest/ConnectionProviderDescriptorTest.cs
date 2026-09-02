@@ -137,4 +137,22 @@ public class ConnectionProviderDescriptorTest {
         CollectionAssert.AreEqual(
             new[] { "sql", "integrated", "entra", "entra-password", "entra-interactive" }, auth.EnumValues.ToList());
     }
+
+    /// <summary>
+    /// The contract behind "this provider ships": <see cref="DataSourceCatalog"/>
+    /// finds one by looking for a <c>ClrKernel.Database.Provider.X</c> assembly with
+    /// a static <c>X.FromConfig(string, SecretStore)</c>. A provider whose entry
+    /// point is renamed or whose signature drifts stops being openable from a cell,
+    /// and says "load it first" about a package that is already loaded.
+    /// </summary>
+    [TestMethod]
+    public void A_loaded_provider_is_one_the_catalog_can_open() {
+        // Loaded because this file names its type; the same touch CellLanguages.cs
+        // does in the kernel, and the reason it has to.
+        Assert.IsNotNull(PostgresConnectionProvider.Descriptor);
+        CollectionAssert.Contains(
+            DataSourceCatalog.Available().ToList(), "Postgres",
+            "the kernel ships this one, so a #!ansisql cell must be able to open it "
+            + "without #r — see CellLanguages.cs.");
+    }
 }
