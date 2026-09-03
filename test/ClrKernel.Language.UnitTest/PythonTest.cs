@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using ClrKernel.Core.Scripting;
 using ClrKernel.Language.Python;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -254,5 +255,94 @@ public class PythonTest {
         Assert.IsFalse(PythonProvisioner.LooksLikeCertificateFailure(
             "No download found for request: cpython-3.99"), "a real uv failure must not retry");
         Assert.IsFalse(PythonProvisioner.LooksLikeCertificateFailure("failed to write to /usr/lib: permission denied"));
+    }
+
+    /// <summary>
+    /// Packages are per notebook directory and never shared by accident — two
+    /// directories called `notebooks` in different repos are the case a bare name
+    /// would collide on, which is why the path is hashed into it.
+    /// </summary>
+    [TestMethod]
+    public void Two_notebook_directories_get_two_package_directories() {
+        var a = PythonEnvironment.PackagesFor("/tmp/one/notebooks");
+        var b = PythonEnvironment.PackagesFor("/tmp/two/notebooks");
+
+        Assert.AreNotEqual(a, b, "same leaf name, different repos");
+        Assert.AreEqual(a, PythonEnvironment.PackagesFor("/tmp/one/notebooks"), "stable across sessions");
+        StringAssert.Contains(a, "notebooks-", "named for legibility as well as hashed");
+
+        // Nowhere to belong is shared rather than a fresh directory per process,
+        // which would leak one for every unsaved buffer ever opened.
+        Assert.AreEqual(PythonEnvironment.PackagesFor(null), PythonEnvironment.PackagesFor(" "));
+    }
+
+    /// <summary>`requirements.txt` beside the notebook is the definition that belongs
+    /// in the repo; the installed bytes never do.</summary>
+    [TestMethod]
+    public void Requirements_beside_the_notebook_are_found() {
+        var directory = Path.Combine(Path.GetTempPath(), "clrkernel-req-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            Assert.IsNull(PythonEnvironment.Requirements(directory), "no file, nothing to install");
+
+            var file = Path.Combine(directory, PythonEnvironment.RequirementsFile);
+            File.WriteAllText(file, "cowsay\n");
+            CollectionAssert.AreEqual(new[] { "-r", file }, PythonEnvironment.Requirements(directory).ToArray());
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// A cell ending on an expression shows it, the way a notebook does; a cell
+    /// ending on a statement shows nothing. The split is an AST edit, so it is worth
+    /// asserting both halves — getting it wrong either swallows results or prints
+    /// `None` after every assignment.
+    /// </summary>
+    [TestMethod]
+    public async Task A_cell_ending_on_an_expression_shows_its_value() {
+        using var session = RequirePython();
+
+        Assert.AreEqual("42\n", (await session.ExecuteAsync("41 + 1", null)).Output);
+        Assert.AreEqual("'hi'\n", (await session.ExecuteAsync("'hi'", null)).Output, "repr, not str");
+
+        var assignment = await session.ExecuteAsync("y = 1 + 1", null);
+        Assert.AreEqual(string.Empty, assignment.Output, "an assignment is not a value");
+
+        var mixed = await session.ExecuteAsync("print('first'); y * 21", null);
+        Assert.AreEqual("first\n42\n", mixed.Output, "statements run, then the last expression shows");
+
+        var none = await session.ExecuteAsync("print('only this')", null);
+        Assert.AreEqual("only this\n", none.Output, "a call returning None shows nothing extra");
+
+        // What every notebook user reaches for to silence a matplotlib call's return
+        // value — and the expression must still be evaluated, only not shown.
+        var quiet = await session.ExecuteAsync("z = []\nz.append(1);", null);
+        Assert.AreEqual(string.Empty, quiet.Output, "a trailing semicolon suppresses the value");
+        Assert.AreEqual("[1]\n", (await session.ExecuteAsync("z", null)).Output, "but it still ran");
+    }
+
+    /// <summary>An install cell with nothing to install says so rather than running uv
+    /// with no arguments — the message names both ways to give it something.</summary>
+    [TestMethod]
+    public async Task An_install_with_nothing_named_says_what_to_do() {
+        var directory = Path.Combine(Path.GetTempPath(), "clrkernel-noreq-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            using var language = new PythonCellLanguage();
+            var cell = new CellInvocation("#!python-install", "#!python-install", string.Empty, "#!python-install");
+            var e = await Assert.ThrowsExactlyAsync<PythonCellException>(
+                () => language.ExecuteAsync(cell, new InstallContext(directory)));
+
+            StringAssert.Contains(e.Message, PythonEnvironment.RequirementsFile);
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private sealed class InstallContext : ICellExecutionContext {
+        public InstallContext(string workingDirectory) => WorkingDirectory = workingDirectory;
+        public string WorkingDirectory { get; }
+        public Task RunScriptAsync(string code) => Task.CompletedTask;
     }
 }

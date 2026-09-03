@@ -78,8 +78,19 @@ public static class PythonProvisioner {
         return PythonInterpreter.Provisioned();
     }
 
-    /// <summary>uv itself, downloaded and checksum-verified on first use.</summary>
-    private static async Task<string> EnsureUvAsync(Action<string> log, CancellationToken cancellationToken) {
+    /// <summary>
+    /// uv itself, downloaded and checksum-verified on first use. Shared with
+    /// <see cref="PythonEnvironment"/>, which needs it to install packages even on a
+    /// machine that already had a Python and so never provisioned one.
+    /// </summary>
+    internal static async Task<string> EnsureUvAsync(Action<string> log, CancellationToken cancellationToken) {
+        if (!AutoInstallEnabled && !File.Exists(Path.Combine(
+                PythonInterpreter.Home(), "uv", UvVersion, OperatingSystem.IsWindows() ? "uv.exe" : "uv"))) {
+            throw new PythonCellException(
+                $"This needs uv and there is none cached, but {AutoInstallVariable} forbids downloading it. "
+                + EscapeHatches());
+        }
+
         var directory = Path.Combine(PythonInterpreter.Home(), "uv", UvVersion);
         var uv = Path.Combine(directory, OperatingSystem.IsWindows() ? "uv.exe" : "uv");
         if (File.Exists(uv)) {
@@ -256,14 +267,14 @@ public static class PythonProvisioner {
         $"Could not download uv from {url}: {detail} "
         + "The usual cause is a network that does not allow github.com. " + EscapeHatches();
 
-    private static async Task RunAsync(
+    internal static async Task<string> RunAsync(
         string uv, string[] arguments, Action<string> log, CancellationToken cancellationToken) {
         // One budget for both attempts, not one each: a certificate failure followed
         // by a hang would otherwise be twice the ceiling this is documented as having.
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(_installTimeout);
 
-        var (code, error) = await ExecuteAsync(uv, arguments, false, deadline.Token, cancellationToken)
+        var (code, error, output) = await ExecuteAsync(uv, arguments, false, deadline.Token, cancellationToken)
             .ConfigureAwait(false);
         if (code != 0 && LooksLikeCertificateFailure(error)) {
             // Second attempt, not the default: the platform store is right on a machine
@@ -272,18 +283,20 @@ public static class PythonProvisioner {
             log?.Invoke(
                 "uv did not trust the TLS certificate it was shown — retrying against this "
                 + "machine's own certificate store.");
-            (code, error) = await ExecuteAsync(uv, arguments, true, deadline.Token, cancellationToken)
+            (code, error, output) = await ExecuteAsync(uv, arguments, true, deadline.Token, cancellationToken)
                 .ConfigureAwait(false);
         }
         if (code != 0) {
             throw new PythonCellException(
                 $"uv {string.Join(' ', arguments)} failed ({code}): {error.Trim()} " + EscapeHatches());
         }
+        // uv reports what it resolved on stderr, not stdout; both, so neither is lost.
+        return string.Concat(output, error).Trim();
     }
 
     /// <param name="deadline">Stops the child; shared across both attempts.</param>
     /// <param name="cancellationToken">Only to tell a cancellation from a timeout.</param>
-    private static async Task<(int ExitCode, string Error)> ExecuteAsync(
+    private static async Task<(int ExitCode, string Error, string Output)> ExecuteAsync(
         string uv, string[] arguments, bool systemCerts,
         CancellationToken deadline, CancellationToken cancellationToken) {
         var start = new ProcessStartInfo(uv) {
@@ -313,7 +326,7 @@ public static class PythonProvisioner {
         // if the child fills the other, and stdout has to stay redirected because in
         // serve and lsp stdout is the protocol.
         var error = process.StandardError.ReadToEndAsync(cancellationToken);
-        var ignored = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
 
 
         // A firewall that drops packets rather than refusing them is the one failure
@@ -336,7 +349,7 @@ public static class PythonProvisioner {
             // Let the two readers finish against the now-closed pipes rather than
             // leaving them to fault against a disposed process.
             try {
-                await Task.WhenAll(error, ignored).ConfigureAwait(false);
+                await Task.WhenAll(error, output).ConfigureAwait(false);
             } catch (Exception) {
                 // Nothing here is worth reporting over the timeout itself.
             }
@@ -347,7 +360,6 @@ public static class PythonProvisioner {
                         + $"{_installTimeout.TotalMinutes:0} minutes and was stopped. A network that "
                         + "drops connections rather than refusing them looks like this. " + EscapeHatches());
         }
-        await ignored.ConfigureAwait(false);
-        return (process.ExitCode, await error.ConfigureAwait(false));
+        return (process.ExitCode, await error.ConfigureAwait(false), await output.ConfigureAwait(false));
     }
 }

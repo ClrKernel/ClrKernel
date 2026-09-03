@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ClrKernel.Core.Primitives;
 
 namespace ClrKernel.Language.Python;
 
@@ -14,6 +16,10 @@ public sealed class PythonRunResult {
     public string Output { get; init; } = string.Empty;
     public string Error { get; init; }
     public bool Failed => Error != null;
+
+    /// <summary>What the cell ended on, and anything it drew — a DataFrame as a
+    /// <see cref="DisplayTable"/>, a figure as a PNG <see cref="DisplayBytes"/>.</summary>
+    public IReadOnlyList<IDisplayValue> Displays { get; init; } = Array.Empty<IDisplayValue>();
 }
 
 /// <summary>
@@ -51,19 +57,24 @@ public sealed class PythonSession : IDisposable {
     /// <summary>
     /// Runs one cell, returning when the interpreter says it is done.
     /// </summary>
-    public async Task<PythonRunResult> ExecuteAsync(
-        string code, string workingDirectory, CancellationToken cancellationToken = default) {
-        await EnsureInterpreterAsync(cancellationToken).ConfigureAwait(false);
-        var process = Start(workingDirectory);
-        var all = new StringBuilder();
-
-        var request = JsonSerializer.Serialize(new Dictionary<string, string> {
+    public Task<PythonRunResult> ExecuteAsync(
+        string code, string workingDirectory, CancellationToken cancellationToken = default) =>
+        SendAsync(new Dictionary<string, string> {
             ["t"] = "run",
             // Base64 so a cell's own newlines cannot break the framing, whatever it
             // contains — a docstring with a brace in it is not the host's problem.
             ["code"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(code ?? string.Empty)),
-        });
-        await process.StandardInput.WriteLineAsync(request).ConfigureAwait(false);
+        }, workingDirectory, cancellationToken);
+
+    /// <summary>One request, then everything the interpreter says until it is done.</summary>
+    private async Task<PythonRunResult> SendAsync(
+        Dictionary<string, string> request, string workingDirectory, CancellationToken cancellationToken) {
+        await EnsureInterpreterAsync(cancellationToken).ConfigureAwait(false);
+        var process = Start(workingDirectory);
+        var all = new StringBuilder();
+
+        var displays = new List<IDisplayValue>();
+        await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request)).ConfigureAwait(false);
         await process.StandardInput.FlushAsync().ConfigureAwait(false);
 
         while (true) {
@@ -90,12 +101,52 @@ public sealed class PythonSession : IDisposable {
                     all.Append(message.Value.Data);
                     OnOutput?.Invoke(message.Value.Data);
                     break;
+                case "display":
+                    if (ParseDisplay(line) is { } display) {
+                        displays.Add(display);
+                    }
+                    break;
                 case "done":
                     return new PythonRunResult {
                         Output = all.ToString(),
                         Error = message.Value.Status == "ok" ? null : message.Value.Data,
+                        Displays = displays,
                     };
             }
+        }
+    }
+
+    /// <summary>
+    /// A display message as the concept it names. Re-parsed rather than threaded
+    /// through <see cref="Parse"/>, whose tuple is for the three common messages;
+    /// these are rare and structural.
+    /// </summary>
+    private static IDisplayValue ParseDisplay(string line) {
+        try {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            switch (root.TryGetProperty("kind", out var k) ? k.GetString() : null) {
+                case "bytes":
+                    return new DisplayBytes(
+                        Convert.FromBase64String(root.GetProperty("d").GetString()),
+                        root.GetProperty("mime").GetString());
+                case "table":
+                    var rows = root.GetProperty("rows").EnumerateArray()
+                        .Select(r => (IReadOnlyList<string>)r.EnumerateArray()
+                            .Select(c => c.ValueKind == JsonValueKind.Null ? null : c.GetString()).ToList())
+                        .ToList();
+                    return new DisplayTable(
+                        rows,
+                        root.GetProperty("columns").EnumerateArray().Select(c => c.GetString()).ToList(),
+                        rows,
+                        root.GetProperty("types").EnumerateArray().Select(t => t.GetString()).ToList(),
+                        root.TryGetProperty("total", out var total) ? total.GetInt32() : null);
+                default:
+                    return null;
+            }
+        } catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException) {
+            // A malformed display is not worth losing the cell's output over.
+            return null;
         }
     }
 
@@ -143,6 +194,19 @@ public sealed class PythonSession : IDisposable {
         }
     }
 
+    /// <summary>Where <c>#!python-install</c> puts packages for this session; set
+    /// once the interpreter starts, because it derives from the notebook.</summary>
+    public string Packages { get; private set; }
+
+    /// <summary>
+    /// Makes packages installed since the interpreter started importable. The import
+    /// machinery caches each <c>sys.path</c> directory as it first saw it, so without
+    /// this a package installed underneath a running interpreter stays invisible.
+    /// </summary>
+    public Task<PythonRunResult> RefreshPackagesAsync(
+        string workingDirectory, CancellationToken cancellationToken = default) =>
+        SendAsync(new Dictionary<string, string> { ["t"] = "refresh" }, workingDirectory, cancellationToken);
+
     private Process Start(string workingDirectory) {
         lock (_lock) {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -164,10 +228,19 @@ public sealed class PythonSession : IDisposable {
                     ? workingDirectory
                     : Directory.GetCurrentDirectory(),
             };
+            // Headless: matplotlib otherwise picks a GUI backend, and opening a window
+            // from a kernel is at best useless and at worst a hang. Set rather than
+            // appended to, but only when the user has not chosen one themselves.
+            start.Environment["MPLBACKEND"] =
+                Environment.GetEnvironmentVariable("MPLBACKEND") is { Length: > 0 } chosen ? chosen : "Agg";
+
             // -u: unbuffered. Without it the driver's framed lines sit in a pipe
             // buffer and a cell that prints then sleeps shows nothing until it ends.
             start.ArgumentList.Add("-u");
             start.ArgumentList.Add(_driverPath);
+            // This notebook's installed packages, put on sys.path by the driver.
+            Packages = PythonEnvironment.PackagesFor(workingDirectory);
+            start.ArgumentList.Add(Packages);
             // The interpreter's own stdout is the protocol; anything a library writes
             // to fd 2 is diagnostics, and is drained so it cannot fill a pipe and
             // wedge the process.

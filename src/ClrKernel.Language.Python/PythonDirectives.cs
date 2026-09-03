@@ -10,6 +10,17 @@ public static class PythonDirectives {
         Description = "Runs the cell in this notebook's Python interpreter.",
     };
 
+    /// <summary>
+    /// Installs packages this notebook's cells can import. Into a directory of its
+    /// own, not the interpreter, so two notebooks cannot fight over a version.
+    /// </summary>
+    public static readonly DirectiveDefinition InstallDefinition = new() {
+        Selector = "#!python-install",
+        Description =
+            "Installs Python packages for this notebook. Names them in the cell, or "
+            + "reads requirements.txt beside the notebook when given none.",
+    };
+
     /// <summary>Drops the interpreter, so the next cell starts with nothing defined.</summary>
     public static readonly DirectiveDefinition ResetDefinition = new() {
         Selector = "#!python-reset",

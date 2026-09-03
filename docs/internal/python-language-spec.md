@@ -257,6 +257,54 @@ stderr ambiguity entirely.
 
 Fetched on first `#!python` cell, cached thereafter — the tool itself stays 67 MB.
 
+## 9a. Packages, and why there is no venv
+
+The spec above assumed a venv per notebook and then flagged the consequences:
+git-ignoring `.venv/`, and stopping Studio promoting one between branches. Both
+problems disappear if there is no venv.
+
+`uv pip install --target <dir>` installs into a plain directory. The driver puts
+that directory on `sys.path` at startup, so:
+
+- **Install in one cell, import in the next.** A venv would have to *become* the
+  interpreter, so installing anything mid-session would mean restarting it and
+  losing every name the notebook had bound. Measured: `x` set in cell 1 is still
+  there in cell 3, after an install in cell 2.
+- **Nothing in the repo.** The directory lives in the kernel's cache, keyed by the
+  notebook's directory and hashed so two `notebooks/` folders in different repos
+  cannot collide. There is no `.venv/` for git to ignore and nothing for Studio to
+  promote. What belongs in the repo is `requirements.txt` — the definition — not
+  the installed bytes; the same split as a lock file against the NuGet cache.
+- **It works with any interpreter**, including one the user pointed at with
+  `CLRKERNEL_PYTHON`, and never writes into it.
+
+`--python <interpreter>` is not optional: it makes uv resolve wheels for the
+interpreter that will import them, and a compiled extension built for the wrong ABI
+imports and *then* crashes.
+
+Two notebooks in different directories were checked for leakage — installing in one
+leaves the other with an `ImportError`, which is the whole point of the isolation.
+
+## 9b. What a cell shows
+
+A cell ending on an expression displays it, like a notebook — the driver splits the
+last `ast.Expr` off, `exec`s the rest and `eval`s that one. Then:
+
+| The cell ends on | What appears |
+|---|---|
+| A pandas DataFrame or Series | `DisplayTable` → the interactive grid, dtypes mapped to the kernel's column kinds so numbers sort and summarise as numbers |
+| A matplotlib figure | `DisplayBytes` PNG |
+| Anything else | its `repr`, as Jupyter does |
+| A statement | nothing |
+
+Figures the cell drew but never returned are drained afterwards, because
+`plt.plot(...)` on its own line is how most matplotlib is written and it leaves the
+figure open rather than yielding it. `MPLBACKEND=Agg` is set for the interpreter
+unless the user chose a backend, since opening a GUI window from a kernel is at
+best useless.
+
+Row cap is 1000 with the true count reported, so a million-row frame renders.
+
 ## 10. What is left
 
 The unknowns are gone; what remains is ordinary work. In rough order:
@@ -268,8 +316,10 @@ The unknowns are gone; what remains is ordinary work. In rough order:
 2. Interpreter provisioning behind an interface, with "point at your own Python" as
    the documented escape hatch for air-gapped machines and for people who already
    have one.
-3. venv per notebook: where it lives, git-ignoring it, and making sure Studio never
-   promotes a `.venv/` between branches.
-4. Display adapters — DataFrame → `DisplayTable`, matplotlib → `DisplayBytes`. This
-   is the half users would actually notice.
-5. Docker, offline, and the Windows checklist items.
+3. ~~venv per notebook~~ — **done**, and there is no venv: see §9a.
+4. ~~Display adapters~~ — **done**: see §9b.
+5. Docker, offline, and the Windows checklist items (§12a of the Windows list).
+
+Not built, and deliberately: completion and hover inside a Python cell
+(`ICellLanguageServices` is null), which wants the interpreter's own introspection
+and is a separate piece of work from running cells.
