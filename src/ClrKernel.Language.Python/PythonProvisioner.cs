@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -41,6 +42,20 @@ public static class PythonProvisioner {
     /// <summary>The CPython line installed when nothing says otherwise.</summary>
     public const string DefaultPythonVersion = "3.13";
 
+    /// <summary>
+    /// Replaces the base URL uv itself is fetched from, for a network that blocks
+    /// github.com but proxies it through Artifactory or Nexus. The version and asset
+    /// name are appended, so a mirror only has to mirror the release layout.
+    /// The interpreter half needs no equivalent — uv reads
+    /// <c>UV_PYTHON_INSTALL_MIRROR</c> and inherits it from this process.
+    /// </summary>
+    public const string UvMirrorVariable = "CLRKERNEL_PYTHON_UV_MIRROR";
+
+    private const string _defaultUvBaseUrl = "https://github.com/astral-sh/uv/releases/download";
+
+    /// <summary>Matches the <c>HttpClient</c> timeout on the other half of this.</summary>
+    private static readonly TimeSpan _installTimeout = TimeSpan.FromMinutes(10);
+
     public static bool AutoInstallEnabled =>
         Environment.GetEnvironmentVariable(AutoInstallVariable) is not ("0" or "false" or "no");
 
@@ -58,7 +73,8 @@ public static class PythonProvisioner {
         }
         var uv = await EnsureUvAsync(log, cancellationToken).ConfigureAwait(false);
         log?.Invoke($"Installing Python {DefaultPythonVersion} (about 25 MB) — once, then cached.");
-        Run(uv, new[] { "python", "install", DefaultPythonVersion });
+        await RunAsync(uv, new[] { "python", "install", DefaultPythonVersion }, log, cancellationToken)
+            .ConfigureAwait(false);
         return PythonInterpreter.Provisioned();
     }
 
@@ -69,18 +85,36 @@ public static class PythonProvisioner {
         if (File.Exists(uv)) {
             return uv;
         }
+        // ponytail: two notebooks opening at once on a cold machine can both unpack
+        // here, which is a sharing violation on Windows. Cross-process, so no lock in
+        // this process would help; a lock file is the upgrade if it is ever seen.
         var asset = AssetName();
-        var url = $"https://github.com/astral-sh/uv/releases/download/{UvVersion}/{asset}";
+        var url = UvUrl(asset);
         log?.Invoke($"Fetching uv {UvVersion} (about 35 MB) — once, then cached.");
 
         Directory.CreateDirectory(directory);
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        var archive = await http.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
+        byte[] archive;
+        string published;
+        try {
+            archive = await http.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
+            published = await http.GetStringAsync(url + ".sha256", cancellationToken).ConfigureAwait(false);
+        } catch (Exception e) when (e is HttpRequestException or TaskCanceledException) {
+            throw new PythonCellException(Unreachable(url, e.Message), e);
+        }
 
         // Verified before anything is unpacked, let alone executed: this downloads a
         // binary and then runs it, which is the one place a checksum is not ceremony.
-        var expected = (await http.GetStringAsync(url + ".sha256", cancellationToken)
-            .ConfigureAwait(false)).Trim().Split(' ')[0];
+        var expected = ChecksumIn(published);
+        if (expected == null) {
+            // A filter that answers 200 with a block page rather than refusing the
+            // connection lands here, and "corrupt download" would be the wrong thing
+            // to go looking at.
+            throw new PythonCellException(
+                $"{url}.sha256 did not return a checksum. Something on the network answered "
+                + "instead of the server — a proxy, a captive portal or a content filter. "
+                + EscapeHatches());
+        }
         var actual = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
         if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase)) {
             throw new PythonCellException(
@@ -170,7 +204,88 @@ public static class PythonProvisioner {
     private static PythonCellException Unsupported(Architecture arch) =>
         new($"No uv build for {arch}. Set {PythonInterpreter.PathVariable} to a Python you have.");
 
-    private static void Run(string uv, string[] arguments) {
+    /// <summary>Where uv is fetched from, honouring <see cref="UvMirrorVariable"/>.</summary>
+    public static string UvUrl(string asset) {
+        var mirror = Environment.GetEnvironmentVariable(UvMirrorVariable);
+        var baseUrl = string.IsNullOrWhiteSpace(mirror) ? _defaultUvBaseUrl : mirror.TrimEnd('/');
+        return $"{baseUrl}/{UvVersion}/{asset}";
+    }
+
+    /// <summary>
+    /// The SHA-256 digest in a published checksum file, or null when the body is not
+    /// one — an HTML page from whatever intercepted the request, most likely.
+    /// </summary>
+    /// <remarks>
+    /// Any whitespace-separated 64-hex token, so both <c>&lt;hash&gt;  &lt;file&gt;</c>
+    /// (coreutils, what GitHub publishes) and <c>SHA256 (file) = &lt;hash&gt;</c> (BSD)
+    /// read the same. A mirror that reformats is not a network attack, and reporting
+    /// it as one sends people to exactly the wrong place.
+    ///
+    /// ponytail: a mirror serving a combined <c>SHA256SUMS</c> at this URL would give
+    /// the first hash in it, not this asset's, and fail the comparison — safe, and
+    /// still the wrong explanation. Match the asset name if that ever shows up; the
+    /// per-asset URL shape means it has not.
+    /// </remarks>
+    public static string ChecksumIn(string body) =>
+        body.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(t => t.Length == 64 && t.All(Uri.IsHexDigit));
+
+    /// <summary>
+    /// Whether uv failed because it did not trust the certificate it was shown.
+    ///
+    /// <para>
+    /// uv validates against bundled Mozilla roots, not the platform store, so a
+    /// network that re-signs TLS breaks it on exactly the machine where NuGet works
+    /// — the corporate root is in the OS store, which is the one place uv does not
+    /// look. Matched on the message because uv reports every network failure as the
+    /// same exit code.
+    /// </para>
+    /// </summary>
+    public static bool LooksLikeCertificateFailure(string error) =>
+        error.Contains("certificate", StringComparison.OrdinalIgnoreCase)
+        || error.Contains("self-signed", StringComparison.OrdinalIgnoreCase)
+        || error.Contains("self signed", StringComparison.OrdinalIgnoreCase)
+        || error.Contains("UnknownIssuer", StringComparison.OrdinalIgnoreCase);
+
+    private static string EscapeHatches() =>
+        $"Set {PythonInterpreter.PathVariable} to a Python you already have, or "
+        + $"{UvMirrorVariable} and UV_PYTHON_INSTALL_MIRROR to an internal mirror, or "
+        + $"{AutoInstallVariable}=0 to stop the kernel trying.";
+
+    private static string Unreachable(string url, string detail) =>
+        $"Could not download uv from {url}: {detail} "
+        + "The usual cause is a network that does not allow github.com. " + EscapeHatches();
+
+    private static async Task RunAsync(
+        string uv, string[] arguments, Action<string> log, CancellationToken cancellationToken) {
+        // One budget for both attempts, not one each: a certificate failure followed
+        // by a hang would otherwise be twice the ceiling this is documented as having.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_installTimeout);
+
+        var (code, error) = await ExecuteAsync(uv, arguments, false, deadline.Token, cancellationToken)
+            .ConfigureAwait(false);
+        if (code != 0 && LooksLikeCertificateFailure(error)) {
+            // Second attempt, not the default: the platform store is right on a machine
+            // that re-signs TLS and wrong on a container that has no store at all, and
+            // only one of those two tells you which it is up front.
+            log?.Invoke(
+                "uv did not trust the TLS certificate it was shown — retrying against this "
+                + "machine's own certificate store.");
+            (code, error) = await ExecuteAsync(uv, arguments, true, deadline.Token, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        if (code != 0) {
+            throw new PythonCellException(
+                $"uv {string.Join(' ', arguments)} failed ({code}): {error.Trim()} " + EscapeHatches());
+        }
+    }
+
+    /// <param name="deadline">Stops the child; shared across both attempts.</param>
+    /// <param name="cancellationToken">Only to tell a cancellation from a timeout.</param>
+    private static async Task<(int ExitCode, string Error)> ExecuteAsync(
+        string uv, string[] arguments, bool systemCerts,
+        CancellationToken deadline, CancellationToken cancellationToken) {
         var start = new ProcessStartInfo(uv) {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -181,17 +296,58 @@ public static class PythonProvisioner {
         }
         // Its own directories, so this never touches a uv the user runs themselves —
         // their interpreters, caches and settings are not the kernel's to reorganise.
+        // Everything else — HTTP_PROXY, UV_PYTHON_INSTALL_MIRROR, SSL_CERT_FILE — is
+        // inherited, which is how a proxied network works with no code at all.
         start.Environment["UV_PYTHON_INSTALL_DIR"] = Path.Combine(PythonInterpreter.Home(), "interpreters");
         start.Environment["UV_CACHE_DIR"] = Path.Combine(PythonInterpreter.Home(), "cache");
+        if (systemCerts) {
+            // The spelling uv 0.12 wants; it warns loudly about the older UV_NATIVE_TLS,
+            // and the version is pinned, so there is no second name to hedge with.
+            start.Environment["UV_SYSTEM_CERTS"] = "true";
+        }
 
         using var process = Process.Start(start)
             ?? throw new PythonCellException($"Could not start {uv}.");
-        var error = process.StandardError.ReadToEnd();
-        process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
-        if (process.ExitCode != 0) {
+
+        // Both pipes drained concurrently: reading one to completion first deadlocks
+        // if the child fills the other, and stdout has to stay redirected because in
+        // serve and lsp stdout is the protocol.
+        var error = process.StandardError.ReadToEndAsync(cancellationToken);
+        var ignored = process.StandardOutput.ReadToEndAsync(cancellationToken);
+
+
+        // A firewall that drops packets rather than refusing them is the one failure
+        // that otherwise returns nothing, ever: uv retries into a black hole and the
+        // cell hangs with no interrupt. Same ceiling as the HttpClient half.
+        //
+        // ponytail: the ceiling is the real protection, not the token —
+        // ICellExecutionContext carries no CancellationToken, so nothing upstream can
+        // pass one yet, and a host interrupt is a process-tree kill of the whole
+        // kernel (which takes uv with it). Honour the token anyway, so it starts
+        // working the day the cell contract grows one.
+        try {
+            await process.WaitForExitAsync(deadline).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            try {
+                process.Kill(entireProcessTree: true);
+            } catch (Exception) {
+                // Already gone, or not ours to kill; the throw below is the report.
+            }
+            // Let the two readers finish against the now-closed pipes rather than
+            // leaving them to fault against a disposed process.
+            try {
+                await Task.WhenAll(error, ignored).ConfigureAwait(false);
+            } catch (Exception) {
+                // Nothing here is worth reporting over the timeout itself.
+            }
             throw new PythonCellException(
-                $"uv {string.Join(' ', arguments)} failed ({process.ExitCode}): {error.Trim()}");
+                cancellationToken.IsCancellationRequested
+                    ? $"uv {string.Join(' ', arguments)} was cancelled."
+                    : $"uv {string.Join(' ', arguments)} did not finish within "
+                        + $"{_installTimeout.TotalMinutes:0} minutes and was stopped. A network that "
+                        + "drops connections rather than refusing them looks like this. " + EscapeHatches());
         }
+        await ignored.ConfigureAwait(false);
+        return (process.ExitCode, await error.ConfigureAwait(false));
     }
 }

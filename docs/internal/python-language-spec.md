@@ -178,6 +178,41 @@ an install of a cached package both succeed. Something never fetched fails with 
 message that says why — *"Packages were unavailable because the network was
 disabled"*. So the escape hatch is real: warm the cache, then run offline.
 
+**A corporate network.** The machines most likely to have no Python are the ones
+least likely to be allowed to download one, so this was worked through rather than
+assumed. Four cases, three of which need no code:
+
+| What is in the way | What happens |
+|---|---|
+| An HTTP proxy | Works. `HttpClient.DefaultProxy` reads `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`, and so does uv — the child only *adds* two variables, so the environment is inherited whole. |
+| TLS re-signed by the corporate root | The .NET half is fine: it validates against the OS store, where that root has to be already or `dotnet tool install` would not have worked either. **uv is not** — it trusts bundled Mozilla roots and never looks at the platform store. So it fails on precisely the machine where NuGet works. |
+| github.com blocked, an internal mirror available | `UV_PYTHON_INSTALL_MIRROR` covers the interpreter with no code — uv reads it and inherits it. uv's own release URL is the only hardcoded one, hence `CLRKERNEL_PYTHON_UV_MIRROR`. |
+| Nothing may be downloaded at all | `CLRKERNEL_PYTHON` at a Python IT already manages, or a pre-seeded `CLRKERNEL_PYTHON_HOME` plus `CLRKERNEL_PYTHON_AUTO_INSTALL=0`. |
+| A firewall that **drops** rather than refuses | The only failure that returns nothing at all: uv retries into a black hole. A 10-minute ceiling — one budget across both attempts, not one each — stops it and kills the process tree, matching the `HttpClient` timeout on the other half. |
+
+The TLS case is handled by retrying **once** with `UV_SYSTEM_CERTS=true` when uv's
+failure looks like a certificate rejection — a retry and not the default, because
+the platform store is right on a machine that re-signs TLS and wrong on a container
+that has no store at all, and only one of those announces itself up front.
+
+Shipping a CPython through NuGet instead was considered and rejected: it means
+republishing python-build-standalone as five RID-specific packages at ~25 MB each
+and owning CVE response for an interpreter we did not build, to serve a case that
+one environment variable already covers.
+
+Verified against a real self-signed HTTPS origin and a local server standing in for
+a content filter, not reasoned about:
+
+```
+uv did not trust the TLS certificate it was shown — retrying against this machine's own certificate store.
+…/uv-aarch64-apple-darwin.tar.gz.sha256 did not return a checksum. Something on the
+network answered instead of the server — a proxy, a captive portal or a content filter.
+```
+
+That second one matters more than it looks: a filter that answers **200 with a block
+page** would otherwise trip the checksum comparison and be reported as a corrupt
+download, which sends you to the wrong place entirely.
+
 **The resident interpreter.** A ~20-line `driver.py` reading JSON cells from stdin,
 `exec` into one namespace, user output on stdout and protocol on stderr; a C# host
 driving it. Timestamps from the run:

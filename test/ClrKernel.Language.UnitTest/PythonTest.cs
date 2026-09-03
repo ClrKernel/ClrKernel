@@ -196,4 +196,63 @@ public class PythonTest {
             Environment.SetEnvironmentVariable(PythonProvisioner.AutoInstallVariable, savedAuto);
         }
     }
+
+    /// <summary>
+    /// A network that blocks github.com but proxies it can point the fetch elsewhere.
+    /// The interpreter half needs no equivalent — uv reads UV_PYTHON_INSTALL_MIRROR
+    /// and inherits it — so this one variable is the whole gap.
+    /// </summary>
+    [TestMethod]
+    public void A_mirror_replaces_the_uv_download_host() {
+        var saved = Environment.GetEnvironmentVariable(PythonProvisioner.UvMirrorVariable);
+        try {
+            Environment.SetEnvironmentVariable(PythonProvisioner.UvMirrorVariable, null);
+            StringAssert.StartsWith(PythonProvisioner.UvUrl("uv-x.tar.gz"), "https://github.com/astral-sh/uv/");
+
+            // Trailing slash included, because somebody will paste one.
+            Environment.SetEnvironmentVariable(
+                PythonProvisioner.UvMirrorVariable, "https://artifactory.corp/github/astral-sh/uv/releases/download/");
+            Assert.AreEqual(
+                $"https://artifactory.corp/github/astral-sh/uv/releases/download/{PythonProvisioner.UvVersion}/uv-x.tar.gz",
+                PythonProvisioner.UvUrl("uv-x.tar.gz"));
+        } finally {
+            Environment.SetEnvironmentVariable(PythonProvisioner.UvMirrorVariable, saved);
+        }
+    }
+
+    /// <summary>
+    /// A content filter that answers 200 with a block page must not be reported as a
+    /// corrupt download — it is the difference between "retry" and "call IT".
+    /// </summary>
+    [TestMethod]
+    public void A_block_page_is_not_mistaken_for_a_checksum() {
+        const string digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+        // What GitHub publishes, and what a mirror that reformats publishes. Neither
+        // is a network problem, so both have to read the same.
+        Assert.AreEqual(digest, PythonProvisioner.ChecksumIn($"{digest}  uv-aarch64-apple-darwin.tar.gz\n"));
+        Assert.AreEqual(digest, PythonProvisioner.ChecksumIn($"SHA256 (uv-aarch64-apple-darwin.tar.gz) = {digest}"));
+
+        Assert.IsNull(PythonProvisioner.ChecksumIn("<html><body>Access Denied by Corporate Policy</body></html>"));
+        Assert.IsNull(PythonProvisioner.ChecksumIn(new string('a', 63)), "too short");
+        Assert.IsNull(PythonProvisioner.ChecksumIn(new string('z', 64)), "right length, not hex");
+        Assert.IsNull(PythonProvisioner.ChecksumIn(string.Empty));
+    }
+
+    /// <summary>
+    /// uv trusts bundled Mozilla roots, not the platform store, so a network that
+    /// re-signs TLS breaks it where NuGet works. Recognising that message is what
+    /// triggers the retry against the machine's own store.
+    /// </summary>
+    [TestMethod]
+    public void A_certificate_failure_is_told_apart_from_every_other_uv_failure() {
+        Assert.IsTrue(PythonProvisioner.LooksLikeCertificateFailure(
+            "error sending request: invalid peer certificate: UnknownIssuer"));
+        Assert.IsTrue(PythonProvisioner.LooksLikeCertificateFailure(
+            "self-signed certificate in certificate chain"));
+
+        Assert.IsFalse(PythonProvisioner.LooksLikeCertificateFailure(
+            "No download found for request: cpython-3.99"), "a real uv failure must not retry");
+        Assert.IsFalse(PythonProvisioner.LooksLikeCertificateFailure("failed to write to /usr/lib: permission denied"));
+    }
 }
