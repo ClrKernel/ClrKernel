@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace ClrKernel.Language.Python;
 
@@ -15,6 +17,10 @@ namespace ClrKernel.Language.Python;
 /// </para>
 /// </summary>
 public static class PythonInterpreter {
+    /// <summary>`python3` or `python3.13` — and not `python3.13-config`.</summary>
+    private static readonly Regex _interpreterName =
+        new(@"^python3(\.\d+)?$", RegexOptions.Compiled);
+
     /// <summary>Point the kernel at an interpreter of your own. The escape hatch:
     /// an air-gapped machine, a company build, or simply the one you already use.</summary>
     public const string PathVariable = "CLRKERNEL_PYTHON";
@@ -44,13 +50,32 @@ public static class PythonInterpreter {
         if (!Directory.Exists(root)) {
             return null;
         }
-        var name = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "python.exe" : "python3";
         foreach (var directory in Directory.EnumerateDirectories(root)) {
-            var candidate = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                ? Path.Combine(directory, name)
-                : Path.Combine(directory, "bin", name);
-            if (File.Exists(candidate)) {
-                return candidate;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+                var exe = Path.Combine(directory, "python.exe");
+                if (File.Exists(exe)) {
+                    return exe;
+                }
+                continue;
+            }
+            // `python3.13`, not `python3`: that is what uv lays down, and the
+            // unversioned name is not always beside it.
+            //
+            // The name has to match exactly, not merely start with `python3` —
+            // `python3.13-config` sorts after `python3.13` and is a shell script that
+            // prints build flags and exits, which is a confusing way to learn that a
+            // glob was too generous.
+            var bin = Path.Combine(directory, "bin");
+            if (!Directory.Exists(bin)) {
+                continue;
+            }
+            var candidates = Directory.GetFiles(bin, "python3*")
+                .Where(f => _interpreterName.IsMatch(Path.GetFileName(f)))
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .ToList();
+            if (candidates.Count > 0) {
+                // Highest version last: python3 < python3.13 < python3.14.
+                return candidates[^1];
             }
         }
         return null;

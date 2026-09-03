@@ -53,6 +53,7 @@ public sealed class PythonSession : IDisposable {
     /// </summary>
     public async Task<PythonRunResult> ExecuteAsync(
         string code, string workingDirectory, CancellationToken cancellationToken = default) {
+        await EnsureInterpreterAsync(cancellationToken).ConfigureAwait(false);
         var process = Start(workingDirectory);
         var all = new StringBuilder();
 
@@ -115,6 +116,30 @@ public sealed class PythonSession : IDisposable {
             // Not ours: an interpreter that writes to fd 1 behind Python's back
             // (a C extension, a crash handler) must not take the session down.
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Makes sure there is an interpreter to start, installing one if this machine
+    /// has none — the first `#!python` cell on a fresh machine, and only then.
+    ///
+    /// <para>
+    /// Outside the lock, deliberately: it downloads, and holding the lock every
+    /// other cell waits on for the length of a 60 MB fetch would stall the notebook
+    /// rather than just this cell.
+    /// </para>
+    /// </summary>
+    private async Task EnsureInterpreterAsync(CancellationToken cancellationToken) {
+        if (_process is { HasExited: false } || PythonInterpreter.Resolve() != null) {
+            return;
+        }
+        var installed = await PythonProvisioner
+            .EnsureAsync(message => OnOutput?.Invoke(message + Environment.NewLine), cancellationToken)
+            .ConfigureAwait(false);
+        if (installed == null) {
+            throw new PythonCellException(
+                PythonInterpreter.NotFoundMessage()
+                + $" Automatic installation is off ({PythonProvisioner.AutoInstallVariable}).");
         }
     }
 

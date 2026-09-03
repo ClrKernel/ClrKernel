@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using ClrKernel.Language.Python;
@@ -22,6 +23,10 @@ public class PythonTest {
     /// </para>
     /// </summary>
     private static PythonSession RequirePython() {
+        // Never downloads: these tests are about running cells against an
+        // interpreter this machine has, and a unit test that fetches 60 MB the first
+        // time a CI image lacks Python is a test that fails for the wrong reason.
+        Environment.SetEnvironmentVariable(PythonProvisioner.AutoInstallVariable, "0");
         var session = new PythonSession();
         try {
             var result = session.ExecuteAsync("pass", null).GetAwaiter().GetResult();
@@ -141,5 +146,54 @@ public class PythonTest {
 
         StringAssert.Contains(message, PythonInterpreter.PathVariable);
         StringAssert.Contains(message, "PATH");
+    }
+
+    /// <summary>
+    /// The uv build this machine would download. Not a network test — it is the
+    /// mapping that decides whether a container gets a binary it can run, and musl
+    /// is the case that bites: an Alpine image cannot execute the gnu build.
+    /// </summary>
+    [TestMethod]
+    public void The_uv_asset_matches_this_platform() {
+        var asset = PythonProvisioner.AssetName();
+
+        StringAssert.Contains(asset, "uv-");
+        if (OperatingSystem.IsWindows()) {
+            StringAssert.Contains(asset, "windows");
+            StringAssert.EndsWith(asset, ".zip");
+        } else if (OperatingSystem.IsMacOS()) {
+            StringAssert.Contains(asset, "apple-darwin");
+            StringAssert.EndsWith(asset, ".tar.gz");
+        } else {
+            StringAssert.Contains(asset, "linux");
+        }
+        var arm = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+            == System.Runtime.InteropServices.Architecture.Arm64;
+        StringAssert.Contains(asset, arm ? "aarch64" : "x86_64");
+    }
+
+    /// <summary>Turning it off has to mean off — the air-gapped promise.</summary>
+    [TestMethod]
+    public async Task With_installation_off_and_no_interpreter_it_refuses_rather_than_fetching() {
+        var savedPath = Environment.GetEnvironmentVariable(PythonInterpreter.PathVariable);
+        var savedHome = Environment.GetEnvironmentVariable(PythonInterpreter.HomeVariable);
+        var savedAuto = Environment.GetEnvironmentVariable(PythonProvisioner.AutoInstallVariable);
+        var empty = Path.Combine(Path.GetTempPath(), "clrkernel-nopy-" + Guid.NewGuid().ToString("N"));
+        try {
+            // An explicit interpreter that does not exist, so nothing on this machine
+            // can satisfy the lookup, and installation off.
+            Environment.SetEnvironmentVariable(PythonInterpreter.PathVariable, Path.Combine(empty, "python3"));
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, empty);
+            Environment.SetEnvironmentVariable(PythonProvisioner.AutoInstallVariable, "0");
+
+            using var session = new PythonSession();
+            var e = await Assert.ThrowsExactlyAsync<PythonCellException>(
+                () => session.ExecuteAsync("print(1)", null));
+            StringAssert.Contains(e.Message, "Could not start Python");
+        } finally {
+            Environment.SetEnvironmentVariable(PythonInterpreter.PathVariable, savedPath);
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, savedHome);
+            Environment.SetEnvironmentVariable(PythonProvisioner.AutoInstallVariable, savedAuto);
+        }
     }
 }
