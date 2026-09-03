@@ -143,9 +143,98 @@ Running Python is table stakes. What would make it worth doing:
 **Not a weekend.** The language contract is a day; the interpreter lifecycle,
 venvs and the display work are the rest of it.
 
-## 9. What I would do next
+## 9. The spike — run 2026-09-02, macOS 26.6 arm64
 
-A spike that answers §5's three questions on macOS, Linux and Windows, and runs
-`print("hello")` through a resident interpreter with streamed output. That is the
-part that can fail for reasons no amount of design settles — and if `uv` covers the
-platforms, everything after it is ordinary work.
+Everything §5 asked, plus a resident interpreter end to end. **The approach holds.**
+
+**Platforms.** uv 0.12.9 publishes **18 archives**, covering every RID this needs and
+then some: `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`{x86_64,aarch64}-unknown-linux-gnu`, both **musl** variants (Alpine, which the
+Studio image would care about), and `{x86_64,aarch64,i686}-pc-windows-msvc`.
+
+**Licence.** Apache-2.0 (dual MIT / Apache-2.0 in the repo). Redistributable.
+
+**Provisioning, with no system Python anywhere:**
+
+```
+$ uv python install 3.13
+Downloading cpython-3.13.15-macos-aarch64-none (24.0MiB)
+Installed Python 3.13.15 in 1.76s
+```
+
+**Gatekeeper — the risk that did not materialise.** Neither the downloaded `uv` nor
+the interpreter carries `com.apple.quarantine`; both have only
+`com.apple.provenance`, which does not block execution. Both ran with no prompt.
+(Caveat: fetched with `curl`. A browser download would quarantine, so the kernel
+must fetch it itself — which it would.)
+
+**venv and requirements.** `uv venv` + `uv pip install pandas` resolved and
+installed in seconds. Everything was contained to a scratch directory via
+`UV_PYTHON_INSTALL_DIR` and `UV_CACHE_DIR`, which is exactly the knob a
+per-notebook venv needs.
+
+**Air-gapped.** `--offline` works off the cache: a venv on a cached interpreter and
+an install of a cached package both succeed. Something never fetched fails with a
+message that says why — *"Packages were unavailable because the network was
+disabled"*. So the escape hatch is real: warm the cache, then run offline.
+
+**The resident interpreter.** A ~20-line `driver.py` reading JSON cells from stdin,
+`exec` into one namespace, user output on stdout and protocol on stderr; a C# host
+driving it. Timestamps from the run:
+
+```
+[ 0.07s] protocol:    interpreter ready, python 3.13.15
+[ 8.47s] cell stdout: pandas 3.0.5
+[ 8.47s] cell stdout: tick 0
+[ 9.47s] cell stdout: tick 1
+[10.48s] cell stdout: tick 2
+[11.49s] cell stdout: x + 1 = 42          <- x was set two cells earlier
+[11.49s] protocol:    cell error           <- raise ValueError
+[11.49s] cell stdout: still alive after the error
+```
+
+State persists across cells, output **streams** (the ticks are a second apart, not
+delivered in a lump at the end), an error is reported without killing the session,
+and `Kill(entireProcessTree)` ends a run — the same cancellation mechanism the
+kernel already relies on.
+
+### The one thing the spike found that design would not have
+
+**The done-marker raced the output.** `protocol: cell ok` for the first cell
+arrived *before* that cell's `pandas 3.0.5` line. stdout and stderr are separate
+pipes with independent delivery, so "the cell finished" can reach the host before
+the cell's last output does. Treat `done` as "all output received" and a notebook
+will silently drop the tail of a cell.
+
+Fixes: multiplex both onto one channel (framed messages on stdout, user output as
+a message type), or have the driver emit an explicit flush-and-sync marker on the
+*same* stream as the output before it reports done. **One channel is the smaller
+idea** and is what the next iteration should do — it also removes the JSON-on-
+stderr ambiguity entirely.
+
+### Numbers worth budgeting
+
+| | |
+|---|---|
+| `uv` binary | 35 MB per platform |
+| CPython 3.13 | 24 MB download, per platform |
+| First `import pandas` | ~8s cold, then instant |
+
+Fetched on first `#!python` cell, cached thereafter — the tool itself stays 67 MB.
+
+## 10. What is left
+
+The unknowns are gone; what remains is ordinary work. In rough order:
+
+1. **One channel for the cell protocol** (see above), then `ClrKernel.Language.Python`
+   with a `PythonSession` holding the resident process — modelled on Studio's
+   `KernelProcess`/`NotebookSession`, which is the precedent for a long-lived child
+   over stdio, *not* `PowerShellSession`, which is in-process.
+2. Interpreter provisioning behind an interface, with "point at your own Python" as
+   the documented escape hatch for air-gapped machines and for people who already
+   have one.
+3. venv per notebook: where it lives, git-ignoring it, and making sure Studio never
+   promotes a `.venv/` between branches.
+4. Display adapters — DataFrame → `DisplayTable`, matplotlib → `DisplayBytes`. This
+   is the half users would actually notice.
+5. Docker, offline, and the Windows checklist items.
