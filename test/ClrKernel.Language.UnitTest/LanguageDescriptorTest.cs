@@ -43,7 +43,7 @@ public class LanguageDescriptorTest {
     [TestMethod]
     public void Describe_carries_identity_tags_and_capabilities() {
         var descriptors = AllLanguages().Describe();
-        Assert.AreEqual(8, descriptors.Count, "six languages, and SQL is three of them");
+        Assert.AreEqual(9, descriptors.Count, "seven languages, and SQL is three of them");
 
         var sql = descriptors.Single(d => d.Id == "sql");
         Assert.AreEqual("T-SQL", sql.DisplayName, "the button says which dialect, now that there are three");

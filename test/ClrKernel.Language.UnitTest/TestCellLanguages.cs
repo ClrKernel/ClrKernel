@@ -46,6 +46,7 @@ public static class TestCellLanguages {
                 };
             },
             () => new[] { new DaxCellLanguage() },
+            () => new[] { new ClrKernel.Language.Python.PythonCellLanguage() },
         });
         ConnectionProviderRegistry.Default = new[] {
             ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
