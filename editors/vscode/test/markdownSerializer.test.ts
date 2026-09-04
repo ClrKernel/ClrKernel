@@ -39,6 +39,10 @@ describe('language tags -> cell language', () => {
         ['zsh', 'shellscript'],
         ['sh', 'shellscript'],
         ['shell', 'shellscript'],
+        // Not `python`: Pylance would attach to every cell and squiggle every
+        // import, since it cannot see the kernel's package directory.
+        ['python', 'clr-python'],
+        ['py', 'clr-python'],
     ];
 
     it.each(cases)('```%s becomes a %s cell', (tag, languageId) => {
@@ -48,7 +52,9 @@ describe('language tags -> cell language', () => {
         expect(cells[0].languageId).toBe(languageId);
         // zsh/sh/shell blocks keep their tag as an explicit selector line (bash is
         // the shellscript default); every other tag passes the body through.
-        const expected = tag === 'zsh' || tag === 'sh' || tag === 'shell' ? '#!' + tag + '\nBODY' : 'BODY';
+        const expected = tag === 'zsh' || tag === 'sh' || tag === 'shell' || tag === 'py'
+            ? '#!' + tag + '\nBODY'
+            : 'BODY';
         expect(cells[0].value).toBe(expected);
     });
 
@@ -63,7 +69,7 @@ describe('language tags -> cell language', () => {
     });
 
     it('leaves an unknown language tag as prose rather than guessing a language', () => {
-        const cells = read('```python\nprint(1)\n```').cells;
+        const cells = read('```ruby\nputs 1\n```').cells;
         expect(cells.every((c) => c.kind === NotebookCellKind.Markup)).toBe(true);
     });
 });
@@ -76,6 +82,9 @@ describe('cell language -> language tags', () => {
         ['powershell', 'powershell'],
         ['sql', 'sql'],
         ['dax', 'dax'],
+        // The one that would corrupt a file: a cell VS Code calls `clr-python`
+        // must never be written back as ```clr-python.
+        ['clr-python', 'python'],
     ])('a %s cell writes ```%s', (languageId, tag) => {
         expect(write([code('BODY', languageId)])).toContain('```' + tag + '\n');
     });
@@ -86,6 +95,17 @@ describe('round trip', () => {
         const md = ['# Title', '', '```sql', 'select 1', '```', '', 'Some prose.', '', '```dax', 'EVALUATE {1}', '```', ''].join('\n');
         const cells = read(md).cells;
         expect(cells.map((c) => c.languageId)).toEqual(['markdown', 'clr-sql', 'markdown', 'dax']);
+        expect(new TextDecoder().decode(serializer.serializeNotebook({ cells } as never))).toBe(md);
+    });
+
+    it('a python notebook comes back byte for byte', () => {
+        const md = [
+            '```python', 'x = 41', '```', '',
+            '```python', '#!python-install pandas', '```', '',
+            '```py', '#!py', 'x + 1', '```', '',
+        ].join('\n');
+        const cells = read(md).cells;
+        expect(cells.map((c) => c.languageId)).toEqual(['clr-python', 'clr-python', 'clr-python']);
         expect(new TextDecoder().decode(serializer.serializeNotebook({ cells } as never))).toBe(md);
     });
 

@@ -91,9 +91,11 @@ console_hits = [n for n in notes if n.get("method") == "display"
 results.append(("cell2 ok", r["result"]["status"] == "ok"))
 results.append(("console display notification (answer=42)", len(console_hits) >= 1))
 
-# 4. DisplayAs + Update: expect display then updateDisplay with same display_id
+# 4. Display + Update: expect display then updateDisplay with same display_id.
+# DisplayAs/Update were removed with the concepts + formatter registry (HANDOFF-18);
+# this asked for them until 2026-09-03 and failed for that reason, not the server's.
 r = response_for(request("execute", {"cellId": "c3",
-    "code": "var dv = \"working\".DisplayAs(\"text/html\"); dv.Update(\"<b>done</b>\");"}))
+    "code": "var dv = \"working\".DisplayHtml(); dv.UpdateHtml(\"<b>done</b>\");"}))
 time.sleep(1.0)
 notes = drain_notifications()
 disp = [n for n in notes if n.get("method") == "display" and params_of(n).get("cellId") == "c3"]
