@@ -636,6 +636,11 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       {promote !== 'hidden' && (
         <Button
           size="xs"
+          // The row is items-stretch and every other control sits inside a
+          // `flex items-center` group. This one is a bare child, and a button
+          // with a definite height (xs is h-6) ignores stretch and lands at the
+          // top of a 44px row — visibly higher than the buttons beside it.
+          className="self-center"
           // Never disabled by the gate. Disabling it put the reasons behind a
           // separate ⓘ — a smaller target than the thing people actually press,
           // and one that says "there is an explanation somewhere" rather than
