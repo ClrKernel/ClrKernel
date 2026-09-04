@@ -111,6 +111,8 @@ export interface NotebookToolbarProps {
   /** Retry, for the one state where there is something to retry. */
   onSave: () => void;
   onPromote: () => void;
+  /** Saves the file to the machine the browser is on, not to a branch. */
+  onDownload: () => void;
   promotion: { eligible: boolean; isDeletion?: boolean; reasons: string[] } | null;
   /** Where your own branch stands against test. */
   standing: BranchStanding | null;
@@ -611,8 +613,15 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             <FileOutput className="size-3.5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        {/* w-auto: the default is the *trigger's* width, and the trigger is one
+            icon — so every label wrapped mid-phrase. Sized to its content instead,
+            which also survives the next item somebody adds. */}
+        <DropdownMenuContent align="end" className="w-auto whitespace-nowrap">
           <DropdownMenuItem onSelect={props.onSaveAs}>Save a copy as…</DropdownMenuItem>
+          {/* Beside "Save a copy as…" because they are the same act with two
+              destinations: one puts a copy on your branch, this one puts it on
+              your machine. */}
+          <DropdownMenuItem onSelect={props.onDownload}>Download file</DropdownMenuItem>
           <DropdownMenuItem onSelect={props.onMove}>Move or rename…</DropdownMenuItem>
           {/* The same act as `+ job` in the Files list, offered where promotion
               says a notebook with no job cannot prove itself — which is here,

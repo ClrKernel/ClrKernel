@@ -604,6 +604,36 @@ export function Editor() {
     }
   }
 
+  /**
+   * The file onto the machine the browser is on.
+   *
+   * `flush()` first, then the server's copy — the same two steps as "Save a copy
+   * as…", and for the same reason: what you downloaded should be what you were
+   * looking at, including the edit you made a second ago. Fetching without the
+   * flush would hand back the last autosave instead.
+   */
+  async function download() {
+    setError(null);
+    setNotice(null);
+    try {
+      await flush();
+      const text = await api.notebookContent(branch, path);
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = path.split('/').pop() || 'notebook.nb.md';
+      // Appended, because Firefox ignores a click on an anchor that is not in the
+      // document. Revoked on a timeout rather than immediately: the download is
+      // started by the click but the object URL is read after it returns.
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   /** Rename, or move to another folder — one operation, and the same one. */
   async function move() {
     setError(null);
@@ -1029,6 +1059,7 @@ export function Editor() {
         fileEditable={fileEditable(path)}
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
+        onDownload={download}
         onMove={move}
         onSchedule={cellFile ? schedule : undefined}
       />
