@@ -5,6 +5,7 @@ import {
   FilePlus2,
   FolderClosed,
   GitBranch,
+  RefreshCw,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -178,6 +179,18 @@ export function NotebookExplorer({
             <BranchOptions branches={environments} />
           </SelectContent>
         </Select>
+        {/* A cell that writes a file beside the notebook is invisible here until
+            the tree is fetched again, and reloading the page to see it loses the
+            editor's state. The reload is the one usePolling already returns. */}
+        <button
+          type="button"
+          onClick={reload}
+          title="Refresh"
+          aria-label="Refresh files"
+          className="shrink-0 rounded-sm border border-input p-1 text-muted-subtle outline-none hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <RefreshCw className="size-3.5" aria-hidden="true" />
+        </button>
         {mayCreate && (
           <button
             type="button"
