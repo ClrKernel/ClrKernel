@@ -73,8 +73,14 @@ public static class DirectiveParser {
         var args = new DirectiveArgs();
         for (var i = 0; i < tokens.Count; i++) {
             var t = tokens[i];
-            var parameter = definition.Find(t)
-                ?? throw new FormatException($"Unknown {definition.Selector} flag '{t}'.");
+            var parameter = definition.Find(t);
+            if (parameter == null) {
+                if (definition.AllowsArguments) {
+                    args.AddArgument(t);
+                    continue;
+                }
+                throw new FormatException($"Unknown {definition.Selector} flag '{t}'.");
+            }
             string Next() => i + 1 < tokens.Count ? tokens[++i] : throw new FormatException($"Missing value for {t}.");
             switch (parameter.Kind) {
                 case DirectiveParameterKind.Forbidden:
@@ -126,6 +132,13 @@ public sealed class DirectiveArgs {
     private readonly Dictionary<string, Dictionary<string, string>> _keyValues = new(StringComparer.Ordinal);
     private readonly HashSet<string> _present = new(StringComparer.Ordinal);
     private readonly List<string> _order = new();
+    private readonly List<string> _arguments = new();
+
+    /// <summary>Tokens that were not flags, in order, for a directive that
+    /// <see cref="DirectiveDefinition.AllowsArguments"/>.</summary>
+    public IReadOnlyList<string> Arguments => _arguments;
+
+    internal void AddArgument(string value) => _arguments.Add(value);
 
     internal void MarkPresent(string name) {
         _present.Add(name);

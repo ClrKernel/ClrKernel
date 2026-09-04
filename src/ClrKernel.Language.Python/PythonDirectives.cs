@@ -19,6 +19,8 @@ public static class PythonDirectives {
         Description =
             "Installs Python packages for this notebook. Names them in the cell, or "
             + "reads requirements.txt beside the notebook when given none.",
+        // The package names are the arguments; pip's own flags pass through.
+        AllowsArguments = true,
     };
 
     /// <summary>Drops the interpreter, so the next cell starts with nothing defined.</summary>

@@ -370,6 +370,36 @@ public class PythonTest {
         }
     }
 
+    /// <summary>
+    /// Every declared directive binds against the shared parser.
+    ///
+    /// <para>
+    /// Studio parses each directive line with it while scanning a notebook for the
+    /// connections it names, so a definition that cannot describe its own arguments
+    /// is not a Python problem — it threw a FormatException out of an API request
+    /// and 500'd the endpoint for a perfectly valid `#!python-install pandas`.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Every_python_directive_binds_the_lines_it_documents() {
+        var language = new PythonCellLanguage();
+        var install = language.Directives.Single(d => d.Selector == "#!python-install");
+
+        var packages = DirectiveParser.Parse(install, "#!python-install pandas matplotlib==3.9");
+        CollectionAssert.AreEqual(new[] { "pandas", "matplotlib==3.9" }, packages.Arguments.ToArray());
+        Assert.AreEqual(0, DirectiveParser.Parse(install, "#!python-install").Arguments.Count,
+            "bare is legal — it reads requirements.txt");
+        CollectionAssert.AreEqual(new[] { "-r", "reqs.txt" },
+            DirectiveParser.Parse(install, "#!python-install -r reqs.txt").Arguments.ToArray(),
+            "pip's own flags are arguments, not ours to enumerate");
+
+        // The rest take nothing, and should still say so rather than throw on a
+        // plain cell body.
+        foreach (var directive in language.Directives.Where(d => d.Selector != "#!python-install")) {
+            Assert.AreEqual(0, DirectiveParser.Parse(directive, directive.Selector).Arguments.Count);
+        }
+    }
+
     private sealed class InstallContext : ICellExecutionContext {
         public InstallContext(string workingDirectory) => WorkingDirectory = workingDirectory;
         public string WorkingDirectory { get; }

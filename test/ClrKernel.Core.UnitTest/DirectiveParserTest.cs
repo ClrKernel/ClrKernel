@@ -105,4 +105,30 @@ public class DirectiveParserTest {
         Assert.IsNull(DirectiveParser.FindValue("#!pwsh --connection", "--connection"), "flag at end of line");
         Assert.IsNull(DirectiveParser.FindValue(null, "--connection"));
     }
+
+    /// <summary>
+    /// A directive whose argument list is the point — `#!python-install pandas` —
+    /// collects unknown tokens instead of rejecting them, and only when it says so.
+    /// </summary>
+    [TestMethod]
+    public void A_directive_may_take_free_form_arguments() {
+        var open = new DirectiveDefinition {
+            Selector = "#!install",
+            AllowsArguments = true,
+            Parameters = new[] { new DirectiveParameter { Name = "--quiet", Kind = DirectiveParameterKind.Flag } },
+        };
+
+        var args = DirectiveParser.Parse(open, "#!install pandas matplotlib==3.9 --quiet -r reqs.txt");
+        CollectionAssert.AreEqual(
+            new[] { "pandas", "matplotlib==3.9", "-r", "reqs.txt" }, args.Arguments.ToArray(),
+            "order preserved, and a tool's own flags pass through as arguments");
+        Assert.IsTrue(args.Has("--quiet"), "declared flags still bind");
+
+        // Off by default: for a directive that only takes flags, a typo becoming an
+        // argument would be worse than an error.
+        var closed = new DirectiveDefinition { Selector = "#!closed" };
+        Assert.AreEqual("Unknown #!closed flag 'pandas'.",
+            Assert.ThrowsExactly<FormatException>(() => DirectiveParser.Parse(closed, "#!closed pandas")).Message);
+        Assert.AreEqual(0, DirectiveParser.Parse(open, "#!install --quiet").Arguments.Count);
+    }
 }

@@ -85,6 +85,20 @@ public sealed class DirectiveDefinition {
 
     public IReadOnlyList<DirectiveParameter> Parameters { get; init; } = Array.Empty<DirectiveParameter>();
 
+    /// <summary>
+    /// Whether tokens this directive does not recognise as flags are its
+    /// <see cref="DirectiveArgs.Arguments"/> rather than an error.
+    ///
+    /// <para>
+    /// Off by default, because a mistyped flag silently becoming an argument is
+    /// worse than an error for the directives that only take flags. On for the ones
+    /// whose argument list is the point — <c>#!python-install pandas matplotlib</c>
+    /// is a list of packages, and pip's own <c>-r</c> and <c>--upgrade</c> belong to
+    /// pip, not to a table here.
+    /// </para>
+    /// </summary>
+    public bool AllowsArguments { get; init; }
+
     /// <summary>The parameter matching <paramref name="token"/>, or null.</summary>
     public DirectiveParameter Find(string token) => Parameters.FirstOrDefault(p => p.Matches(token));
 }
