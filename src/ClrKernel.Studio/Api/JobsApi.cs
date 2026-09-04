@@ -402,6 +402,48 @@ public static class JobsApi {
                 return Results.File(resolved, contentType);
             }).RequiresProject(ProjectRole.ProjectViewer);
 
+        // A spreadsheet as rows of display text. Parsed here rather than in the
+        // browser for the same reason `/notebooks/cells` is: an xlsx is a zip of
+        // XML with a string table and dates stored as numbers, and the alternative
+        // is shipping a parser to the browser and showing 46095 where the
+        // spreadsheet shows a date.
+        scoped.MapGet("/notebooks/sheet", (
+            HttpContext context, ProjectRegistry projects,
+            string project, string branch, string path) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                if (!Reachable(scope, branch)) {
+                    return Results.NotFound(new { error = $"No branch '{branch}'." });
+                }
+                if (Readable(scope, branch, path) is not { } resolved) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                if (!SheetReader.Handles(resolved)) {
+                    return Results.BadRequest(new { error = "Not a spreadsheet this reads." });
+                }
+                if (!File.Exists(resolved)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                try {
+                    return Results.Ok(new {
+                        sheets = SheetReader.Read(resolved).Select(s => new {
+                            name = s.Name,
+                            rows = s.Rows,
+                            totalRows = s.TotalRows,
+                        }),
+                        rowLimit = SheetReader.RowLimit,
+                    });
+                } catch (Exception e) {
+                    // A corrupt or password-protected workbook is a file the user
+                    // can see in the tree; saying which of those it is beats a 500.
+                    return Results.BadRequest(new {
+                        error = $"Could not read {Path.GetFileName(resolved)}: {e.Message}",
+                    });
+                }
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
         scoped.MapPut("/notebooks/content", async (
             ProjectRegistry projects, string project, string branch, string path,
             HttpContext context) => {

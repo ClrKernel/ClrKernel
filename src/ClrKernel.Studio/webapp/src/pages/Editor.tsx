@@ -1,9 +1,8 @@
-import { MarkdownBody } from '../components/MarkdownBody';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError, api, projectSlug, setBranch,
-  type ApiCell, type ApiJobsProblem, type ApiLanguage,
+  type ApiCell, type ApiJobsProblem, type ApiLanguage, type SheetPage,
 } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionPicker } from '../components/ConnectionPicker';
@@ -14,7 +13,9 @@ import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
 import { JobsOverview } from '../components/JobsOverview';
+import { MarkdownBody } from '../components/MarkdownBody';
 import { NotebookToolbar } from '../components/NotebookToolbar';
+import { SheetView } from '../components/SheetView';
 import { ensureJobsFile, moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
@@ -118,6 +119,15 @@ export function Editor() {
   // A picture is looked at, not opened. Read before the content fetch, because
   // that fetch is `File.ReadAllText` on the server and a PNG through it is noise.
   const preview = previewKind(path);
+  // Only for the tab that shows it, and only for the files that have one: this
+  // is a parse on the server, not a read, and nothing else on the page wants it.
+  const { data: sheet, error: sheetError } = usePolling(
+    () => (preview === 'sheet'
+      ? api.notebookSheet(branch, path)
+      : Promise.resolve(null)),
+    null,
+    [branch, path, preview],
+  );
   // No text in it at all, so no Source tab over mojibake and nothing to diff.
   const binary = isBinary(path);
 
@@ -1247,7 +1257,14 @@ export function Editor() {
       )}
 
       {tab === 'preview' && (
-        <FilePreview kind={preview} branch={branch} path={path} source={source} />
+        <FilePreview
+          kind={preview}
+          branch={branch}
+          path={path}
+          source={source}
+          sheet={sheet}
+          sheetError={sheetError}
+        />
       )}
 
       {tab === 'source' && (
@@ -1321,14 +1338,26 @@ export function Editor() {
  * as bytes and read nothing, markdown renders the text the page already loaded.
  */
 function FilePreview({
-  kind, branch, path, source,
+  kind, branch, path, source, sheet, sheetError,
 }: {
   kind: PreviewKind | null;
   branch: string;
   path: string;
   /** The file's text, for the one kind that is text. */
   source: string | null;
+  /** Rows and tabs, for the one kind the server parses. */
+  sheet: { sheets: SheetPage[]; rowLimit: number } | null;
+  sheetError: string | null;
 }) {
+  if (kind === 'sheet') {
+    if (sheetError != null) {
+      return <p className="px-4 text-base text-status-danger">{sheetError}</p>;
+    }
+    return sheet == null
+      ? <p className="px-4 text-base text-muted-foreground">Loading…</p>
+      : <SheetView sheets={sheet.sheets} rowLimit={sheet.rowLimit} />;
+  }
+
   if (kind === 'markdown') {
     return (
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-8">

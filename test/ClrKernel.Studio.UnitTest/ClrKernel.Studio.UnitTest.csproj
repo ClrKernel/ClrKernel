@@ -20,6 +20,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Written by openpyxl, deliberately: a workbook this repo produced with the
+         same library that reads it would prove only that the round trip agrees
+         with itself. -->
+    <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Shared, not copied: the gate carries the reasoning for why a skipped live
          test must be able to fail loudly (HANDOFF-17 §5), and one copy cannot drift. -->
     <Compile Include="..\ClrKernel.Database.UnitTest\LiveTestGate.cs" Link="LiveTestGate.cs" />

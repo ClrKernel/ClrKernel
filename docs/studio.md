@@ -370,6 +370,27 @@ worse already, so this is not a new exposure.
 interactive by definition; if you need a script to drive `/api`, that needs per-user
 API tokens, which do not exist yet.
 
+## Files beside your notebooks
+
+The Files page shows everything in the project, not just the notebooks, and each
+file opens at whatever reading of it makes sense: a notebook as cells, a jobs file
+as its Overview, a picture as the picture, a Markdown document as the document.
+Source is the tab beside it whenever there is text to read.
+
+**Spreadsheets open as a grid** — `.csv`, `.tsv` and `.xlsx`/`.xlsm` — with lettered
+columns across the top, numbered rows down the side, and the workbook's tabs along
+the bottom. Cells show what the spreadsheet shows: a date reads as a date rather
+than as the number a date is stored as, and a cell's number format is applied. It is
+a viewer, not an editor — no formulas, no editing — and it answers the question
+that otherwise means downloading the file and opening Excel.
+
+A `.csv` is a table *and* text, so it keeps Source and Diff; a workbook is a zip and
+has neither. Big sheets show their first 1,000 rows and say what they are a slice
+of. `.xls` — the older binary format — is not read.
+
+**Download file** in the ⋯ menu saves the file to the machine your browser is on,
+as opposed to **Save a copy as…**, which puts a copy on your branch.
+
 ## Projects
 
 A **project** is one repo, one folder on disk, and its own notebooks, jobs and

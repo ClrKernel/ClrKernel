@@ -16,6 +16,9 @@ import {
   keepIds,
   languageOptions,
   mergeStatus,
+  columnLabel,
+  isBinary,
+  isSpreadsheet,
   monacoLanguage,
   moveCell,
   notebookPaths,
@@ -588,5 +591,39 @@ describe('opensAsCells', () => {
     expect(opensAsCells('legacy.dib')).toBe(false);
     expect(opensAsCells('etl.jobs.yaml')).toBe(false);
     expect(opensAsCells('notes.md')).toBe(false);
+  });
+});
+
+describe('spreadsheets', () => {
+  it('previews csv, tsv and xlsx as a sheet, and opens there first', () => {
+    for (const name of ['data.csv', 'DATA.TSV', 'book.xlsx', 'macro.xlsm']) {
+      expect(previewKind(name)).toBe('sheet');
+      expect(viewFor('source', name)).toBe(name.toLowerCase().endsWith('.csv')
+        || name.toLowerCase().endsWith('.tsv') ? 'source' : 'preview');
+      expect(viewFor('edit', name)).toBe('preview');
+    }
+    // The old binary format is a different thing and is not claimed.
+    expect(previewKind('old.xls')).toBeNull();
+  });
+
+  it('keeps Source for the text ones and refuses it for a workbook', () => {
+    // A csv IS text: reading it, diffing it and editing it all still work.
+    expect(isBinary('data.csv')).toBe(false);
+    expect(viewFor('diff', 'data.csv')).toBe('diff');
+
+    // A workbook is a zip. Source over it is a screenful of zip header.
+    expect(isBinary('book.xlsx')).toBe(true);
+    expect(viewFor('source', 'book.xlsx')).toBe('preview');
+    expect(viewFor('diff', 'book.xlsx')).toBe('preview');
+  });
+
+  it('names columns the way a spreadsheet does', () => {
+    expect([0, 1, 25, 26, 27, 51, 52, 701, 702].map(columnLabel))
+      .toEqual(['A', 'B', 'Z', 'AA', 'AB', 'AZ', 'BA', 'ZZ', 'AAA']);
+  });
+
+  it('is not fooled by a name that merely contains one', () => {
+    expect(isSpreadsheet('notes.csv.md')).toBe(false);
+    expect(isSpreadsheet('xlsx')).toBe(false);
   });
 });
