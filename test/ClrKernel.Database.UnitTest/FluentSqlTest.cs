@@ -100,6 +100,66 @@ public class FluentSqlMappingTest {
         Assert.AreEqual("Zoe", p.Name);
     }
 
+    public record Widened(long Id, string Name);
+    public record Keyed(Guid Key);
+
+    private static DataTable Of(params (string Name, Type Type, object Value)[] cells) {
+        var t = new DataTable();
+        foreach (var c in cells) {
+            t.Columns.Add(c.Name, c.Type);
+        }
+        t.Rows.Add(cells.Select(c => c.Value).ToArray());
+        return t;
+    }
+
+    /// <summary>
+    /// The column's type is the driver's business and the record's is the
+    /// notebook's, and they differ constantly: ODBC returns a number as text,
+    /// SQLite widens to Int64, `uniqueidentifier` arrives as a string.
+    ///
+    /// <para>
+    /// Dapper on its own refuses every one of these — it wants a constructor whose
+    /// signature matches the column types — so each of these cases fails with "a
+    /// parameterless default constructor or one matching signature is required"
+    /// if the by-name constructor map or the Guid handler is removed.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_records_parameter_types_need_not_match_the_columns() {
+        var widened = ObjectMapper.Map<Widened>(
+            Of(("Id", typeof(int), 7), ("Name", typeof(string), "Zoe"))).Single();
+        Assert.AreEqual(7L, widened.Id, "an int column into a long parameter");
+
+        var fromText = ObjectMapper.Map<Rec>(
+            Of(("Id", typeof(string), "7"), ("Name", typeof(string), "Zoe"))).Single();
+        Assert.AreEqual(7, fromText.Id, "a number a driver returned as text");
+
+        var guid = Guid.NewGuid();
+        Assert.AreEqual(guid,
+            ObjectMapper.Map<Keyed>(Of(("Key", typeof(string), guid.ToString()))).Single().Key,
+            "a uniqueidentifier a driver returned as text");
+    }
+
+    /// <summary>Nulls land as the type's default rather than throwing.</summary>
+    [TestMethod]
+    public void Null_columns_map_to_null_or_default() {
+        var row = ObjectMapper.Map<Rec>(
+            Of(("Id", typeof(int), DBNull.Value), ("Name", typeof(string), DBNull.Value))).Single();
+
+        Assert.AreEqual(0, row.Id, "DBNull into a non-nullable int is default(int)");
+        Assert.IsNull(row.Name);
+    }
+
+    /// <summary>Column order and case are the database's, not the type's.</summary>
+    [TestMethod]
+    public void Columns_match_by_name_whatever_their_case() {
+        var row = ObjectMapper.Map<Rec>(
+            Of(("NAME", typeof(string), "Zoe"), ("ID", typeof(int), 7))).Single();
+
+        Assert.AreEqual(7, row.Id);
+        Assert.AreEqual("Zoe", row.Name);
+    }
+
     [TestMethod]
     public void Maps_scalar_from_first_column() {
         var ids = ObjectMapper.Map<int>(Table());
