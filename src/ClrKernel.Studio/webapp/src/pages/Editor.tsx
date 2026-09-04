@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError, api, projectSlug, setBranch,
-  type ApiCell, type ApiJobsProblem, type ApiLanguage, type SheetPage,
+  type ApiCell, type ApiJobsProblem, type ApiLanguage,
 } from '../api';
 import { CellEditor, CellInserter, type RunMode } from '../components/CellEditor';
 import { ConnectionPicker } from '../components/ConnectionPicker';
@@ -16,6 +16,9 @@ import { JobsOverview } from '../components/JobsOverview';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { NotebookToolbar } from '../components/NotebookToolbar';
 import { SheetView } from '../components/SheetView';
+import {
+  ROW_LIMIT, delimiterFor, readDelimited, readWorkbook, type SheetPage,
+} from '../sheet';
 import { ensureJobsFile, moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
@@ -57,6 +60,7 @@ import {
   mergeStatus,
   moveCell,
   opensAsCells,
+  isWorkbook,
   previewKind,
   pushUndo,
   readOnlyReason,
@@ -119,15 +123,6 @@ export function Editor() {
   // A picture is looked at, not opened. Read before the content fetch, because
   // that fetch is `File.ReadAllText` on the server and a PNG through it is noise.
   const preview = previewKind(path);
-  // Only for the tab that shows it, and only for the files that have one: this
-  // is a parse on the server, not a read, and nothing else on the page wants it.
-  const { data: sheet, error: sheetError } = usePolling(
-    () => (preview === 'sheet'
-      ? api.notebookSheet(branch, path)
-      : Promise.resolve(null)),
-    null,
-    [branch, path, preview],
-  );
   // No text in it at all, so no Source tab over mojibake and nothing to diff.
   const binary = isBinary(path);
 
@@ -158,6 +153,30 @@ export function Editor() {
   const [saved, setSaved] = useState<ApiCell[]>([]);
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
+
+  // Only for the files that have one, and only once the text is in hand for the
+  // ones that are text: a workbook is fetched as bytes, while a csv is already
+  // loaded for its Source tab and asking the server again would be a second copy
+  // of a file the page is holding.
+  const { data: sheet, error: sheetError } = usePolling<SheetPage[] | null>(
+    () => {
+      if (preview !== 'sheet') {
+        return Promise.resolve(null);
+      }
+      if (isWorkbook(path)) {
+        return fetch(api.notebookFileUrl(branch, path))
+          .then((r) => (r.ok
+            ? r.arrayBuffer()
+            : Promise.reject(new Error(`Could not read ${path}.`))))
+          .then(readWorkbook);
+      }
+      return source == null
+        ? Promise.resolve(null)
+        : readDelimited(source, delimiterFor(path), path.split('/').pop() ?? path);
+    },
+    null,
+    [branch, path, preview, source],
+  );
   const [savedSource, setSavedSource] = useState<string | null>(null);
   /** Bumped when the file changed underneath the editor — a merge, or a reload. */
   const [reloads, setReloads] = useState(0);
@@ -1345,8 +1364,8 @@ function FilePreview({
   path: string;
   /** The file's text, for the one kind that is text. */
   source: string | null;
-  /** Rows and tabs, for the one kind the server parses. */
-  sheet: { sheets: SheetPage[]; rowLimit: number } | null;
+  /** Rows and tabs, for the one kind that is a grid. */
+  sheet: SheetPage[] | null;
   sheetError: string | null;
 }) {
   if (kind === 'sheet') {
@@ -1355,7 +1374,7 @@ function FilePreview({
     }
     return sheet == null
       ? <p className="px-4 text-base text-muted-foreground">Loading…</p>
-      : <SheetView sheets={sheet.sheets} rowLimit={sheet.rowLimit} />;
+      : <SheetView sheets={sheet} rowLimit={ROW_LIMIT} />;
   }
 
   if (kind === 'markdown') {

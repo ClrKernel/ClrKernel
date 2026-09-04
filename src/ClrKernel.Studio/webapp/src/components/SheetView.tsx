@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { SheetPage } from '../api';
+import type { SheetPage } from '../sheet';
 import { columnLabel } from '../notebook';
 
 /**

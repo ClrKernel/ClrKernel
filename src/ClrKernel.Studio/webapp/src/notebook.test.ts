@@ -602,8 +602,11 @@ describe('spreadsheets', () => {
         || name.toLowerCase().endsWith('.tsv') ? 'source' : 'preview');
       expect(viewFor('edit', name)).toBe('preview');
     }
-    // The old binary format is a different thing and is not claimed.
-    expect(previewKind('old.xls')).toBeNull();
+    // The formats the switch to SheetJS was for: OLE2 and OpenDocument, neither
+    // of which an OpenXML reader can open.
+    expect(previewKind('old.xls')).toBe('sheet');
+    expect(previewKind('sheet.ods')).toBe('sheet');
+    expect(isBinary('old.xls')).toBe(true);
   });
 
   it('keeps Source for the text ones and refuses it for a workbook', () => {

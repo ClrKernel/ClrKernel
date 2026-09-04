@@ -496,15 +496,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** One tab of a workbook, or the whole of a delimited file. */
-export interface SheetPage {
-  name: string;
-  /** Ragged — a csv row is as long as it was written — and null is an empty cell. */
-  rows: (string | null)[][];
-  /** Before the cap, so a truncated sheet can say what it is a slice of. */
-  totalRows: number;
-}
-
 export const api = {
   health: () =>
     request<{
@@ -663,13 +654,6 @@ export const api = {
    */
   notebookFileUrl: (env: string, path: string) =>
     `/api${scope(env)}/notebooks/file?path=${encodeURIComponent(path)}`,
-
-  /** A spreadsheet as rows of display text — csv, tsv and xlsx alike, parsed
-   *  server-side so the browser needs no copy of the format. */
-  notebookSheet: (env: string, path: string) =>
-    request<{ sheets: SheetPage[]; rowLimit: number }>(
-      `${scope(env)}/notebooks/sheet?path=${encodeURIComponent(path)}`,
-    ),
 
   notebookContent: (env: string, path: string) =>
     fetch(`/api${scope(env)}/notebooks/content?path=${encodeURIComponent(path)}`)

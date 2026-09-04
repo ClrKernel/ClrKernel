@@ -189,9 +189,15 @@ export function isPdf(path: string): boolean {
   return /\.pdf$/i.test(path ?? '');
 }
 
-/** A workbook: a spreadsheet that is a zip of XML rather than a text file. */
+/**
+ * A workbook: a spreadsheet stored as a binary file rather than as text.
+ *
+ * `.xls` is OLE2 and `.ods` is a zip of different XML — three formats with
+ * nothing in common but what they mean, which is the reason the reader is
+ * SheetJS and not something that speaks only OpenXML.
+ */
 export function isWorkbook(path: string): boolean {
-  return /\.(xlsx|xlsm)$/i.test(path ?? '');
+  return /\.(xlsx|xlsm|xls|ods)$/i.test(path ?? '');
 }
 
 /**

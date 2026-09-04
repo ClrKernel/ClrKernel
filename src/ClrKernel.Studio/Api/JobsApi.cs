@@ -399,49 +399,13 @@ public static class JobsApi {
                 }
                 context.Response.Headers["X-Content-Type-Options"] = "nosniff";
                 context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; sandbox";
-                return Results.File(resolved, contentType);
-            }).RequiresProject(ProjectRole.ProjectViewer);
-
-        // A spreadsheet as rows of display text. Parsed here rather than in the
-        // browser for the same reason `/notebooks/cells` is: an xlsx is a zip of
-        // XML with a string table and dates stored as numbers, and the alternative
-        // is shipping a parser to the browser and showing 46095 where the
-        // spreadsheet shows a date.
-        scoped.MapGet("/notebooks/sheet", (
-            HttpContext context, ProjectRegistry projects,
-            string project, string branch, string path) => {
-                if (Scope.Of(projects, project) is not { } scope) {
-                    return NoProject(project);
-                }
-                branch = scope.BranchFor(context, branch);
-                if (!Reachable(scope, branch)) {
-                    return Results.NotFound(new { error = $"No branch '{branch}'." });
-                }
-                if (Readable(scope, branch, path) is not { } resolved) {
-                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
-                }
-                if (!SheetReader.Handles(resolved)) {
-                    return Results.BadRequest(new { error = "Not a spreadsheet this reads." });
-                }
-                if (!File.Exists(resolved)) {
-                    return Results.NotFound(new { error = $"No such file: {path}" });
-                }
-                try {
-                    return Results.Ok(new {
-                        sheets = SheetReader.Read(resolved).Select(s => new {
-                            name = s.Name,
-                            rows = s.Rows,
-                            totalRows = s.TotalRows,
-                        }),
-                        rowLimit = SheetReader.RowLimit,
-                    });
-                } catch (Exception e) {
-                    // A corrupt or password-protected workbook is a file the user
-                    // can see in the tree; saying which of those it is beats a 500.
-                    return Results.BadRequest(new {
-                        error = $"Could not read {Path.GetFileName(resolved)}: {e.Message}",
-                    });
-                }
+                // A workbook is read by script and never rendered by the browser, so
+                // it goes back as an attachment: `fetch` ignores the disposition and
+                // gets its bytes, while somebody who navigates to the URL downloads
+                // the file instead of handing a macro-enabled one to Excel inline.
+                return WorkbookContentType(resolved) != null
+                    ? Results.File(resolved, contentType, Path.GetFileName(resolved))
+                    : Results.File(resolved, contentType);
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPut("/notebooks/content", async (
@@ -2334,8 +2298,27 @@ public static class JobsApi {
                 + $"This opens files up to {_textLimit / 1_000_000} MB — the same limit it saves."
             : "That is a binary file, so there is nothing to show as text.";
 
+    /// <summary>
+    /// The type a spreadsheet is served as, or null when the file is not one.
+    ///
+    /// <para>
+    /// These are read by the Preview tab's own parser rather than rendered by the
+    /// browser, which is why they may be served at all: the rule for this route is
+    /// that it hands over only what the preview shows, and the preview now shows
+    /// these. <c>.xls</c> and <c>.ods</c> included — the reader handles them, and a
+    /// spreadsheet the tree lists but refuses to open is worse than either.
+    /// </para>
+    /// </summary>
+    private static string WorkbookContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xlsm" => "application/vnd.ms-excel.sheet.macroEnabled.12",
+        ".xls" => "application/vnd.ms-excel",
+        ".ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        _ => null,
+    };
+
     /// <summary>The type this file is shown as, or null when it is not one this shows.</summary>
-    private static string PreviewContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+    private static string PreviewContentType(string path) => WorkbookContentType(path) ?? Path.GetExtension(path).ToLowerInvariant() switch {
         ".png" => "image/png",
         ".jpg" or ".jpeg" => "image/jpeg",
         ".gif" => "image/gif",
