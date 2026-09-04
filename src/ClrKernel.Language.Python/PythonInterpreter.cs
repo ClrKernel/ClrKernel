@@ -81,13 +81,33 @@ public static class PythonInterpreter {
         return null;
     }
 
-    /// <summary>Where provisioned interpreters and per-notebook venvs live.</summary>
-    public static string Home() =>
-        Environment.GetEnvironmentVariable(HomeVariable) is { Length: > 0 } set
-            ? set
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "clrkernel", "python");
+    /// <summary>
+    /// Where provisioned interpreters and installed packages live.
+    ///
+    /// <para>
+    /// <c>LocalApplicationData</c> is right on all three platforms and comes back
+    /// <b>empty</b> in a container — the .NET runtime image, non-root, with HOME set
+    /// and writable. Combining that with a relative path gives <c>/clrkernel</c>,
+    /// which fails at the download with "access denied" and no hint why. Found by
+    /// running a cell in the image rather than by reading the API's contract.
+    /// </para>
+    /// </summary>
+    public static string Home() {
+        if (Environment.GetEnvironmentVariable(HomeVariable) is { Length: > 0 } set) {
+            return set;
+        }
+        var data = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (data.Length == 0) {
+            data = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } xdg
+                ? xdg
+                : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { Length: > 0 } profile
+                    ? Path.Combine(profile, ".local", "share")
+                    // Nothing to go on at all: temp is at least writable, and losing a
+                    // cache between runs beats refusing to run.
+                    : Path.GetTempPath();
+        }
+        return Path.Combine(data, "clrkernel", "python");
+    }
 
     private static string OnPath() {
         var names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)

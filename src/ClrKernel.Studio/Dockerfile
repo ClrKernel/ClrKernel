@@ -88,7 +88,14 @@ RUN chmod +x /usr/local/bin/docker-entrypoint /usr/local/bin/clrkernel-studio
 # implicit project, so anything under it overlaps and is refused too. Naming it here
 # means `-v studio-projects:/projects` works — a fresh named volume takes its
 # ownership from the directory in the image.
-ENV CLRKERNEL_STUDIO_NOTEBOOKS=/notebooks \
+# Python cells fetch an interpreter on first use (~60 MB with uv). Under /data so
+# it survives `docker rm`; without this it would land in the container filesystem
+# and be re-downloaded every time the container is recreated. It is also *needed*:
+# .NET's LocalApplicationData resolves to empty in this image, so the default path
+# would not be writable. Set CLRKERNEL_PYTHON instead to use an interpreter you
+# install into the image, and nothing is ever downloaded.
+ENV CLRKERNEL_PYTHON_HOME=/data/python \
+    CLRKERNEL_STUDIO_NOTEBOOKS=/notebooks \
     CLRKERNEL_STUDIO_DATA=/data \
     CLRKERNEL_STUDIO_PROJECTS_ROOT=/projects \
     CLRKERNEL_STUDIO_CLRKERNEL=/app/kernel/ClrKernel \

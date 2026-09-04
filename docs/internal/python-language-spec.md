@@ -282,6 +282,10 @@ that directory on `sys.path` at startup, so:
 interpreter that will import them, and a compiled extension built for the wrong ABI
 imports and *then* crashes.
 
+The air-gapped claim in §"Air-gapped" is reachable through the directive with no
+flag of ours: `UV_OFFLINE=1` is inherited like every other uv variable. Verified
+both ways — a cold cache refuses, a warm one installs with the network gone.
+
 Two notebooks in different directories were checked for leakage — installing in one
 leaves the other with an `ImportError`, which is the whole point of the isolation.
 
@@ -305,6 +309,26 @@ best useless.
 
 Row cap is 1000 with the true count reported, so a million-row frame renders.
 
+## 9c. In a container
+
+Verified by running a cell in `mcr.microsoft.com/dotnet/aspnet:10.0` as the non-root
+`app` user, which is how the Studio image runs — not by reasoning about it, and it
+is as well:
+
+`Environment.GetFolderPath(LocalApplicationData)` returns **empty** there. HOME is
+set to `/home/app` and is writable; `UserProfile` resolves correctly; only that one
+API comes back blank. Combined with a relative path it gave `/clrkernel`, which is
+absolute, well-formed, and denied at the first download with no hint why. `Home()`
+now falls back through `XDG_DATA_HOME`, then `UserProfile/.local/share`, then temp.
+
+The Studio image sets `CLRKERNEL_PYTHON_HOME=/data/python` anyway, so the ~60 MB
+interpreter lands on the volume and is not fetched again every time the container is
+recreated. `CLRKERNEL_PYTHON` remains the way to use one baked into an image and
+download nothing.
+
+The image is Debian, so `IsMusl()` correctly picks the gnu build; the musl branch
+still has no run behind it and stays on the checklist.
+
 ## 10. What is left
 
 The unknowns are gone; what remains is ordinary work. In rough order:
@@ -318,7 +342,9 @@ The unknowns are gone; what remains is ordinary work. In rough order:
    have one.
 3. ~~venv per notebook~~ — **done**, and there is no venv: see §9a.
 4. ~~Display adapters~~ — **done**: see §9b.
-5. Docker, offline, and the Windows checklist items (§12a of the Windows list).
+5. ~~Docker~~ (§9c) and ~~offline~~ (`UV_OFFLINE`, §9a) — **done**. The Windows
+   items remain, as §12a of the Windows checklist: the runtime paths that only a
+   managed Windows machine can exercise.
 
 Not built, and deliberately: completion and hover inside a Python cell
 (`ICellLanguageServices` is null), which wants the interpreter's own introspection

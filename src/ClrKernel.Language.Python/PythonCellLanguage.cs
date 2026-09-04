@@ -26,6 +26,21 @@ public sealed class PythonCellLanguage : ICellLanguage, IDisposable {
 
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "python", "py" };
 
+    /// <summary>
+    /// Not <c>python</c>, for the reason <c>csharp-script</c> is not <c>csharp</c>:
+    /// Pylance would attach to every cell and cannot know that names come from
+    /// earlier cells, or that packages live in the kernel's own target directory —
+    /// so a notebook would carry an unresolved-import squiggle on every import and
+    /// an undefined-name squiggle on everything it had already bound.
+    /// </summary>
+    public string EditorLanguageId => "clr-python";
+
+    /// <summary>Highlight it as Python; only the identity differs.</summary>
+    public string GrammarId => "python";
+
+    /// <summary>The default would truncate "python" to "PYTH".</summary>
+    public string Monogram => "PY";
+
     public IReadOnlyList<DirectiveDefinition> Directives { get; } = new[] {
         PythonDirectives.CellDefinition("#!python"),
         PythonDirectives.CellDefinition("#!py"),

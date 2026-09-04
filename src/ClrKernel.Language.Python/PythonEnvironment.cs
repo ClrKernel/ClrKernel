@@ -77,9 +77,9 @@ public static class PythonEnvironment {
         // --python so uv resolves wheels for the interpreter that will import them,
         // not for whatever it would pick on its own: a wheel with a compiled
         // extension built for the wrong ABI imports and then crashes.
-        // ponytail: no --offline, so a machine with a warm uv cache and no network
-        // still fails here even though every wheel it needs is on disk. Pass it
-        // through when someone air-gapped actually wants this directive.
+        // No --offline flag, and none needed: uv reads UV_OFFLINE and inherits it,
+        // so a warm cache installs with the network gone and a cold one refuses.
+        // Checked both ways rather than assumed.
         var command = new List<string> { "pip", "install", "--python", interpreter, "--target", packages };
         command.AddRange(arguments);
         return await PythonProvisioner.RunAsync(uv, command.ToArray(), log, cancellationToken)

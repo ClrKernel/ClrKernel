@@ -340,6 +340,36 @@ public class PythonTest {
         }
     }
 
+    /// <summary>
+    /// The cache path has to be somewhere this process can actually write.
+    ///
+    /// <para>
+    /// Not a tautology: `LocalApplicationData` comes back empty in the .NET runtime
+    /// container even with HOME set and writable, and combining that with a relative
+    /// path produced `/clrkernel` — absolute, well-formed, and denied at the first
+    /// download. Writing a file is the only assertion that tells those apart.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void The_cache_directory_is_one_this_process_can_write_to() {
+        var saved = Environment.GetEnvironmentVariable(PythonInterpreter.HomeVariable);
+        try {
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, null);
+            var home = PythonInterpreter.Home();
+
+            Assert.IsTrue(Path.IsPathRooted(home), home);
+            var probe = Path.Combine(home, "write-probe-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(home);
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, "/somewhere/else");
+            Assert.AreEqual("/somewhere/else", PythonInterpreter.Home(), "the override wins outright");
+        } finally {
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, saved);
+        }
+    }
+
     private sealed class InstallContext : ICellExecutionContext {
         public InstallContext(string workingDirectory) => WorkingDirectory = workingDirectory;
         public string WorkingDirectory { get; }

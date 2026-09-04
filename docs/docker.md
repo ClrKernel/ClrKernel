@@ -97,6 +97,11 @@ because the image runs as the non-root `app` user (uid 1654) and a named volume
 picks up that ownership by itself. A bind-mounted host directory does not — see
 [Bind-mounting /data](#bind-mounting-data) below.
 
+It also holds `python/`, where the first `#!python` cell puts an interpreter
+(about 60 MB, once). Keeping the volume means it is not downloaded again each
+time the container is recreated. To use an interpreter you install into the image
+instead — and download nothing, ever — set `CLRKERNEL_PYTHON` to it.
+
 Useful while it runs:
 
 ```bash

@@ -33,6 +33,7 @@ interpreter yourself:
 | `CLRKERNEL_PYTHON_AUTO_INSTALL=0` | Never download; fail instead, naming every place looked. |
 | `CLRKERNEL_PYTHON_HOME` | Where interpreters and packages are cached. |
 | `CLRKERNEL_PYTHON_UV_MIRROR`, `UV_PYTHON_INSTALL_MIRROR` | Internal mirrors, for a network that blocks github.com. |
+| `UV_OFFLINE=1` | Install only from what is already cached. Warm the cache once, then work with no network. |
 
 Proxies work with no configuration — `HTTP_PROXY` and friends are read by both
 halves. A network that re-signs TLS is retried against the machine's own certificate
