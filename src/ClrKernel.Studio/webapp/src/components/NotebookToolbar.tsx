@@ -643,7 +643,12 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           variant={promote === 'ready' ? 'default' : 'outline'}
           disabled={props.busy}
           onClick={promote === 'ready' ? props.onPromote : () => explainBlocked(progress)}
-          title={promote === 'ready' ? 'Ship to production' : 'What is left before this can ship'}
+          // Names its source, because on `mine` this button does not act on the
+          // branch you are looking at: promotion is test → prod and the call says
+          // `test` itself, so from your own branch it ships whatever test holds.
+          title={promote === 'ready'
+            ? 'Ship the version in test to production'
+            : 'What is left before this can ship'}
         >
           {props.promotion?.isDeletion
             ? 'Promote deletion'

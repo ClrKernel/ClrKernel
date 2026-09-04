@@ -204,7 +204,10 @@ export function NotebookExplorer({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* pb-8: without it the last row sits flush against the bottom edge, which
+          reads as "the list continues" and is awkward to click. Scrolling a little
+          past the end is what says you have reached it. */}
+      <div className="min-h-0 flex-1 overflow-auto pb-8">
         {rows.map((row) => {
           const active = row.path != null && row.path === path;
           return (

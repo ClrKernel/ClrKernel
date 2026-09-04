@@ -823,11 +823,15 @@ export function Editor() {
         : 'no schedule';
       return `  • ${job.name}${job.cron ? ` (${job.cron})` : ''} — ${next}`;
     });
+    // "in test", not just the path: this button is on the bar from your own
+    // branch too, and there it ships what *test* holds — which is not
+    // necessarily what is on the screen behind the dialog.
+    const asking = `Promote the version of ${path} in test to production?`;
     const question = stopping.length > 0
-      ? `Promote ${path} to production?\n\nThis stops ${
+      ? `${asking}\n\nThis stops ${
           stopping.length === 1 ? 'this schedule' : `these ${stopping.length} schedules`
         }:\n${stopping.join('\n')}`
-      : `Promote ${path} to production?`;
+      : asking;
     if (!confirm(question)) {
       return;
     }
