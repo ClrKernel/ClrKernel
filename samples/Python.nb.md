@@ -89,6 +89,17 @@ plt.plot([1, 4, 9, 16])
 plt.title("squares");
 ```
 
+## Editor features
+
+Completion, hover and signature help come from the notebook's own interpreter, so
+they reflect what it actually holds: after the cell above runs, `pd.` offers the
+real pandas API, and `df.` offers the methods of the frame you built — not a guess
+from reading the source. The trade is the one Jupyter makes: a name typed but never
+run is not there yet.
+
+Completing never *runs* anything. `fetch_all().` offers nothing rather than calling
+`fetch_all()`, because a dotted name is resolved with `getattr`, never `eval`.
+
 ## Restarting
 
 ```python

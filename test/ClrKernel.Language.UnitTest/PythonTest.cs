@@ -400,6 +400,81 @@ public class PythonTest {
         }
     }
 
+    /// <summary>
+    /// Completion comes from the live namespace, which is the point: a name only
+    /// exists once a cell has bound it, and then its real members are offered —
+    /// including for a type no static analysis of the cell could have inferred.
+    /// </summary>
+    [TestMethod]
+    public async Task Completion_offers_what_the_session_actually_holds() {
+        using var language = RequirePythonLanguage();
+        var services = language.Services;
+
+        var before = await services.CompleteAsync("tot", 3, new LanguageServiceContext());
+        Assert.IsFalse(before.Items.Any(i => i.Label == "total"), "nothing has bound `total` yet");
+
+        await language.Session.ExecuteAsync("total = 41\nimport json", null);
+
+        var after = await services.CompleteAsync("tot", 3, new LanguageServiceContext());
+        Assert.IsTrue(after.Items.Any(i => i.Label == "total"), "bound in a cell, offered in the next");
+        Assert.AreEqual(0, after.ReplaceStart);
+        Assert.AreEqual(3, after.ReplaceLength, "the prefix is what gets replaced");
+
+        // Members of a real object, not a guess about one.
+        var members = await services.CompleteAsync("json.du", 7, new LanguageServiceContext());
+        var labels = members.Items.Select(i => i.Label).ToList();
+        CollectionAssert.Contains(labels, "dump");
+        CollectionAssert.Contains(labels, "dumps");
+        Assert.IsFalse(labels.Any(l => l.StartsWith("_")), "privates stay hidden unless asked for");
+        Assert.AreEqual(5, members.ReplaceStart, "only `du` is replaced, not `json.du`");
+
+        // Keywords are there too, so an empty session is not an empty list.
+        var keywords = await services.CompleteAsync("wh", 2, new LanguageServiceContext());
+        Assert.IsTrue(keywords.Items.Any(i => i.Label == "while" && i.Kind == "keyword"));
+    }
+
+    /// <summary>
+    /// Completing must never *run* the notebook's code. `dir()` on the result of a
+    /// call would mean typing a dot executes whatever is to its left.
+    /// </summary>
+    [TestMethod]
+    public async Task Completion_never_calls_the_code_it_completes() {
+        using var language = RequirePythonLanguage();
+        await language.Session.ExecuteAsync(
+            "ran = False\ndef danger():\n    global ran\n    ran = True\n    return 1", null);
+
+        var result = await language.Services.CompleteAsync("danger().", 9, new LanguageServiceContext());
+        Assert.AreEqual(0, result.Items.Count, "a call expression offers nothing rather than being evaluated");
+
+        var check = await language.Session.ExecuteAsync("ran", null);
+        Assert.AreEqual("False\n", check.Output, "the function was never called");
+    }
+
+    /// <summary>Hover and signature help, from the same live objects.</summary>
+    [TestMethod]
+    public async Task Hover_and_signature_help_read_the_real_object() {
+        using var language = RequirePythonLanguage();
+        await language.Session.ExecuteAsync("import json", null);
+
+        var hover = await language.Services.HoverAsync("json.dumps", 6);
+        StringAssert.Contains(hover.Markdown, "dumps(", "the signature, not just the name");
+        Assert.AreEqual(0, hover.Start);
+        Assert.AreEqual(10, hover.Length);
+
+        var help = await language.Services.SignatureHelpAsync("json.dumps(x, ", 14);
+        Assert.AreEqual(1, help.Signatures.Count);
+        StringAssert.Contains(help.Signatures[0].Label, "dumps(");
+        Assert.AreEqual(1, help.ActiveParameter, "one comma in, so the second parameter");
+
+        Assert.IsNull(await language.Services.HoverAsync("nosuchname", 4), "an unknown name hovers nothing");
+    }
+
+    /// <summary>A language whose interpreter this machine has, or an inconclusive test.</summary>
+    private static PythonCellLanguage RequirePythonLanguage() {
+        RequirePython().Dispose();
+        return new PythonCellLanguage();
+    }
+
     private sealed class InstallContext : ICellExecutionContext {
         public InstallContext(string workingDirectory) => WorkingDirectory = workingDirectory;
         public string WorkingDirectory { get; }

@@ -19,6 +19,7 @@ namespace ClrKernel.Language.Python;
 /// </summary>
 public sealed class PythonCellLanguage : ICellLanguage, IDisposable {
     private PythonSession _session;
+    private PythonCellLanguageServices _services;
 
     public string Id => "python";
 
@@ -48,9 +49,8 @@ public sealed class PythonCellLanguage : ICellLanguage, IDisposable {
         PythonDirectives.InstallDefinition,
     };
 
-    /// <summary>No completion or hover yet: that wants the interpreter's own
-    /// introspection, and running cells is the part worth having first.</summary>
-    public ICellLanguageServices Services => null;
+    /// <summary>Completion, hover and signature help, from the live interpreter.</summary>
+    public ICellLanguageServices Services => _services ??= new PythonCellLanguageServices(this);
 
     /// <summary>Nothing to connect to — a Python cell reaches a database through
     /// its own libraries.</summary>

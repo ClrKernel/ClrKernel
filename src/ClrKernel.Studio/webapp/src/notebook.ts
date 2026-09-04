@@ -86,7 +86,7 @@ export function monacoLanguage(
  * than the plaintext it would otherwise have fallen back to. A future dialect
  * that wants its own highlighter is added here and there together.
  */
-const KNOWN_TO_MONACO = new Set(['csharp', 'sql', 'powershell', 'shell', 'plaintext', 'markdown']);
+const KNOWN_TO_MONACO = new Set(['csharp', 'sql', 'powershell', 'shell', 'python', 'plaintext', 'markdown']);
 
 /**
  * The cells to keep open on the kernel, for completion and hover.

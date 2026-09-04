@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -20,6 +21,9 @@ public sealed class PythonRunResult {
     /// <summary>What the cell ended on, and anything it drew — a DataFrame as a
     /// <see cref="DisplayTable"/>, a figure as a PNG <see cref="DisplayBytes"/>.</summary>
     public IReadOnlyList<IDisplayValue> Displays { get; init; } = Array.Empty<IDisplayValue>();
+
+    /// <summary>The JSON an editor-feature request answered with, or null.</summary>
+    public string Service { get; init; }
 }
 
 /// <summary>
@@ -74,6 +78,7 @@ public sealed class PythonSession : IDisposable {
         var all = new StringBuilder();
 
         var displays = new List<IDisplayValue>();
+        string service = null;
         await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request)).ConfigureAwait(false);
         await process.StandardInput.FlushAsync().ConfigureAwait(false);
 
@@ -101,6 +106,9 @@ public sealed class PythonSession : IDisposable {
                     all.Append(message.Value.Data);
                     OnOutput?.Invoke(message.Value.Data);
                     break;
+                case "service":
+                    service = message.Value.Data;
+                    break;
                 case "display":
                     if (ParseDisplay(line) is { } display) {
                         displays.Add(display);
@@ -111,6 +119,7 @@ public sealed class PythonSession : IDisposable {
                         Output = all.ToString(),
                         Error = message.Value.Status == "ok" ? null : message.Value.Data,
                         Displays = displays,
+                        Service = service,
                     };
             }
         }
@@ -203,6 +212,34 @@ public sealed class PythonSession : IDisposable {
     /// machinery caches each <c>sys.path</c> directory as it first saw it, so without
     /// this a package installed underneath a running interpreter stays invisible.
     /// </summary>
+    /// <summary>
+    /// One editor-feature request against the live interpreter, or null when this
+    /// machine has no interpreter to ask.
+    ///
+    /// <para>
+    /// Deliberately does <b>not</b> provision one: hovering a word must never start
+    /// a 60 MB download. When an interpreter is already there, starting it is a
+    /// hundred milliseconds and the same process the first cell would have used.
+    /// </para>
+    /// </summary>
+    internal async Task<JsonElement?> ServiceAsync(
+        string kind, string code, int offset, CancellationToken cancellationToken = default) {
+        if (PythonInterpreter.Resolve() == null) {
+            return null;
+        }
+        var result = await SendAsync(new Dictionary<string, string> {
+            ["t"] = kind,
+            ["code"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(code ?? string.Empty)),
+            ["offset"] = offset.ToString(CultureInfo.InvariantCulture),
+        }, null, cancellationToken).ConfigureAwait(false);
+
+        if (result.Failed || string.IsNullOrEmpty(result.Service)) {
+            return null;
+        }
+        using var doc = JsonDocument.Parse(result.Service);
+        return doc.RootElement.ValueKind == JsonValueKind.Null ? null : doc.RootElement.Clone();
+    }
+
     public Task<PythonRunResult> RefreshPackagesAsync(
         string workingDirectory, CancellationToken cancellationToken = default) =>
         SendAsync(new Dictionary<string, string> { ["t"] = "refresh" }, workingDirectory, cancellationToken);

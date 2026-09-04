@@ -346,6 +346,30 @@ The unknowns are gone; what remains is ordinary work. In rough order:
    items remain, as §12a of the Windows checklist: the runtime paths that only a
    managed Windows machine can exercise.
 
-Not built, and deliberately: completion and hover inside a Python cell
-(`ICellLanguageServices` is null), which wants the interpreter's own introspection
-and is a separate piece of work from running cells.
+## 9d. Editor features
+
+Completion, hover and signature help, answered by the notebook's own interpreter
+through the same framed protocol the cells use — the shape `#!pwsh` already has
+with its runspace. Live introspection rather than static analysis is the more
+useful half for a notebook: once a cell has run, `df` *is* a DataFrame and `dir()`
+knows every method it has. The trade is Jupyter's: a name typed but never run is
+not there yet.
+
+Two rules that are not incidental:
+
+- **`getattr`, never `eval`.** A dotted name is walked one attribute at a time, and
+  anything that is not a plain name chain — a call, a subscript — declines. The
+  obvious implementation is `rlcompleter`, which `eval`s the expression before the
+  dot; that means typing `.` after `fetch_all()` runs `fetch_all()`. There is a
+  test that fails against that implementation.
+- **Nothing here provisions an interpreter.** On a machine with none, these return
+  null rather than starting a 60 MB download because someone hovered a word.
+
+Diagnostics are not implemented, like PowerShell's: `Diagnose` is synchronous and
+the interpreter is a process, so a keystroke is the wrong moment to block on one.
+Syntax errors arrive when the cell runs.
+
+Highlighting is separate and needed both halves: the kernel says `grammarId:
+"python"`, VS Code gets a `clr-python` grammar delegating to its own Python one,
+and Studio's Monaco needed `python` adding to the set it registers providers for —
+without which a Python cell rendered as an uncoloured wall of plaintext.

@@ -70,7 +70,7 @@ export function unbindCell(cellId: string): void {
  * cells are the main case and C# is not a registered cell language at all, so a
  * descriptor-driven list would leave out the one that matters most.
  */
-const LANGUAGES = ['csharp', 'sql', 'powershell', 'shell', 'plaintext'];
+const LANGUAGES = ['csharp', 'sql', 'powershell', 'shell', 'python', 'plaintext'];
 
 let registered = false;
 

@@ -63,6 +63,18 @@ describe('monacoLanguage with descriptors', () => {
     expect(monacoLanguage('pgsql', null, exotic)).toBe('plaintext');
   });
 
+  it('highlights a python cell as python, not as plaintext', () => {
+    // The kernel says grammarId: 'python'; Monaco ships that tokenizer and our
+    // providers are registered for it, so the gate lets it through. Without both
+    // halves a python cell is an uncoloured wall of text.
+    const python = [{
+      id: 'python', displayName: 'Python', defaultSelector: '#!python',
+      selectors: ['#!python', '#!py'], languageTags: ['python', 'py'],
+      editorLanguageId: 'clr-python', grammarId: 'python',
+    }];
+    expect(monacoLanguage('python', null, python)).toBe('python');
+  });
+
   it('and needs no descriptors at all for the languages that predate the field', () => {
     expect(monacoLanguage('sql')).toBe('sql');
     expect(monacoLanguage('shellscript')).toBe('shell');
