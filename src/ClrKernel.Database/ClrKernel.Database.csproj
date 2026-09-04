@@ -33,4 +33,7 @@
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../ClrKernel/kernel-spec/logo-64x64.png" Pack="true" PackagePath="/" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.79" />
+  </ItemGroup>
 </Project>

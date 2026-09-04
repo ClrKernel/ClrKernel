@@ -160,6 +160,90 @@ public class FluentSqlMappingTest {
         Assert.AreEqual("Zoe", row.Name);
     }
 
+    public record Stamped(int Id, DateTimeOffset At);
+
+    /// <summary>
+    /// `SELECT a.Id, b.Id FROM a JOIN b` — a real query, and one the reflection
+    /// mapper this replaced threw on: it built a dictionary keyed by column name
+    /// and a join has two called Id. First wins now, as it does everywhere else.
+    /// </summary>
+    [TestMethod]
+    public void A_join_that_repeats_a_column_name_maps_rather_than_throwing() {
+        using var reader = new RepeatedNameReader();
+
+        var row = ObjectMapper.Map<Rec>(reader).Single();
+
+        Assert.AreEqual(7, row.Id, "the first Id, not an exception");
+        Assert.AreEqual("Zoe", row.Name);
+    }
+
+    /// <summary>
+    /// `SELECT *` returns more columns than the record has, and in the table's
+    /// order rather than the record's. Both are ordinary; Dapper's constructor
+    /// matching is positional and exact, so the columns are lined up before it
+    /// sees them.
+    /// </summary>
+    [TestMethod]
+    public void Extra_columns_and_their_order_do_not_matter() {
+        var row = ObjectMapper.Map<Rec>(Of(
+            ("Extra", typeof(string), "ignored"),
+            ("Name", typeof(string), "Zoe"),
+            ("Id", typeof(int), 7),
+            ("Another", typeof(int), 99))).Single();
+
+        Assert.AreEqual(7, row.Id);
+        Assert.AreEqual("Zoe", row.Name);
+    }
+
+    /// <summary>A timestamp a driver returned as text — which ODBC does.</summary>
+    [TestMethod]
+    public void A_datetimeoffset_held_as_text_is_parsed() {
+        var row = ObjectMapper.Map<Stamped>(Of(
+            ("Id", typeof(int), 7),
+            ("At", typeof(string), "2026-03-14T10:00:00+00:00"))).Single();
+
+        Assert.AreEqual(DateTimeOffset.Parse("2026-03-14T10:00:00+00:00"), row.At);
+    }
+
+    /// <summary>Two columns called Id, which a join produces and a DataTable cannot hold.</summary>
+    private sealed class RepeatedNameReader : IDataReader {
+        private int _row;
+        public int FieldCount => 3;
+        public string GetName(int i) => i == 1 ? "Name" : "Id";
+        public object GetValue(int i) => i switch { 0 => 7, 1 => "Zoe", _ => 9 };
+        public Type GetFieldType(int i) => i == 1 ? typeof(string) : typeof(int);
+        public bool Read() => _row++ == 0;
+        public bool IsDBNull(int i) => false;
+        public void Dispose() { }
+        public int Depth => 0;
+        public bool IsClosed => false;
+        public int RecordsAffected => 0;
+        public void Close() { }
+        public DataTable GetSchemaTable() => null;
+        public bool NextResult() => false;
+        public object this[int i] => GetValue(i);
+        public object this[string name] => GetValue(GetOrdinal(name));
+        public bool GetBoolean(int i) => default;
+        public byte GetByte(int i) => default;
+        public long GetBytes(int i, long o, byte[] b, int bo, int l) => 0;
+        public char GetChar(int i) => default;
+        public long GetChars(int i, long o, char[] b, int bo, int l) => 0;
+        public IDataReader GetData(int i) => null;
+        public string GetDataTypeName(int i) => GetFieldType(i).Name;
+        public DateTime GetDateTime(int i) => default;
+        public decimal GetDecimal(int i) => default;
+        public double GetDouble(int i) => default;
+        public float GetFloat(int i) => default;
+        public Guid GetGuid(int i) => default;
+        public short GetInt16(int i) => default;
+        public int GetInt32(int i) => (int)GetValue(i);
+        public long GetInt64(int i) => default;
+        public int GetOrdinal(string name) =>
+            string.Equals(name, "Name", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        public string GetString(int i) => (string)GetValue(i);
+        public int GetValues(object[] values) => 0;
+    }
+
     [TestMethod]
     public void Maps_scalar_from_first_column() {
         var ids = ObjectMapper.Map<int>(Table());
