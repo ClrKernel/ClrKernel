@@ -133,8 +133,11 @@ public sealed class SecretStore {
         }
         throw new SecretNotFoundException(
             $"No secret found for '{key}'. Looked in: {string.Join(", ", ProviderNames)}. " +
+            // Not "the SQL connection panel": this store answers for API keys a C#
+            // cell resolves itself as well as for connection passwords, and telling
+            // somebody holding an API token to open a SQL panel sends them nowhere.
             (CanPersist
-                ? "Store one from the SQL connection panel, or set the "
+                ? "Save one from a connection editor, or set the "
                 : "Nothing here can store one: set the ") +
             $"{EnvName(key)} environment variable" +
             (CanPersist ? "." : ", or give this machine a credential store."));
