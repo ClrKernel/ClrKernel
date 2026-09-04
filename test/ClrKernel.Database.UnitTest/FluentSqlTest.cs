@@ -244,6 +244,70 @@ public class FluentSqlMappingTest {
         public int GetValues(object[] values) => 0;
     }
 
+    public record class Checkpoint {
+        public DateOnly CheckpointValue;
+    }
+    public record class Shift {
+        public TimeOnly StartsAt { get; set; }
+    }
+
+    /// <summary>
+    /// A public field, which is how somebody writing a throwaway type in a cell
+    /// declares it. The reflection mapper this replaced read properties only, so a
+    /// record of fields came back empty with nothing said.
+    /// </summary>
+    [TestMethod]
+    public void Public_fields_are_filled_not_only_properties() {
+        var row = ObjectMapper.Map<Checkpoint>(
+            Of(("CheckpointValue", typeof(DateTime), new DateTime(2010, 12, 29)))).Single();
+
+        Assert.AreEqual(new DateOnly(2010, 12, 29), row.CheckpointValue);
+    }
+
+    /// <summary>
+    /// `date` and `time` columns arrive as DateTime and TimeSpan, and DateOnly is
+    /// what you write when the time is not part of the answer. Dapper converts
+    /// neither on its own — both threw "Error parsing column 0".
+    /// </summary>
+    [TestMethod]
+    public void DateOnly_and_TimeOnly_are_converted_from_what_a_driver_returns() {
+        Assert.AreEqual(new DateOnly(2010, 12, 29),
+            ObjectMapper.Map<Checkpoint>(
+                Of(("CheckpointValue", typeof(DateTime), new DateTime(2010, 12, 29)))).Single().CheckpointValue);
+
+        Assert.AreEqual(new TimeOnly(9, 30),
+            ObjectMapper.Map<Shift>(
+                Of(("StartsAt", typeof(TimeSpan), new TimeSpan(9, 30, 0)))).Single().StartsAt);
+    }
+
+    /// <summary>
+    /// A type no column can fill is a mistake, and returning a row of defaults
+    /// hides it: `SELECT OrderDate` into a type whose member is `CheckpointValue`
+    /// came back as 1/1/0001, which looks like an answer. The refusal names both
+    /// sides and says how to fix it.
+    /// </summary>
+    [TestMethod]
+    public void A_type_no_column_can_fill_is_refused_rather_than_returned_empty() {
+        var e = Assert.ThrowsExactly<InvalidOperationException>(() => ObjectMapper.Map<Checkpoint>(
+            Of(("OrderDate", typeof(DateTime), new DateTime(2010, 12, 29)))));
+
+        StringAssert.Contains(e.Message, "OrderDate", "the columns it did get");
+        StringAssert.Contains(e.Message, "CheckpointValue", "the members it could not fill");
+        StringAssert.Contains(e.Message, "AS CheckpointValue", "and what to do about it");
+    }
+
+    /// <summary>
+    /// Partial matches stay legal — a type is often wider than one query, and only
+    /// *nothing* matching is always a mistake.
+    /// </summary>
+    [TestMethod]
+    public void A_type_wider_than_the_query_still_maps_what_it_can() {
+        var row = ObjectMapper.Map<Poco>(Of(("Id", typeof(int), 7))).Single();
+
+        Assert.AreEqual(7, row.Id);
+        Assert.IsNull(row.Name);
+    }
+
     [TestMethod]
     public void Maps_scalar_from_first_column() {
         var ids = ObjectMapper.Map<int>(Table());

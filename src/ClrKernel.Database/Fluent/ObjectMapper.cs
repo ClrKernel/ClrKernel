@@ -34,14 +34,17 @@ namespace ClrKernel.Database;
 internal static class ObjectMapper {
     private static readonly ConcurrentDictionary<Type, ConstructorInfo[]> _constructors = new();
     private static readonly ConcurrentDictionary<Type, bool> _mapped = new();
+    private static readonly ConcurrentDictionary<Type, string[]> _members = new();
     private static int _handlers;
 
     public static IReadOnlyList<T> Map<T>(IDataReader reader) {
         AddHandlers();
-        var ctor = Constructor(typeof(T), Names(reader));
+        var columns = Names(reader);
+        var ctor = Constructor(typeof(T), columns);
         if (ctor == null) {
-            // A scalar or a class with settable properties: Dapper matches members
-            // by name in any order and converts, so it gets the reader as it is.
+            RequireSomethingToFill(typeof(T), columns);
+            // A scalar or a class with settable members: Dapper matches by name in
+            // any order and converts, so it gets the reader as it is.
             return reader.Parse<T>().ToList();
         }
         RelaxTypesFor(typeof(T));
@@ -91,12 +94,49 @@ internal static class ObjectMapper {
         return ctor.GetParameters().Select(p => columns[p.Name]).ToArray();
     }
 
+    /// <summary>
+    /// Refuses a type that no column can fill, rather than handing back a row of
+    /// defaults.
+    ///
+    /// <para>
+    /// The failure this prevents: <c>SELECT OrderDate</c> into a type whose one
+    /// member is <c>CheckpointValue</c> returned <c>1/1/0001</c> — a wrong answer
+    /// wearing the shape of a right one, and nothing on screen to say the two
+    /// names never met. Partial matches stay legal; a type is often wider than one
+    /// query. Zero is the case that is always a mistake.
+    /// </para>
+    /// </summary>
+    private static void RequireSomethingToFill(Type type, string[] columns) {
+        if (ValueConverter.IsScalar(type) || type == typeof(object) || columns.Length == 0) {
+            return;
+        }
+        var members = _members.GetOrAdd(type, t => t
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite).Select(p => p.Name)
+            .Concat(t.GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name))
+            .ToArray());
+        if (members.Length == 0
+            || members.Any(m => columns.Contains(m, StringComparer.OrdinalIgnoreCase))) {
+            return;
+        }
+        throw new InvalidOperationException(
+            $"No column matches any member of {type.Name}, so every row would come back empty. "
+            + $"The query returned {string.Join(", ", columns)}; {type.Name} has "
+            + $"{string.Join(", ", members)}. Columns and members are matched by name — "
+            + "alias the column in the query (SELECT OrderDate AS CheckpointValue) or rename the member.");
+    }
+
     private static void AddHandlers() {
         if (System.Threading.Interlocked.Exchange(ref _handlers, 1) != 0) {
             return;
         }
         SqlMapper.AddTypeHandler(new ParsingHandler<Guid>(s => Guid.Parse(s)));
         SqlMapper.AddTypeHandler(new ParsingHandler<DateTimeOffset>(s => DateTimeOffset.Parse(s)));
+        // A `date` column is a DateTime in every provider here, and DateOnly is
+        // what somebody writes when the time is not part of the answer. Dapper
+        // converts neither of these itself.
+        SqlMapper.AddTypeHandler(new DateOnlyHandler());
+        SqlMapper.AddTypeHandler(new TimeOnlyHandler());
     }
 
     private static void RelaxTypesFor(Type type) =>
@@ -139,6 +179,34 @@ internal static class ObjectMapper {
             _default.GetConstructorParameter(ctor, columnName);
 
         public SqlMapper.IMemberMap GetMember(string columnName) => _default.GetMember(columnName);
+    }
+
+    /// <summary>A `date` column, or a date held as text, into a <see cref="DateOnly"/>.</summary>
+    private sealed class DateOnlyHandler : SqlMapper.TypeHandler<DateOnly> {
+        public override DateOnly Parse(object value) => value switch {
+            DateOnly only => only,
+            DateTime moment => DateOnly.FromDateTime(moment),
+            string text => DateOnly.Parse(text),
+            _ => DateOnly.FromDateTime(Convert.ToDateTime(value)),
+        };
+
+        // As a DateTime, not a DateOnly: not every provider here binds one.
+        public override void SetValue(IDbDataParameter parameter, DateOnly value) =>
+            parameter.Value = value.ToDateTime(TimeOnly.MinValue);
+    }
+
+    /// <summary>A `time` column into a <see cref="TimeOnly"/>.</summary>
+    private sealed class TimeOnlyHandler : SqlMapper.TypeHandler<TimeOnly> {
+        public override TimeOnly Parse(object value) => value switch {
+            TimeOnly only => only,
+            TimeSpan span => TimeOnly.FromTimeSpan(span),
+            DateTime moment => TimeOnly.FromDateTime(moment),
+            string text => TimeOnly.Parse(text),
+            _ => TimeOnly.FromTimeSpan((TimeSpan)value),
+        };
+
+        public override void SetValue(IDbDataParameter parameter, TimeOnly value) =>
+            parameter.Value = value.ToTimeSpan();
     }
 
     /// <summary>A value a driver handed back as text where a CLR type was wanted.</summary>
