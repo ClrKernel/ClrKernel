@@ -10,7 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { accounts, auth, passkeyBlocker, type ManagedUser, type Role } from '../auth';
+import {
+  accounts, auth, passkeyBlocker, suggestUsername, type ManagedUser, type Role,
+} from '../auth';
 import { ErrorBanner, usePolling } from '../components/common';
 import { useSession } from '../sessionContext';
 import { timeAgo } from '../ipynb';
@@ -161,7 +163,11 @@ export function UsersSection() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [role, setRole] = useState<Role>('ServerUser');
-  const [label, setLabel] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  // Suggested from the name and then left alone, so a deliberate edit is not
+  // undone by the next keystroke in the box beside it.
+  const [handle, setHandle] = useState('');
+  const [handleEdited, setHandleEdited] = useState(false);
   const { data: users, error: usersError, reload: reloadUsers } = usePolling(
     () => accounts.users(), null);
   const { data: invites, reload: reloadInvites } = usePolling(() => accounts.invites(), null);
@@ -185,9 +191,12 @@ export function UsersSection() {
     setError(null);
     setBusy(true);
     try {
-      const { code } = await accounts.createInvite(role, label.trim());
+      const { code } = await accounts.createInvite(
+        role, inviteName.trim(), handle.trim(), '');
       const url = `${location.origin}/invite/${code}`;
-      setLabel('');
+      setInviteName('');
+      setHandle('');
+      setHandleEdited(false);
       reloadInvites();
       // There is no email in this system: the link is the whole delivery
       // mechanism, so it goes on the clipboard rather than into a table cell you
@@ -318,8 +327,10 @@ export function UsersSection() {
       </div>
 
       <h2 className="mb-1 text-lg font-semibold">Invites</h2>
-      <p className="mb-2 max-w-[78ch] text-base text-muted-foreground">
+      <p className="mb-2 max-w-[78ch] text-base text-muted-foreground" id="invite-username-hint">
         Single use, and they expire. Send the link however you like — this server has no email.
+        The username is the name of their branch (<code>user/ada-lovelace</code>) and of its
+        folder in every project; whoever opens the link does not choose it.
       </p>
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-sm font-medium">
@@ -338,15 +349,40 @@ export function UsersSection() {
           </Select>
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium">
-          Who it’s for <span className="font-normal text-muted-subtle">(optional)</span>
+          Their name
           <Input
-            value={label}
-            className="w-[220px]"
-            placeholder="Bob on the data team"
-            onChange={(e) => setLabel(e.target.value)}
+            value={inviteName}
+            className="w-[200px]"
+            placeholder="Ada Lovelace"
+            onChange={(e) => {
+              setInviteName(e.target.value);
+              if (!handleEdited) {
+                setHandle(suggestUsername(e.target.value));
+              }
+            }}
           />
         </label>
-        <Button size="sm" disabled={busy} onClick={createInvite}>
+        {/* Settled here rather than by whoever opens the link: this is a git
+            branch and a folder, so a name already taken has to be refused while
+            somebody is looking at a form — not while they hold a security key. */}
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Username
+          <Input
+            value={handle}
+            className="w-[180px] font-mono"
+            placeholder="ada-lovelace"
+            aria-describedby="invite-username-hint"
+            onChange={(e) => {
+              setHandleEdited(true);
+              setHandle(e.target.value);
+            }}
+          />
+        </label>
+        <Button
+          size="sm"
+          disabled={busy || inviteName.trim().length === 0 || handle.trim().length === 0}
+          onClick={createInvite}
+        >
           Create invite
         </Button>
       </div>
@@ -359,6 +395,7 @@ export function UsersSection() {
                 <th>Status</th>
                 <th>Role</th>
                 <th>For</th>
+                <th>Username</th>
                 <th>Expires</th>
                 <th />
               </tr>
@@ -368,7 +405,10 @@ export function UsersSection() {
                 <tr key={invite.code}>
                   <td>{invite.status}</td>
                   <td className="text-muted-foreground">{roleLabel(invite.role)}</td>
-                  <td className="text-muted-foreground">{invite.label || '—'}</td>
+                  <td className="text-muted-foreground">{invite.displayName || invite.label || '—'}</td>
+                  <td className="font-mono text-xs text-muted-foreground">
+                    {invite.username || '—'}
+                  </td>
                   <td className="text-muted-foreground">{timeAgo(invite.expiresAt)}</td>
                   <td className="text-right">
                     {invite.status === 'open' && (

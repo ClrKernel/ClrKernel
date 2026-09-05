@@ -77,8 +77,14 @@ public interface IAuthStore {
 
     Task RecordIdentityUseAsync(Guid id, DateTime at);
 
-    Task<Invite> CreateInviteAsync(string code, UserRole role, string label, Guid? createdBy,
-        DateTime now, TimeSpan lifetime);
+    /// <summary>
+    /// <paramref name="displayName"/> and <paramref name="username"/> are the
+    /// account this invite will create. Both are settled here, on a form, rather
+    /// than at redemption, where the invitee is holding a security key and a
+    /// "that name is taken" has nowhere to go.
+    /// </summary>
+    Task<Invite> CreateInviteAsync(string code, UserRole role, string label,
+        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime);
     Task<IReadOnlyList<Invite>> ListInvitesAsync();
     Task<Invite> FindInviteAsync(string code);
 
@@ -347,12 +353,14 @@ public sealed class EfAuthStore : IAuthStore {
     }
 
     public async Task<Invite> CreateInviteAsync(string code, UserRole role, string label,
-        Guid? createdBy, DateTime now, TimeSpan lifetime) {
+        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime) {
         await using var db = _contextFactory();
         var invite = new Invite {
             Code = code,
             Role = role,
             Label = label,
+            DisplayName = displayName,
+            Username = username,
             CreatedBy = createdBy,
             CreatedAt = now,
             ExpiresAt = now + lifetime,

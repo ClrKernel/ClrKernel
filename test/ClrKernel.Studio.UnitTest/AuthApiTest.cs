@@ -221,26 +221,112 @@ public class AuthApiTest {
         using var admin = await ClientFor(UserRole.ServerAdmin);
 
         var response = await admin.PostAsJsonAsync("/api/invites",
-            new { role = "ServerViewer", label = "Bob" });
+            new { role = "ServerViewer", displayName = "Bob Barker", username = "bob", label = "Bob" });
         var code = (await response.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("code").GetString();
 
+        // The invitee is told who they are about to become — the whole reason the
+        // name moved to this end.
         var check = await _anonymous.GetFromJsonAsync<JsonElement>($"/api/auth/invite/{code}");
         Assert.IsTrue(check.GetProperty("valid").GetBoolean());
+        Assert.AreEqual("Bob Barker", check.GetProperty("displayName").GetString());
+        Assert.AreEqual("bob", check.GetProperty("username").GetString());
 
         var listed = await admin.GetFromJsonAsync<JsonElement>("/api/invites");
         Assert.AreEqual("open", listed.GetProperty("invites")[0].GetProperty("status").GetString());
+        Assert.AreEqual("bob", listed.GetProperty("invites")[0].GetProperty("username").GetString());
 
         Assert.AreEqual(HttpStatusCode.OK, (await admin.DeleteAsync($"/api/invites/{code}")).StatusCode);
         check = await _anonymous.GetFromJsonAsync<JsonElement>($"/api/auth/invite/{code}");
         Assert.IsFalse(check.GetProperty("valid").GetBoolean());
+        // And a withdrawn one goes back to saying nothing: the name would otherwise
+        // tell whoever holds the code that an account by it exists.
+        Assert.IsFalse(check.TryGetProperty("username", out _));
+    }
+
+    /// <summary>
+    /// The point of settling both names on the admin's form: everything that can be
+    /// refused is refused while somebody is looking at a form, not while they are
+    /// holding a security key.
+    /// </summary>
+    [TestMethod]
+    public async Task An_invite_needs_a_name_and_a_username_that_nothing_else_holds() {
+        using var admin = await ClientFor(UserRole.ServerAdmin, "Ada Lovelace");
+
+        async Task<(HttpStatusCode Status, string Body)> Create(object body) {
+            var reply = await admin.PostAsJsonAsync("/api/invites", body);
+            return (reply.StatusCode, await reply.Content.ReadAsStringAsync());
+        }
+
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await Create(new { role = "ServerUser", username = "bob" })).Status, "no name");
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await Create(new { role = "ServerUser", displayName = "Bob" })).Status, "no username");
+
+        var bad = await Create(new { role = "ServerUser", displayName = "Bob", username = "Bob Barker" });
+        Assert.AreEqual(HttpStatusCode.BadRequest, bad.Status);
+        StringAssert.Contains(bad.Body, "letters", "the refusal says what a username may hold");
+
+        // Taken by the admin who is signed in — whose handle came from their name.
+        var mine = await Create(new { role = "ServerUser", displayName = "Someone", username = "ada-lovelace" });
+        Assert.AreEqual(HttpStatusCode.Conflict, mine.Status, mine.Body);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await Create(new { role = "ServerUser", displayName = "Bob", username = "bob" })).Status);
+
+        // And an invite reserves it: the second one for `bob` is refused here rather
+        // than at redemption, where the loser is holding a passkey.
+        var twice = await Create(new { role = "ServerUser", displayName = "Other Bob", username = "bob" });
+        Assert.AreEqual(HttpStatusCode.Conflict, twice.Status);
+        StringAssert.Contains(twice.Body, "open invite");
+    }
+
+    /// <summary>
+    /// An invite issued before invites carried a name has nothing to create an
+    /// account from. Refused, and told to ask again — not quietly given a derived
+    /// handle, which is the path this change exists to close.
+    /// </summary>
+    [TestMethod]
+    public async Task An_invite_from_before_this_is_refused_rather_than_guessed() {
+        var now = DateTime.UtcNow;
+        await _auth.CreateInviteAsync(
+            "legacy", UserRole.ServerUser, "Bob on the data team", null, null, null, now,
+            TimeSpan.FromDays(7));
+
+        var reply = await _anonymous.PostAsJsonAsync("/api/auth/invite/legacy/begin", new { });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, reply.StatusCode);
+        StringAssert.Contains(await reply.Content.ReadAsStringAsync(), "Ask for a new one");
+    }
+
+    /// <summary>
+    /// The window the form cannot close: an admin renames somebody onto the handle
+    /// an open invite reserved. Caught before the ceremony starts — the alternative
+    /// is a unique-index violation with a passkey already created.
+    /// </summary>
+    [TestMethod]
+    public async Task A_username_taken_after_the_invite_was_issued_is_caught_before_the_passkey() {
+        using var admin = await ClientFor(UserRole.ServerAdmin);
+        var reply = await admin.PostAsJsonAsync("/api/invites",
+            new { role = "ServerUser", displayName = "Bob Barker", username = "bob" });
+        var code = (await reply.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("code").GetString();
+
+        // Somebody else gets there first, by any route that writes a username.
+        await _auth.CreateUserAsync(Guid.NewGuid(), "bob", "Bob Someone-Else", UserRole.ServerUser);
+
+        var begin = await _anonymous.PostAsJsonAsync($"/api/auth/invite/{code}/begin", new { });
+        Assert.AreEqual(HttpStatusCode.BadRequest, begin.StatusCode,
+            begin.StatusCode + " " + await begin.Content.ReadAsStringAsync());
+        StringAssert.Contains(await begin.Content.ReadAsStringAsync(), "has since been taken");
     }
 
     /// <summary>Every bad code answers the same, so none of them is a probe.</summary>
     [TestMethod]
     public async Task Bad_invite_codes_are_indistinguishable() {
         using var admin = await ClientFor(UserRole.ServerAdmin);
-        var response = await admin.PostAsJsonAsync("/api/invites", new { role = "ServerViewer" });
+        var response = await admin.PostAsJsonAsync("/api/invites",
+            new { role = "ServerViewer", displayName = "Bob", username = "bob" });
         var code = (await response.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("code").GetString();
         await admin.DeleteAsync($"/api/invites/{code}");
@@ -248,7 +334,7 @@ public class AuthApiTest {
         var messages = new List<string>();
         foreach (var candidate in new[] { code, "never-existed" }) {
             var begin = await _anonymous.PostAsJsonAsync(
-                $"/api/auth/invite/{candidate}/begin", new { displayName = "Bob" });
+                $"/api/auth/invite/{candidate}/begin", new { });
             Assert.AreEqual(HttpStatusCode.BadRequest, begin.StatusCode);
             messages.Add((await begin.Content.ReadFromJsonAsync<JsonElement>())
                 .GetProperty("error").GetString());

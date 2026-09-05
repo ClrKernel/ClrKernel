@@ -270,6 +270,12 @@ public abstract class RunsDbContext : DbContext {
             invite.Property(i => i.Code).HasColumnName("code").HasMaxLength(64);
             invite.Property(i => i.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(16);
             invite.Property(i => i.Label).HasColumnName("label").HasMaxLength(200);
+            // Nullable, and deliberately not unique: an invite reserves a name, but
+            // the reservation is checked when it is issued and again when it is
+            // redeemed. A unique index here would also collide two *withdrawn*
+            // invites for the same person, which is a reasonable thing to do.
+            invite.Property(i => i.DisplayName).HasColumnName("display_name").HasMaxLength(120);
+            invite.Property(i => i.Username).HasColumnName("username").HasMaxLength(39);
             invite.Property(i => i.CreatedBy).HasColumnName("created_by");
             invite.Property(i => i.CreatedAt).HasColumnName("created_at");
             invite.Property(i => i.ExpiresAt).HasColumnName("expires_at");

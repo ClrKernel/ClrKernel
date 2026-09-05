@@ -257,25 +257,32 @@ public static class AuthApi {
         // Deliberately uniform: invalid, expired, revoked and already-used all look
         // the same from out here. Telling them apart is a way to learn which codes
         // exist.
-        api.MapGet("/invite/{code}", async (AuthService auth, string code) =>
-            Results.Ok(new {
-                valid = await auth.Store.FindInviteAsync(code) is { } invite
-                && invite.IsUsable(DateTime.UtcNow)
-            }));
+        api.MapGet("/invite/{code}", async (AuthService auth, string code) => {
+            // The name comes back only for an invite that is still usable — the same
+            // gate as `valid` itself. Answering for a spent one would tell whoever
+            // holds the code that an account by that name exists.
+            var invite = await auth.Store.FindInviteAsync(code);
+            return invite is { } found && found.IsUsable(DateTime.UtcNow)
+                ? Results.Ok(new { valid = true, displayName = found.DisplayName, username = found.Username })
+                : Results.Ok(new { valid = false });
+        });
 
-        api.MapPost("/invite/{code}/begin", async (
-            AuthService auth, string code, DisplayNameBody body) => {
-                var invite = await auth.Store.FindInviteAsync(code);
-                if (invite == null || !invite.IsUsable(DateTime.UtcNow)) {
-                    return Results.BadRequest(new { error = "This invite isn't valid." });
-                }
-                if (Clean(body?.DisplayName) is not { } name) {
-                    return Results.BadRequest(new { error = "A display name is required." });
-                }
-                var (ceremonyId, creation) = auth.BeginRegistration(
-                    RegistrationPurpose.Invite, Guid.NewGuid(), name, code, Array.Empty<Credential>());
-                return Ceremony(ceremonyId, creation);
-            });
+        // No body: the account's name and handle were settled by the admin who
+        // issued this, so there is nothing left to type. Everything that could be
+        // refused is refused here, before the passkey prompt appears.
+        api.MapPost("/invite/{code}/begin", async (AuthService auth, string code) => {
+            var invite = await auth.Store.FindInviteAsync(code);
+            if (invite == null || !invite.IsUsable(DateTime.UtcNow)) {
+                return Results.BadRequest(new { error = "This invite isn't valid." });
+            }
+            if (await InviteRefusal(auth.Store, invite) is { } refusal) {
+                return Results.BadRequest(new { error = refusal });
+            }
+            var (ceremonyId, creation) = auth.BeginRegistration(
+                RegistrationPurpose.Invite, Guid.NewGuid(), invite.DisplayName, code,
+                Array.Empty<Credential>());
+            return Ceremony(ceremonyId, creation);
+        });
 
         api.MapPost("/invite/{code}/complete", async (
             HttpContext context, AuthService auth, string code, RegisterBody body) =>
@@ -468,6 +475,8 @@ public static class AuthApi {
                     code = i.Code,
                     role = i.Role.ToString(),
                     label = i.Label,
+                    displayName = i.DisplayName,
+                    username = i.Username,
                     createdAt = i.CreatedAt,
                     expiresAt = i.ExpiresAt,
                     usedAt = i.UsedAt,
@@ -487,8 +496,26 @@ public static class AuthApi {
                 if (!Enum.TryParse<UserRole>(body?.Role, out var role)) {
                     return Results.BadRequest(new { error = "Unknown role." });
                 }
+                if (Clean(body?.DisplayName) is not { } displayName) {
+                    return Results.BadRequest(new { error = "A name is required." });
+                }
+                var username = Clean(body?.Username)?.ToLowerInvariant();
+                if (username == null) {
+                    return Results.BadRequest(new { error = "A username is required." });
+                }
+                if (UserName.Problem(username) is { } bad) {
+                    return Results.BadRequest(new { error = bad });
+                }
+                // Reserved against accounts *and* against invites nobody has opened
+                // yet: two open invites for `ada` would both look fine here and the
+                // second would fail at redemption, with somebody holding a key.
+                if (await TakenBy(auth.Store, username) is { } holder) {
+                    return Results.Json(
+                        new { error = $"'{username}' is already {holder}." }, statusCode: 409);
+                }
                 var invite = await auth.Store.CreateInviteAsync(
-                    AuthService.NewInviteCode(), role, Clean(body?.Label), context.CurrentUser()?.Id,
+                    AuthService.NewInviteCode(), role, Clean(body?.Label), displayName, username,
+                    context.CurrentUser()?.Id,
                     DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
                 return Results.Ok(new { code = invite.Code, expiresAt = invite.ExpiresAt });
             });
@@ -498,6 +525,40 @@ public static class AuthApi {
             ?? (await auth.Store.RevokeInviteAsync(code)
                 ? Results.Ok(new { revoked = true })
                 : Results.BadRequest(new { error = "That invite has already been used." })));
+    }
+
+    /// <summary>
+    /// What already holds this handle, or null when nothing does. Accounts and open
+    /// invites both count: an invite is a reservation, and one that can be issued
+    /// twice is not one.
+    /// </summary>
+    private static async Task<string> TakenBy(IAuthStore store, string username) {
+        if ((await store.UsernamesAsync()).Contains(username, StringComparer.OrdinalIgnoreCase)) {
+            return "somebody's username";
+        }
+        var now = DateTime.UtcNow;
+        return (await store.ListInvitesAsync()).Any(i =>
+            i.IsUsable(now) && string.Equals(i.Username, username, StringComparison.OrdinalIgnoreCase))
+            ? "reserved by an open invite"
+            : null;
+    }
+
+    /// <summary>
+    /// Why this invite cannot become an account, or null. Checked when the invitee
+    /// opens it and again as the ceremony begins, because the world moves between
+    /// issuing an invite and opening it: the admin can rename somebody onto the
+    /// reserved handle, and old invites carry no handle at all.
+    /// </summary>
+    private static async Task<string> InviteRefusal(IAuthStore store, Invite invite) {
+        if (string.IsNullOrEmpty(invite.Username) || string.IsNullOrEmpty(invite.DisplayName)) {
+            // Deliberately not "derive one from the display name": that was the old
+            // path, and leaving it reachable means never noticing it still fires.
+            return "This invite was made before invites carried a name. Ask for a new one.";
+        }
+        return (await store.UsernamesAsync()).Contains(invite.Username, StringComparer.OrdinalIgnoreCase)
+            ? $"The username on this invite ('{invite.Username}') has since been taken. "
+                + "Ask for a new one."
+            : null;
     }
 
     private sealed class UsernameBody {
@@ -652,5 +713,5 @@ public static class AuthApi {
     public sealed record AssertBody(string CeremonyId, JsonElement Response);
     public sealed record RoleBody(string Role);
     public sealed record DisabledBody(bool Disabled);
-    public sealed record InviteBody(string Role, string Label);
+    public sealed record InviteBody(string Role, string Label, string DisplayName, string Username);
 }

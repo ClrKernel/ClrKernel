@@ -284,9 +284,18 @@ The first person to reach a server with no accounts gets `/setup`, registers a
 passkey, and becomes its **Server Admin**. That page only accepts requests from the
 machine the server runs on, and it stops existing — 404, not a message — the moment
 an account exists. Everyone after that joins through an invite the admin creates
-under *Settings → Users*: pick a role, copy the link, send it however you like. There
-is no email in this system. Invites are single-use and expire after seven days
-(`--invite-days`).
+under *Settings → Users*: their name, their username and a role, then copy the link
+and send it however you like. There is no email in this system. Invites are
+single-use and expire after seven days (`--invite-days`).
+
+The **username** is settled on that form rather than by whoever opens the link,
+because it is the name of their git branch (`user/ada-lovelace`) and of its folder
+in every project — so a name already taken has to be refused while an admin is
+looking at a form, not while somebody is holding a security key. It is suggested
+from the name and editable; an admin can change it later, which moves the branch
+and the folder and stops any kernel that person has running. Whoever opens the link
+sees who they are about to become and registers a passkey; there is nothing for
+them to fill in.
 
 ### Roles
 
@@ -360,11 +369,14 @@ to be listed.
 Self-hosted with no email means a lost device is otherwise permanent. On the box:
 
 ```bash
-clrkernel-studio new-admin-invite --data-dir /var/lib/clrkernel-studio
+clrkernel-studio new-admin-invite --data-dir /var/lib/clrkernel-studio \
+    --name "Ada Lovelace" --username ada
 ```
 
 That prints one single-use Server Admin invite. Anyone with a shell there could do
-worse already, so this is not a new exposure.
+worse already, so this is not a new exposure. `--name` and `--username` are the
+account it will create — there is no form here, so without them it is
+*Administrator* on `user/administrator`.
 
 **There is no API key any more, and no machine-callable credential.** Passkeys are
 interactive by definition; if you need a script to drive `/api`, that needs per-user

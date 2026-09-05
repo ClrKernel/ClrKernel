@@ -70,7 +70,9 @@ public static class Program {
 
         `new-admin-invite` prints a fresh Server Admin invite code. Self-hosted with
         no email means a lost device is otherwise a permanent lockout; anyone with a
-        shell on this box could do worse, so this is not a new exposure.
+        shell on this box could do worse, so this is not a new exposure. It takes
+        `--name` and `--username` for the account it will create; without them the
+        account is Administrator, on the branch user/administrator.
 
         Jobs are *.jobs.yaml files beside your notebooks. Example:
 
@@ -136,7 +138,7 @@ public static class Program {
         }
         switch (command) {
             case "new-admin-invite":
-                return await NewAdminInviteAsync(options);
+                return await NewAdminInviteAsync(options, flags);
             case "serve":
                 return await ServeAsync(projects, options);
             case "list":
@@ -159,7 +161,8 @@ public static class Program {
     /// The way back in. Prints one single-use Server Admin invite and exits; it
     /// touches nothing else, so it is safe to run against a live server.
     /// </summary>
-    private static async Task<int> NewAdminInviteAsync(JobsOptions options) {
+    private static async Task<int> NewAdminInviteAsync(
+        JobsOptions options, IReadOnlyDictionary<string, string> flags) {
         IAuthStore store;
         try {
             // Create() migrates on the way out, which matters because this may be
@@ -172,9 +175,33 @@ public static class Program {
             return 2;
         }
 
+        // An invite names the account it will create, and the web form is where
+        // that is normally decided. There is no form here — this is the command you
+        // run when you cannot get in — so the flags are optional and the fallbacks
+        // are ones that always work.
+        var displayName = flags.TryGetValue("name", out var given) && given.Length > 0
+            ? given
+            : "Administrator";
+        var taken = await store.UsernamesAsync();
+        string username;
+        if (flags.TryGetValue("username", out var wanted) && wanted.Length > 0) {
+            if (UserName.Problem(wanted) is { } problem) {
+                Console.Error.WriteLine(problem);
+                return 2;
+            }
+            if (taken.Contains(wanted, StringComparer.OrdinalIgnoreCase)) {
+                Console.Error.WriteLine($"'{wanted}' is already somebody's username.");
+                return 2;
+            }
+            username = wanted;
+        } else {
+            username = UserName.Unique(UserName.Suggest(displayName), taken);
+        }
+
         var invite = await store.CreateInviteAsync(
             AuthService.NewInviteCode(), UserRole.ServerAdmin, "created from the command line",
-            null, DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
+            displayName, username, null, DateTime.UtcNow,
+            TimeSpan.FromDays(options.InviteLifetimeDays));
         // The configured origin, not the bind url: on a real server --urls is
         // something like http://0.0.0.0:5000, and this printed link is the entire
         // delivery mechanism for the way back in.
@@ -182,7 +209,8 @@ public static class Program {
         Console.WriteLine(invite.Code);
         Console.WriteLine($"{origin}/invite/{invite.Code}");
         Console.Error.WriteLine(
-            $"Single use, expires {invite.ExpiresAt:u}. Opening it creates a new Server Admin.");
+            $"Single use, expires {invite.ExpiresAt:u}. Opening it creates {displayName} "
+            + $"(user/{username}) as a Server Admin.");
         Console.Error.WriteLine(
             "The host and port above are this server's own. Reaching it somewhere else — a "
             + $"published container port, a reverse proxy — means opening /invite/{invite.Code} there.");

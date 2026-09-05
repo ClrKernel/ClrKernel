@@ -208,26 +208,42 @@ public sealed class AuthService {
             // The invite is spent *before* the account exists, so a race that loses
             // the redeem creates no user at all rather than a user with no invite.
             var role = UserRole.ServerAdmin;
+            var displayName = ceremony.DisplayName;
+            string username = null;
             if (ceremony.Purpose == RegistrationPurpose.Invite) {
                 var invite = await _store.FindInviteAsync(ceremony.InviteCode);
-                if (invite == null || !await _store.RedeemInviteAsync(
-                        ceremony.InviteCode, ceremony.UserId, now)) {
+                if (invite == null || string.IsNullOrEmpty(invite.Username)) {
+                    return AuthResult.Fail("This invite isn't valid.");
+                }
+                // Last check before the row is written. The API checks it when the
+                // page loads and again as the ceremony begins; between then and now
+                // an admin can still rename somebody onto this handle, and
+                // users.username is unique — so without this the failure is a 500
+                // with a passkey already created.
+                if ((await _store.UsernamesAsync()).Contains(invite.Username, StringComparer.OrdinalIgnoreCase)) {
+                    return AuthResult.Fail(
+                        $"The username on this invite ('{invite.Username}') has since been taken. "
+                        + "Ask for a new one.");
+                }
+                // Spent *before* the account exists, so a race that loses the redeem
+                // creates no user at all rather than a user with no invite.
+                if (!await _store.RedeemInviteAsync(ceremony.InviteCode, ceremony.UserId, now)) {
                     return AuthResult.Fail("This invite isn't valid.");
                 }
                 role = invite.Role;
+                displayName = invite.DisplayName;
+                username = invite.Username;
             } else if (await _store.UserCountAsync() > 0) {
                 // Two people racing the empty-server window; the second is not an
                 // admin by accident.
                 return AuthResult.Fail("This server already has an account.");
             }
-            // The handle git will know them by. Derived from the display name and
-            // made unique here rather than asked for, because the person is holding
-            // a security key at this moment and a taken-name error would lose the
-            // ceremony. An admin can change it afterwards, which is a rename that
-            // moves their branch.
-            var username = UserName.Unique(
-                UserName.Suggest(ceremony.DisplayName), await _store.UsernamesAsync());
-            user = await _store.CreateUserAsync(ceremony.UserId, username, ceremony.DisplayName, role);
+            // First-run setup only, and the one place a handle is still derived: an
+            // empty server has no admin to fill in a form, and nothing to collide
+            // with either. Every other account gets its handle from its invite.
+            username ??= UserName.Unique(
+                UserName.Suggest(displayName), await _store.UsernamesAsync());
+            user = await _store.CreateUserAsync(ceremony.UserId, username, displayName, role);
         }
 
         var credentialId = Base64Url.Encode(credential.Id);

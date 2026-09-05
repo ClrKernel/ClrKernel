@@ -162,6 +162,11 @@ namespace ClrKernel.Studio.Store.Migrations.SqlServer
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("created_by");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("display_name");
+
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("expires_at");
@@ -188,6 +193,11 @@ namespace ClrKernel.Studio.Store.Migrations.SqlServer
                     b.Property<Guid?>("UsedBy")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("used_by");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(39)
+                        .HasColumnType("nvarchar(39)")
+                        .HasColumnName("username");
 
                     b.HasKey("Code");
 

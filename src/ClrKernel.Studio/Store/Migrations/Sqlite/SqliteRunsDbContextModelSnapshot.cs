@@ -157,6 +157,11 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("created_by");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("display_name");
+
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("expires_at");
@@ -183,6 +188,11 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                     b.Property<Guid?>("UsedBy")
                         .HasColumnType("TEXT")
                         .HasColumnName("used_by");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(39)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("username");
 
                     b.HasKey("Code");
 

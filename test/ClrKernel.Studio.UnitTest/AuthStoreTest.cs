@@ -129,8 +129,8 @@ public class AuthStoreTest {
     public async Task An_invite_is_redeemable_exactly_once() {
         var now = DateTime.UtcNow;
         var user = await _store.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
-        await _store.CreateInviteAsync("code-1", UserRole.ServerViewer, "Bob", user.Id, now,
-            TimeSpan.FromDays(7));
+        await _store.CreateInviteAsync("code-1", UserRole.ServerViewer, "Bob", "Bob Barker", "bob",
+            user.Id, now, TimeSpan.FromDays(7));
 
         Assert.IsTrue(await _store.RedeemInviteAsync("code-1", user.Id, now));
         Assert.IsFalse(await _store.RedeemInviteAsync("code-1", user.Id, now),
@@ -141,9 +141,9 @@ public class AuthStoreTest {
     [TestMethod]
     public async Task An_expired_or_revoked_invite_is_not_redeemable() {
         var now = DateTime.UtcNow;
-        await _store.CreateInviteAsync("stale", UserRole.ServerViewer, null, null, now,
+        await _store.CreateInviteAsync("stale", UserRole.ServerViewer, null, null, null, null, now,
             TimeSpan.FromDays(7));
-        await _store.CreateInviteAsync("revoked", UserRole.ServerViewer, null, null, now,
+        await _store.CreateInviteAsync("revoked", UserRole.ServerViewer, null, null, null, null, now,
             TimeSpan.FromDays(7));
         Assert.IsTrue(await _store.RevokeInviteAsync("revoked"));
 
@@ -155,7 +155,7 @@ public class AuthStoreTest {
     [TestMethod]
     public async Task A_used_invite_cannot_be_revoked_after_the_fact() {
         var now = DateTime.UtcNow;
-        await _store.CreateInviteAsync("code-1", UserRole.ServerViewer, null, null, now,
+        await _store.CreateInviteAsync("code-1", UserRole.ServerViewer, null, null, null, null, now,
             TimeSpan.FromDays(7));
         Assert.IsTrue(await _store.RedeemInviteAsync("code-1", Guid.NewGuid(), now));
 

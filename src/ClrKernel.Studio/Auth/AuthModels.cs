@@ -227,6 +227,21 @@ public sealed class Invite {
     public UserRole Role { get; set; }
     /// <summary>Free text: who the admin meant it for. Never shown to the invitee.</summary>
     public string Label { get; set; }
+
+    /// <summary>
+    /// The name the account is created with. Chosen by the admin at invite time
+    /// rather than typed by the invitee, so that <see cref="Username"/> can be
+    /// checked for collisions while somebody is still looking at a form.
+    /// </summary>
+    public string DisplayName { get; set; }
+
+    /// <summary>
+    /// The handle the account is created with — its branch and its folder. Null
+    /// only on invites issued before this was required; those are refused at
+    /// redemption rather than falling back to a derived name, because a second
+    /// naming path is one nobody would notice firing.
+    /// </summary>
+    public string Username { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
