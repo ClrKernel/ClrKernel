@@ -282,6 +282,21 @@ public static class Program {
                 $"{secrets.ProviderNames.FirstOrDefault(n => n != "memory")}. The file is gone.");
         }
 
+        // Personal branches named for an account id become branches named for its
+        // handle. Here rather than beside the dev → test rename because it needs the
+        // accounts, and they live in the store that has only just been proven above.
+        try {
+            var handles = (await RunStoreFactory.CreateAuthStore(options).ListUsersAsync())
+                .ToDictionary(u => u.User.Id, u => u.User.Username);
+            foreach (var renamed in projects.AdoptUserHandles(handles)) {
+                Console.Error.WriteLine($"  {renamed}");
+            }
+        } catch (Exception e) {
+            // A workspace that cannot be renamed still serves: the old names keep
+            // working, because IsUserBranch accepts both.
+            Console.Error.WriteLine($"Could not rename personal branches to usernames: {e.Message}");
+        }
+
         var app = BuildApp(options, projects, store, secrets: secrets);
         var urls = options.Urls ?? "http://localhost:5000";
         if (!JobsApi.IsLocalOnly(urls) && options.RelyingPartyId == "localhost") {

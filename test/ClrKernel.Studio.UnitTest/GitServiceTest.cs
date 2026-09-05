@@ -88,6 +88,89 @@ public class GitServiceTest {
         Assert.AreEqual(path, _git.EnsureUserWorktree(_ada), "idempotent");
     }
 
+    /// <summary>
+    /// A rename moves the branch, the directory, and the commits on it — and the
+    /// worktree keeps working afterwards, which is what `worktree move` buys over
+    /// moving the folder.
+    /// </summary>
+    [TestMethod]
+    public void Renaming_moves_the_branch_and_the_worktree_with_its_work() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        WriteUser(_ada, "etl.nb.md", "mine\n");
+        Assert.IsTrue(_git.PushToTest(_ada, "add etl", "Ada", "a@users.local").Pushed);
+        WriteUser(_ada, "wip.nb.md", "not pushed\n");
+
+        Assert.IsNull(_git.RenameUser(_ada, "ada-lovelace"));
+
+        Assert.IsFalse(Directory.Exists(_git.UserPath(_ada)), "the old directory is gone");
+        var moved = _git.UserPath("ada-lovelace");
+        Assert.IsTrue(Directory.Exists(moved));
+        Assert.AreEqual("not pushed\n", File.ReadAllText(Path.Combine(moved, "wip.nb.md")),
+            "unsaved work travels with it");
+
+        // Registered at its new address, which is what `worktree move` buys over
+        // moving the folder. Moving it leaves the repo's own record pointing at the
+        // old path: commands run inside the worktree still work, because its .git
+        // file names the admin directory and that has not moved — but `git worktree
+        // list` reports where it used to be, and the next `worktree prune` sees a
+        // registration whose path is gone and unregisters it.
+        var registered = _git.RunForTests("worktree", "list");
+        StringAssert.Contains(registered, moved);
+        Assert.IsFalse(registered.Contains(_git.UserPath(_ada) + "\n")
+            || registered.Contains(_git.UserPath(_ada) + " "), "the old path is not still registered");
+
+        var standing = _git.StandingOf("ada-lovelace");
+        Assert.IsTrue(standing.Dirty, "the unsaved file is still seen as unsaved");
+        Assert.IsTrue(_git.PushToTest("ada-lovelace", "wip", "Ada", "a@users.local").Pushed,
+            "and it can still push");
+    }
+
+    [TestMethod]
+    public void Renaming_is_idempotent_and_refuses_to_land_on_somebody_else() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        Assert.IsNull(_git.RenameUser(_ada, _ada), "renaming to the same handle does nothing");
+        Assert.IsTrue(Directory.Exists(_git.UserPath(_ada)));
+
+        var refusal = _git.RenameUser(_ada, _grace);
+        Assert.IsNotNull(refusal, "two people's work is not this method's to merge");
+        StringAssert.Contains(refusal, _grace);
+        Assert.IsTrue(Directory.Exists(_git.UserPath(_ada)), "and it left the original alone");
+
+        StringAssert.Contains(_git.RenameUser(_ada, "Not A Handle"), "username");
+    }
+
+    /// <summary>
+    /// The upgrade: a workspace whose personal branches are still named for account
+    /// ids, with work on them, becomes one named for handles — and the work is still
+    /// there afterwards. This is the pass a real 0.11 server runs once, on start.
+    /// </summary>
+    [TestMethod]
+    public void A_workspace_named_for_account_ids_is_renamed_to_handles() {
+        _git.Init();
+        var id = Guid.NewGuid();
+        var old = id.ToString("D");
+        _git.EnsureUserWorktree(old);
+        WriteUser(old, "wip.nb.md", "unsaved\n");
+
+        Assert.IsNull(_git.RenameUser(old, "jeremy"));
+
+        Assert.IsFalse(Directory.Exists(_git.UserPath(old)));
+        Assert.AreEqual("unsaved\n",
+            File.ReadAllText(Path.Combine(_git.UserPath("jeremy"), "wip.nb.md")));
+        CollectionAssert.Contains(
+            _git.UserWorktrees().Select(w => w.Handle).ToList(), "jeremy");
+        Assert.IsFalse(_git.UserWorktrees().Any(w => w.Handle == old));
+
+        // And the branch went with it, rather than a directory being renamed under a
+        // branch that still has the old name.
+        Assert.AreEqual(_git.UserPath("jeremy"), _git.PathFor(GitService.BranchForUser("jeremy")));
+        Assert.IsTrue(_git.PushToTest("jeremy", "keep", "Jeremy", "j@users.local").Pushed);
+    }
+
     [TestMethod]
     public void PathFor_refuses_a_branch_this_workspace_does_not_have() {
         _git.Init();

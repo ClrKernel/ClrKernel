@@ -319,6 +319,45 @@ public sealed class ProjectRegistry {
     /// repairs worktree pointers (they are absolute, and volumes move). Returns the
     /// projects that were migrated.
     /// </summary>
+    /// <summary>
+    /// Renames each personal branch and worktree that is still named for an account
+    /// id to that account's handle. Returns what it moved, as
+    /// <c>project: old -> new</c>, for the startup log.
+    ///
+    /// <para>
+    /// Separate from <see cref="PrepareWorkspaces"/> because it needs the accounts,
+    /// which do not exist that early: the dev → test rename is a property of the
+    /// workspace alone, this one is a join between the workspace and the database.
+    /// Idempotent — a handle already in place is skipped — so it costs one directory
+    /// listing per project on every start after the first.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> AdoptUserHandles(IReadOnlyDictionary<Guid, string> handles) {
+        var renamed = new List<string>();
+        foreach (var project in _projects) {
+            if (GitFor(project) is not { } git) {
+                continue;
+            }
+            foreach (var worktree in git.UserWorktrees()) {
+                // Only the ones still named for an id. Anything else is either
+                // already a handle or something a person made by hand, and neither
+                // is this pass's to rename.
+                if (!Guid.TryParse(worktree.Handle, out var id)
+                    || !handles.TryGetValue(id, out var handle)) {
+                    continue;
+                }
+                if (git.RenameUser(worktree.Handle, handle) is { } refused) {
+                    _loggerFactory?.CreateLogger<ProjectRegistry>().LogWarning(
+                        "Could not rename {Old} in {Project}: {Reason}",
+                        worktree.Handle, project.Slug, refused);
+                    continue;
+                }
+                renamed.Add($"{project.Slug}: user/{worktree.Handle} -> user/{handle}");
+            }
+        }
+        return renamed;
+    }
+
     public IReadOnlyList<Project> PrepareWorkspaces() {
         var migrated = new List<Project>();
         foreach (var project in _projects) {

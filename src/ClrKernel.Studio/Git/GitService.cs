@@ -376,6 +376,63 @@ public sealed class GitService {
         });
     }
 
+    /// <summary>
+    /// Moves somebody's branch and worktree to a new handle, in place.
+    ///
+    /// <para>
+    /// Modelled on <see cref="MigrateLegacyLayout"/>, and for the same reasons: a
+    /// rename rather than a copy, so no history is rewritten and nothing is
+    /// duplicated; <c>worktree move</c> rather than a directory move, because the
+    /// worktree's gitdir pointer and its entry under
+    /// <c>.repo.git/worktrees/&lt;name&gt;</c> have to travel with it; and the
+    /// workspace lock, because a promotion running at this moment must not
+    /// interleave with it.
+    /// </para>
+    /// <para>
+    /// Refuses when the target already exists rather than merging into it — two
+    /// people's work is not this method's to combine. Returns null when it did
+    /// something (including when there was nothing to do), and the reason otherwise.
+    /// Idempotent: renaming to a handle that is already in place is a no-op.
+    /// </para>
+    /// <para>
+    /// The remote is deliberately untouched, exactly as the dev → test migration
+    /// leaves it: personal branches are never pushed by <see cref="TryPush"/>, and
+    /// deleting a branch on a shared remote is not this process's call.
+    /// </para>
+    /// </summary>
+    public string RenameUser(string from, string to) {
+        if (string.Equals(from, to, StringComparison.Ordinal)) {
+            return null;
+        }
+        if (UserName.Problem(to) is { } invalid) {
+            return invalid;
+        }
+        return WithLock(() => {
+            var oldPath = UserPath(from);
+            var newPath = UserPath(to);
+            var oldBranch = BranchForUser(from);
+            var newBranch = BranchForUser(to);
+
+            if (Directory.Exists(newPath) || HasBranch(newBranch)) {
+                return $"This project already has a branch or worktree called '{to}'.";
+            }
+            if (HasBranch(oldBranch)) {
+                // Renames the branch even where a worktree has it checked out — git
+                // rewrites that worktree's HEAD as part of the rename.
+                Run(BareRepoPath, "branch", "-m", oldBranch, newBranch);
+            }
+            if (Directory.Exists(oldPath)) {
+                Run(BareRepoPath, "worktree", "move", oldPath, newPath);
+            }
+            _logger.LogInformation(
+                "Renamed {Old} to {New} in {Workspace}.", oldBranch, newBranch, _workspace);
+            return null;
+        });
+    }
+
+    private bool HasBranch(string branch) =>
+        TryRun(BareRepoPath, "show-ref", "--verify", "--quiet", $"refs/heads/{branch}").Code == 0;
+
     /// <summary>Fixes worktree gitdir pointers after the workspace moved (volumes do).</summary>
     public void Repair() {
         Run(BareRepoPath, "worktree", "repair", TestPath, ProdPath);
