@@ -179,6 +179,39 @@ public sealed class Identity {
     public DateTime? LastUsedAt { get; set; }
 }
 
+/// <summary>
+/// The name of a secret a notebook can resolve, on one branch of one project.
+///
+/// <para>
+/// The <em>name</em> only — never the value, which lives in whichever store this
+/// server was configured with. This table exists because a secret store cannot be
+/// listed: <c>ISecretProvider</c> is get, set and delete, and no OS credential
+/// store enumerates by service portably. So Studio keeps its own index of what it
+/// has been asked to hold, and answers "set or not set" by trying to resolve each.
+/// </para>
+/// <para>
+/// One consequence worth knowing: a secret set from a shell will not appear here
+/// until somebody names it, because nothing told this server it exists.
+/// </para>
+/// </summary>
+public sealed class SecretName {
+    public Guid Id { get; set; }
+
+    public string Project { get; set; }
+
+    /// <summary>The branch it belongs to — <c>test</c>, <c>prod</c>, or somebody's
+    /// own <c>user/&lt;handle&gt;</c>. Values do not cross between them.</summary>
+    public string Branch { get; set; }
+
+    /// <summary>What a cell asks for: <c>Resolve("OPENAI")</c>.</summary>
+    public string Name { get; set; }
+
+    public Guid? CreatedBy { get; set; }
+    public string CreatedByName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
 /// <summary>Known values for <see cref="Identity.Provider"/>.</summary>
 public static class IdentityProviders {
     public const string Passkey = "passkey";

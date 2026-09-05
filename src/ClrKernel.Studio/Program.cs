@@ -275,7 +275,13 @@ public static class Program {
         // only writable store was a plaintext file gets those passwords moved into
         // the real one, and the file removed. Doing it here rather than lazily means
         // it happens once, on a start, with the outcome in the log.
-        var secrets = new Core.Secrets.SecretStore();
+        Core.Secrets.SecretStore secrets;
+        try {
+            secrets = SecretStoreFactory.Create(options, Console.Error.WriteLine);
+        } catch (ArgumentException e) {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
         if (secrets.AdoptFileSecrets() is > 0 and var moved) {
             Console.Error.WriteLine(
                 $"Moved {moved} saved password(s) out of the plaintext secrets file and into " +
@@ -405,9 +411,15 @@ public static class Program {
             },
         });
         builder.Services.AddSingleton(settings);
+        // Secrets a notebook resolves itself, kept per branch. Given to the job
+        // executor so a scheduled run carries its own branch's and no other's.
+        builder.Services.AddSingleton(provider => new BranchSecrets(
+            RunStoreFactory.ContextFactory(options),
+            secrets ?? new Core.Secrets.SecretStore(),
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<BranchSecrets>()));
         builder.Services.AddSingleton(provider => new JobExecutor(
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(),
-            projects));
+            projects, provider.GetRequiredService<BranchSecrets>()));
         builder.Services.AddSingleton(provider => new Notifier(
             options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>(),
             secrets: null, store: store));

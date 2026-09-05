@@ -28,6 +28,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<User> Users => Set<User>();
     public DbSet<Credential> Credentials => Set<Credential>();
     public DbSet<Identity> Identities => Set<Identity>();
+    public DbSet<SecretName> SecretNames => Set<SecretName>();
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AuthSession> Sessions => Set<AuthSession>();
     public DbSet<ProjectMembership> ProjectMemberships => Set<ProjectMembership>();
@@ -202,6 +203,24 @@ public abstract class RunsDbContext : DbContext {
             user.Property(u => u.CreatedAt).HasColumnName("created_at");
             user.Property(u => u.LastSeenAt).HasColumnName("last_seen_at");
             user.Property(u => u.Disabled).HasColumnName("disabled");
+        });
+
+        modelBuilder.Entity<SecretName>(secret => {
+            secret.ToTable("secret_names");
+            secret.HasKey(s => s.Id);
+            secret.Property(s => s.Id).HasColumnName("id");
+            secret.Property(s => s.Project).HasColumnName("project").IsRequired().HasMaxLength(64);
+            // Long enough for `user/<handle>`: the branch is the scope, and a
+            // personal branch is one of the scopes.
+            secret.Property(s => s.Branch).HasColumnName("branch").IsRequired().HasMaxLength(64);
+            secret.Property(s => s.Name).HasColumnName("name").IsRequired().HasMaxLength(64);
+            secret.Property(s => s.CreatedBy).HasColumnName("created_by");
+            secret.Property(s => s.CreatedByName).HasColumnName("created_by_name").HasMaxLength(120);
+            secret.Property(s => s.CreatedAt).HasColumnName("created_at");
+            secret.Property(s => s.UpdatedAt).HasColumnName("updated_at");
+            // One row per name per branch. The same name on test and on prod is two
+            // rows and two values, which is the whole point.
+            secret.HasIndex(s => new { s.Project, s.Branch, s.Name }).IsUnique();
         });
 
         modelBuilder.Entity<Identity>(identity => {

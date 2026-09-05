@@ -90,6 +90,14 @@ public static class RunStoreFactory {
         return newline < 0 ? text : text[..newline].TrimEnd();
     }
 
+    /// <summary>
+    /// A context factory for whatever store is configured — the same one the auth
+    /// store uses, exposed because anything holding its own tables (secret names)
+    /// needs it too.
+    /// </summary>
+    public static Func<RunsDbContext> ContextFactory(JobsOptions options) =>
+        ContextFactoryFor((options.Store ?? "sqlite").Trim().ToLowerInvariant(), options);
+
     private static Func<RunsDbContext> ContextFactoryFor(string kind, JobsOptions options) {
         switch (kind) {
             case "sqlite": {

@@ -30,13 +30,17 @@ public sealed class JobExecutor {
     private readonly JobsOptions _options;
     private readonly ILogger _logger;
     private readonly ProjectRegistry _projects;
+    private readonly BranchSecrets _secrets;
 
     /// <param name="projects">
     /// Where the job's project — and so its git layer — comes from. Runs record the
     /// environment's HEAD and whether the tree was dirty, which is the evidence
     /// promotion stands on, and each project has its own repo to ask.
     /// </param>
-    public JobExecutor(IRunStore store, JobsOptions options, ILogger logger, ProjectRegistry projects = null) {
+    public JobExecutor(
+        IRunStore store, JobsOptions options, ILogger logger, ProjectRegistry projects = null,
+        BranchSecrets secrets = null) {
+        _secrets = secrets;
         _store = store;
         _options = options;
         _logger = logger;
@@ -199,8 +203,16 @@ public sealed class JobExecutor {
     private async Task RunCellsAsync(
         JobDefinition job, Run run,
         string artifactPath, Action<string> log, CancellationToken cancellationToken) {
+        // The branch's own secrets and nothing else. A job promoted to prod that
+        // needs one and has not been given it fails saying so, rather than quietly
+        // running against test's — which is the whole reason these are per branch.
+        var environment = _secrets == null
+            ? null
+            : await _secrets.EnvironmentForAsync(
+                run.Project ?? ProjectRegistry.DefaultSlug, run.Environment);
         using var kernel = KernelProcess.Start(
-            _options.ClrKernelPath, Path.GetDirectoryName(job.NotebookPath), log);
+            _options.ClrKernelPath, Path.GetDirectoryName(job.NotebookPath), log,
+            environment: environment);
         // The notebook is parsed with the languages THIS kernel declares, so
         // sql/dax/shell blocks execute exactly when the kernel can run them.
         // ExecuteCellsAsync initializes again for its banner — initialize is

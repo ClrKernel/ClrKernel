@@ -55,6 +55,21 @@ public sealed class JobsOptions {
     /// </para>
     /// </summary>
     public bool PrivateConnectionsReadOnly { get; set; }
+
+    /// <summary>
+    /// Where saved passwords and secrets live: <c>os</c> (the machine's credential
+    /// store — Keychain, Credential Manager, libsecret), <c>file</c> (a JSON file
+    /// this server owns), or <c>auto</c>, which is the OS store where there is one
+    /// and the file where <see cref="SecretsFile"/> says so.
+    /// </summary>
+    public string SecretStore { get; set; } = "auto";
+
+    /// <summary>
+    /// The file <c>secretStore=file</c> writes, defaulting to <c>secrets.json</c> in
+    /// the data directory. Unencrypted — as protected as the disk it sits on — so it
+    /// is created owner-only and must not live in a git worktree.
+    /// </summary>
+    public string SecretsFile { get; set; }
     public string GitAuthorName { get; set; }
     public string GitAuthorEmail { get; set; }
     /// <summary>Remote name/url to push after commits and promotions; empty = local only.</summary>
@@ -212,6 +227,12 @@ public sealed class JobsOptions {
             ? null
             : Path.GetFullPath(projectsRoot);
         options.Store = Pick("store", "store", "CLRKERNEL_STUDIO_STORE", Setting("store"), "sqlite");
+        options.SecretStore = Pick(
+            "secretStore", "secret-store", "CLRKERNEL_STUDIO_SECRET_STORE",
+            Setting("secretStore"), "auto");
+        options.SecretsFile = Pick(
+            "secretsFile", "secrets-file", "CLRKERNEL_STUDIO_SECRETS_FILE",
+            Setting("secretsFile"), null);
         options.ConnectionString = Pick(
             "connectionString", "connection-string", "CLRKERNEL_STUDIO_CONNECTION", Setting("connectionString"), null);
         options.ClrKernelPath = Pick(
