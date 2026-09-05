@@ -108,6 +108,7 @@ public sealed class User {
     public bool Disabled { get; set; }
 
     public List<Credential> Credentials { get; set; } = new();
+    public List<Identity> Identities { get; set; } = new();
 }
 
 /// <summary>
@@ -135,6 +136,52 @@ public sealed class Credential {
     public string Name { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? LastUsedAt { get; set; }
+}
+
+/// <summary>
+/// One way an account proves who it is.
+///
+/// <para>
+/// A passkey today; a Windows account or an OIDC subject later. The pair
+/// (<see cref="Provider"/>, <see cref="Subject"/>) is what a sign-in presents and
+/// is unique across the server — the same directory account cannot be two people —
+/// while a person may hold as many as they like, which is what lets somebody sign
+/// in with a passkey on a laptop and with the company directory at a desk.
+/// </para>
+/// <para>
+/// Separate from <see cref="Credential"/> rather than a column on it, because a
+/// credential is specifically a passkey: a COSE public key and a signature counter,
+/// both required, and neither of which a directory account has. A passkey therefore
+/// has a row in each — the credential holds the cryptography, the identity holds
+/// who it belongs to.
+/// </para>
+/// </summary>
+public sealed class Identity {
+    public Guid Id { get; set; }
+
+    /// <summary>The kind of proof: <c>passkey</c> today. Lower-case and stable —
+    /// it is written into rows that outlive the code that made them.</summary>
+    public string Provider { get; set; }
+
+    /// <summary>
+    /// What the provider calls this person: the credential id for a passkey, a
+    /// directory SID, an OIDC subject. Opaque here.
+    /// </summary>
+    public string Subject { get; set; }
+
+    public Guid UserId { get; set; }
+    public User User { get; set; }
+
+    /// <summary>What to show beside it — a device name, a domain login. Theirs.</summary>
+    public string Label { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastUsedAt { get; set; }
+}
+
+/// <summary>Known values for <see cref="Identity.Provider"/>.</summary>
+public static class IdentityProviders {
+    public const string Passkey = "passkey";
 }
 
 /// <summary>

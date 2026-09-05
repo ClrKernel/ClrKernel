@@ -210,4 +210,81 @@ public class AuthStoreTest {
         Assert.AreEqual(42L, credential.SignCount);
         Assert.IsNotNull(credential.LastUsedAt);
     }
+
+    /// <summary>
+    /// An account may hold several ways to sign in, and the pair (provider, subject)
+    /// is what resolves one — a passkey today, a directory account later.
+    /// </summary>
+    [TestMethod]
+    public async Task An_account_can_hold_identities_from_more_than_one_provider() {
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
+        await _store.AddIdentityAsync(new Identity {
+            Id = Guid.NewGuid(),
+            Provider = IdentityProviders.Passkey,
+            Subject = "cred-1",
+            UserId = user.Id,
+            Label = "Laptop",
+            CreatedAt = DateTime.UtcNow,
+        });
+        await _store.AddIdentityAsync(new Identity {
+            Id = Guid.NewGuid(),
+            Provider = "windows",
+            Subject = "S-1-5-21-99",
+            UserId = user.Id,
+            Label = "CORP\\ada",
+            CreatedAt = DateTime.UtcNow.AddSeconds(1),
+        });
+
+        var found = await _store.FindIdentityAsync("windows", "S-1-5-21-99");
+        Assert.IsNotNull(found, "a provider this code has never seen still resolves");
+        Assert.AreEqual(user.Id, found.UserId);
+        Assert.AreEqual("Ada", found.User?.DisplayName, "and brings the account with it");
+
+        CollectionAssert.AreEqual(
+            new[] { "Laptop", "CORP\\ada" },
+            (await _store.IdentitiesForAsync(user.Id)).Select(i => i.Label).ToArray());
+
+        Assert.IsNull(await _store.FindIdentityAsync(IdentityProviders.Passkey, "S-1-5-21-99"),
+            "the subject alone is not the key — a passkey and a SID may collide");
+    }
+
+    /// <summary>
+    /// The same directory account cannot be two people. Enforced by the index, not
+    /// by a read-then-write, because two sign-ins racing is exactly when it matters.
+    /// </summary>
+    [TestMethod]
+    public async Task One_identity_belongs_to_one_account() {
+        var ada = await _store.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
+        var grace = await _store.CreateUserAsync(Guid.NewGuid(), "grace", "Grace", UserRole.ServerUser);
+        Identity Claim(Guid owner) => new() {
+            Id = Guid.NewGuid(),
+            Provider = "windows",
+            Subject = "S-1-5-21-7",
+            UserId = owner,
+            CreatedAt = DateTime.UtcNow,
+        };
+        await _store.AddIdentityAsync(Claim(ada.Id));
+
+        await Assert.ThrowsExactlyAsync<DbUpdateException>(
+            () => _store.AddIdentityAsync(Claim(grace.Id)));
+    }
+
+    [TestMethod]
+    public async Task Recording_a_use_stamps_the_identity() {
+        var user = await _store.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
+        var identity = new Identity {
+            Id = Guid.NewGuid(),
+            Provider = IdentityProviders.Passkey,
+            Subject = "cred-1",
+            UserId = user.Id,
+            CreatedAt = DateTime.UtcNow,
+        };
+        await _store.AddIdentityAsync(identity);
+        Assert.IsNull((await _store.IdentitiesForAsync(user.Id))[0].LastUsedAt);
+
+        await _store.RecordIdentityUseAsync(identity.Id, new DateTime(2026, 3, 14, 9, 0, 0, DateTimeKind.Utc));
+
+        Assert.AreEqual(new DateTime(2026, 3, 14, 9, 0, 0, DateTimeKind.Utc),
+            (await _store.IdentitiesForAsync(user.Id))[0].LastUsedAt);
+    }
 }

@@ -27,6 +27,7 @@ public abstract class RunsDbContext : DbContext {
     // multi-user server; `serve` says so and names the fix.
     public DbSet<User> Users => Set<User>();
     public DbSet<Credential> Credentials => Set<Credential>();
+    public DbSet<Identity> Identities => Set<Identity>();
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<AuthSession> Sessions => Set<AuthSession>();
     public DbSet<ProjectMembership> ProjectMemberships => Set<ProjectMembership>();
@@ -201,6 +202,27 @@ public abstract class RunsDbContext : DbContext {
             user.Property(u => u.CreatedAt).HasColumnName("created_at");
             user.Property(u => u.LastSeenAt).HasColumnName("last_seen_at");
             user.Property(u => u.Disabled).HasColumnName("disabled");
+        });
+
+        modelBuilder.Entity<Identity>(identity => {
+            identity.ToTable("identities");
+            identity.HasKey(i => i.Id);
+            identity.Property(i => i.Id).HasColumnName("id");
+            identity.Property(i => i.Provider).HasColumnName("provider").IsRequired().HasMaxLength(32);
+            // 512 to match credentials.id, which is the longest subject there is:
+            // a base64url WebAuthn credential id.
+            identity.Property(i => i.Subject).HasColumnName("subject").IsRequired().HasMaxLength(512);
+            identity.Property(i => i.UserId).HasColumnName("user_id");
+            identity.Property(i => i.Label).HasColumnName("label").HasMaxLength(120);
+            identity.Property(i => i.CreatedAt).HasColumnName("created_at");
+            identity.Property(i => i.LastUsedAt).HasColumnName("last_used_at");
+            // The pair is what a sign-in presents, so it decides who that is: two
+            // accounts claiming one directory login is not a thing to resolve at
+            // read time.
+            identity.HasIndex(i => new { i.Provider, i.Subject }).IsUnique();
+            identity.HasIndex(i => i.UserId);
+            identity.HasOne(i => i.User).WithMany(u => u.Identities)
+                .HasForeignKey(i => i.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Credential>(credential => {

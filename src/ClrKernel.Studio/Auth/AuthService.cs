@@ -230,8 +230,9 @@ public sealed class AuthService {
             user = await _store.CreateUserAsync(ceremony.UserId, username, ceremony.DisplayName, role);
         }
 
+        var credentialId = Base64Url.Encode(credential.Id);
         await _store.AddCredentialAsync(new Credential {
-            Id = Base64Url.Encode(credential.Id),
+            Id = credentialId,
             UserId = user.Id,
             PublicKey = credential.PublicKey,
             SignCount = credential.SignCount,
@@ -240,6 +241,20 @@ public sealed class AuthService {
                 : string.Join(',', credential.Transports.Select(t => t.ToString())),
             AaGuid = credential.AaGuid,
             Name = string.IsNullOrWhiteSpace(passkeyName)
+                ? $"Passkey added {now:yyyy-MM-dd}"
+                : passkeyName.Trim(),
+            CreatedAt = now,
+        });
+
+        // And the identity that names who it belongs to. Written here rather than
+        // derived at sign-in so the two cannot drift: a credential without one is a
+        // passkey nothing can resolve.
+        await _store.AddIdentityAsync(new Identity {
+            Id = Guid.NewGuid(),
+            Provider = IdentityProviders.Passkey,
+            Subject = credentialId,
+            UserId = user.Id,
+            Label = string.IsNullOrWhiteSpace(passkeyName)
                 ? $"Passkey added {now:yyyy-MM-dd}"
                 : passkeyName.Trim(),
             CreatedAt = now,
@@ -275,6 +290,28 @@ public sealed class AuthService {
         if (credential?.User == null) {
             return AuthResult.Fail("That passkey is not registered here.");
         }
+
+        // Who this is comes from the identity table, not from the credential: that
+        // is the one lookup every provider will share, and a passkey is simply the
+        // only one so far. The credential still holds the cryptography below.
+        var identity = await _store.FindIdentityAsync(IdentityProviders.Passkey, credential.Id);
+        if (identity == null) {
+            // A passkey registered before identities existed, on a database that
+            // somehow missed the backfill. Heal it rather than refuse: the
+            // credential already proves who this is, and the alternative is locking
+            // somebody out of their own server over a bookkeeping row.
+            identity = new Identity {
+                Id = Guid.NewGuid(),
+                Provider = IdentityProviders.Passkey,
+                Subject = credential.Id,
+                UserId = credential.UserId,
+                Label = credential.Name,
+                CreatedAt = credential.CreatedAt,
+            };
+            await _store.AddIdentityAsync(identity);
+            _log.LogWarning(
+                "Passkey {Credential} had no identity row; added one.", credential.Id);
+        }
         if (credential.User.Disabled) {
             return AuthResult.Fail("That account is disabled.");
         }
@@ -306,7 +343,9 @@ public sealed class AuthService {
             return AuthResult.Fail("That passkey could not be verified.");
         }
 
-        await _store.RecordCredentialUseAsync(credential.Id, verified.SignCount, DateTime.UtcNow);
+        var now = DateTime.UtcNow;
+        await _store.RecordCredentialUseAsync(credential.Id, verified.SignCount, now);
+        await _store.RecordIdentityUseAsync(identity.Id, now);
         return AuthResult.Success(credential.User);
     }
 

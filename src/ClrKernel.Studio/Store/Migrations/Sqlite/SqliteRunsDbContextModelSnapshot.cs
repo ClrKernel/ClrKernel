@@ -96,6 +96,52 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                     b.ToTable("credentials", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.Identity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("label");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("subject");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Provider", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("identities", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.Invite", b =>
                 {
                     b.Property<string>("Code")
@@ -706,6 +752,17 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.Identity", b =>
+                {
+                    b.HasOne("ClrKernel.Studio.User", "User")
+                        .WithMany("Identities")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.ProjectMembership", b =>
                 {
                     b.HasOne("ClrKernel.Studio.User", null)
@@ -718,6 +775,8 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
             modelBuilder.Entity("ClrKernel.Studio.User", b =>
                 {
                     b.Navigation("Credentials");
+
+                    b.Navigation("Identities");
                 });
 #pragma warning restore 612, 618
         }
