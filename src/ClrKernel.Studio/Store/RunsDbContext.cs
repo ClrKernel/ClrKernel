@@ -188,6 +188,14 @@ public abstract class RunsDbContext : DbContext {
             user.ToTable("users");
             user.HasKey(u => u.Id);
             user.Property(u => u.Id).HasColumnName("id");
+            // The first unique index in this schema. Case-insensitivity is enforced
+            // by storing the value lower-cased (UserName rejects anything else)
+            // rather than by a collation, which the three providers spell three
+            // different ways — and the reason it matters is the filesystem: macOS
+            // and Windows would give `user-Jeremy` and `user-jeremy` one directory.
+            user.Property(u => u.Username).HasColumnName("username")
+                .IsRequired().HasMaxLength(UserName.MaxLength);
+            user.HasIndex(u => u.Username).IsUnique();
             user.Property(u => u.DisplayName).HasColumnName("display_name").IsRequired().HasMaxLength(120);
             user.Property(u => u.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(16);
             user.Property(u => u.CreatedAt).HasColumnName("created_at");

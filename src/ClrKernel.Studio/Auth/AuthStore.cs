@@ -28,7 +28,22 @@ public interface IAuthStore {
     /// Generating a fresh one here would leave every credential pointing at a user
     /// that does not exist, and assertion fails with nothing readable to say why.
     /// </summary>
-    Task<User> CreateUserAsync(Guid id, string displayName, UserRole role);
+    /// <summary>
+    /// <paramref name="username"/> is the handle git will know the account by, and
+    /// is required: there is no valid account without one, and a nullable parameter
+    /// here would push the problem to the first branch this person tries to open.
+    /// Throws when it is already taken — the unique index would anyway, less kindly.
+    /// </summary>
+    Task<User> CreateUserAsync(Guid id, string username, string displayName, UserRole role);
+
+    /// <summary>Every handle in use, for picking one that is not.</summary>
+    Task<IReadOnlyList<string>> UsernamesAsync();
+
+    /// <summary>
+    /// Changes the handle. The caller is responsible for moving the branch and the
+    /// worktree that are named after it — this only writes the row.
+    /// </summary>
+    Task<bool> SetUsernameAsync(Guid id, string username);
     Task<bool> RenameUserAsync(Guid id, string displayName);
 
     /// <summary>False when it would leave no enabled admin.</summary>
@@ -118,10 +133,14 @@ public sealed class EfAuthStore : IAuthStore {
         return await db.Users.FirstOrDefaultAsync(u => u.Id == id);
     }
 
-    public async Task<User> CreateUserAsync(Guid id, string displayName, UserRole role) {
+    public async Task<User> CreateUserAsync(Guid id, string username, string displayName, UserRole role) {
+        if (UserName.Problem(username) is { } problem) {
+            throw new ArgumentException(problem, nameof(username));
+        }
         await using var db = _contextFactory();
         var user = new User {
             Id = id,
+            Username = username,
             DisplayName = displayName,
             Role = role,
             CreatedAt = DateTime.UtcNow,
@@ -129,6 +148,20 @@ public sealed class EfAuthStore : IAuthStore {
         db.Users.Add(user);
         await db.SaveChangesAsync();
         return user;
+    }
+
+    public async Task<IReadOnlyList<string>> UsernamesAsync() {
+        await using var db = _contextFactory();
+        return await db.Users.Select(u => u.Username).ToListAsync();
+    }
+
+    public async Task<bool> SetUsernameAsync(Guid id, string username) {
+        if (UserName.Problem(username) is { } problem) {
+            throw new ArgumentException(problem, nameof(username));
+        }
+        await using var db = _contextFactory();
+        return await db.Users.Where(u => u.Id == id)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.Username, username)) > 0;
     }
 
     public async Task<bool> RenameUserAsync(Guid id, string displayName) {

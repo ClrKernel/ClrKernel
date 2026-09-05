@@ -681,7 +681,16 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("role");
 
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(39)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("username");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
 
                     b.ToTable("users", (string)null);
                 });

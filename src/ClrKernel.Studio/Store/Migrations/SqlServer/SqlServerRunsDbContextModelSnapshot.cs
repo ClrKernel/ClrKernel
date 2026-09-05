@@ -686,7 +686,16 @@ namespace ClrKernel.Studio.Store.Migrations.SqlServer
                         .HasColumnType("nvarchar(16)")
                         .HasColumnName("role");
 
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(39)
+                        .HasColumnType("nvarchar(39)")
+                        .HasColumnName("username");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
 
                     b.ToTable("users", (string)null);
                 });

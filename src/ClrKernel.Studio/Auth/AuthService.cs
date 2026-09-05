@@ -220,7 +220,14 @@ public sealed class AuthService {
                 // admin by accident.
                 return AuthResult.Fail("This server already has an account.");
             }
-            user = await _store.CreateUserAsync(ceremony.UserId, ceremony.DisplayName, role);
+            // The handle git will know them by. Derived from the display name and
+            // made unique here rather than asked for, because the person is holding
+            // a security key at this moment and a taken-name error would lose the
+            // ceremony. An admin can change it afterwards, which is a rename that
+            // moves their branch.
+            var username = UserName.Unique(
+                UserName.Suggest(ceremony.DisplayName), await _store.UsernamesAsync());
+            user = await _store.CreateUserAsync(ceremony.UserId, username, ceremony.DisplayName, role);
         }
 
         await _store.AddCredentialAsync(new Credential {

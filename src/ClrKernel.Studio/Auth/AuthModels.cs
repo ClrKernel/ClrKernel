@@ -84,6 +84,22 @@ public sealed class User {
     // beside them: SQLite has no native offset type, so EF cannot order or compare
     // a DateTimeOffset column there at all.
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// The handle git and the filesystem know this account by — the branch
+    /// <c>user/&lt;username&gt;</c>, the worktree <c>user-&lt;username&gt;</c>, and the
+    /// author address on their commits.
+    ///
+    /// <para>
+    /// Unique, lower-case and validated by <see cref="UserName"/>. Separate from
+    /// <see cref="DisplayName"/>, which is free text and may repeat, and from
+    /// <see cref="Id"/>, which every row points at and which can never change —
+    /// it is the WebAuthn user handle inside each of this account's passkeys.
+    /// Renaming this moves a branch and a directory, so it is an admin action.
+    /// </para>
+    /// </summary>
+    public string Username { get; set; }
+
     public string DisplayName { get; set; }
     public UserRole Role { get; set; }
     public DateTime CreatedAt { get; set; }
