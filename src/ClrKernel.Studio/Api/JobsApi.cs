@@ -2388,7 +2388,7 @@ public static class JobsApi {
     /// claim about how to reach anybody.
     /// </summary>
     private static string EmailFor(User user) =>
-        user == null ? null : $"{user.Id:D}@users.clrkernel.local";
+        user == null ? null : $"{user.Username}@users.clrkernel.local";
 
     /// <summary>The run, or null when it does not exist or is not the caller's to see.</summary>
     private static async Task<Run> VisibleRun(

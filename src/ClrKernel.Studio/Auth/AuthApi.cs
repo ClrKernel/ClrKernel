@@ -397,6 +397,58 @@ public static class AuthApi {
                 return Results.Ok(new { disabled = body?.Disabled ?? false });
             });
 
+        // The handle is a branch and a directory in every project, so this moves
+        // those before it changes the row. Server Admin only: it is not a display
+        // name, and the person it belongs to cannot fix a half-done rename.
+        api.MapPost("/users/{id:guid}/username", async (
+            HttpContext context, AuthService auth, ProjectRegistry projects,
+            NotebookSessionManager sessions, Guid id, UsernameBody body) => {
+                if (context.RequireAdmin() is { } refusal) {
+                    return refusal;
+                }
+                var wanted = (body?.Username ?? string.Empty).Trim();
+                if (UserName.Problem(wanted) is { } problem) {
+                    return Results.BadRequest(new { error = problem });
+                }
+                if (await auth.Store.FindUserAsync(id) is not { } user) {
+                    return Results.NotFound(new { error = "No such account." });
+                }
+                if (string.Equals(user.Username, wanted, StringComparison.Ordinal)) {
+                    return Results.Ok(new { username = wanted, renamed = 0 });
+                }
+                if ((await auth.Store.UsernamesAsync()).Any(
+                        u => string.Equals(u, wanted, StringComparison.OrdinalIgnoreCase))) {
+                    return Results.Conflict(new { error = $"'{wanted}' is already somebody's username." });
+                }
+
+                // Git first, and all of it or none: a row saying one thing while a
+                // worktree is named another leaves that person unable to open their
+                // own branch, and nothing later would reconcile it. A rename back is
+                // cheap and local, so a failure half way undoes what it did.
+                var moved = new List<GitService>();
+                foreach (var project in projects.Projects) {
+                    if (projects.GitFor(project) is not { } git) {
+                        continue;
+                    }
+                    // Any kernel under the old directory dies now: it holds an
+                    // absolute path and is about to be writing into a folder that
+                    // does not exist.
+                    sessions?.DropUnder(git.UserPath(user.Username));
+                    if (git.RenameUser(user.Username, wanted) is { } failed) {
+                        foreach (var done in moved) {
+                            done.RenameUser(wanted, user.Username);
+                        }
+                        return Results.Conflict(new {
+                            error = $"{project.Slug}: {failed} Nothing was renamed.",
+                        });
+                    }
+                    moved.Add(git);
+                }
+
+                await auth.Store.SetUsernameAsync(id, wanted);
+                return Results.Ok(new { username = wanted, renamed = moved.Count });
+            });
+
         api.MapDelete("/users/{id:guid}", async (HttpContext context, AuthService auth, Guid id) => {
             if (context.RequireAdmin() is { } refusal) {
                 return refusal;
@@ -445,6 +497,10 @@ public static class AuthApi {
             ?? (await auth.Store.RevokeInviteAsync(code)
                 ? Results.Ok(new { revoked = true })
                 : Results.BadRequest(new { error = "That invite has already been used." })));
+    }
+
+    private sealed class UsernameBody {
+        public string Username { get; set; }
     }
 
     private const string _lastAdmin =

@@ -30,6 +30,7 @@ public class AuthApiTest {
     private IAuthStore _auth;
     private JobsOptions _options;
     private HttpClient _anonymous;
+    private ProjectRegistry _projects;
 
     [TestInitialize]
     public async Task Setup() {
@@ -48,8 +49,8 @@ public class AuthApiTest {
         _store.Migrate();
         _auth = TestAuth.StoreFor(dbPath);
 
-        _app = Program.BuildApp(
-            _options, new ProjectRegistry(_options, NullLoggerFactory.Instance), _store, _auth);
+        _projects = new ProjectRegistry(_options, NullLoggerFactory.Instance);
+        _app = Program.BuildApp(_options, _projects, _store, _auth);
         _app.Urls.Add("http://127.0.0.1:0");
         await _app.StartAsync();
         _anonymous = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
@@ -371,5 +372,75 @@ public class AuthApiTest {
         // OK made a passing test mean "somebody ran vite on this machine once".
         Assert.AreNotEqual(HttpStatusCode.Redirect, (await browser.GetAsync("/signin")).StatusCode,
             "the page you are being sent to cannot itself redirect");
+    }
+
+    /// <summary>
+    /// A rename is a git operation before it is a database one: the handle names a
+    /// branch and a directory in every project.
+    /// </summary>
+    [TestMethod]
+    public async Task An_admin_renames_an_account_and_its_branch_moves() {
+        // Its own server, with the git workflow on: two tests in this class behave
+        // differently when it is, and this is the only one that needs a workspace.
+        var options = new JobsOptions {
+            DataDir = _options.DataDir,
+            NotebooksRoot = _options.NotebooksRoot,
+            GitEnabled = true,
+        };
+        var projects = new ProjectRegistry(options, NullLoggerFactory.Instance);
+        var git = projects.GitFor(projects.Default);
+        git.Init();
+        var app = Program.BuildApp(options, projects, _store, _auth);
+        app.Urls.Add("http://127.0.0.1:0");
+        await app.StartAsync();
+        try {
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.First()) };
+            await TestAuth.SignInAsync(app, client, UserRole.ServerAdmin);
+            var them = await _auth.CreateUserAsync(Guid.NewGuid(), "grace", "Grace", UserRole.ServerUser);
+            git.EnsureUserWorktree("grace");
+            File.WriteAllText(Path.Combine(git.UserPath("grace"), "wip.nb.md"), "hers\n");
+
+            var reply = await client.PostAsJsonAsync(
+                $"/api/users/{them.Id:D}/username", new { username = "grace-hopper" });
+
+            Assert.AreEqual(HttpStatusCode.OK, reply.StatusCode, await reply.Content.ReadAsStringAsync());
+            Assert.AreEqual("grace-hopper", (await _auth.FindUserAsync(them.Id)).Username);
+            Assert.IsFalse(Directory.Exists(git.UserPath("grace")));
+            Assert.AreEqual(
+                "hers\n", File.ReadAllText(Path.Combine(git.UserPath("grace-hopper"), "wip.nb.md")));
+        } finally {
+            await app.StopAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task A_rename_is_refused_before_it_moves_anything() {
+        using var _client = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
+        await TestAuth.SignInAsync(_app, _client, UserRole.ServerAdmin);
+        var them = await _auth.CreateUserAsync(Guid.NewGuid(), "grace", "Grace", UserRole.ServerUser);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerUser);
+        foreach (var (wanted, expected) in new[] {
+            ("ada", HttpStatusCode.Conflict),          // somebody else has it
+            ("Grace Hopper", HttpStatusCode.BadRequest), // not a usable handle
+            ("test", HttpStatusCode.BadRequest),         // names a branch
+        }) {
+            var reply = await _client.PostAsJsonAsync(
+                $"/api/users/{them.Id:D}/username", new { username = wanted });
+            Assert.AreEqual(expected, reply.StatusCode, wanted);
+        }
+
+        Assert.AreEqual("grace", (await _auth.FindUserAsync(them.Id)).Username, "the row is untouched");
+    }
+
+    [TestMethod]
+    public async Task Only_an_admin_may_rename_an_account() {
+        using var _client = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
+        var me = await TestAuth.SignInAsync(_app, _client, UserRole.ServerUser);
+
+        var reply = await _client.PostAsJsonAsync(
+            $"/api/users/{me.Id:D}/username", new { username = "whatever" });
+
+        Assert.AreEqual(HttpStatusCode.Forbidden, reply.StatusCode,
+            "not even your own — a half-done rename is not yours to fix");
     }
 }

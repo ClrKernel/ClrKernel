@@ -114,6 +114,28 @@ public sealed class NotebookSessionManager : BackgroundService {
     }
 
     /// <summary>
+    /// Drops every session whose notebook lives under a directory — used when that
+    /// directory is about to move. A session holds an absolute path and a kernel
+    /// with that path as its working directory, so one left running across a rename
+    /// is a kernel writing into a folder that no longer exists.
+    /// </summary>
+    public int DropUnder(string directory) {
+        if (string.IsNullOrEmpty(directory)) {
+            return 0;
+        }
+        var prefix = System.IO.Path.GetFullPath(directory).TrimEnd(
+            System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+        var dropped = 0;
+        foreach (var entry in _sessions.ToArray()) {
+            if (entry.Value.NotebookPath?.StartsWith(prefix, StringComparison.Ordinal) == true
+                && Restart(entry.Key)) {
+                dropped++;
+            }
+        }
+        return dropped;
+    }
+
+    /// <summary>
     /// How a notebook is named in a message. The parent folder as well as the file:
     /// two projects may each hold an <c>etl.nb.md</c>, and "all sessions are busy
     /// (etl.nb.md, etl.nb.md)" names nothing at all.
