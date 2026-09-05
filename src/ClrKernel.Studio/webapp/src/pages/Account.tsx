@@ -205,6 +205,18 @@ export function UsersSection() {
     }
   }
 
+  async function rename(user: ManagedUser) {
+    const wanted = prompt(
+      `Username for ${user.displayName}.\n\n`
+      + `This is the name of their branch (user/${user.username}) and of its folder, in `
+      + `every project. Renaming moves both, and stops any kernel they have running.`,
+      user.username);
+    if (wanted == null || wanted.trim() === user.username) {
+      return;
+    }
+    await run(() => accounts.setUsername(user.id, wanted.trim()), 'Username changed.');
+  }
+
   function describe(user: ManagedUser) {
     return user.isYou ? `${user.displayName} (you)` : user.displayName;
   }
@@ -222,6 +234,7 @@ export function UsersSection() {
           <thead>
             <tr>
               <th>User</th>
+              <th>Username</th>
               <th>Role</th>
               <th>Passkeys</th>
               <th>Last seen</th>
@@ -234,6 +247,19 @@ export function UsersSection() {
                 <td className="font-medium">
                   {describe(user)}
                   {user.disabled && <span className="ml-2 text-xs text-muted-subtle">disabled</span>}
+                </td>
+                {/* Not a display name: this one is a git branch and a folder, so
+                    changing it moves both in every project. Hence a prompt that
+                    says so rather than an inline edit. */}
+                <td>
+                  <button
+                    type="button"
+                    className="rounded-sm px-1 font-mono text-xs underline decoration-dotted underline-offset-2 outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                    title={`user/${user.username} — click to rename`}
+                    onClick={() => rename(user)}
+                  >
+                    {user.username}
+                  </button>
                 </td>
                 <td>
                   <Select

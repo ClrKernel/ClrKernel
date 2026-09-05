@@ -353,6 +353,7 @@ public static class AuthApi {
             context.RequireAdmin() ?? Results.Ok(new {
                 users = (await auth.Store.ListUsersAsync()).Select(u => new {
                     id = u.User.Id,
+                    username = u.User.Username,
                     displayName = u.User.DisplayName,
                     role = u.User.Role.ToString(),
                     disabled = u.User.Disabled,

@@ -107,6 +107,8 @@ export interface Passkey {
 
 export interface ManagedUser {
   id: string;
+  /** The handle git knows them by — their branch and their worktree directory. */
+  username: string;
   displayName: string;
   role: Role;
   disabled: boolean;
@@ -157,6 +159,9 @@ export const accounts = {
 
   users: () => get<{ users: ManagedUser[] }>('/api/users').then((r) => r.users),
   setRole: (id: string, role: Role) => send('PUT', `/api/users/${id}/role`, { role }),
+  /** Moves their branch and worktree in every project, then the row. */
+  setUsername: (id: string, username: string) =>
+    send('POST', `/api/users/${id}/username`, { username }),
   setDisabled: (id: string, disabled: boolean) =>
     send('PUT', `/api/users/${id}/disabled`, { disabled }),
   removeUser: (id: string) => send('DELETE', `/api/users/${id}`),
