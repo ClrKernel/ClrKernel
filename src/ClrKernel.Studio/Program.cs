@@ -380,6 +380,15 @@ public static class Program {
         builder.Services.AddSingleton(provider => new AuthService(
             provider.GetRequiredService<IAuthStore>(), options,
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<AuthService>()));
+        // The one way of proving who somebody is that this server has. Registered as
+        // itself and as IAccountProvider: the routes need the ceremonies, and
+        // anything enumerating what a sign-in page can offer needs the interface.
+        builder.Services.AddSingleton(provider => new PasskeyProvider(
+            provider.GetRequiredService<IAuthStore>(),
+            provider.GetRequiredService<AuthService>(), options,
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<PasskeyProvider>()));
+        builder.Services.AddSingleton<IAccountProvider>(
+            provider => provider.GetRequiredService<PasskeyProvider>());
 
         var settings = SettingsRegistry.CreateDefault(options);
         settings.Add(new SettingsSection {

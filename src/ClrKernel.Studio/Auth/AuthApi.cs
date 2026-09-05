@@ -205,36 +205,36 @@ public static class AuthApi {
         // --- bootstrap ------------------------------------------------------
 
         api.MapPost("/setup/begin", async (
-            HttpContext context, AuthService auth, DisplayNameBody body) => {
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, DisplayNameBody body) => {
                 if (await BootstrapRefusal(context, auth) is { } refusal) {
                     return refusal;
                 }
                 if (Clean(body?.DisplayName) is not { } name) {
                     return Results.BadRequest(new { error = "A display name is required." });
                 }
-                var (ceremonyId, creation) = auth.BeginRegistration(
+                var (ceremonyId, creation) = passkeys.BeginRegistration(
                     RegistrationPurpose.Bootstrap, Guid.NewGuid(), name, null, Array.Empty<Credential>());
                 return Ceremony(ceremonyId, creation);
             });
 
         api.MapPost("/setup/complete", async (
-            HttpContext context, AuthService auth, RegisterBody body) => {
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, RegisterBody body) => {
                 if (await BootstrapRefusal(context, auth) is { } refusal) {
                     return refusal;
                 }
-                return await FinishRegistration(context, auth, body);
+                return await FinishRegistration(context, auth, passkeys, body);
             });
 
         // --- sign in --------------------------------------------------------
 
-        api.MapPost("/signin/begin", (AuthService auth) => {
-            var (ceremonyId, options) = auth.BeginAssertion();
+        api.MapPost("/signin/begin", (PasskeyProvider passkeys) => {
+            var (ceremonyId, options) = passkeys.BeginAssertion();
             return Ceremony(ceremonyId, options);
         });
 
         api.MapPost("/signin/complete", async (
-            HttpContext context, AuthService auth, AssertBody body) => {
-                var result = await auth.CompleteAssertionAsync(
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, AssertBody body) => {
+                var result = await passkeys.CompleteAssertionAsync(
                 body?.CeremonyId,
                 body == null ? null : JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(
                     body.Response, _webAuthnJson),
@@ -270,23 +270,25 @@ public static class AuthApi {
         // No body: the account's name and handle were settled by the admin who
         // issued this, so there is nothing left to type. Everything that could be
         // refused is refused here, before the passkey prompt appears.
-        api.MapPost("/invite/{code}/begin", async (AuthService auth, string code) => {
-            var invite = await auth.Store.FindInviteAsync(code);
-            if (invite == null || !invite.IsUsable(DateTime.UtcNow)) {
-                return Results.BadRequest(new { error = "This invite isn't valid." });
-            }
-            if (await InviteRefusal(auth.Store, invite) is { } refusal) {
-                return Results.BadRequest(new { error = refusal });
-            }
-            var (ceremonyId, creation) = auth.BeginRegistration(
-                RegistrationPurpose.Invite, Guid.NewGuid(), invite.DisplayName, code,
-                Array.Empty<Credential>());
-            return Ceremony(ceremonyId, creation);
-        });
+        api.MapPost("/invite/{code}/begin", async (
+            AuthService auth, PasskeyProvider passkeys, string code) => {
+                var invite = await auth.Store.FindInviteAsync(code);
+                if (invite == null || !invite.IsUsable(DateTime.UtcNow)) {
+                    return Results.BadRequest(new { error = "This invite isn't valid." });
+                }
+                if (await InviteRefusal(auth.Store, invite) is { } refusal) {
+                    return Results.BadRequest(new { error = refusal });
+                }
+                var (ceremonyId, creation) = passkeys.BeginRegistration(
+                    RegistrationPurpose.Invite, Guid.NewGuid(), invite.DisplayName, code,
+                    Array.Empty<Credential>());
+                return Ceremony(ceremonyId, creation);
+            });
 
         api.MapPost("/invite/{code}/complete", async (
-            HttpContext context, AuthService auth, string code, RegisterBody body) =>
-            await FinishRegistration(context, auth, body));
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, string code,
+            RegisterBody body) =>
+            await FinishRegistration(context, auth, passkeys, body));
 
         // --- your own account ------------------------------------------------
 
@@ -305,22 +307,23 @@ public static class AuthApi {
             });
         });
 
-        api.MapPost("/passkeys/begin", async (HttpContext context, AuthService auth) => {
-            if (context.CurrentUser() is not { } user) {
-                return Results.Json(new { error = "Sign in first." }, statusCode: 401);
-            }
-            var existing = await auth.Store.CredentialsForAsync(user.Id);
-            var (ceremonyId, creation) = auth.BeginRegistration(
-                RegistrationPurpose.AddPasskey, user.Id, user.DisplayName, null, existing);
-            return Ceremony(ceremonyId, creation);
-        });
+        api.MapPost("/passkeys/begin", async (
+            HttpContext context, AuthService auth, PasskeyProvider passkeys) => {
+                if (context.CurrentUser() is not { } user) {
+                    return Results.Json(new { error = "Sign in first." }, statusCode: 401);
+                }
+                var existing = await auth.Store.CredentialsForAsync(user.Id);
+                var (ceremonyId, creation) = passkeys.BeginRegistration(
+                    RegistrationPurpose.AddPasskey, user.Id, user.DisplayName, null, existing);
+                return Ceremony(ceremonyId, creation);
+            });
 
         api.MapPost("/passkeys/complete", async (
-            HttpContext context, AuthService auth, RegisterBody body) => {
+            HttpContext context, PasskeyProvider passkeys, RegisterBody body) => {
                 if (context.CurrentUser() == null) {
                     return Results.Json(new { error = "Sign in first." }, statusCode: 401);
                 }
-                var result = await auth.CompleteRegistrationAsync(
+                var result = await passkeys.CompleteRegistrationAsync(
                     body?.CeremonyId, Attestation(body), body?.PasskeyName, OriginOf(context));
                 return result.Ok
                     ? Results.Ok(new { added = true })
@@ -652,8 +655,8 @@ public static class AuthApi {
         context.Request.Headers.Origin.ToString() is { Length: > 0 } origin ? origin : null;
 
     private static async Task<IResult> FinishRegistration(
-        HttpContext context, AuthService auth, RegisterBody body) {
-        var result = await auth.CompleteRegistrationAsync(
+        HttpContext context, AuthService auth, PasskeyProvider passkeys, RegisterBody body) {
+        var result = await passkeys.CompleteRegistrationAsync(
             body?.CeremonyId, Attestation(body), body?.PasskeyName, OriginOf(context));
         if (!result.Ok) {
             return Results.BadRequest(new { error = result.Error });

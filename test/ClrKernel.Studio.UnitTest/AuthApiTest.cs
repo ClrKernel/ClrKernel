@@ -392,16 +392,16 @@ public class AuthApiTest {
     /// </summary>
     [TestMethod]
     public void Loopback_origins_are_recognised() {
-        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://localhost:5173"));
-        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://127.0.0.1:5000"));
-        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://[::1]:5000"));
+        Assert.IsTrue(PasskeyProvider.IsLoopbackOrigin("http://localhost:5173"));
+        Assert.IsTrue(PasskeyProvider.IsLoopbackOrigin("http://127.0.0.1:5000"));
+        Assert.IsTrue(PasskeyProvider.IsLoopbackOrigin("http://[::1]:5000"));
 
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("https://jobs.example.internal"));
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("http://localhost.evil.example"),
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("https://jobs.example.internal"));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("http://localhost.evil.example"),
             "a hostname that merely starts with localhost is somebody else's domain");
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("file:///tmp"));
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("not a url"));
-        Assert.IsFalse(AuthService.IsLoopbackOrigin(null));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("file:///tmp"));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("not a url"));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin(null));
     }
 
     /// <summary>
