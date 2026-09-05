@@ -105,7 +105,10 @@ export interface BranchStanding {
 }
 
 export interface Worktree {
-  userId: string;
+  /** The name of the branch and of the directory — and what removes it. */
+  handle: string;
+  /** Who that is, absent when the account is gone and the branch is not. */
+  userId: string | null;
   owner: string;
   lastCommit: string;
   /** Saved but never pushed. */
@@ -565,10 +568,12 @@ export const api = {
   /** The personal worktrees in a project, for whoever has to tidy up. */
   worktrees: (slug: string) =>
     request<{ worktrees: Worktree[] }>(`/projects/${encodeURIComponent(slug)}/worktrees`),
-  /** Removes one. `force` is needed for a branch holding work test has not seen. */
-  removeWorktree: (slug: string, userId: string, force = false) =>
+  /** Removes one, by handle: the branch and the folder are named for it, and one
+   *  can outlive the account it belonged to. `force` is needed for a branch
+   *  holding work test has not seen. */
+  removeWorktree: (slug: string, handle: string, force = false) =>
     request<void>(
-      `/projects/${encodeURIComponent(slug)}/worktrees/${userId}?force=${force}`,
+      `/projects/${encodeURIComponent(slug)}/worktrees/${encodeURIComponent(handle)}?force=${force}`,
       { method: 'DELETE' },
     ),
 

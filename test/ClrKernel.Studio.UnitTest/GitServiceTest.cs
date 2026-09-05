@@ -62,11 +62,12 @@ public class GitServiceTest {
         Assert.IsFalse(File.Exists(Path.Combine(_dir, "etl.nb.md")), "no stray copy left behind");
     }
 
-    private static readonly Guid _ada = new("11111111-1111-1111-1111-111111111111");
-    private static readonly Guid _grace = new("22222222-2222-2222-2222-222222222222");
+    // Handles, not ids: a branch and a worktree are named for the username now.
+    private const string _ada = "ada";
+    private const string _grace = "grace";
 
-    private void WriteUser(Guid user, string relative, string content) {
-        var path = Path.Combine(_git.UserPath(user.ToString("D")), relative);
+    private void WriteUser(string user, string relative, string content) {
+        var path = Path.Combine(_git.UserPath(user), relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, content);
     }
@@ -92,8 +93,30 @@ public class GitServiceTest {
         _git.Init();
         // Not a fallback to test: an unknown branch resolving there would put a write
         // meant for somebody's own branch into the one nobody may write to.
-        Assert.ThrowsExactly<GitException>(() => _git.PathFor("user/not-a-guid"));
         Assert.ThrowsExactly<GitException>(() => _git.PathFor("whatever"));
+
+        // `user/…` followed by something no account could be called. This used to be
+        // "anything that is not a guid", which `not-a-guid` satisfied; a handle makes
+        // that string a perfectly good branch name, so the cases that are actually
+        // malformed are the ones a username may not contain.
+        foreach (var branch in new[] { "user/", "user/Not A Handle", "user/-dash", "user/UPPER" }) {
+            Assert.ThrowsExactly<GitException>(() => _git.PathFor(branch), branch);
+        }
+    }
+
+    /// <summary>
+    /// A workspace upgraded from 0.11 still has `user/&lt;guid&gt;` branches until the
+    /// startup pass renames them, so the guid form has to keep resolving — and it is
+    /// a predicate, so getting this wrong routes somebody's own notebook to the wrong
+    /// root instead of failing.
+    /// </summary>
+    [TestMethod]
+    public void A_branch_named_the_old_way_still_resolves() {
+        _git.Init();
+        var old = "user/" + Guid.NewGuid().ToString("D");
+
+        Assert.IsTrue(GitService.IsUserBranch(old));
+        Assert.AreEqual(_git.UserPath(GitService.HandleOf(old)), _git.PathFor(old));
     }
 
     [TestMethod]
@@ -151,7 +174,7 @@ public class GitServiceTest {
         var conflicts = _git.UpdateFromTest(_ada, "Ada", "a@users.local");
 
         CollectionAssert.AreEqual(new[] { "shared.nb.md" }, conflicts.ToArray());
-        var left = File.ReadAllText(Path.Combine(_git.UserPath(_ada.ToString("D")), "shared.nb.md"));
+        var left = File.ReadAllText(Path.Combine(_git.UserPath(_ada), "shared.nb.md"));
         StringAssert.Contains(left, "mine", "both sides are left in the file, with markers");
         StringAssert.Contains(left, "hers");
         CollectionAssert.AreEqual(new[] { "shared.nb.md" }, _git.StandingOf(_ada).Conflicts.ToArray());

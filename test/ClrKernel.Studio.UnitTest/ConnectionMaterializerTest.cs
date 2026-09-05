@@ -28,6 +28,11 @@ public class ConnectionMaterializerTest {
     private GitService _git;
     private readonly Guid _grace = Guid.NewGuid();
     private readonly Guid _alan = Guid.NewGuid();
+    private static User Account(string handle, Guid id) =>
+        new() { Id = id, Username = handle, DisplayName = handle };
+
+    private const string _graceHandle = "grace";
+    private const string _alanHandle = "alan";
     private readonly List<string> _warnings = new();
 
     [TestInitialize]
@@ -57,7 +62,10 @@ public class ConnectionMaterializerTest {
         _files = new ConnectionMaterializer(
             _projects, _store,
             new ConnectionProviderCatalog(_options, NullLogger<ConnectionProviderCatalog>.Instance),
-            new Capturing(_warnings));
+            new Capturing(_warnings),
+            // The two accounts this test has, as the map the materializer needs —
+            // a lambda instead of a database, which is why it takes the map.
+            handle => handle == _graceHandle ? _grace : handle == _alanHandle ? _alan : null);
     }
 
     [TestCleanup]
@@ -143,13 +151,13 @@ public class ConnectionMaterializerTest {
 
     [TestMethod]
     public void APrivateConnectionGoesOnlyToItsOwnersWorktree() {
-        _git.EnsureUserWorktree(_grace);
-        _git.EnsureUserWorktree(_alan);
+        _git.EnsureUserWorktree(_graceHandle);
+        _git.EnsureUserWorktree(_alanHandle);
         Save("scratch", ConnectionScope.Private, _grace);
         _files.Sync();
 
-        var hers = Path.Combine(WorktreeOf(_grace), ConnectionMaterializer.PrivateFileName);
-        var his = Path.Combine(WorktreeOf(_alan), ConnectionMaterializer.PrivateFileName);
+        var hers = Path.Combine(WorktreeOf(_graceHandle), ConnectionMaterializer.PrivateFileName);
+        var his = Path.Combine(WorktreeOf(_alanHandle), ConnectionMaterializer.PrivateFileName);
         Assert.IsTrue(File.Exists(hers));
         Assert.IsFalse(File.Exists(his), "somebody else's private connection is not theirs to have");
         foreach (var branch in new[] { GitService.TestBranch, "prod" }) {
@@ -161,27 +169,27 @@ public class ConnectionMaterializerTest {
 
     [TestMethod]
     public void ThePrivateOverlayIsNotWorkThatNeedsSaving() {
-        _git.EnsureUserWorktree(_grace);
+        _git.EnsureUserWorktree(_graceHandle);
         Save("scratch", ConnectionScope.Private, _grace);
         _files.Sync();
 
-        var branch = GitService.BranchForUser(_grace);
+        var branch = GitService.BranchForUser(_graceHandle);
         Assert.IsFalse(_git.IsDirty(branch),
             "an untracked generated file would otherwise read as unsaved work forever");
     }
 
     [TestMethod]
     public void APersonalBranchStaysPrunableAfterASharedConnectionChanges() {
-        _git.EnsureUserWorktree(_grace);
+        _git.EnsureUserWorktree(_graceHandle);
         Save("warehouse", ConnectionScope.Shared);
         Save("scratch", ConnectionScope.Private, _grace);
         _files.Sync();
 
-        var worktree = _git.UserWorktrees().Single(w => w.UserId == _grace);
+        var worktree = _git.UserWorktrees().Single(w => w.Handle == _graceHandle);
         Assert.IsFalse(worktree.Dirty);
         Assert.IsTrue(worktree.Merged,
             "committing on a personal branch would make every branch on the server unprunable");
-        Assert.IsNull(_git.RemoveUserWorktree(_grace, force: false),
+        Assert.IsNull(_git.RemoveUserWorktree(_graceHandle, force: false),
             "and the prune itself has to actually go through");
     }
 
@@ -190,11 +198,11 @@ public class ConnectionMaterializerTest {
         Save("scratch", ConnectionScope.Private, _grace);
         // The connection was saved before this person had ever opened a notebook.
         _files.Sync();
-        _git.EnsureUserWorktree(_grace);
-        _files.SyncUser(_git, _grace);
+        _git.EnsureUserWorktree(_graceHandle);
+        _files.SyncUser(_git, Account(_graceHandle, _grace));
 
         StringAssert.Contains(
-            File.ReadAllText(Path.Combine(WorktreeOf(_grace), ConnectionMaterializer.PrivateFileName)),
+            File.ReadAllText(Path.Combine(WorktreeOf(_graceHandle), ConnectionMaterializer.PrivateFileName)),
             "\"scratch\"");
         Assert.IsFalse(_git.IsDirty(GitService.TestBranch),
             "and a branch appearing is not a reason to write to test");
@@ -208,18 +216,18 @@ public class ConnectionMaterializerTest {
         // FindFiles stops at the first directory holding either file, so without a
         // copy here the owner's overlay would be all that is found and every shared
         // connection would vanish for them.
-        _git.EnsureUserWorktree(_grace);
+        _git.EnsureUserWorktree(_graceHandle);
         Save("warehouse", ConnectionScope.Shared);
         Save("scratch", ConnectionScope.Private, _grace);
         _files.Sync();
 
-        var worktree = WorktreeOf(_grace);
+        var worktree = WorktreeOf(_graceHandle);
         StringAssert.Contains(
             File.ReadAllText(Path.Combine(worktree, ConnectionMaterializer.SharedFileName)),
             "\"warehouse\"");
-        Assert.IsFalse(_git.IsDirty(GitService.BranchForUser(_grace)),
+        Assert.IsFalse(_git.IsDirty(GitService.BranchForUser(_graceHandle)),
             "and the copy is ignored, so it is not unsaved work");
-        Assert.IsTrue(_git.UserWorktrees().Single(w => w.UserId == _grace).Merged,
+        Assert.IsTrue(_git.UserWorktrees().Single(w => w.Handle == _graceHandle).Merged,
             "nor a commit test has not seen");
     }
 
@@ -229,11 +237,11 @@ public class ConnectionMaterializerTest {
         // over a tracked file would read as unsaved work forever.
         Save("warehouse", ConnectionScope.Shared);
         _files.Sync();
-        _git.EnsureUserWorktree(_grace);
+        _git.EnsureUserWorktree(_graceHandle);
         Save("second", ConnectionScope.Shared);
         _files.Sync();
 
-        var branch = GitService.BranchForUser(_grace);
+        var branch = GitService.BranchForUser(_graceHandle);
         Assert.IsTrue(_git.Tracks(branch, ConnectionMaterializer.SharedFileName));
         Assert.IsFalse(_git.IsDirty(branch), "the tracked copy is the branch's to update by merging");
     }
@@ -246,11 +254,11 @@ public class ConnectionMaterializerTest {
         // asserts: the two are siblings, not one above the other.
         Save("warehouse", ConnectionScope.Shared);
         _files.Sync();
-        _git.EnsureUserWorktree(_grace);
+        _git.EnsureUserWorktree(_graceHandle);
         Save("scratch", ConnectionScope.Private, _grace);
         _files.Sync();
 
-        var worktree = WorktreeOf(_grace);
+        var worktree = WorktreeOf(_graceHandle);
         Assert.IsTrue(File.Exists(Path.Combine(worktree, ConnectionMaterializer.SharedFileName)),
             "the branch was cut from test after the shared file was committed there");
         Assert.IsTrue(File.Exists(Path.Combine(worktree, ConnectionMaterializer.PrivateFileName)));
@@ -276,7 +284,7 @@ public class ConnectionMaterializerTest {
         }
     }
 
-    private string WorktreeOf(Guid userId) => _git.PathFor(GitService.BranchForUser(userId));
+    private string WorktreeOf(string handle) => _git.PathFor(GitService.BranchForUser(handle));
 
     private StoredConnection Save(string name, ConnectionScope scope, Guid? owner = null) =>
         _store.Save(

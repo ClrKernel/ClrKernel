@@ -415,7 +415,15 @@ public static class Program {
         builder.Services.AddSingleton(provider => new ConnectionMaterializer(
             projects, provider.GetRequiredService<ConnectionStore>(),
             provider.GetRequiredService<ConnectionProviderCatalog>(),
-            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionMaterializer>()));
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionMaterializer>(),
+            // A worktree directory is named for a handle; a private connection is
+            // owned by an account id. This is the only thing the materializer needs
+            // to know about accounts.
+            handle => provider.GetService<IAuthStore>() is { } auth
+                ? auth.ListUsersAsync().GetAwaiter().GetResult()
+                    .FirstOrDefault(u => string.Equals(
+                        u.User.Username, handle, StringComparison.OrdinalIgnoreCase))?.User.Id
+                : null));
         builder.Services.AddSingleton(provider => new QueryRunner(
             secrets ?? new Core.Secrets.SecretStore(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<QueryRunner>()));

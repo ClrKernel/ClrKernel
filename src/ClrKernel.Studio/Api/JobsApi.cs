@@ -297,8 +297,8 @@ public static class JobsApi {
                     // The one read that makes a branch, and it makes it here rather
                     // than in BranchFor: this is the page you open in order to have
                     // one, so it is the read that means you are about to work.
-                    var mine = scope.Git.EnsureUserWorktree(me.Id);
-                    ConnectionsApi.OnWorktreeCreated(context, scope.Git, me.Id);
+                    var mine = scope.Git.EnsureUserWorktree(me.Username);
+                    ConnectionsApi.OnWorktreeCreated(context, scope.Git, me);
                     // Annotated with this branch's jobs, which is none: the catalog
                     // scans environments, and a personal branch is not one. Leaving
                     // the environment out would annotate with every job on the
@@ -322,10 +322,10 @@ public static class JobsApi {
                     var caller = context.CurrentUser();
                     foreach (var user in (await auth.ListUsersAsync())
                                  .Where(u => caller == null || u.User.Id != caller.Id)
-                                 .Where(u => scope.Git.HasUserWorktree(u.User.Id))
+                                 .Where(u => scope.Git.HasUserWorktree(u.User.Username))
                                  .OrderBy(u => u.User.DisplayName, StringComparer.OrdinalIgnoreCase)) {
-                        var theirs = GitService.BranchForUser(user.User.Id);
-                        var named = _someoneBranch + user.User.Id.ToString("D");
+                        var theirs = GitService.BranchForUser(user.User.Username);
+                        var named = _someoneBranch + user.User.Username;
                         trees.Add(new {
                             name = named,
                             label = user.User.DisplayName,
@@ -905,28 +905,37 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.Ok(new { worktrees = Array.Empty<object>() });
                 }
-                var users = (await auth.ListUsersAsync()).ToDictionary(u => u.User.Id);
+                var users = (await auth.ListUsersAsync())
+                    .ToDictionary(u => u.User.Username, StringComparer.OrdinalIgnoreCase);
                 return Results.Ok(new {
-                    worktrees = scope.Git.UserWorktrees().Select(w => new {
-                        userId = w.UserId,
-                        owner = users.TryGetValue(w.UserId, out var user)
+                    // Keyed by handle, which is what the directory is named and what
+                    // the delete route takes. The id rides along for anything that
+                    // still wants to know who, and is absent for an orphan.
+                    worktrees = scope.Git.UserWorktrees(
+                        h => users.TryGetValue(h, out var found) ? found.User.Id : null).Select(w => new {
+                            handle = w.Handle,
+                            userId = w.UserId,
+                            owner = users.TryGetValue(w.Handle, out var user)
                             ? user.User.DisplayName
                             // The account is gone but the branch is still here, which
                             // is exactly the case this page exists to clean up.
                             : "(removed account)",
-                        w.LastCommit,
-                        w.Dirty,
-                        w.Merged,
-                    }),
+                            w.LastCommit,
+                            w.Dirty,
+                            w.Merged,
+                        }),
                 });
             }).RequiresProject(ProjectRole.ProjectAdmin);
 
-        api.MapDelete("/projects/{project}/worktrees/{userId:guid}", (
-            ProjectRegistry projects, string project, Guid userId, bool? force) => {
+        // By handle, not by account id: the thing being removed is a directory and a
+        // branch, both named for the handle, and one may outlive the account it
+        // belonged to — which is the case this route mostly exists for.
+        api.MapDelete("/projects/{project}/worktrees/{handle}", (
+            ProjectRegistry projects, string project, string handle, bool? force) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
-                var refusal = scope.Git.RemoveUserWorktree(userId, force ?? false);
+                var refusal = scope.Git.RemoveUserWorktree(handle, force ?? false);
                 // Deleting somebody's branch is a thing an admin may do; doing it
                 // to unfinished work they have not shared takes saying so twice.
                 return refusal == null
@@ -956,10 +965,10 @@ public static class JobsApi {
                     }
                     foreach (var user in (await auth.ListUsersAsync())
                                  .Where(u => me == null || u.User.Id != me.Id)
-                                 .Where(u => scope.Git.HasUserWorktree(u.User.Id))
+                                 .Where(u => scope.Git.HasUserWorktree(u.User.Username))
                                  .OrderBy(u => u.User.DisplayName, StringComparer.OrdinalIgnoreCase)) {
                         branches.Add(new {
-                            id = _someoneBranch + user.User.Id.ToString("D"),
+                            id = _someoneBranch + user.User.Username,
                             label = user.User.DisplayName,
                             owner = user.User.DisplayName,
                             mine = false,
@@ -985,15 +994,15 @@ public static class JobsApi {
                     return Results.Ok(new { hasBranch = false });
                 }
                 var user = context.CurrentUser();
-                if (user == null || !scope.Git.HasUserWorktree(user.Id)) {
+                if (user == null || !scope.Git.HasUserWorktree(user.Username)) {
                     // No worktree yet is the normal state until the first edit, and
                     // asking about it must not be what creates one.
                     return Results.Ok(new { hasBranch = false });
                 }
-                var standing = scope.Git.StandingOf(user.Id);
+                var standing = scope.Git.StandingOf(user.Username);
                 return Results.Ok(new {
                     hasBranch = true,
-                    branch = GitService.BranchForUser(user.Id),
+                    branch = GitService.BranchForUser(user.Username),
                     standing.Dirty,
                     standing.Ahead,
                     standing.Behind,
@@ -1015,7 +1024,7 @@ public static class JobsApi {
                 // broken one on your own branch is a file mid-edit; the same file in
                 // test is a job the scheduler will not run and nobody will notice.
                 // This is the moment it stops being yours.
-                if (InvalidJobsFiles(scope, user.Id) is { Count: > 0 } invalid) {
+                if (InvalidJobsFiles(scope, user.Username) is { Count: > 0 } invalid) {
                     return Results.Json(new {
                         error = invalid.Count == 1
                             ? $"{invalid[0].Path} has a problem — fix it before pushing to test."
@@ -1023,7 +1032,7 @@ public static class JobsApi {
                         invalid,
                     }, statusCode: 409);
                 }
-                var result = scope.Git.PushToTest(user.Id, message, user?.DisplayName, EmailFor(user));
+                var result = scope.Git.PushToTest(user.Username, message, user?.DisplayName, EmailFor(user));
                 if (!result.Pushed) {
                     return Results.Json(
                         new { error = result.Error, needsUpdate = result.NeedsUpdate },
@@ -1039,7 +1048,7 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
                 var user = context.CurrentUser();
-                var conflicts = scope.Git.UpdateFromTest(user.Id, user?.DisplayName, EmailFor(user));
+                var conflicts = scope.Git.UpdateFromTest(user.Username, user?.DisplayName, EmailFor(user));
                 // Conflicts come back as a list of files with markers left in them,
                 // never as a resolution: taking one side automatically is how a merge
                 // silently loses somebody's work.
@@ -1080,7 +1089,7 @@ public static class JobsApi {
             // against everything loaded — a prod-only leftover is not a reason to
             // hide the copy you are working on.
             if (context.CurrentUser() is { } user) {
-                var mine = GitService.BranchForUser(user.Id);
+                var mine = GitService.BranchForUser(user.Username);
                 foreach (var project in projects.Projects) {
                     if (!visible.TryGetValue(project.Slug, out var role)
                         || role < ProjectRole.ProjectMember) {
@@ -1089,7 +1098,7 @@ public static class JobsApi {
                     // Asked, never ensured: this route spans every project and the
                     // dashboard polls it, so making the worktree here would be a
                     // checkout in every registered project on page load.
-                    if (projects.GitFor(project) is not { } git || !git.HasUserWorktree(user.Id)) {
+                    if (projects.GitFor(project) is not { } git || !git.HasUserWorktree(user.Username)) {
                         continue;
                     }
                     var inTest = result.Jobs
@@ -1763,17 +1772,19 @@ public static class JobsApi {
                 // decides a read.
                 if (!HttpMethods.IsGet(context.Request.Method)
                     || context.GrantedRole() >= ProjectRole.ProjectMember) {
-                    Git.EnsureUserWorktree(user.Id);
-                    ConnectionsApi.OnWorktreeCreated(context, Git, user.Id);
+                    Git.EnsureUserWorktree(user.Username);
+                    ConnectionsApi.OnWorktreeCreated(context, Git, user);
                 }
-                return GitService.BranchForUser(user.Id);
+                return GitService.BranchForUser(user.Username);
             }
-            // Somebody else's, named as `user-<id>` because a route segment cannot
+            // Somebody else's, named `user-<handle>` because a route segment cannot
             // hold the slash the branch has. Never created here: a worktree comes
             // into being when its owner first edits, and only then.
-            if (branch.StartsWith(_someoneBranch, StringComparison.Ordinal)
-                && Guid.TryParse(branch[_someoneBranch.Length..], out var owner)) {
-                return Git.HasUserWorktree(owner) ? GitService.BranchForUser(owner) : null;
+            if (branch.StartsWith(_someoneBranch, StringComparison.Ordinal)) {
+                var owner = branch[_someoneBranch.Length..];
+                return owner.Length > 0 && Git.HasUserWorktree(owner)
+                    ? GitService.BranchForUser(owner)
+                    : null;
             }
             return branch;
         }
@@ -1790,7 +1801,7 @@ public static class JobsApi {
         /// </summary>
         public bool OwnedBy(HttpContext context, string branch) =>
             context.CurrentUser() is { } user
-            && branch == GitService.BranchForUser(user.Id);
+            && branch == GitService.BranchForUser(user.Username);
     }
 
     /// <summary>What a route calls the caller's own branch.</summary>
@@ -2081,9 +2092,9 @@ public static class JobsApi {
     /// Dot-directories are skipped for the same reasons the file tree skips them.
     /// </para>
     /// </summary>
-    private static List<InvalidJobsFile> InvalidJobsFiles(Scope scope, Guid userId) {
+    private static List<InvalidJobsFile> InvalidJobsFiles(Scope scope, string handle) {
         var invalid = new List<InvalidJobsFile>();
-        var root = scope.Git?.UserPath(userId.ToString("D"));
+        var root = scope.Git?.UserPath(handle);
         if (root == null || !Directory.Exists(root)) {
             return invalid;
         }

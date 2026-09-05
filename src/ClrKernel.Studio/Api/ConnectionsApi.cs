@@ -306,9 +306,9 @@ public static class ConnectionsApi {
     /// of everything on the way down.
     /// </para>
     /// </summary>
-    internal static void OnWorktreeCreated(HttpContext context, GitService git, Guid userId) =>
+    internal static void OnWorktreeCreated(HttpContext context, GitService git, User user) =>
         (context.RequestServices.GetService(typeof(ConnectionMaterializer)) as ConnectionMaterializer)
-            ?.SyncUser(git, userId);
+            ?.SyncUser(git, user);
 
     private static IResult Save(
         HttpContext context, ConnectionStore store, JobsOptions options, ConnectionMaterializer files,
