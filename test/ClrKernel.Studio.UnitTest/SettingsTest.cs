@@ -90,6 +90,35 @@ public class SettingsTest {
         StringAssert.Contains(registry.Write("nope", Values("{\"x\": 1}")), "No settings section");
     }
 
+    /// <summary>
+    /// A field with a fixed set of values takes one of them and nothing else.
+    /// <c>secretStore</c> is read back by a switch that throws on its default case,
+    /// so free text in the web form would be a server that will not start.
+    /// </summary>
+    [TestMethod]
+    public void A_field_with_choices_refuses_anything_else() {
+        var registry = SettingsRegistry.CreateDefault(Options());
+        registry.Add(new SettingsSection {
+            Key = "secrets",
+            Title = "Secrets",
+            Fields = {
+                new SettingField {
+                    Name = "secretStore", Label = "Store", Type = "string", Value = "auto",
+                    Choices = new[] { "auto", "os", "file" }, WebWritable = true,
+                },
+            },
+        });
+
+        Assert.IsNull(registry.Write("secrets", Values("{\"secretStore\": \"file\"}")));
+        var refusal = registry.Write("secrets", Values("{\"secretStore\": \"keychain\"}"));
+        StringAssert.Contains(refusal, "auto, os, file");
+
+        // And the refused one did not land in the file beside the accepted one.
+        var saved = File.ReadAllText(Path.Combine(_dir, "settings.json"));
+        StringAssert.Contains(saved, "file");
+        Assert.IsFalse(saved.Contains("keychain", StringComparison.Ordinal), saved);
+    }
+
     [TestMethod]
     public void Secrets_report_presence_but_never_the_value() {
         var options = Options(new Dictionary<string, string> {

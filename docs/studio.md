@@ -596,6 +596,56 @@ as the disk it sits on, so keep it out of any git worktree. Nothing sets it for
 you, and a server that gains a real store moves the file's contents into it on
 the next start and deletes it.
 
+### Choosing the store rather than discovering it
+
+A laptop can guess: try the keyring, fall back to a file, then the environment.
+A server should not. `secretStore` says which one, and a server that cannot
+honour the answer says so at startup instead of quietly using something else:
+
+| | |
+|---|---|
+| `os` | The machine's credential store, and nothing else writable. Says so at startup if there is none. |
+| `file` | A JSON file — `--secrets-file`, or `secrets.json` in the data dir. Unencrypted; keep it out of a worktree. |
+| `auto` | The default, and what every earlier version did: keyring, then the file if one was configured, then the environment. |
+
+`--secret-store` on the command line, `CLRKERNEL_STUDIO_SECRET_STORE` in the
+environment, or `secretStore` in `settings.json`, in that order. Pinned by a flag
+or a variable, Settings shows it and refuses to change it — the same rule every
+other option follows.
+
+### Secrets a notebook resolves, per branch
+
+**Settings → Secrets** is where an API key goes: a name, a value, and the branch
+it belongs to. A cell then asks for it by name and never sees where it came from.
+
+```csharp
+var key = new SecretStore().Resolve("OPENAI");
+```
+
+The branch is not a label on the secret — it is part of its identity. `OPENAI` on
+your branch, on test and on prod are three secrets with three values, and a
+notebook running on one of them cannot reach the other two: Studio resolves that
+branch's secrets when it starts the kernel and hands over only those, as
+`CLRKERNEL_SECRET_*` variables the kernel's own store reads. So a job promoted to
+production before production has its own key fails saying the secret is missing,
+rather than silently running on test's.
+
+A kernel is handed its branch's secrets **when it starts**. A notebook already
+open keeps the set it started with, so after adding one, restart that notebook's
+kernel — the cell would otherwise fail saying the secret is missing, which is
+true of the kernel and not of the branch.
+
+An environment's secrets belong to the project's admins. A personal branch's
+belong to whoever owns the branch, and to nobody else — a Server Admin can delete
+a stale branch and still cannot write a secret into it, the same rule its files
+follow.
+
+The page lists names and whether each is set. It never shows a value, not even
+masked, and there is no route that returns one. The consequence worth knowing:
+because no credential store can be listed, a secret set from a shell does not
+appear here until it is also named here — this table is the only record of what
+exists.
+
 ## Git remotes
 
 A project's workspace is a real git repository, and Studio can push it to one you

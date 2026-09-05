@@ -63,6 +63,25 @@ public class SecretStoreFactoryTest {
     /// `os` never falls back to a file. A server told to use the machine's store and
     /// silently given a plaintext file instead is the outcome this refuses.
     /// </summary>
+    /// <summary>
+    /// The startup step that empties a plaintext secrets file into a real store and
+    /// deletes it must not fire when the file <em>is</em> the chosen store. On a
+    /// machine that has a keyring, an operator who asked for <c>file</c> would
+    /// otherwise lose every secret on the first restart: adopted into the keyring,
+    /// the file removed, and a file provider then reading an empty path.
+    /// </summary>
+    [TestMethod]
+    public void A_chosen_file_store_is_not_adopted_away_from_itself() {
+        var path = Path.Combine(_root, "secrets.json");
+        File.WriteAllText(path, "{\"warehouse-pw\":\"kept\"}");
+
+        var store = SecretStoreFactory.Create(Options("file", path), null);
+        Assert.AreEqual(0, store.AdoptFileSecrets(), "nothing should have been moved");
+
+        Assert.IsTrue(File.Exists(path), "the file the server was told to use is gone");
+        Assert.AreEqual("kept", store.Resolve("warehouse-pw"));
+    }
+
     [TestMethod]
     public void An_os_store_does_not_fall_back_to_a_file() {
         var path = Path.Combine(_root, "secrets.json");

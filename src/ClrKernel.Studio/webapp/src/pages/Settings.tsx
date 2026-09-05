@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -10,6 +13,7 @@ import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { TabNav } from '../components/TabNav';
 import { useIsProjectAdmin, useIsServerAdmin } from '../sessionContext';
 import { AccountSection, UsersSection } from './Account';
+import { SecretsSection } from './Secrets';
 import { ProjectsSection } from './Projects';
 
 function FieldValue({ field }: { field: SettingField }) {
@@ -96,6 +100,20 @@ function Section({ section }: { section: SettingsSection }) {
                         onCheckedChange={(checked) =>
                           setEdits({ ...edits, [field.name]: checked === true })}
                       />
+                    ) : field.choices?.length ? (
+                      <Select
+                        value={String(edits[field.name] ?? field.value ?? '')}
+                        onValueChange={(value) => setEdits({ ...edits, [field.name]: value })}
+                      >
+                        <SelectTrigger size="sm" aria-label={field.label ?? field.name} className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {field.choices.map((c) => (
+                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     ) : (
                       <Input
                         type={field.type === 'int' ? 'number' : 'text'}
@@ -167,13 +185,18 @@ export function Settings() {
   const tabs = [
     { to: '/settings/account', label: 'Your account' },
     ...(isServerAdmin || isProjectAdmin ? [{ to: '/settings/projects', label: 'Projects' }] : []),
-    ...sections.map((s) => ({ to: `/settings/${s.key}`, label: s.title })),
+    // Secrets is filtered out and re-added below: the server contributes the
+    // section, but the tab is admin-only and the page is more than the form.
+    ...sections.filter((s) => s.key !== 'secrets')
+      .map((s) => ({ to: `/settings/${s.key}`, label: s.title })),
+    ...(isServerAdmin || isProjectAdmin ? [{ to: '/settings/secrets', label: 'Secrets' }] : []),
     ...(isServerAdmin ? [{ to: '/settings/users', label: 'Users' }] : []),
   ];
   const current = sections.find((s) => s.key === slug);
   const client = slug === 'account'
     || (slug === 'users' && isServerAdmin)
-    || (slug === 'projects' && (isServerAdmin || isProjectAdmin));
+    || (slug === 'projects' && (isServerAdmin || isProjectAdmin))
+    || (slug === 'secrets' && (isServerAdmin || isProjectAdmin));
 
   // Only redirect once the sections have actually arrived: bouncing to the
   // first tab while the list is still empty would send you to /settings/
@@ -196,6 +219,11 @@ export function Settings() {
         <AccountSection />
       ) : slug === 'projects' && (isServerAdmin || isProjectAdmin) ? (
         <ProjectsSection />
+      ) : slug === 'secrets' && (isServerAdmin || isProjectAdmin) ? (
+        <>
+          {current && isServerAdmin && <Section section={current} />}
+          <SecretsSection />
+        </>
       ) : slug === 'users' && isServerAdmin ? (
         <UsersSection />
       ) : current ? (

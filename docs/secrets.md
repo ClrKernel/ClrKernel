@@ -147,6 +147,18 @@ secrets.CanPersist           // false means nothing here would survive a restart
 secrets.EnvName("OPENAI")    // CLRKERNEL_SECRET_OPENAI — the variable to set
 ```
 
+## In Studio, a secret belongs to a branch
+
+Everything above is one machine's store, where a name means one value. Studio adds
+a scope in front of it: a secret is set for a *branch*, so `OPENAI` on test and
+`OPENAI` on prod are two secrets. Studio resolves the branch's own secrets when it
+starts a kernel and passes them in as `CLRKERNEL_SECRET_*` variables — which is why
+the cell above needs no change to work there, and why a notebook on prod cannot
+reach test's value.
+
+Set them in **Settings → Secrets**. See
+[studio.md](studio.md#secrets-a-notebook-resolves-per-branch).
+
 ## Which secret a thing uses
 
 | What | Where the reference is written |

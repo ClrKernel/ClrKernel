@@ -29,6 +29,7 @@ public static class JobsApi {
         // contains a slash the moment user branches exist, and a write route that
         // cannot name someone else's branch cannot write to it.
         var scoped = api.MapGroup("/projects/{project}/branches/{branch}");
+        MapSecrets(scoped);
 
         api.MapGet("/health", async (HttpContext context, ProjectRegistry projects) => {
             // Counts and errors are scoped the same way the lists are: a project
@@ -570,7 +571,7 @@ public static class JobsApi {
 
         scoped.MapPost("/notebooks/session", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
-            NotebookSessionManager sessions, KernelLanguages kernelLanguages,
+            NotebookSessionManager sessions, BranchSecrets secrets, KernelLanguages kernelLanguages,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -585,7 +586,8 @@ public static class JobsApi {
                     // whenever #r adds one — one place, so the two cannot drift.
                     var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
                     var session = await sessions.GetOrStartAsync(
-                        resolved, context.RequestAborted, key, ephemeral);
+                        resolved, context.RequestAborted, key, ephemeral,
+                        await SecretsFor(secrets, scope, branch));
                     return Results.Ok(SessionView.From(session, false));
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(SessionFor(context, scope, branch, resolved).Key)?.KernelLog() });
@@ -610,7 +612,7 @@ public static class JobsApi {
 
         scoped.MapPost("/notebooks/run", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options, IRunStore store,
-            NotebookSessionManager sessions, string project, string branch, string path) => {
+            NotebookSessionManager sessions, BranchSecrets secrets, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -635,7 +637,8 @@ public static class JobsApi {
                 try {
                     var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
                     session = await sessions.GetOrStartAsync(
-                        resolved, context.RequestAborted, key, ephemeral);
+                        resolved, context.RequestAborted, key, ephemeral,
+                        await SecretsFor(secrets, scope, branch));
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
@@ -791,7 +794,7 @@ public static class JobsApi {
         // browser never learns what a connection type is, it renders what it is told.
         scoped.MapGet("/notebooks/connections", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
-            NotebookSessionManager sessions, string project, string branch,
+            NotebookSessionManager sessions, BranchSecrets secrets, string project, string branch,
             string path, string languageId) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -807,7 +810,8 @@ public static class JobsApi {
                 try {
                     var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
                     var session = await sessions.GetOrStartAsync(
-                        resolved, context.RequestAborted, key, ephemeral);
+                        resolved, context.RequestAborted, key, ephemeral,
+                        await SecretsFor(secrets, scope, branch));
                     var reply = await session.DescribeConnectionsAsync(languageId, context.RequestAborted);
                     return Results.Ok(new { providers = reply });
                 } catch (Exception e) {
@@ -2381,6 +2385,116 @@ public static class JobsApi {
             return null;
         }
     }
+
+    /// <summary>
+    /// The secrets a kernel opened on this branch should carry — the branch's own
+    /// and no others, which is what makes a cell on prod unable to reach test's.
+    /// Null when nothing is configured, which is every test that does not care.
+    /// </summary>
+    /// <summary>
+    /// The secrets a branch's cells resolve by name.
+    ///
+    /// <para>
+    /// Here rather than beside the connections because the branch is the whole point
+    /// and only this class knows what a branch is called: the route says
+    /// <c>mine</c> or <c>user-ada</c>, <see cref="Scope.BranchFor"/> turns that into
+    /// <c>user/ada</c>, and the key a value is stored under has to be the same one
+    /// <see cref="SecretsFor"/> reads back when a kernel starts. A second vocabulary
+    /// would store <c>mine</c> and inject <c>user/ada</c>, and the secret would
+    /// simply never be found.
+    /// </para>
+    ///
+    /// <para>
+    /// Project Admin for an environment; your own branch is yours, so a member
+    /// manages that one. Values only ever travel inwards — every read here answers
+    /// "is it set", never "what is it".
+    /// </para>
+    /// </summary>
+    private static void MapSecrets(RouteGroupBuilder scoped) {
+        var api = scoped.MapGroup("/secrets");
+
+        api.MapGet("/", async (
+            HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+            string project, string branch) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) =>
+                Results.Ok(new {
+                    branch = resolved,
+                    canPersist = secrets.CanPersist,
+                    secrets = (await secrets.ListAsync(scope.Project.Slug, resolved)).Select(s => new {
+                        name = s.Row.Name,
+                        isSet = s.IsSet,
+                        createdBy = s.Row.CreatedByName,
+                        createdAt = s.Row.CreatedAt,
+                        updatedAt = s.Row.UpdatedAt,
+                    }),
+                }))).RequiresProject(ProjectRole.ProjectMember);
+
+        api.MapPut("/{name}", async (
+            HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+            string project, string branch, string name, SecretBody body) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) => {
+                var user = context.CurrentUser();
+                var refusal = await secrets.SetAsync(
+                    scope.Project.Slug, resolved, name, body?.Value, user?.Id, user?.DisplayName);
+                return refusal == null
+                    ? Results.Ok(new { name, isSet = true })
+                    : Results.BadRequest(new { error = refusal });
+            })).RequiresProject(ProjectRole.ProjectMember);
+
+        api.MapDelete("/{name}", async (
+            HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+            string project, string branch, string name) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) =>
+                await secrets.DeleteAsync(
+                    scope.Project.Slug, resolved, name, context.CurrentUser()?.DisplayName)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { error = $"No secret called '{name}' on {resolved}." })));
+    }
+
+    /// <summary>
+    /// The project, the real branch name, and permission to manage its secrets —
+    /// or the refusal. Shared by all three routes so that "may I read the names"
+    /// cannot drift from "may I set one": both are the same question about the
+    /// same branch, and both are answered here.
+    /// </summary>
+    private static async Task<IResult> Resolve(
+        HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+        string project, string branch, Func<Scope, string, Task<IResult>> then) {
+        if (Scope.Of(projects, project) is not { } scope) {
+            return NoProject(project);
+        }
+        if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+            return Results.NotFound(new { error = $"No branch called '{branch}' in {project}." });
+        }
+        // An environment's secrets are the project's; a personal branch's are its
+        // owner's. Nobody edits somebody else's, whatever role they hold — the same
+        // rule the files on that branch follow.
+        var mine = scope.OwnedBy(context, resolved);
+        if (!mine && GitService.IsUserBranch(resolved)) {
+            // Results.Forbid() is the wrong one here and 500s: it asks the
+            // authentication scheme to write the response, and this app has none.
+            return Results.Json(
+                new { error = "A personal branch's secrets are its owner's." }, statusCode: 403);
+        }
+        if (!mine && context.GrantedRole() < ProjectRole.ProjectAdmin) {
+            return Results.Json(
+                new { error = $"Managing {resolved}'s secrets is for this project's admins." },
+                statusCode: 403);
+        }
+        return secrets == null
+            ? Results.BadRequest(new { error = "This server keeps no secrets." })
+            : await then(scope, resolved);
+    }
+
+    private sealed class SecretBody {
+        public string Value { get; set; }
+    }
+
+    private static async Task<IReadOnlyDictionary<string, string>> SecretsFor(
+        BranchSecrets secrets, Scope scope, string branch) =>
+        secrets == null || branch == null
+            ? null
+            : await secrets.EnvironmentForAsync(scope.Project.Slug, branch);
 
     /// <summary>
     /// A git author address for an account. There are no email addresses in this

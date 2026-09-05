@@ -395,6 +395,8 @@ export interface SettingField {
   webWritable: boolean;
   restartRequired: boolean;
   help?: string | null;
+  /** When present, the only accepted values — rendered as a picker. */
+  choices?: string[] | null;
 }
 
 export interface SettingsSection {
@@ -499,6 +501,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** One secret's name and whether it currently resolves. The value never travels. */
+export interface SecretEntry {
+  name: string;
+  isSet: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
 export const api = {
   health: () =>
     request<{
@@ -576,6 +587,21 @@ export const api = {
       `/projects/${encodeURIComponent(slug)}/worktrees/${encodeURIComponent(handle)}?force=${force}`,
       { method: 'DELETE' },
     ),
+
+  /** Secret names on one branch, and whether each has a value. Never the value. */
+  secrets: (branch: string) =>
+    request<{ branch: string; canPersist: boolean; secrets: SecretEntry[] }>(
+      `/projects/${encodeURIComponent(projectSlug())}/branches/${encodeURIComponent(branch)}/secrets/`),
+  setSecret: (branch: string, name: string, value: string) =>
+    request<{ name: string }>(
+      `/projects/${encodeURIComponent(projectSlug())}/branches/${encodeURIComponent(branch)}`
+      + `/secrets/${encodeURIComponent(name)}`,
+      { method: 'PUT', body: JSON.stringify({ value }) }),
+  deleteSecret: (branch: string, name: string) =>
+    request<void>(
+      `/projects/${encodeURIComponent(projectSlug())}/branches/${encodeURIComponent(branch)}`
+      + `/secrets/${encodeURIComponent(name)}`,
+      { method: 'DELETE' }),
 
   members: (slug: string) =>
     request<{ members: ProjectMember[]; candidates: { userId: string; displayName: string }[] }>(

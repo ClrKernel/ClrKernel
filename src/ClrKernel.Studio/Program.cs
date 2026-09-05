@@ -391,6 +391,36 @@ public static class Program {
             },
         });
         settings.Add(new SettingsSection {
+            // The same key the Secrets tab uses: these two fields sit above the
+            // per-branch table there, because "which store" and "what is in it"
+            // are one question and a second tab for the first half is one too many.
+            Key = "secrets",
+            Title = "Secrets",
+            Description =
+                "Where this server keeps a value it is asked to save. A laptop can discover "
+                + "one; a server should be told, so that a missing keyring is a startup message "
+                + "rather than a password quietly going nowhere.",
+            Fields = {
+                new SettingField {
+                    Name = "secretStore", Label = "Store", Type = "string",
+                    Value = options.SecretStore ?? "auto", Source = options.SourceOf("secretStore"),
+                    Choices = new[] { "auto", "os", "file" },
+                    WebWritable = true, RestartRequired = true,
+                    Help = "os — the machine's credential store, and nothing else writable. "
+                        + "file — a JSON file, unencrypted, as protected as the disk it sits on. "
+                        + "auto — keyring, then the file if one was configured, then the environment.",
+                },
+                new SettingField {
+                    Name = "secretsFile", Label = "Secrets file", Type = "string",
+                    Value = options.SecretsFile ?? "",
+                    Source = options.SourceOf("secretsFile"),
+                    WebWritable = true, RestartRequired = true,
+                    Help = "Only read when the store is `file`. Empty means secrets.json in the "
+                        + "data dir. Keep it out of a git worktree — a push would take it along.",
+                },
+            },
+        });
+        settings.Add(new SettingsSection {
             Key = "connections",
             Title = "Connections",
             Description =
