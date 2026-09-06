@@ -69,8 +69,9 @@ function flatten(nodes: TreeNode[], collapsed: Set<string>, depth = 0): Row[] {
 }
 
 /**
- * The editor's file sidebar. It exists only here and on the Notebooks page —
- * a tree on the dashboard would be navigation furniture nobody asked for.
+ * The file sidebar for the whole Files area: the editor, and the shell you get
+ * before opening anything. A tree on the dashboard would be navigation furniture
+ * nobody asked for.
  *
  * Collapsed it becomes a 16px strip rather than disappearing, so there is
  * always something to click to get it back.
@@ -83,8 +84,12 @@ export function NotebookExplorer({
   onCollapse,
   refresh = 0,
 }: {
-  /** The notebook currently open, highlighted in the tree. */
-  path: string;
+  /**
+   * The notebook currently open, highlighted in the tree. Null on the Files
+   * shell, which is this same explorer with nothing open beside it — so nothing
+   * is highlighted, rather than an empty string standing in for "none".
+   */
+  path: string | null;
   /** The branch that notebook is open on, so the tree shows the same files. */
   branch: string;
   width: number;

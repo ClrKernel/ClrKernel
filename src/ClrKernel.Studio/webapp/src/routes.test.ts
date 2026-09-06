@@ -3,6 +3,8 @@ import {
   connectionsPath,
   editPath,
   isEditorPath,
+  isFilesShellPath,
+  isFullBleed,
   viewOf,
   jobRunsPath,
   legacyEditPath,
@@ -84,6 +86,32 @@ describe('switchProject', () => {
       expect(switchProject(path, 'finance')).toBeNull();
       expect(sectionOf(path)).toBeNull();
     }
+  });
+});
+
+describe('isFullBleed', () => {
+  /**
+   * What decides whether the page gets the standard padding or manages its own
+   * gutters. Files is both now: the shell before a file is open is the same
+   * explorer beside an empty pane, so it cannot be the one with a margin.
+   */
+  it('covers the whole Files area, and not the door to it', () => {
+    expect(isFullBleed('/files/default')).toBe(true);
+    expect(isFullBleed('/files/default/edit/mine/etl.nb.md')).toBe(true);
+    expect(isFullBleed('/connections')).toBe(true);
+
+    // Bare /files redirects to a project and paints nothing on the way.
+    expect(isFullBleed('/files')).toBe(false);
+    expect(isFullBleed('/monitoring')).toBe(false);
+    expect(isFullBleed('/')).toBe(false);
+  });
+
+  it('tells the shell and a file apart by segment count', () => {
+    expect(isFilesShellPath('/files/default')).toBe(true);
+    expect(isFilesShellPath('/files/default/')).toBe(true);
+    expect(isFilesShellPath('/files/default/edit/mine/etl.nb.md')).toBe(false);
+    expect(isFilesShellPath('/files')).toBe(false);
+    expect(isFilesShellPath('/settings/files')).toBe(false);
   });
 });
 
