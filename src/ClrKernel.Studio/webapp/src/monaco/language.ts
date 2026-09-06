@@ -305,7 +305,7 @@ async function ask<T>(
 ): Promise<T | null> {
   lastCell = ref;
   try {
-    return await api.languageRequest<T>(ref.path, {
+    const answer = await api.languageRequest<T>(ref.path, {
       kind,
       cellId: ref.cellId,
       languageId: ref.languageId(),
@@ -317,6 +317,17 @@ async function ask<T>(
       line: position.lineNumber - 1,
       character: position.column - 1,
     });
+    // The model can go while the question is in flight: the notebook closes, the
+    // branch changes, the cell is deleted. Monaco resumes the provider anyway,
+    // and the completion one then reads a word out of the model to place the
+    // suggestion — which throws "TextModelPart is disposed!" from inside Monaco
+    // with nothing of ours in the stack, three times over, once per provider
+    // that happened to be asking.
+    //
+    // Here rather than in each provider: every one of them already treats null
+    // as "nothing to say", so a model that went away is just another way of
+    // having no answer.
+    return model.isDisposed() ? null : answer;
   } catch {
     // A language feature that cannot answer says nothing. It must never surface
     // as an error banner over someone's typing.
