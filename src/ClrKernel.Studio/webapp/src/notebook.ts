@@ -297,10 +297,14 @@ export function viewFor(asked: NotebookView, path: string): NotebookView {
 /**
  * Why this file cannot be written here, or null when it can.
  *
- * The toolbar says it out loud, and the reason matters: "not text" is true of a
- * picture and a lie about `connections.json`, which is text and is written from
- * your saved connections — the first version of this note said the wrong thing
- * to the one person who went looking for an answer.
+ * The reason matters: "not text" is true of a picture and a lie about
+ * `connections.json`, which is text and is written from your saved connections —
+ * the first version of this note said the wrong thing to the one person who went
+ * looking for an answer.
+ *
+ * The words "read-only" are not in it. This is the *why*, and the toolbar's pill
+ * is the *what* — a sentence beginning "read-only — " inside a chip that already
+ * says read-only said it twice, in a grey small enough to miss both times.
  */
 export function readOnlyReason(path: string): string | null {
   if (fileEditable(path)) {
@@ -308,18 +312,18 @@ export function readOnlyReason(path: string): string | null {
   }
   const name = (path ?? '').toLowerCase().split('/').pop() ?? '';
   if (GENERATED_NAMES.includes(name)) {
-    return 'read-only — written from your saved connections. Edit it on the Connections page.';
+    return 'This file is written from your saved connections. Edit it on the Connections page.';
   }
   if (isWorkbook(name)) {
-    return 'read-only — a workbook opens to look at';
+    return 'A workbook opens here to look at, not to edit.';
   }
   if (isPdf(name)) {
-    return 'read-only — a PDF opens to read';
+    return 'A PDF opens here to read, not to edit.';
   }
   if (isImage(name)) {
-    return 'read-only — a picture opens to look at';
+    return 'A picture opens here to look at, not to edit.';
   }
-  return 'read-only — this file is not text';
+  return 'This file is not text, so there is nothing here that could edit it.';
 }
 
 /**

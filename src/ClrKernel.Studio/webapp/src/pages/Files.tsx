@@ -164,7 +164,11 @@ export function Files() {
             a page that failed to load its top-left corner. */}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
           <p className="max-w-[46ch] text-base text-muted-foreground">
-            {environments.length === 0
+            {/* "No files" only once the tree has actually arrived. Keyed off the
+                count alone it was also what the page said for the second before
+                the first fetch landed — an empty project and a slow one looked
+                identical, and the wrong one of the two is alarming. */}
+            {tree != null && environments.length === 0
               ? 'No files under the notebooks root.'
               : 'Pick a file on the left to open it here.'}
           </p>

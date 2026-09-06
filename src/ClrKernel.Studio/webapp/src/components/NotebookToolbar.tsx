@@ -445,6 +445,25 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         </TabsList>
       </Tabs>
 
+      {/* Beside the tabs because it is about the file, not about the branch —
+          which is why it shows on every branch now. It used to be a grey
+          sentence at the far end of this row, next to nothing that explained it
+          and small enough that the answer to "why can I not type" was a thing
+          you had to go and find. */}
+      {props.readOnlyReason != null && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              tabIndex={0}
+              className="ml-2 shrink-0 cursor-help rounded-full border border-status-warning/40 bg-status-warning/10 px-2 py-px text-xs font-semibold text-status-warning outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              read-only
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[38ch]">{props.readOnlyReason}</TooltipContent>
+        </Tooltip>
+      )}
+
       <div className="flex-1" />
 
 
@@ -553,16 +572,6 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
-      )}
-
-      {/* Readable, not writable. Said out loud, because the alternative is a
-          toolbar that quietly has no Save on it and an editor that ignores your
-          typing. Only on your own branch — on test or prod the branch note below
-          is the more important of the two, and two notes is noise. */}
-      {props.branch === 'mine' && props.readOnlyReason != null && (
-        <span className="whitespace-nowrap text-xs text-muted-subtle">
-          {props.readOnlyReason}
-        </span>
       )}
 
       {/* Not your branch: say so, and offer the legitimate place to make the

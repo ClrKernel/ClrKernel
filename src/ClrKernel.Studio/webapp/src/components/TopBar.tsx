@@ -1,5 +1,5 @@
 import { ChevronDown, Search, Settings2 } from 'lucide-react';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { api, type BranchSummary } from '../api';
 import { breadcrumbFor } from '../breadcrumb';
 import { usePolling } from './common';
@@ -40,6 +41,7 @@ function ProjectSwitcher() {
   const navigate = useNavigate();
   const location = useLocation();
   const project = projects.find((p) => p.slug === current);
+  const [filter, setFilter] = useState('');
 
   function open(slug: string) {
     select(slug);
@@ -48,6 +50,13 @@ function ProjectSwitcher() {
       navigate(to);
     }
   }
+
+  const needle = filter.trim().toLowerCase();
+  // The slug as well as the name: a repo is as likely to be remembered by the
+  // folder it is checked out in as by whatever it was titled.
+  const shown = projects.filter(
+    (p) => needle === '' || p.name.toLowerCase().includes(needle) || p.slug.includes(needle),
+  );
 
   return (
     <DropdownMenu>
@@ -61,20 +70,74 @@ function ProjectSwitcher() {
           <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {projects.map((p) => (
+      {/* Wide enough for a project name, and capped so a long one truncates
+          rather than wrapping every item onto two lines. */}
+      <DropdownMenuContent align="start" className="max-h-[60vh] w-[min(20rem,80vw)] overflow-y-auto">
+        {/* Shown once there are enough to hunt through. A plain div, not a menu
+            item: an item takes focus as the pointer crosses it, which would move
+            the caret out of the box mid-word. And the keydown stops here, because
+            Radix's menus implement type-ahead by listening for it — without this
+            every letter jumps the highlight instead of reaching the input. */}
+        {projects.length > 7 && (
+          <div className="px-1.5 pb-1.5">
+            <Input
+              autoFocus
+              value={filter}
+              placeholder="Filter projects…"
+              aria-label="Filter projects"
+              className="h-7 text-xs"
+              onChange={(e) => setFilter(e.target.value)}
+              // A menu implements type-ahead by listening for keydown, so every
+              // letter typed here would jump the highlight instead of reaching
+              // the box. Stopped — except Escape and Tab, which are the menu's.
+              //
+              // The arrows have to be handed over by hand: Radix moves between
+              // items with a roving focus group that listens on the items
+              // themselves, so an arrow pressed in a box that is not one reaches
+              // nothing at all. Focus the first item (or the last) and the group
+              // takes it from there.
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  const items = e.currentTarget
+                    .closest('[role="menu"]')
+                    ?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+                  if (items?.length) {
+                    e.preventDefault();
+                    (e.key === 'ArrowDown' ? items[0] : items[items.length - 1]).focus();
+                  }
+                  return;
+                }
+                if (e.key !== 'Escape' && e.key !== 'Tab') {
+                  e.stopPropagation();
+                }
+              }}
+            />
+          </div>
+        )}
+        {shown.map((p) => (
           <DropdownMenuItem
             key={p.slug}
             onSelect={() => open(p.slug)}
-            // The tick column keeps the names aligned whichever one is current.
-            className={p.slug === current ? 'font-medium text-foreground' : ''}
+            // A menu item focuses itself as the pointer crosses it. With a filter
+            // box above the list that takes the caret out of it mid-word, and the
+            // next letter goes to the menu's type-ahead instead of the box —
+            // which is a strange thing to have happen while you are still typing.
+            // Refused here; `hover:` below is what draws the highlight instead,
+            // and the arrow keys still focus items the ordinary way.
+            onPointerMove={(e) => e.preventDefault()}
+            onPointerLeave={(e) => e.preventDefault()}
+            className={`hover:bg-accent hover:text-accent-foreground ${
+              p.slug === current ? 'font-medium text-foreground' : ''}`}
           >
             <span className="w-3 shrink-0" aria-hidden="true">
               {p.slug === current ? '✓' : ''}
             </span>
-            {p.name}
+            <span className="truncate">{p.name}</span>
           </DropdownMenuItem>
         ))}
+        {shown.length === 0 && (
+          <p className="px-2 py-1.5 text-xs text-muted-subtle">Nothing matches “{filter}”.</p>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/settings/projects" className="hover:no-underline">

@@ -18,7 +18,7 @@ import {
 import { api, projectSlug, type TreeNode } from '../api';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
-import { editPath } from '../routes';
+import { editPath, filesPath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 import { BranchOptions, CollapsedRail, usePolling } from './common';
 import { FileBadge } from './FileBadge';
@@ -170,11 +170,23 @@ export function NotebookExplorer({
         <GitBranch className="size-[13px] shrink-0 text-muted-subtle" aria-hidden="true" />
         <Select
           value={env}
-          onValueChange={(branch) => {
-            setEnv(branch);
-            // The same memory the Notebooks page keeps: picking a branch in
-            // either place is picking it for the project.
-            saveBranch(projectSlug(), branch);
+          onValueChange={(next) => {
+            setEnv(next);
+            // The same memory the Files shell keeps: picking a branch in either
+            // place is picking it for the project.
+            saveBranch(projectSlug(), next);
+            // With a file open, the branch under it just changed and the pane
+            // beside this is still showing the other branch's copy — the same
+            // path on two branches is two files, and one of them may not exist
+            // at all. So the file closes and you are back at the shell, which is
+            // this tree with an empty pane: pick the one you meant.
+            //
+            // Not "open the same path over there": that silently swaps which
+            // file you are editing, and on test or prod it swaps a writable file
+            // for a read-only one under an unsaved edit.
+            if (path != null) {
+              navigate(filesPath(projectSlug()));
+            }
           }}
         >
           <SelectTrigger size="sm" className="min-w-0 flex-1 bg-card text-xs" aria-label="Branch">
