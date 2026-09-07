@@ -115,10 +115,30 @@ public class GitServiceTest {
         // file names the admin directory and that has not moved — but `git worktree
         // list` reports where it used to be, and the next `worktree prune` sees a
         // registration whose path is gone and unregisters it.
-        var registered = _git.RunForTests("worktree", "list");
-        StringAssert.Contains(registered, moved);
-        Assert.IsFalse(registered.Contains(_git.UserPath(_ada) + "\n")
-            || registered.Contains(_git.UserPath(_ada) + " "), "the old path is not still registered");
+        // Compared by directory name, which is the part the rename changes, and the
+        // only part that reads the same on every platform. Two things defeat the
+        // obvious spellings of this assertion:
+        //
+        //  - git prints these paths with forward slashes on Windows too, where
+        //    Path.Combine gives backslashes. A substring test against a .NET path
+        //    therefore failed there — and its negative twin passed for the wrong
+        //    reason, unable to find the old path either.
+        //  - on macOS git resolves /var to /private/var, so a full-path equality
+        //    test fails here instead. (A substring test survived that one by luck:
+        //    "/private/var/x" does contain "/var/x".)
+        //
+        // Whole segments rather than a substring regardless, because `user-ada` is
+        // a prefix of `user-ada-lovelace` — a substring test finds the old name
+        // inside the new one and calls a successful rename a failure.
+        var registered = _git.RunForTests("worktree", "list")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0].TrimEnd('/'))
+            .Select(path => path[(path.LastIndexOf('/') + 1)..])
+            .ToList();
+        CollectionAssert.Contains(registered, "user-ada-lovelace",
+            "registered at its new address; git listed " + string.Join(", ", registered));
+        CollectionAssert.DoesNotContain(registered, "user-" + _ada,
+            "and the old path is not still registered");
 
         var standing = _git.StandingOf("ada-lovelace");
         Assert.IsTrue(standing.Dirty, "the unsaved file is still seen as unsaved");
