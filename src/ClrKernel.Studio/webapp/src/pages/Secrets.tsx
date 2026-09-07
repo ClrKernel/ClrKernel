@@ -6,6 +6,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { api } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
+import { useProjects } from '../projectContext';
 
 /**
  * The values a notebook resolves by name, per branch.
@@ -20,13 +21,24 @@ import { ErrorBanner, usePolling } from '../components/common';
  * filter over it.</p>
  */
 export function SecretsSection() {
+  const { projects, current } = useProjects();
+  // Only the ones you could actually manage. A Server Admin is an admin of every
+  // project, so for them this is the whole list.
+  const mine = projects.filter((p) => p.role === 'ProjectAdmin');
+  // Settings is not inside a project, so this page has to say which one it is
+  // showing. It used to follow whichever project you last had open elsewhere,
+  // with nothing on screen naming it — so two projects' secrets looked like one
+  // project's secrets changing under you, and the only way to see the other set
+  // was to go to Files, switch there, and come back.
+  const [project, setProject] = useState(
+    () => (mine.some((p) => p.slug === current) ? current : mine[0]?.slug) ?? current);
   const [branch, setBranch] = useState('mine');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const { data: branches } = usePolling(() => api.branches(), null, []);
+  const { data: branches } = usePolling(() => api.branches(project), null, [project]);
   const { data, error: loadError, reload } = usePolling(
-    () => api.secrets(branch), null, [branch]);
+    () => api.secrets(project, branch), null, [project, branch]);
 
   function show(next: string) {
     // "OPENAI saved." left standing over another branch's table is a lie about
@@ -34,6 +46,16 @@ export function SecretsSection() {
     setNotice(null);
     setError(null);
     setBranch(next);
+  }
+
+  function showProject(next: string) {
+    setNotice(null);
+    setError(null);
+    setProject(next);
+    // Back to your own branch: `test` exists in most projects and means a
+    // different thing in each, and carrying a selection across would show one
+    // project's branch name over another project's secrets for a moment.
+    setBranch('mine');
   }
 
   // Yours, and the environments. Somebody else's personal branch is left out
@@ -69,7 +91,7 @@ export function SecretsSection() {
   function replace(name: string, done: string) {
     const value = prompt(`Value for ${name} on ${label}. Stored, and never shown again.`);
     if (value) {
-      run(() => api.setSecret(branch, name, value), done);
+      run(() => api.setSecret(project, branch, name, value), done);
     }
   }
 
@@ -103,6 +125,19 @@ export function SecretsSection() {
       )}
 
       <div className="mb-4 flex items-center gap-2">
+        {/* Named on every visit, not only when there is more than one: "which
+            project is this?" is the question the page failed to answer, and a
+            control that appears and disappears answers it half the time. */}
+        <Select value={project} onValueChange={showProject}>
+          <SelectTrigger size="sm" aria-label="Project" className="w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {mine.map((p) => (
+              <SelectItem key={p.slug} value={p.slug}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={branch} onValueChange={show}>
           <SelectTrigger size="sm" aria-label="Branch" className="w-56">
             <SelectValue />
@@ -150,7 +185,8 @@ export function SecretsSection() {
                     disabled={busy}
                     onClick={() => {
                       if (confirm(`Forget ${secret.name} on ${label}? Cells asking for it will fail.`)) {
-                        run(() => api.deleteSecret(branch, secret.name), `${secret.name} forgotten.`);
+                        run(() => api.deleteSecret(project, branch, secret.name),
+                          `${secret.name} forgotten.`);
                       }
                     }}
                   >

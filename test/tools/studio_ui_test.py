@@ -315,6 +315,71 @@ def project_filter(page, base, root):
     page.wait_for_url(lambda u: "/files/p0" in u, timeout=8000)
 
 
+@check("secrets-project")
+def secrets_project(page, base, root):
+    """Secrets names the project it is showing, and can change it.
+
+    It used to follow whichever project you last had open somewhere else, with
+    nothing on screen naming it — so the only way to see another project's
+    secrets was to go to Files, switch there, and come back.
+    """
+    # Git-initialised, so it has the same test/prod branches the first one does —
+    # which is the whole point: the same branch name in two projects.
+    made = page.evaluate("""async ({ root }) => {
+        const r = await fetch('/api/projects', { method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: 'Warehouse', slug: 'warehouse',
+                root: root + '/warehouse', gitEnabled: true,
+                remoteMode: 'Local', pushUserBranches: false }) });
+        if (r.status !== 201) return [r.status, await r.text()];
+        const init = await fetch('/api/projects/warehouse/init', { method: 'POST' });
+        return [init.status, await init.text()];
+    }""", {"root": os.path.join(root, "projects")})
+    assert made[0] == 200, made
+
+    # One name, two projects, two values — the case the page could not tell apart.
+    for slug, value in (("default", "sk-from-default"), ("warehouse", "sk-from-warehouse")):
+        status = page.evaluate("""async ({ slug, value }) => (await fetch(
+            `/api/projects/${slug}/branches/test/secrets/OPENAI`,
+            { method: 'PUT', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ value }) })).status""", {"slug": slug, "value": value})
+        assert status == 200, (slug, status)
+
+    page.goto(f"{base}/settings/secrets", wait_until="networkidle")
+    page.wait_for_timeout(1500)
+    picker = page.get_by_role("combobox", name="Project")
+    assert picker.count() == 1, "no project picker:\n" + page.inner_text("body")[:1200]
+
+    # Whichever project it opens on, it says which one that is.
+    opened = picker.inner_text().strip()
+    assert opened in ("nb", "Warehouse"), f"the picker names no project: {opened!r}"
+
+    page.get_by_role("combobox", name="Branch").click()
+    page.get_by_role("option", name="test", exact=True).click()
+    page.wait_for_timeout(1200)
+    assert "OPENAI" in page.locator("table").last.inner_text(), page.inner_text("body")[-900:]
+
+    # The other project, without leaving the page — and its secrets are its own.
+    other = "Warehouse" if opened != "Warehouse" else "nb"
+    picker.click()
+    page.get_by_role("option", name=other, exact=True).click()
+    page.wait_for_timeout(1500)
+    assert picker.inner_text().strip() == other, (
+        f"picked {other}, but the page still says {picker.inner_text().strip()!r}")
+    # Back on your own branch, where neither project was given a secret.
+    assert "OPENAI" not in page.locator("table").last.inner_text(), (
+        "the other project's branch carried a selection across")
+
+    page.get_by_role("combobox", name="Branch").click()
+    page.get_by_role("option", name="test", exact=True).click()
+    page.wait_for_timeout(1500)
+    assert "OPENAI" in page.locator("table").last.inner_text(), page.inner_text("body")[-900:]
+
+    # And the value never travelled, for either of them.
+    body = page.inner_text("body")
+    assert "sk-from-" not in body, body[-900:]
+
+
 @check("read-only-pill")
 def read_only_pill(page, base, _root):
     """A file you cannot edit says so as a pill, and the pill says why on hover.

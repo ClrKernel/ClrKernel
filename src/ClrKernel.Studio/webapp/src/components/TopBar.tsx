@@ -247,8 +247,10 @@ export function TopBar({
           ClrKernel Studio
         </Link>
         {/* Only where a project is what the page is about. The dashboard is the
-            whole server, and Settings and Channels are server-wide: a selector
-            there would be a control with nothing to change. */}
+            whole server, and Channels is server-wide: a selector there would be a
+            control with nothing to change. Settings is mostly server-wide too —
+            its one project-scoped tab, Secrets, carries a picker of its own
+            rather than making this one appear for the other six. */}
         {inProject && (
           <>
             <span aria-hidden="true" className="shrink-0 text-status-idle">

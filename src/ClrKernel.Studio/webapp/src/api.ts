@@ -27,6 +27,10 @@ const project = () => `/projects/${encodeURIComponent(currentProject)}`;
 /** `/projects/<slug>/branches/<branch>` — everything that reads or writes a worktree. */
 const scope = (branch: string) => `${project()}/branches/${encodeURIComponent(branch)}`;
 
+/** A named project's branch, for the pages that are not inside one. */
+const secretsIn = (slug: string, branch: string) =>
+  `/projects/${encodeURIComponent(slug)}/branches/${encodeURIComponent(branch)}/secrets`;
+
 /**
  * Which branch the open notebook is being read from. The same argument as
  * `currentProject`: the editor holds one notebook on one branch, and the seven
@@ -589,18 +593,20 @@ export const api = {
     ),
 
   /** Secret names on one branch, and whether each has a value. Never the value. */
-  secrets: (branch: string) =>
+  // The project is named rather than taken from `currentProject`, the way
+  // `members` names it: Settings is not inside a project, so the one you are
+  // looking at there is the one its own picker says — not whichever project you
+  // last had open somewhere else.
+  secrets: (slug: string, branch: string) =>
     request<{ branch: string; canPersist: boolean; secrets: SecretEntry[] }>(
-      `/projects/${encodeURIComponent(projectSlug())}/branches/${encodeURIComponent(branch)}/secrets/`),
-  setSecret: (branch: string, name: string, value: string) =>
+      `${secretsIn(slug, branch)}/`),
+  setSecret: (slug: string, branch: string, name: string, value: string) =>
     request<{ name: string }>(
-      `/projects/${encodeURIComponent(projectSlug())}/branches/${encodeURIComponent(branch)}`
-      + `/secrets/${encodeURIComponent(name)}`,
+      `${secretsIn(slug, branch)}/${encodeURIComponent(name)}`,
       { method: 'PUT', body: JSON.stringify({ value }) }),
-  deleteSecret: (branch: string, name: string) =>
+  deleteSecret: (slug: string, branch: string, name: string) =>
     request<void>(
-      `/projects/${encodeURIComponent(projectSlug())}/branches/${encodeURIComponent(branch)}`
-      + `/secrets/${encodeURIComponent(name)}`,
+      `${secretsIn(slug, branch)}/${encodeURIComponent(name)}`,
       { method: 'DELETE' }),
 
   members: (slug: string) =>
@@ -802,7 +808,8 @@ export const api = {
     ),
 
   /** Every branch of this project, with who owns each and which you may write to. */
-  branches: () => request<{ branches: BranchSummary[] }>(`${project()}/branches`),
+  branches: (slug?: string) => request<{ branches: BranchSummary[] }>(
+    slug == null ? `${project()}/branches` : `/projects/${encodeURIComponent(slug)}/branches`),
 
   /** Where your own branch stands against test: unsaved work, and either drift. */
   branchStanding: () =>

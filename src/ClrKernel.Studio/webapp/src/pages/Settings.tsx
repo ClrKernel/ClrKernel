@@ -12,6 +12,7 @@ import { api, type SettingField, type SettingsSection } from '../api';
 import { ErrorBanner, PageHeader, usePolling } from '../components/common';
 import { TabNav } from '../components/TabNav';
 import { useIsProjectAdmin, useIsServerAdmin } from '../sessionContext';
+import { useProjects } from '../projectContext';
 import { AccountSection, UsersSection } from './Account';
 import { SecretsSection } from './Secrets';
 import { ProjectsSection } from './Projects';
@@ -178,6 +179,11 @@ export function Settings() {
   const isServerAdmin = useIsServerAdmin();
   // Managing a project's own members needs only that project.
   const isProjectAdmin = useIsProjectAdmin();
+  // Secrets asks a wider question: it has a project picker of its own, so the tab
+  // is worth drawing for anyone who administers *a* project — not only for
+  // whoever happens to have an administrable one selected somewhere else.
+  const { projects } = useProjects();
+  const adminsSomewhere = isServerAdmin || projects.some((p) => p.role === 'ProjectAdmin');
   const sections = data?.sections ?? [];
 
   // Your account first — it is about you, and it is the one every role has. The
@@ -189,14 +195,14 @@ export function Settings() {
     // section, but the tab is admin-only and the page is more than the form.
     ...sections.filter((s) => s.key !== 'secrets')
       .map((s) => ({ to: `/settings/${s.key}`, label: s.title })),
-    ...(isServerAdmin || isProjectAdmin ? [{ to: '/settings/secrets', label: 'Secrets' }] : []),
+    ...(adminsSomewhere ? [{ to: '/settings/secrets', label: 'Secrets' }] : []),
     ...(isServerAdmin ? [{ to: '/settings/users', label: 'Users' }] : []),
   ];
   const current = sections.find((s) => s.key === slug);
   const client = slug === 'account'
     || (slug === 'users' && isServerAdmin)
     || (slug === 'projects' && (isServerAdmin || isProjectAdmin))
-    || (slug === 'secrets' && (isServerAdmin || isProjectAdmin));
+    || (slug === 'secrets' && adminsSomewhere);
 
   // Only redirect once the sections have actually arrived: bouncing to the
   // first tab while the list is still empty would send you to /settings/
@@ -219,7 +225,7 @@ export function Settings() {
         <AccountSection />
       ) : slug === 'projects' && (isServerAdmin || isProjectAdmin) ? (
         <ProjectsSection />
-      ) : slug === 'secrets' && (isServerAdmin || isProjectAdmin) ? (
+      ) : slug === 'secrets' && adminsSomewhere ? (
         <>
           {current && isServerAdmin && <Section section={current} />}
           <SecretsSection />
