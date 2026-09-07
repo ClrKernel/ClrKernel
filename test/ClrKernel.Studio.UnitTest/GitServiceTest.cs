@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -246,6 +247,97 @@ public class GitServiceTest {
     /// count was all it had.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// History, and what a merge from test would bring.
+    ///
+    /// <para>
+    /// The subject is whatever somebody typed, so the record and field separators
+    /// are \x01 and NUL rather than any character a person can reach: a message
+    /// with a pipe, a tab or a newline in it is the one that breaks a parser built
+    /// on the obvious delimiters, and it breaks it by silently dropping commits.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// A folder listing with the commit that last touched each row.
+    ///
+    /// <para>
+    /// The `prod` case is the one worth pinning: the app calls that environment
+    /// `prod` and git calls the ref `main`, so a listing that hands the environment
+    /// name straight to `git log` attributes nothing and every row comes back with
+    /// no commit on it — which looks like a folder nobody has ever changed.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Contents_lists_a_folder_and_says_what_last_touched_each_row() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "reports/monthly.nb.md", "hers\n");
+        WriteUser(_grace, "top.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the reports", "Grace", "g@users.local").Pushed);
+
+        var root = _git.Contents(GitService.TestBranch, "");
+        CollectionAssert.AreEqual(
+            new[] { "reports", "top.nb.md" }, root.Select(e => e.Name).ToArray(),
+            "folders first, then files, each sorted by name");
+        Assert.IsTrue(root[0].IsDirectory);
+        Assert.IsFalse(root[1].IsDirectory);
+        Assert.IsTrue(root[1].Size > 0, "a file knows its size");
+
+        // The column the filesystem cannot answer.
+        Assert.AreEqual("add the reports", root[0].LastCommit?.Subject, "a folder, by what is under it");
+        Assert.AreEqual("add the reports", root[1].LastCommit?.Subject);
+        Assert.AreEqual("Grace", root[1].LastCommit?.Author);
+
+        // Descending, and the paths are repo-relative rather than names.
+        var inner = _git.Contents(GitService.TestBranch, "reports");
+        CollectionAssert.AreEqual(new[] { "reports/monthly.nb.md" }, inner.Select(e => e.Path).ToArray());
+
+        // And prod, whose ref is `main` — the translation the API has to get right.
+        _git.CheckoutIntoProd("top.nb.md");
+        _git.CommitProd("ship it");
+        var shipped = _git.Contents("prod", "");
+        Assert.IsTrue(shipped.Count > 0, "prod lists its files");
+        Assert.IsNotNull(shipped[0].LastCommit,
+            "and attributes them — a listing that passed `prod` to git log would find no ref");
+    }
+
+    [TestMethod]
+    public void History_and_incoming_survive_a_subject_somebody_typed() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        var awkward = "fix a|b\tand \"quote\" it";
+        WriteUser(_grace, "reports/monthly.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, awkward, "Grace", "g@users.local").Pushed);
+
+        var history = _git.History(GitService.TestBranch);
+        Assert.IsTrue(history.Count > 0, "test has commits");
+        Assert.AreEqual(awkward, history[0].Subject, "the message survives the trip");
+        Assert.AreEqual("Grace", history[0].Author);
+        StringAssert.Matches(history[0].ShortSha, new Regex("^[0-9a-f]{7,}$"));
+        Assert.AreNotEqual(default, history[0].When, "and it is dated");
+
+        // Ada parted before that, and has something of her own uncommitted.
+        WriteUser(_ada, "only-mine.nb.md", "mine\n");
+
+        var incoming = _git.IncomingFromTest(_ada);
+        Assert.AreEqual(1, incoming.Count, "one commit is coming");
+        Assert.AreEqual(awkward, incoming[0].Subject);
+        CollectionAssert.AreEqual(
+            new[] { "reports/monthly.nb.md" }, incoming[0].Files.Select(f => f.Path).ToArray(),
+            "and it names the file, with the forward slashes git uses everywhere");
+        Assert.AreEqual("A", incoming[0].Files[0].Status, "added, on that commit");
+
+        // What is hers is not called mine: the uncommitted list is the other half of
+        // the preview, and it is the half the confirm box never showed.
+        var mine = _git.Uncommitted(_ada);
+        CollectionAssert.AreEqual(
+            new[] { "only-mine.nb.md" }, mine.Select(f => f.Path).ToArray());
+
+        Assert.IsNotNull(_git.MergeBaseWithTest(_ada), "the branches share a base");
+    }
+
     [TestMethod]
     public void BehindFiles_names_what_test_changed_and_nothing_of_yours() {
         _git.Init();

@@ -1047,6 +1047,83 @@ public static class JobsApi {
                 return Results.Ok(new { pushed = true, commitSha = result.Sha });
             }).RequiresProject(ProjectRole.ProjectMember);
 
+
+        // --- git history ------------------------------------------------------
+
+        // Read-only, and a Project Viewer may see it: this is the same information
+        // `git log` gives anybody with the repo, and hiding it would only mean
+        // people ask each other instead.
+        scoped.MapGet("/commits", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            int? limit) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                return Results.Ok(new {
+                    branch = resolved,
+                    commits = scope.Git.History(GitService.RefFor(resolved), limit ?? 50)
+                        .Select(CommitView.From),
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        scoped.MapGet("/contents", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            string path) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                // Through the same guard the file routes use: a listing is a read of
+                // the tree, and `../` must not walk out of it.
+                var folder = path ?? string.Empty;
+                if (folder.Length > 0 && NotebookTree.SafeResolve(RootOf(scope, resolved), folder) == null) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                return Results.Ok(new {
+                    branch = resolved,
+                    path = folder,
+                    entries = scope.Git.Contents(resolved, folder).Select(e => new {
+                        e.Name,
+                        e.Path,
+                        e.IsDirectory,
+                        e.Size,
+                        e.Modified,
+                        lastCommit = e.LastCommit == null ? null : CommitView.From(e.LastCommit),
+                    }),
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // What `Update from test` would actually do, before it does it.
+        api.MapGet("/projects/{project}/branch/incoming", (
+            HttpContext context, ProjectRegistry projects, string project) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                var user = context.CurrentUser();
+                if (user == null || !scope.Git.HasUserWorktree(user.Username)) {
+                    return Results.Ok(new { hasBranch = false });
+                }
+                var handle = user.Username;
+                return Results.Ok(new {
+                    hasBranch = true,
+                    branch = GitService.BranchForUser(handle),
+                    // Both lanes, so the picture can show where they parted rather
+                    // than only what is arriving.
+                    incoming = scope.Git.IncomingFromTest(handle).Select(CommitView.From),
+                    outgoing = scope.Git.OutgoingToTest(handle).Select(CommitView.From),
+                    mergeBase = scope.Git.MergeBaseWithTest(handle),
+                    // The half the confirm box never showed: what of yours gets
+                    // committed on the way in, and under what message.
+                    uncommitted = scope.Git.Uncommitted(handle)
+                        .Select(f => new { f.Status, f.Path }),
+                });
+            }).RequiresProject(ProjectRole.ProjectMember);
+
         api.MapPost("/projects/{project}/branch/update", (
             HttpContext context, ProjectRegistry projects, string project) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
@@ -2931,4 +3008,17 @@ public sealed class CellRunView {
     public bool Truncated { get; set; }
     /// <summary>nbformat outputs — the same shapes the run view already renders.</summary>
     public System.Text.Json.Nodes.JsonArray Outputs { get; set; }
+}
+
+/// <summary>One commit as the web app reads it.</summary>
+internal static class CommitView {
+    public static object From(GitService.CommitEntry commit) => new {
+        commit.Sha,
+        commit.ShortSha,
+        commit.Author,
+        commit.When,
+        commit.Subject,
+        commit.Parents,
+        files = commit.Files.Select(f => new { f.Status, f.Path }),
+    };
 }
