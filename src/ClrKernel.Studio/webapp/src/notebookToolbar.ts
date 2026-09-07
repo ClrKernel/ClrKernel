@@ -162,9 +162,12 @@ export function promoteControl(
     isAdmin: boolean; isMember: boolean; eligible: boolean;
   },
 ): PromoteControl {
-  // Prod is what you promote *to*, and somebody else's branch is not in the
-  // pipeline at all.
-  if (branch !== 'mine' && branch !== 'test') {
+  // Test is the only branch you promote *from*. Prod is what you promote to,
+  // somebody else's branch is not in the pipeline, and your own is a branch this
+  // button never acted on: promotion is test → prod whichever branch you happen
+  // to be reading, so on `mine` it shipped whatever test held — under a label
+  // that read like it was about the file in front of you.
+  if (branch !== 'test') {
     return 'hidden';
   }
   if (!isMember) {

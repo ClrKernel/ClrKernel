@@ -108,12 +108,16 @@ describe('promoteControl', () => {
     // The bug this replaces: the button lived only on `mine`, so standing on the
     // branch whose diff the page was showing offered nothing but Copy to my branch.
     expect(promoteControl('test', admin)).toBe('ready');
-    expect(promoteControl('mine', admin)).toBe('ready');
   });
 
   it('is absent where there is nothing to promote from', () => {
     expect(promoteControl('prod', admin)).toBe('hidden');
     expect(promoteControl('user-7f3a', admin)).toBe('hidden');
+    // Not a revert of the fix above, which was about adding `test`: promotion is
+    // test → prod, so on your own branch this shipped whatever test held rather
+    // than anything of yours — a button that did something real and unrelated to
+    // the file under it.
+    expect(promoteControl('mine', admin)).toBe('hidden');
   });
 
   it('is blocked, not hidden, for a member who may not promote', () => {
@@ -121,11 +125,10 @@ describe('promoteControl', () => {
     // member and 403 when pressed. Hiding it instead would leave them asking the
     // same "where is promote?" question this whole change is about.
     expect(promoteControl('test', { ...admin, isAdmin: false })).toBe('blocked');
-    expect(promoteControl('mine', { ...admin, isAdmin: false })).toBe('blocked');
   });
 
   it('is blocked while the gate is unmet, so pressing it can say why', () => {
-    expect(promoteControl('mine', { ...admin, eligible: false })).toBe('blocked');
+    expect(promoteControl('test', { ...admin, eligible: false })).toBe('blocked');
   });
 
   it('is absent for someone with no part in the project', () => {
