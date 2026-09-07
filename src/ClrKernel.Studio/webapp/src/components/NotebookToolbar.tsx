@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -453,12 +454,17 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       {props.readOnlyReason != null && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span
+            {/* Badge, not a span with a radius on it: this row is `items-stretch`,
+                so a chip with no height of its own grew to the full 44px and
+                `rounded-full` turned that into an egg. Badge is `h-5 w-fit`, and
+                `self-center` keeps the row from having an opinion about it. */}
+            <Badge
               tabIndex={0}
-              className="ml-2 shrink-0 cursor-help rounded-full border border-status-warning/40 bg-status-warning/10 px-2 py-px text-xs font-semibold text-status-warning outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              variant="outline"
+              className="ml-2 cursor-help self-center border-status-warning/40 bg-status-warning/10 font-semibold text-status-warning"
             >
               read-only
-            </span>
+            </Badge>
           </TooltipTrigger>
           <TooltipContent className="max-w-[38ch]">{props.readOnlyReason}</TooltipContent>
         </Tooltip>

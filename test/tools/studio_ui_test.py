@@ -403,6 +403,18 @@ def read_only_pill(page, base, _root):
     assert "picture opens here to look at" in page.inner_text("body"), \
         "the tooltip did not say why"
 
+    # And it is pill-shaped. This check read the text and the tooltip and passed
+    # for a week over a 71x43 amber egg: the toolbar row is `items-stretch`, so a
+    # chip with no height of its own grows to the full 44px and a full radius
+    # turns that into an oval. Nothing that reads text can see that.
+    box, row = pill.first.bounding_box(), page.locator(".nb-toolbar").first.bounding_box()
+    assert box["height"] <= 24, (
+        f"the pill is {box['width']:.0f}x{box['height']:.0f} in a "
+        f"{row['height']:.0f}px row — it stretched")
+    assert box["width"] > box["height"], f"taller than it is wide: {box}"
+    top, bottom = box["y"] - row["y"], (row["y"] + row["height"]) - (box["y"] + box["height"])
+    assert abs(top - bottom) <= 2, f"not centred in the row: {top:.0f} above, {bottom:.0f} below"
+
 
 @check("cell-line-numbers")
 def cell_line_numbers(page, base, _root):
