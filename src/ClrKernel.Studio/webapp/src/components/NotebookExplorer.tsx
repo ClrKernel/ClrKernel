@@ -1,4 +1,5 @@
 import {
+  ArrowDownToLine,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -15,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { api, projectSlug, type TreeNode } from '../api';
+import { api, projectSlug, type BranchStanding, type TreeNode } from '../api';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
 import { editPath, filesPath } from '../routes';
@@ -83,6 +84,8 @@ export function NotebookExplorer({
   collapsed,
   onCollapse,
   refresh = 0,
+  standing = null,
+  onUpdate,
 }: {
   /**
    * The notebook currently open, highlighted in the tree. Null on the Files
@@ -103,6 +106,15 @@ export function NotebookExplorer({
    * there until the page was reloaded.
    */
   refresh?: number;
+  /**
+   * Where your branch stands against test. Here rather than in the file toolbar
+   * because that is what it is about: one `behind` for the whole branch, drawn
+   * over a file, read as a statement about that file — including files test has
+   * never seen.
+   */
+  standing?: BranchStanding | null;
+  /** Merges test into your branch. Absent where there is nothing to merge into. */
+  onUpdate?: () => void;
 }) {
   const navigate = useNavigate();
   const [env, setEnv] = useState('');
@@ -147,6 +159,7 @@ export function NotebookExplorer({
 
   const selected = environments.find((e) => e.name === env);
   const rows = flatten(selected?.tree?.children ?? [], shut);
+  const behind = (standing?.hasBranch === true ? standing.behindFiles?.length : 0) ?? 0;
 
   return (
     <div
@@ -196,6 +209,30 @@ export function NotebookExplorer({
             <BranchOptions branches={environments} />
           </SelectContent>
         </Select>
+        {/* Only on your own branch, and only when test has actually moved: this
+            is about the branch the picker beside it names, which is why it lives
+            here rather than over whichever file is open. */}
+        {env === 'mine' && behind > 0 && onUpdate != null && (
+          <button
+            type="button"
+            onClick={() => {
+              // It commits whatever you have not saved first, as "work in
+              // progress before updating from test" — a real act, and this is a
+              // small target next to Refresh.
+              if (confirm(
+                `Merge test into your branch?\n\n${behind} file(s) changed there. `
+                + 'Anything you have not committed is committed first, and anything '
+                + 'that cannot merge cleanly comes back as a conflict to fix.')) {
+                onUpdate();
+              }
+            }}
+            title={`Test has moved on in ${behind} file(s) — merge it into your branch`}
+            aria-label="Update from test"
+            className="shrink-0 rounded-sm border border-status-warning/40 bg-status-warning/10 p-1 text-status-warning outline-none hover:border-status-warning focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowDownToLine className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
         {/* A cell that writes a file beside the notebook is invisible here until
             the tree is fetched again, and reloading the page to see it loses the
             editor's state. The reload is the one usePolling already returns. */}

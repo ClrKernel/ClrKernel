@@ -773,8 +773,15 @@ public sealed class GitService {
     // --- personal branch → test -----------------------------------------------
 
     /// <summary>Where one person's branch stands relative to test.</summary>
+    /// <param name="BehindFiles">
+    /// The files test has changed since the two branches parted — the per-file
+    /// half of <paramref name="Behind"/>. A file only you have never appears in
+    /// it, which is the point: "your branch is behind" is true of the branch and
+    /// says nothing about the file somebody happens to have open.
+    /// </param>
     public sealed record BranchStanding(
-        bool Dirty, int Ahead, int Behind, IReadOnlyList<string> Conflicts);
+        bool Dirty, int Ahead, int Behind, IReadOnlyList<string> Conflicts,
+        IReadOnlyList<string> BehindFiles);
 
     /// <summary>
     /// Uncommitted work, and how far the branch has moved either way. <c>Behind</c>
@@ -784,15 +791,26 @@ public sealed class GitService {
     public BranchStanding StandingOf(string handle) {
         var worktree = UserPath(handle);
         if (!Directory.Exists(worktree)) {
-            return new BranchStanding(false, 0, 0, Array.Empty<string>());
+            return new BranchStanding(false, 0, 0, Array.Empty<string>(), Array.Empty<string>());
         }
         var counts = Run(worktree, "rev-list", "--left-right", "--count",
             $"{BranchForUser(handle)}...{TestBranch}").Trim().Split('\t', ' ');
+        var behindCount = counts.Length > 1 && int.TryParse(counts[^1], out var b) ? b : 0;
         return new BranchStanding(
             Dirty: Run(worktree, "status", "--porcelain").Trim().Length > 0,
             Ahead: counts.Length > 0 && int.TryParse(counts[0], out var ahead) ? ahead : 0,
-            Behind: counts.Length > 1 && int.TryParse(counts[^1], out var behind) ? behind : 0,
-            Conflicts: ConflictsIn(worktree));
+            Behind: behindCount,
+            Conflicts: ConflictsIn(worktree),
+            // Three dots: what test changed since the merge base, not what the two
+            // branches differ by. Two dots would also list every file *you* changed
+            // and call it something test had moved on.
+            BehindFiles: behindCount == 0
+                ? Array.Empty<string>()
+                : Run(worktree, "diff", "--name-only", $"{BranchForUser(handle)}...{TestBranch}")
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(f => f.Trim())
+                    .Where(f => f.Length > 0)
+                    .ToList());
     }
 
     private IReadOnlyList<string> ConflictsIn(string worktree) =>

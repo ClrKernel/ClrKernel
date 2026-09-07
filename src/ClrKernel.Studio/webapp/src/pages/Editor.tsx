@@ -118,6 +118,9 @@ export function Editor() {
   // Not the same question as "is this markdown": scheduling and the cells API say
   // yes to both, and the two cell-level things a script has no room for (adding a
   // cell, picking a language for it) are off separately in `script`.
+  // The branch this file goes to next, and what to call it on screen.
+  const diffAgainst = branch === 'test' ? 'prod' : 'test';
+  const diffLabel = diffAgainst === 'prod' ? 'production' : 'test';
   const cellFile = opensAsCells(path);
   const script = isScript(path);
   // A picture is looked at, not opened. Read before the content fetch, because
@@ -180,8 +183,18 @@ export function Editor() {
   const [savedSource, setSavedSource] = useState<string | null>(null);
   /** Bumped when the file changed underneath the editor — a merge, or a reload. */
   const [reloads, setReloads] = useState(0);
-  /** Production's copy of this file: null while loading, '' when it has none. */
-  const [prod, setProd] = useState<string | null>(null);
+  /**
+   * The other side of the diff: null while loading, '' when that branch has no
+   * such file.
+   *
+   * Which branch that is follows the one you are on, because it is the branch
+   * this file goes to next: from your own that is test, and from test it is
+   * production. It used to be production from both — so on your own branch the
+   * tab compared you against a branch you cannot push to, skipping the one you
+   * can, under a caption that claimed your branch was not in the comparison at
+   * all. It was.
+   */
+  const [other, setOther] = useState<string | null>(null);
   // Which reading of the file you asked for. In the URL rather than in state, so
   // it survives a reload, a bookmark and the back button — and so switching is a
   // navigation, which is what makes re-reading the file on the way in the
@@ -841,15 +854,15 @@ export function Editor() {
       return;
     }
     let live = true;
-    setProd(null);
+    setOther(null);
     api
-      .notebookContent('prod', path)
-      .then((text) => live && setProd(text))
-      .catch(() => live && setProd(''));
+      .notebookContent(diffAgainst, path)
+      .then((text) => live && setOther(text))
+      .catch(() => live && setOther(''));
     return () => {
       live = false;
     };
-  }, [tab, path]);
+  }, [tab, path, diffAgainst]);
 
   /**
    * Create-or-open the jobs file paired with this notebook, and go to its form.
@@ -1025,6 +1038,8 @@ export function Editor() {
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
         refresh={treeRefresh}
+        standing={standing}
+        onUpdate={updateFromTest}
       />
       {!layout.explorerCollapsed && (
         <Splitter
@@ -1083,8 +1098,8 @@ export function Editor() {
         promotion={promotion}
         standing={standing}
         onPush={push}
-        onUpdate={updateFromTest}
         branch={branch}
+        fileBehind={branch === 'mine' && (standing?.behindFiles ?? []).includes(path)}
         fileEditable={fileEditable(path)}
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
@@ -1307,21 +1322,21 @@ export function Editor() {
 
       {tab === 'diff' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
-          {prod == null || savedSource == null ? (
+          {other == null || savedSource == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
-          ) : prod === savedSource ? (
+          ) : other === savedSource ? (
             <p className="text-base text-muted-foreground">
-              No differences — test and production are identical for this file.
+              No differences — {diffLabel} and this branch are identical for this file.
             </p>
           ) : (
             <>
               <p className="mb-2 max-w-[78ch] shrink-0 text-base text-muted-foreground">
-                Production (left) vs test (right)
-                {prod === '' && ' — this file does not exist in production yet'}
-                {'. Your own branch is not in this: it compares what is committed on '}
-                {'each of the two branches that run.'}
+                {diffLabel} (left) vs this branch (right)
+                {other === '' && ` — this file does not exist in ${diffLabel} yet`}
+                {`. Left is the file as it stands in ${diffLabel}; right is your `}
+                {'working copy, so anything saved here but not yet pushed is in it.'}
               </p>
-              <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
+              <DiffView original={other} modified={savedSource} language={fileLanguage(path)} />
             </>
           )}
         </div>

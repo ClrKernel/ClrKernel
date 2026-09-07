@@ -216,6 +216,48 @@ public class GitServiceTest {
         StringAssert.Contains(_git.RunForTests("log", "-1", "--format=%an", "test"), "Ada Lovelace");
     }
 
+    /// <summary>
+    /// Which files test has moved on, as opposed to how many commits.
+    ///
+    /// <para>
+    /// The report that prompted this: every file said "Update from test", files
+    /// that exist only on the person's own branch included. The branch was behind;
+    /// the file was not, and the toolbar could not tell the two apart because the
+    /// count was all it had.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void BehindFiles_names_what_test_changed_and_nothing_of_yours() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        // Nested, and with a forward slash: the editor matches these against its
+        // own `reports/monthly.nb.md`, so a backslash or a leading `./` here is a
+        // badge that silently never appears.
+        WriteUser(_grace, "reports/monthly.nb.md", "hers\n");
+        WriteUser(_grace, "shared.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "hers", "Grace", "g@users.local").Pushed);
+
+        // Ada has a file of her own, committed on her branch and not on test. The
+        // refused push is what commits it — `git diff` compares commits, so a file
+        // still only in the worktree is invisible to this either way, which is how
+        // the first version of this test passed against `..` as well as `...`.
+        WriteUser(_ada, "only-mine.nb.md", "mine\n");
+        Assert.IsFalse(_git.PushToTest(_ada, "mine", "Ada", "a@users.local").Pushed);
+        Assert.AreEqual(1, _git.StandingOf(_ada).Ahead, "her file is committed on her branch");
+
+        var standing = _git.StandingOf(_ada);
+        Assert.IsTrue(standing.Behind > 0, "the branch is behind test");
+        CollectionAssert.AreEqual(
+            new[] { "reports/monthly.nb.md", "shared.nb.md" },
+            standing.BehindFiles.OrderBy(f => f, StringComparer.Ordinal).ToArray(),
+            "only what test changed — a file test has never seen is not behind it");
+
+        Assert.AreEqual(0, _git.UpdateFromTest(_ada, "Ada", "a@users.local").Count);
+        Assert.AreEqual(0, _git.StandingOf(_ada).BehindFiles.Count, "and nothing after a merge");
+    }
+
     [TestMethod]
     public void A_push_is_refused_once_test_has_moved_on() {
         _git.Init();

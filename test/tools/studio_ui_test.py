@@ -380,6 +380,76 @@ def secrets_project(page, base, root):
     assert "sk-from-" not in body, body[-900:]
 
 
+@check("behind-test")
+def behind_test(page, base, _root):
+    """Being behind test is said about the file, not about every file.
+
+    The report: every file's toolbar said "Update from test", including files
+    that exist only on the person's own branch and that test has never seen. The
+    branch was behind; the file was not, and the toolbar had only the count.
+    """
+    def write(branch, path, text):
+        return page.evaluate("""async ({ branch, path, text }) => (await fetch(
+            `/api/projects/default/branches/${branch}/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"branch": branch, "path": path, "text": text})
+
+    # A file both branches have: mine first, pushed, so test has a copy of it.
+    assert write("mine", "shared.nb.md", "# Base\n") == 200
+    page.evaluate("""async () => { await fetch('/api/projects/default/branch/push',
+        { method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ message: 'base' }) }); }""")
+
+    # Then test moves on underneath it. Committed straight into the test worktree,
+    # which is what somebody else pushing looks like from here.
+    import subprocess
+    root = page.evaluate("async () => (await (await fetch('/api/health')).json()).notebooksRoot")
+    test_tree = os.path.join(root, "test")
+    with open(os.path.join(test_tree, "shared.nb.md"), "w") as f:
+        f.write("# Theirs\n")
+    for args in (["add", "-A"], ["-c", "user.email=t@x", "-c", "user.name=T",
+                                 "commit", "-m", "theirs"]):
+        subprocess.run(["git", *args], cwd=test_tree, check=True, capture_output=True)
+
+    # And something of mine test has never seen, left unpushed — which is also what
+    # gives the branch something to push, so the disabled Push button below has a
+    # reason to be drawn at all.
+    assert write("mine", "only-mine.nb.md", "# Mine\n") == 200
+
+    # The branch is behind, so the explorer offers the merge.
+    page.goto(f"{base}/files/default/edit/mine/only-mine.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(4000)
+    assert explorer(page).get_by_role("button", name="Update from test").count() == 1, \
+        "the branch is behind test and the explorer does not say so"
+
+    # But this file is not behind anything, and its toolbar must not claim it is.
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "behind test" not in body, (
+        "a file test has never seen was called behind it:\n" + body[:1200])
+    # And the push is offered — disabled, saying why — rather than replaced.
+    push = page.get_by_role("button", name="Push to test")
+    assert push.count() == 1, "no Push to test at all:\n" + body[:1200]
+    assert push.first.is_disabled(), "push is offered while the server would refuse it"
+
+    # The file test *did* change says so, on the same branch, in the same toolbar.
+    page.goto(f"{base}/files/default/edit/mine/shared.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(4000)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "behind test" in body, "the file test changed does not say so:\n" + body[:1200]
+
+    # And its diff is against test, not production — test is where it goes next.
+    assert "Diff vs test" in body, body[:1200]
+    page.get_by_role("tab", name="Diff vs test").click()
+    # Two fetches land here — this branch's copy and test's — so poll rather than
+    # guess a number: "Loading…" is a real state, not a failure.
+    for _ in range(20):
+        page.wait_for_timeout(1000)
+        if "Theirs" in page.inner_text("body"):
+            break
+    assert "Theirs" in page.inner_text("body"), (
+        "the diff did not show test's version:\n" + page.inner_text("body")[-1200:])
+
+
 @check("read-only-pill")
 def read_only_pill(page, base, _root):
     """A file you cannot edit says so as a pill, and the pill says why on hover.

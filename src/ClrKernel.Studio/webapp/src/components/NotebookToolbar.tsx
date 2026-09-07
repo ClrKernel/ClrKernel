@@ -1,5 +1,4 @@
 import {
-  ArrowDownToLine,
   Copy,
   FileOutput,
   Info,
@@ -120,9 +119,10 @@ export interface NotebookToolbarProps {
   onPush: (message: string) => void;
   /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
   onSchedule?: () => void;
-  onUpdate: () => void;
   /** Which branch is open — `mine`, `test`, `prod`, or `user-<id>`. */
   branch: string;
+  /** Test has changed *this file* since the branches parted. */
+  fileBehind: boolean;
   /** False for a file Files lists but nobody may write — a `.txt`, a plain yaml. */
   fileEditable: boolean;
   /** Copies what is on screen onto your own branch and opens it there. */
@@ -264,22 +264,25 @@ function SaveStatusChip({ status, onRetry }: { status: SaveStatus; onRetry: () =
  * Push to test, and the state that says whether it is worth offering.
  *
  * A single button rather than a dialog: the message is the only thing to collect,
- * and a prompt for one line is a modal for one line. `behind` swaps it for the
- * update it is blocked on, because pushing over somebody else's work is the case
- * the server refuses anyway.
+ * and a prompt for one line is a modal for one line.
+ *
+ * Being behind test used to *replace* this button with "Update from test", which
+ * is how "why is there no push?" became a question — the answer was on screen,
+ * wearing a different name, and the update itself is about the branch rather than
+ * about the file this toolbar is for. The update moved to the explorer, beside the
+ * branch picker. What is left here is the push, disabled while the server would
+ * refuse it, saying which.
  */
 function PushControl({
   standing,
   busy,
   onPush,
-  onUpdate,
 }: {
   standing: BranchStanding | null;
   busy: boolean;
   onPush: (message: string) => void;
   /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
   onSchedule?: () => void;
-  onUpdate: () => void;
 }) {
   const [message, setMessage] = useState('');
   const [open, setOpen] = useState(false);
@@ -311,17 +314,24 @@ function PushControl({
     );
   }
 
-  if (behind > 0) {
-    return (
-      <Button variant="outline" size="xs" disabled={busy} onClick={onUpdate}>
-        <ArrowDownToLine className="size-3.5" aria-hidden="true" />
-        Update from test
-      </Button>
-    );
-  }
-
   if (!pending) {
     return null;
+  }
+
+  if (behind > 0) {
+    // Disabled rather than gone: the server refuses a push while the branch is
+    // behind, and a button that is missing answers nothing.
+    return (
+      <Button
+        variant="outline"
+        size="xs"
+        disabled
+        title="Test has moved on. Update your branch first — the ↓ button beside the branch picker in the explorer."
+      >
+        <Upload className="size-3.5" aria-hidden="true" />
+        Push to test
+      </Button>
+    );
   }
 
   return open ? (
@@ -442,7 +452,13 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           {!props.binary && (
             <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
           )}
-          {!props.binary && <TabsTrigger value="diff">Diff vs production</TabsTrigger>}
+          {!props.binary && (
+            <TabsTrigger value="diff">
+              {/* Named, because it is not always production: the diff is against
+                  the branch this file goes to next. */}
+              Diff vs {props.branch === 'test' ? 'production' : 'test'}
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
 
@@ -451,6 +467,27 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           sentence at the far end of this row, next to nothing that explained it
           and small enough that the answer to "why can I not type" was a thing
           you had to go and find. */}
+      {/* This file, not the branch. `behindFiles` is what test changed since the
+          branches parted, so a file only you have never appears here — which is
+          the whole complaint: every file used to carry the branch's status. */}
+      {props.fileBehind && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              tabIndex={0}
+              variant="outline"
+              className="ml-2 cursor-help self-center border-status-warning/40 bg-status-warning/10 font-semibold text-status-warning"
+            >
+              behind test
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[40ch]">
+            Test has a newer version of this file. Diff vs test to see what changed,
+            and update your branch from the ↓ beside the branch picker.
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       {props.readOnlyReason != null && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -652,7 +689,6 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         standing={props.standing}
         busy={props.busy}
         onPush={props.onPush}
-        onUpdate={props.onUpdate}
       />
       </div>
       )}

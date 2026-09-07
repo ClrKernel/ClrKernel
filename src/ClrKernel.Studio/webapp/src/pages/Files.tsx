@@ -40,6 +40,12 @@ export function Files() {
   // Reloaded by hand after setting up the workflow: it is what decides whether
   // the "no workflow" notice is still on screen.
   const { data: health, reload: reloadHealth } = usePolling(() => api.health(), null);
+  // The explorer draws the "test has moved on" indicator, and it is the same
+  // explorer here as in the editor — so it needs the same standing. Without this
+  // the indicator existed only once a file was open, which is the wrong half:
+  // this is the page a branch switch now lands on.
+  const { data: standing, reload: reloadStanding } = usePolling(
+    () => api.branchStanding(), 15000);
   const [notice, setNotice] = useState<string | null>(null);
   const [setting, setSetting] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(() => loadLayout());
@@ -105,6 +111,19 @@ export function Files() {
         width={layout.explorerWidth}
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
+        standing={standing}
+        onUpdate={async () => {
+          try {
+            const result = await api.updateFromTest();
+            toast.success(result.merged
+              ? 'Up to date with test.'
+              : `Conflicts left in ${result.conflicts.join(', ')} — open each and fix the markers.`);
+            reload();
+            reloadStanding();
+          } catch (e) {
+            setNotice((e as Error).message);
+          }
+        }}
       />
       {!layout.explorerCollapsed && (
         <Splitter

@@ -1011,6 +1011,7 @@ public static class JobsApi {
                     standing.Ahead,
                     standing.Behind,
                     standing.Conflicts,
+                    standing.BehindFiles,
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 

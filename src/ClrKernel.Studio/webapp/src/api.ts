@@ -106,6 +106,13 @@ export interface BranchStanding {
   ahead?: number;
   behind?: number;
   conflicts?: string[];
+  /**
+   * The files test has changed since the branches parted — the per-file half of
+   * `behind`. A file only you have is never in it, which is what lets a toolbar
+   * say something true about the file in front of you rather than about the
+   * branch it happens to be on.
+   */
+  behindFiles?: string[];
 }
 
 export interface Worktree {
