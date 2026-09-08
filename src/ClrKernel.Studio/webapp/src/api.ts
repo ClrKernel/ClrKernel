@@ -125,8 +125,12 @@ export interface ApiCommit {
   subject: string;
   /** Full shas, first parent first. Two of them is a merge. */
   parents: string[];
-  /** Present where the caller asked for them — a merge preview, not a plain list. */
-  files: { status: string; path: string }[];
+  /**
+   * Present where the caller asked for them — a merge preview, not a plain list.
+   * In a followed file history the path is the one the file had *at that commit*,
+   * and `oldPath` is set on the commit that renamed it.
+   */
+  files: { status: string; path: string; oldPath: string | null }[];
 }
 
 /** One row of a folder listing. */
@@ -856,16 +860,18 @@ export const api = {
   branches: (slug?: string) => request<{ branches: BranchSummary[] }>(
     slug == null ? `${project()}/branches` : `/projects/${encodeURIComponent(slug)}/branches`),
 
-  /** A branch's commits, newest first. */
+  /** A branch's commits, newest first. With a `path`, that file's own — across renames. */
   commits: (branch: string, limit = 50, withFiles = false, path?: string) =>
     request<{ branch: string; commits: ApiCommit[] }>(
       `${scope(branch)}/commits?limit=${limit}&files=${withFiles}`
       + (path ? `&path=${encodeURIComponent(path)}` : '')),
   /** One file on either side of one commit. Null on a side the file was not on. */
-  commitFile: (branch: string, sha: string, path: string) =>
+  commitFile: (branch: string, sha: string, path: string, previousPath?: string | null) =>
     request<{ sha: string; path: string; before: string | null; after: string | null }>(
       `${scope(branch)}/commits/${encodeURIComponent(sha)}/file`
-      + `?path=${encodeURIComponent(path)}`),
+      + `?path=${encodeURIComponent(path)}`
+      // Only the rename commit sends one, and only the path git itself reported.
+      + (previousPath ? `&previousPath=${encodeURIComponent(previousPath)}` : '')),
   /** One folder of a branch, each row with the commit that last touched it. */
   contents: (branch: string, path = '') =>
     request<{ branch: string; path: string; entries: ApiEntry[] }>(

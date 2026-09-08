@@ -142,6 +142,36 @@ The thing people get backwards is which branch moves, which is why it is drawn *
 said in words — and why the uncommitted files are listed under a heading saying they are
 committed **on your own branch**.
 
+## A file's history is the file's, across renames
+
+`History(branch, path:)` adds `--follow`, and the reason it can is that
+`--name-status` then names the path the file had **at each commit** — so the diff
+under the list is fetchable for the commits from before the rename, which is the only
+thing that made following worth doing. Half of it is worse than none: a followed list
+whose diffs are all fetched at today's path shows an empty history for everything
+before the rename and never says why.
+
+Three parts, and each is load-bearing:
+
+- `CommitFile.OldPath` — git's tab-separated `R100 old new` has three fields where everything else
+  has two, and the middle one is the only record of where the file came from.
+- `FileChange(sha, path, oldPath)` — the left side of a rename is read at
+  `oldPath`. Without it `git show <sha>^:<new path>` finds nothing, and **the commit
+  that moved a file reads as the commit that created it**. That is the assertion in
+  `A_files_history_follows_it_across_a_rename`, pinned rather than described.
+- The client never falls back to the address-bar path. A commit whose name-status is
+  empty is a refusal, not a default — the default is what silently re-creates the
+  half-following failure.
+
+> `--follow` is git's own guess and it can cross into unrelated history: delete a
+> path, rename a different file onto it later, and the walk follows. Living with git's
+> answer; the alternative is a rename index of our own.
+
+The rail beside the list is **not** a lane graph, unlike the merge preview's. This list
+is filtered to one file, so two adjacent rows are usually not parent and child, and
+lanes drawn across them would claim a shape the data does not have. A dot per commit, a
+merge drawn hollow, and nothing else asserted.
+
 ## Browser checks, and the trap that prose could not fix
 
 `test/tools/studio_ui_test.py` is the things only a browser can answer: whether a tooltip

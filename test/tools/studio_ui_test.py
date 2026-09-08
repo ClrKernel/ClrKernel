@@ -537,15 +537,33 @@ def file_history(page, base, _root):
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ message }) }); }""", {"message": message})
 
+    def move(path, to):
+        return page.evaluate("""async ({ path, to }) => (await fetch(
+            `/api/projects/default/branches/mine/notebooks/move?path=${path}`,
+            { method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ to }) })).status""", {"path": path, "to": to})
+
+    # Several lines, because the rename at the end has to stay recognisable as the
+    # same file: git detects a rename by similarity, and a one-line file that
+    # changes at all is 0% similar to itself.
+    def report(last):
+        return f"# Report\n\nalpha\nbeta\n{last}\n"
+
     # Three commits, one of which is about a different file entirely.
-    assert write("reports/monthly.nb.md", "# First\n") == 200
+    assert write("reports/monthly.nb.md", report("First")) == 200
     push("add the monthly report")
     assert write("other.nb.md", "# Unrelated\n") == 200
     push("something else entirely")
-    assert write("reports/monthly.nb.md", "# Second\n") == 200
+    assert write("reports/monthly.nb.md", report("Second")) == 200
     push("rework the rollup")
 
-    page.goto(f"{base}/files/default/mine/history/reports/monthly.nb.md",
+    # Then it is renamed and edited in one commit, which is the shape the editor's
+    # own rename produces.
+    assert move("reports/monthly.nb.md", "reports/quarterly.nb.md") == 200
+    assert write("reports/quarterly.nb.md", report("Third")) == 200
+    push("rename the rollup")
+
+    page.goto(f"{base}/files/default/mine/history/reports/quarterly.nb.md",
               wait_until="networkidle")
     page.wait_for_timeout(4000)
     body = page.inner_text("body").replace("\xa0", " ")
@@ -557,14 +575,42 @@ def file_history(page, base, _root):
         "the branch's history, not the file's — a commit that never touched it:\n"
         + body[-1200:])
 
+    # Across the rename: the two commits above are from when the file had another
+    # name, and the list says where the name changed rather than starting again.
+    assert "renamed from" in body and "reports/monthly.nb.md" in body, (
+        "the history stops at the rename — a file's history is the file's:\n"
+        + body[-1200:])
+
     # It opens on the newest change rather than making you click for anything.
     assert "Before (left) and after (right)" in body, body[-1200:]
     assert page.locator(".diff-editor").count() == 1, "no side-by-side diff"
     for _ in range(15):
         page.wait_for_timeout(1000)
-        if "Second" in page.inner_text("body"):
+        if "Third" in page.inner_text("body"):
             break
-    assert "Second" in page.inner_text("body"), "the newest version is not in the diff"
+    assert "Third" in page.inner_text("body"), "the newest version is not in the diff"
+
+    # And it is a comparison, not a creation: reading the left-hand side at the new
+    # path would find nothing there and call a move the commit that made the file.
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "Added by" not in body, (
+        "the rename reads as a creation — the left side was read at the new path:\n"
+        + body[-1200:])
+    assert "Second" in body, (
+        "the pre-rename text should be on the left of the rename commit:\n"
+        + body[-1200:])
+
+    # A commit from before the rename opens at the name the file had then.
+    page.get_by_role("button", name=re.compile("rework the rollup")).first.click()
+    for _ in range(15):
+        page.wait_for_timeout(1000)
+        if "First" in page.inner_text("body"):
+            break
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "First" in body and "Second" in body, (
+        "a commit from before the rename shows nothing — it was fetched at today's "
+        "path:\n" + body[-1200:])
+    assert "Added by" not in body, body[-1200:]
 
     # And the graph rail is drawn beside the list.
     assert page.locator("ol svg").count() >= 2, "no rail beside the commits"

@@ -1083,7 +1083,7 @@ public static class JobsApi {
         // whoever is showing it.
         scoped.MapGet("/commits/{sha}/file", (
             HttpContext context, ProjectRegistry projects, string project, string branch,
-            string sha, string path) => {
+            string sha, string path, string previousPath) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
@@ -1098,7 +1098,10 @@ public static class JobsApi {
                 if (!System.Text.RegularExpressions.Regex.IsMatch(sha ?? "", "^[0-9a-fA-F]{4,40}$")) {
                     return Results.BadRequest(new { error = "That is not a commit id." });
                 }
-                var (before, after) = scope.Git.FileChange(sha, path);
+                // `previousPath` is only ever the rename commit's other side, and it
+                // comes back from the same name-status the client already has — the
+                // browser is not guessing a path here, it is repeating git's.
+                var (before, after) = scope.Git.FileChange(sha, path, previousPath);
                 return Results.Ok(new {
                     sha,
                     path,
@@ -3059,6 +3062,6 @@ internal static class CommitView {
         commit.When,
         commit.Subject,
         commit.Parents,
-        files = commit.Files.Select(f => new { f.Status, f.Path }),
+        files = commit.Files.Select(f => new { f.Status, f.Path, f.OldPath }),
     };
 }

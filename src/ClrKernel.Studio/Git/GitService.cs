@@ -904,13 +904,18 @@ public sealed class GitService {
         IReadOnlyList<string> Parents, IReadOnlyList<CommitFile> Files);
 
     /// <summary>A path and what happened to it. <c>Status</c> is git's letter: A, M, D, R.</summary>
-    public sealed record CommitFile(string Status, string Path);
+    /// <param name="OldPath">
+    /// Where a rename came from, and null for everything else. It is what lets a
+    /// followed history read the other side of the rename commit: the file is at
+    /// <c>Path</c> in that commit and at <c>OldPath</c> in its parent.
+    /// </param>
+    public sealed record CommitFile(string Status, string Path, string OldPath = null);
 
     /// <summary>
     /// The fields, NUL-separated, one commit per record.
     ///
     /// <para>
-    ///  starts a record and NUL separates the fields inside it, because a
+    /// <c>0x01</c> starts a record and NUL separates the fields inside it, because a
     /// commit subject can contain anything a person can type — including newlines
     /// and pipes, which is what every simpler delimiter here would have been.
     /// </para>
@@ -924,7 +929,20 @@ public sealed class GitService {
     /// </summary>
     public IReadOnlyList<CommitEntry> History(
         string branch, int limit = 50, bool withFiles = false, string path = null) {
-        var args = new List<string> { $"--max-count={Math.Clamp(limit, 1, 500)}", branch };
+        var args = new List<string> { $"--max-count={Math.Clamp(limit, 1, 500)}" };
+        if (!string.IsNullOrEmpty(path)) {
+            // Across renames: a file's history is the file's, and it does not begin
+            // again because somebody moved it. Each commit's name-status then names
+            // the path the file had *at that commit*, which is what makes the diff
+            // below the list fetchable for the ones before the rename.
+            //
+            // ponytail: `--follow` is git's own guess and it can walk into unrelated
+            // history — delete a path, rename a different file onto it later, and the
+            // walk crosses over. Living with git's answer; the alternative is a rename
+            // index of our own.
+            args.Add("--follow");
+        }
+        args.Add(branch);
         if (!string.IsNullOrEmpty(path)) {
             // `--` so a path that looks like a ref is still a path. A file called
             // `test` is not the test branch, and git would otherwise guess.
@@ -956,8 +974,13 @@ public sealed class GitService {
     /// true.
     /// </para>
     /// </summary>
-    public (string Before, string After) FileChange(string sha, string path) =>
-        (FileAt($"{sha}^", path), FileAt(sha, path));
+    /// <param name="oldPath">
+    /// The path the file had in the parent, for the commit that renamed it. Without
+    /// it the left side of a rename is read at a path the parent does not have, and
+    /// the commit that only moved a file reads as the commit that created it.
+    /// </param>
+    public (string Before, string After) FileChange(string sha, string path, string oldPath = null) =>
+        (FileAt($"{sha}^", string.IsNullOrEmpty(oldPath) ? path : oldPath), FileAt(sha, path));
 
     /// <summary>
     /// What merging test would bring: the commits on test that this branch has not
@@ -1035,8 +1058,11 @@ public sealed class GitService {
                 .Select(line => line.Split('\t', StringSplitOptions.RemoveEmptyEntries))
                 .Where(parts => parts.Length >= 2)
                 // A rename is "R100 old new": the last field is where it ended up,
-                // which is the one somebody is looking for in the list.
-                .Select(parts => new CommitFile(parts[0].Trim(), parts[^1].Trim()))
+                // which is the one somebody is looking for in the list. The one
+                // before it is where it came from, and only a rename has three.
+                .Select(parts => new CommitFile(
+                    parts[0].Trim(), parts[^1].Trim(),
+                    parts.Length >= 3 ? parts[^2].Trim() : null))
                 .ToList();
         return new CommitEntry(
             Sha: fields[0].Trim(),

@@ -315,6 +315,73 @@ public class GitServiceTest {
             "`--` keeps git from reading the path as the branch of the same name");
     }
 
+    /// <summary>
+    /// A file's history does not begin again because somebody moved it.
+    ///
+    /// <para>
+    /// Following is only half done unless the diff follows too: each commit's
+    /// name-status names the path the file had <em>at that commit</em>, and the
+    /// rename commit names both. Read the left side of a rename at the new path and
+    /// git finds nothing there, so the commit that only moved a file reads as the
+    /// commit that created it — which is why the last assertion here is that
+    /// forgetting the old path is what makes <c>Before</c> null.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_files_history_follows_it_across_a_rename() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+
+        // Three lines so the rename below is still recognisably the same file: git
+        // detects a rename by similarity, and a one-line file that changes at all
+        // is 0% similar to itself.
+        WriteUser(_grace, "reports/old.nb.md", "alpha\nbeta\ngamma\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the report", "Grace", "g@x").Pushed);
+
+        WriteUser(_grace, "reports/old.nb.md", "alpha\nbeta\ndelta\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rework the rollup", "Grace", "g@x").Pushed);
+
+        // Moved and edited in one commit, which is the normal shape of a rename in
+        // this app: the editor's rename writes the new path and drops the old.
+        File.Delete(Path.Combine(_git.UserPath(_grace), "reports/old.nb.md"));
+        WriteUser(_grace, "reports/new.nb.md", "alpha\nbeta\nepsilon\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rename the report", "Grace", "g@x").Pushed);
+
+        var history = _git.History(
+            GitService.TestBranch, withFiles: true, path: "reports/new.nb.md");
+        CollectionAssert.AreEqual(
+            new[] { "rename the report", "rework the rollup", "add the report" },
+            history.Select(c => c.Subject).ToArray(),
+            "the commits from before the rename are this file's too");
+
+        // The rename commit carries both sides.
+        var moved = history[0].Files.Single();
+        StringAssert.StartsWith(moved.Status, "R", "git reports it as a rename");
+        Assert.AreEqual("reports/new.nb.md", moved.Path);
+        Assert.AreEqual("reports/old.nb.md", moved.OldPath);
+
+        // And every older commit names the path the file had then — the one thing
+        // that makes their diffs fetchable at all.
+        Assert.AreEqual("reports/old.nb.md", history[1].Files.Single().Path);
+        Assert.AreEqual("reports/old.nb.md", history[2].Files.Single().Path);
+        Assert.IsNull(history[1].Files.Single().OldPath, "only a rename has an old path");
+
+        // The diff across the rename: the left side is read at the old path.
+        var across = _git.FileChange(history[0].Sha, moved.Path, moved.OldPath);
+        Assert.AreEqual("alpha\nbeta\ndelta\n", across.Before);
+        Assert.AreEqual("alpha\nbeta\nepsilon\n", across.After);
+
+        // Forget it and the move reads as a creation — the failure this parameter
+        // exists to prevent, pinned rather than described.
+        Assert.IsNull(_git.FileChange(history[0].Sha, moved.Path).Before,
+            "the new path does not exist in the parent");
+
+        // A commit from before the rename, fetched at the path it used then.
+        var earlier = _git.FileChange(history[2].Sha, history[2].Files.Single().Path);
+        Assert.IsNull(earlier.Before, "nothing before the commit that added it");
+        Assert.AreEqual("alpha\nbeta\ngamma\n", earlier.After);
+    }
+
     [TestMethod]
     public void Contents_lists_a_folder_and_says_what_last_touched_each_row() {
         _git.Init();
