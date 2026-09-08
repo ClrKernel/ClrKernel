@@ -865,6 +865,9 @@ export const api = {
     request<{ branch: string; commits: ApiCommit[] }>(
       `${scope(branch)}/commits?limit=${limit}&files=${withFiles}`
       + (path ? `&path=${encodeURIComponent(path)}` : '')),
+  /** One commit by its sha, with the files it touched. 404 when there is no such one. */
+  commit: (branch: string, sha: string) =>
+    request<ApiCommit>(`${scope(branch)}/commits/${encodeURIComponent(sha)}`),
   /** One file on either side of one commit. Null on a side the file was not on. */
   commitFile: (branch: string, sha: string, path: string, previousPath?: string | null) =>
     request<{ sha: string; path: string; before: string | null; after: string | null }>(

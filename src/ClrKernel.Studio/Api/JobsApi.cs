@@ -1077,6 +1077,27 @@ public static class JobsApi {
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 
+        // One commit, by the sha in a URL. The commit page is a place you can link
+        // to and reload into, so it cannot depend on a list the app happened to
+        // have fetched — and an unknown sha is Not found rather than an empty
+        // object, which would render as a commit that changed nothing.
+        scoped.MapGet("/commits/{sha}", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            string sha) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                if (!System.Text.RegularExpressions.Regex.IsMatch(sha ?? "", "^[0-9a-fA-F]{4,40}$")) {
+                    return Results.BadRequest(new { error = "That is not a commit id." });
+                }
+                return scope.Git.Commit(sha) is { } commit
+                    ? Results.Ok(CommitView.From(commit))
+                    : Results.NotFound(new { error = $"No commit {sha} in this repository." });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
         // What one commit did to one file, as two texts. The client renders the
         // same side-by-side editor the branch diffs use, so this returns content
         // rather than a rendered diff — the shape of the comparison belongs to

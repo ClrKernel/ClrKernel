@@ -140,6 +140,29 @@ export function parseAnsi(text: string): AnsiSpan[] {
 }
 
 /** Short relative time for run lists ("3m ago"). */
+/**
+ * A timestamp spelled out: `09/08/2026 03:42 PM`, in the reader's own timezone.
+ *
+ * Beside `timeAgo` rather than instead of it, because they answer different
+ * questions. "2d ago" is right for a row you are scanning; a commit list is a
+ * record, and "which afternoon was that" is not a question relative time can
+ * answer at all.
+ */
+export function stamp(iso: string | null | undefined): string {
+  if (!iso) {
+    return '—';
+  }
+  // Timestamps are UTC; the server writes them without a zone suffix.
+  const at = new Date(/(Z|[+-]\d\d:\d\d)$/.test(iso) ? iso : `${iso}Z`);
+  if (Number.isNaN(at.getTime())) {
+    return '—';
+  }
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hour = at.getHours();
+  return `${pad(at.getMonth() + 1)}/${pad(at.getDate())}/${at.getFullYear()} `
+    + `${pad(hour % 12 || 12)}:${pad(at.getMinutes())} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
 export function timeAgo(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) {
     return '—';

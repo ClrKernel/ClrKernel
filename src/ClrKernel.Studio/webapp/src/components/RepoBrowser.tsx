@@ -1,10 +1,10 @@
 import { ChevronRight, FolderClosed } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, projectSlug } from '../api';
 import { timeAgo } from '../ipynb';
-import { editPath } from '../routes';
+import { commitPath, editPath } from '../routes';
 import { CommitList } from './CommitList';
 import { ErrorBanner, usePolling } from './common';
 import { FileBadge } from './FileBadge';
@@ -28,7 +28,11 @@ function size(bytes: number): string {
  * one every git host puts on its front page.</p>
  */
 export function RepoBrowser({ branch }: { branch: string }) {
-  const [tab, setTab] = useState<'contents' | 'history'>('contents');
+  // In the address, unlike the folder below it: a commit page is somewhere you
+  // *come back from*, and landing on Contents after reading a commit loses the
+  // list you were working through. A folder has no such round trip.
+  const [search, setSearch] = useSearchParams();
+  const tab = search.get('tab') === 'history' ? 'history' : 'contents';
   /** Which folder Contents is showing. Not in the URL: it is a view of the page,
    *  and the file you open from it is what earns an address. */
   const [folder, setFolder] = useState('');
@@ -51,7 +55,11 @@ export function RepoBrowser({ branch }: { branch: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Tabs value={tab} onValueChange={(next) => setTab(next as 'contents' | 'history')}>
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          setSearch(next === 'history' ? { tab: 'history' } : {}, { replace: true })}
+      >
         <TabsList variant="line">
           <TabsTrigger value="contents">Contents</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
@@ -162,7 +170,7 @@ export function RepoBrowser({ branch }: { branch: string }) {
             <CommitList
               commits={history.commits}
               empty="No commits on this branch yet."
-              expandable
+              href={(commit) => commitPath(projectSlug(), branch, commit.sha)}
             />
           )}
         </div>

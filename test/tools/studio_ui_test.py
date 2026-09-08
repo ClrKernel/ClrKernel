@@ -487,35 +487,109 @@ def branch_in_url(page, base, _root):
 
 @check("commit-detail")
 def commit_detail(page, base, _root):
-    """A commit in History opens to show what it changed."""
-    def write(branch, path, text):
-        return page.evaluate("""async ({ branch, path, text }) => (await fetch(
-            `/api/projects/default/branches/${branch}/notebooks/content?path=${path}`,
-            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
-            {"branch": branch, "path": path, "text": text})
+    """A commit in History is a link to a page, and the page says what it did.
 
-    assert write("mine", "reports/monthly.nb.md", "# Monthly\n") == 200
-    page.evaluate("""async () => { await fetch('/api/projects/default/branch/push',
-        { method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ message: 'add the monthly report' }) }); }""")
+    It used to expand in place: the files appeared inside a row in a list, with
+    nowhere to go from there and no address to send anybody.
+    """
+    import subprocess
+    root = page.evaluate("async () => (await (await fetch('/api/health')).json()).notebooksRoot")
+    tree = os.path.join(root, "test")
 
-    page.goto(f"{base}/files/default/mine", wait_until="networkidle")
+    def commit(message):
+        for args in (["add", "-A"], ["-c", "user.email=t@x", "-c", "user.name=Tess",
+                                     "commit", "-m", message]):
+            subprocess.run(["git", *args], cwd=tree, check=True, capture_output=True)
+
+    def write(rel, text):
+        full = os.path.join(tree, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
+            f.write(text)
+
+    # Committed straight into the test worktree, which is what somebody else's
+    # push looks like from here — and the only way to get a *deletion* into a
+    # commit, which the app itself has no button for.
+    write("reports/monthly.nb.md", "# Monthly\n")
+    write("reports/doomed.nb.md", "# Doomed\n")
+    commit("the first two reports")
+
+    # One commit with one of each status, so a mapping wired backwards cannot pass
+    # by drawing every row the same way.
+    write("reports/monthly.nb.md", "# Monthly\n\nreworked\n")
+    write("fresh.nb.md", "# Fresh\n")
+    os.remove(os.path.join(tree, "reports/doomed.nb.md"))
+    commit("add, change and remove")
+
+    page.goto(f"{base}/files/default/test", wait_until="networkidle")
     page.wait_for_timeout(2000)
     page.get_by_role("tab", name="History").click()
     page.wait_for_timeout(2500)
 
-    # Collapsed: the subject, and not yet the files.
+    # The list: a message, and under it the sha, the author and a written-out
+    # date. Not "2d ago" — a history is a record, and "which afternoon was that"
+    # is a question relative time cannot answer.
     body = page.inner_text("body").replace("\xa0", " ")
-    assert "add the monthly report" in body, body[-900:]
-    assert "reports/monthly.nb.md" not in body, (
-        "the files are already open — nothing to click:\n" + body[-900:])
+    assert "add, change and remove" in body, body[-900:]
+    assert re.search(r"\d\d/\d\d/\d{4} \d\d:\d\d [AP]M", body), (
+        "no written-out date in the commit list:\n" + body[-900:])
 
-    page.get_by_role("button", name=re.compile("add the monthly report")).first.click()
-    page.wait_for_timeout(800)
+    # The graph column beside it.
+    assert page.locator("ol svg").count() >= 2, "no graph column beside the commits"
+
+    # A commit is a link to its own page, not a row that expands. Read from the
+    # list itself: the explorer beside it names every file on the branch, so a
+    # whole-body assertion would find `fresh.nb.md` there and never fail.
+    listed = page.locator("ol").first.inner_text().replace("\xa0", " ")
+    assert "fresh.nb.md" not in listed, (
+        "the files are already listed — the row still expands:\n" + listed[-900:])
+    page.get_by_role("link", name=re.compile("add, change and remove")).first.click()
+    page.wait_for_url(re.compile(r"/files/default/test/commit/[0-9a-f]{40}$"), timeout=10000)
+    page.wait_for_timeout(2000)
+
     body = page.inner_text("body").replace("\xa0", " ")
-    assert "reports/monthly.nb.md" in body, (
-        "clicking a commit showed no files:\n" + body[-900:])
-    assert "added" in body, "no status against the file: " + body[-600:]
+    assert "CHANGED FILES" in body, "no changed-files pane:\n" + body[-900:]
+    for name in ("fresh.nb.md", "monthly.nb.md", "doomed.nb.md"):
+        assert name in body, f"{name} missing from the commit page:\n" + body[-1200:]
+
+    # Deleted is struck through and added carries the plus — told apart in the DOM,
+    # not merely both drawn as "special".
+    pane = page.locator('div[aria-label="Changed files"]')
+    struck = pane.locator("span.line-through")
+    assert struck.count() == 1, f"expected one struck-through name, got {struck.count()}"
+    assert "doomed" in struck.first.inner_text(), struck.first.inner_text()
+    plus = pane.locator('svg[class*="square-plus"]')
+    assert plus.count() == 1, f"expected one added-file icon, got {plus.count()}"
+
+    # Before picking a file: a card per file, collapsed, that opens to its diff.
+    cards = page.locator('ul[aria-label="Changes"] button[aria-expanded]')
+    assert cards.count() == 3, f"expected a card per changed file, got {cards.count()}"
+    assert page.locator(".diff-editor").count() == 0, "a diff is open before anything was clicked"
+    cards.filter(has_text="fresh.nb.md").first.click()
+    for _ in range(15):
+        page.wait_for_timeout(1000)
+        if page.locator(".diff-editor").count() > 0:
+            break
+    assert page.locator(".diff-editor").count() == 1, "the card did not open its diff"
+    assert "Added by this commit" in page.inner_text("body").replace("\xa0", " ")
+
+    # And picking a file from the pane is its own address, showing that one diff.
+    pane.get_by_role("link", name=re.compile("monthly.nb.md")).first.click()
+    page.wait_for_url(re.compile(r"/commit/[0-9a-f]{40}/reports/monthly.nb.md"), timeout=10000)
+    for _ in range(15):
+        page.wait_for_timeout(1000)
+        if "reworked" in page.inner_text("body"):
+            break
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "reworked" in body, "the chosen file's diff never arrived:\n" + body[-1200:]
+    assert page.locator(".diff-editor").count() == 1, "one file, one diff"
+
+    # And the way back is to the list you came in on, not to Contents.
+    page.get_by_role("link", name="History").first.click()
+    page.wait_for_url(re.compile(r"/files/default/test\?tab=history"), timeout=10000)
+    page.wait_for_timeout(2000)
+    assert "add, change and remove" in page.inner_text("body"), (
+        "back from a commit lands somewhere else:\n" + page.inner_text("body")[-900:])
 
 
 @check("file-history")

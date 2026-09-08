@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Rail } from './components/Rail';
 import { TopBar } from './components/TopBar';
 import { Channels } from './pages/Channels';
+import { CommitDetail } from './pages/CommitDetail';
 import { Connections } from './pages/Connections';
 import { Dashboard } from './pages/Dashboard';
 import { Monitoring } from './pages/Monitoring';
@@ -223,6 +224,14 @@ export function App() {
                   element={<ProjectScope><Editor /></ProjectScope>}
                 />
               ))}
+              {/* A commit is a place, not a row that expands: it has an address,
+                  and the file you pick inside it extends that address rather than
+                  replacing it. `commit` sits in the view slot but is not a view —
+                  it is a reading of a commit, not of a file. */}
+              <Route
+                path="/files/:project/:branch/commit/:sha/*"
+                element={<ProjectScope><CommitDetail /></ProjectScope>}
+              />
               {/* Links written against the old `/:view/:branch/` ordering. */}
               <Route path="/files/:project/:view/:branch/*" element={<LegacyFiles />} />
 

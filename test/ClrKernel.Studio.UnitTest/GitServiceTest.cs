@@ -382,6 +382,43 @@ public class GitServiceTest {
         Assert.AreEqual("alpha\nbeta\ngamma\n", earlier.After);
     }
 
+    /// <summary>
+    /// One commit by its sha — what the commit page is reached by. Its own lookup
+    /// rather than a search through a history list, because the sha in a URL may be
+    /// older than any list the app would have fetched, and an unknown one has to be
+    /// distinguishable from a commit that changed nothing.
+    /// </summary>
+    [TestMethod]
+    public void A_commit_is_found_by_its_sha_with_what_it_changed() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "reports/monthly.nb.md", "first\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the monthly report", "Grace", "g@x").Pushed);
+
+        WriteUser(_grace, "reports/monthly.nb.md", "second\n");
+        WriteUser(_grace, "notes.md", "new\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rework the rollup", "Grace", "g@x").Pushed);
+
+        var head = _git.History(GitService.TestBranch)[0];
+        var found = _git.Commit(head.Sha);
+        Assert.IsNotNull(found);
+        Assert.AreEqual("rework the rollup", found.Subject);
+        Assert.AreEqual("Grace", found.Author);
+        CollectionAssert.AreEquivalent(
+            new[] { "notes.md", "reports/monthly.nb.md" },
+            found.Files.Select(f => f.Path).ToArray(),
+            "the files it touched, which is the page's whole content");
+        Assert.AreEqual("A", found.Files.Single(f => f.Path == "notes.md").Status);
+
+        // Abbreviated too — the page's URL carries eight characters, not forty.
+        Assert.AreEqual(head.Sha, _git.Commit(head.Sha[..8])?.Sha);
+
+        // And nothing for a sha that is not here: null is what the API turns into
+        // Not found, and an empty commit would render as one that changed nothing.
+        Assert.IsNull(_git.Commit("0123456789abcdef0123456789abcdef01234567"),
+            "a sha this repository has never seen is not a commit");
+    }
+
     [TestMethod]
     public void Contents_lists_a_folder_and_says_what_last_touched_each_row() {
         _git.Init();

@@ -172,6 +172,43 @@ is filtered to one file, so two adjacent rows are usually not parent and child, 
 lanes drawn across them would claim a shape the data does not have. A dot per commit, a
 merge drawn hollow, and nothing else asserted.
 
+## A commit is a page
+
+The branch History used to expand a commit in place. That put the answer to "what
+did this change" inside a row in a list — nowhere to go from there, and no address
+to send anybody. It is `/files/:project/:branch/commit/:sha` now, with the chosen
+file appended.
+
+`commit` sits in the same URL slot as the notebook views without being one, so
+three predicates have to agree it is not: `viewOf` (which reads segment 3),
+`isEditorPath`, and `legacyFilesPath`. `NOTEBOOK_VIEWS` carries a note that the
+name is taken — adding `commit` to that array would hand every commit URL to the
+editor, and all three would flip at once. `routes.test.ts` pins the four answers.
+
+The **URL carries all forty characters** while the list shows eight. An
+abbreviation is unambiguous until the repository grows, and a link that stops
+working at some size is a worse trade than a long address.
+
+`GitService.Commit(sha)` is its own lookup rather than a search through a history
+list: the sha in a URL may be older than any list the app would have fetched.
+Unknown returns null and the API turns that into Not found — an empty commit
+object would render as a commit that changed nothing, which is the silent-blank
+failure again.
+
+**The tab is in the query** (`?tab=history`) where the folder beside it is not.
+The difference is the round trip: you come *back* from a commit, and landing on
+Contents loses the list you were working through. A folder has no such return.
+
+Dates in the list are written out — `09/08/2026 12:00 PM`, not "2d ago". A history
+is a record, and "which afternoon was that" is a question relative time cannot
+answer at all. `stamp` lives beside `timeAgo` rather than replacing it; a row you
+are scanning still wants the relative form.
+
+`changedTree` is in `commitTree.ts` and not in the component, because the component
+imports `DiffView` and therefore Monaco, and Monaco touches `window` at import time
+— a vitest suite in the node environment cannot load it. Pure functions go in a
+pure module; that is what makes them testable here at all.
+
 ## Browser checks, and the trap that prose could not fix
 
 `test/tools/studio_ui_test.py` is the things only a browser can answer: whether a tooltip

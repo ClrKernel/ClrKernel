@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  commitPath,
+  historyPath,
   connectionsPath,
   editPath,
+  isCommitPath,
   branchOf,
   isEditorPath,
   isFilesShellPath,
@@ -187,5 +190,44 @@ describe('connectionsPath', () => {
   it('names no project — a connection belongs to the server, not to a repo', () => {
     expect(connectionsPath()).toBe('/connections');
     expect(connectionsPath('abc123')).toBe('/connections/abc123');
+  });
+});
+
+
+describe('commitPath', () => {
+  it('names the commit under the branch, beside the views', () => {
+    expect(commitPath('default', 'mine', 'a1b2c3d4'))
+      .toBe('/files/default/mine/commit/a1b2c3d4');
+  });
+
+  it('appends the file whose change is being read', () => {
+    expect(commitPath('default', 'test', 'a1b2c3d4', 'reports/monthly.nb.md'))
+      .toBe('/files/default/test/commit/a1b2c3d4/reports/monthly.nb.md');
+  });
+
+  it('is a commit page either way', () => {
+    expect(isCommitPath('/files/default/mine/commit/a1b2c3d4')).toBe(true);
+    expect(isCommitPath('/files/default/mine/commit/a1b2c3d4/reports/x.nb.md')).toBe(true);
+    expect(isCommitPath('/files/default/mine/history/reports/x.nb.md')).toBe(false);
+    expect(isCommitPath('/files/default/mine')).toBe(false);
+  });
+
+  // The three predicates that decide which page renders. A commit URL sits in the
+  // view slot without being a view, so each of them has to say so on its own —
+  // and `commit` joining NOTEBOOK_VIEWS one day would flip all three at once.
+  it('is not a notebook view, and is not an old-order link', () => {
+    const url = '/files/default/mine/commit/a1b2c3d4';
+    expect(viewOf(url)).toBeNull();
+    expect(isEditorPath(url)).toBe(false);
+    expect(legacyFilesPath(url)).toBeNull();
+    expect(isFullBleed(url)).toBe(true);
+  });
+
+  it('comes back to the list it was opened from', () => {
+    expect(historyPath('default', 'test')).toBe('/files/default/test?tab=history');
+  });
+
+  it('keeps the branch readable from a commit URL', () => {
+    expect(branchOf('/files/dw/test/commit/a1b2c3d4')).toBe('test');
   });
 });

@@ -953,6 +953,15 @@ public sealed class GitService {
     }
 
     /// <summary>
+    /// One commit by its sha, with the files it touched, or null when there is no
+    /// such commit. Its own lookup rather than a search through
+    /// <see cref="History"/>: a commit page is reached by URL, and the commit it
+    /// names may be older than any list the app would have fetched.
+    /// </summary>
+    public CommitEntry Commit(string sha) =>
+        CommitsFrom(BareRepoPath, true, "--max-count=1", sha).FirstOrDefault();
+
+    /// <summary>
     /// A file as one commit left it, or null when that commit does not have it —
     /// which is the honest answer for the commit that added it (nothing before)
     /// and the one that deleted it (nothing after).

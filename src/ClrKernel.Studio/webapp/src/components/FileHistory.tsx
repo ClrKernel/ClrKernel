@@ -2,31 +2,9 @@ import { useEffect, useState } from 'react';
 import { api, type ApiCommit } from '../api';
 import { timeAgo } from '../ipynb';
 import { fileLanguage } from '../notebook';
+import { CommitRail } from './CommitRail';
 import { DiffView } from './DiffView';
 import { ErrorBanner, usePolling } from './common';
-
-/**
- * The rail beside a file's commits.
- *
- * <p>A dot per commit and a line joining them, with a merge drawn hollow. It is
- * deliberately not a lane graph: this list is <em>filtered</em> to one file, so
- * two rows next to each other are usually not parent and child, and lanes drawn
- * across them would claim a shape the data does not have. What the rail does say
- * is true — this is the order the commits touched this file, newest first, and
- * this one came in on a merge.</p>
- */
-function Rail({ merge, first, last }: { merge: boolean; first: boolean; last: boolean }) {
-  return (
-    <svg width="18" height="100%" viewBox="0 0 18 40" preserveAspectRatio="none"
-      className="shrink-0 self-stretch" aria-hidden="true">
-      {!first && <line x1="9" y1="0" x2="9" y2="20" className="stroke-border" strokeWidth="2" />}
-      {!last && <line x1="9" y1="20" x2="9" y2="40" className="stroke-border" strokeWidth="2" />}
-      {merge
-        ? <circle cx="9" cy="20" r="4.5" className="fill-background stroke-primary" strokeWidth="2" />
-        : <circle cx="9" cy="20" r="4" className="fill-primary" />}
-    </svg>
-  );
-}
 
 /**
  * What one commit did to this file, as git named it there.
@@ -112,7 +90,7 @@ export function FileHistory({ branch, path }: { branch: string; path: string }) 
           const renamedFrom = changeOf(commit)?.oldPath;
           return (
             <li key={commit.sha} className="flex items-stretch gap-1.5">
-              <Rail
+              <CommitRail
                 merge={commit.parents.length > 1}
                 first={i === 0}
                 last={i === commits.length - 1}
