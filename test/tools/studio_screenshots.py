@@ -139,7 +139,7 @@ def ahead(worktree):
     `git init` adopts everything and promotes it, so the two branches start
     identical and "Diff vs production" correctly says so — which is a screenshot of
     a sentence. The diff compares the two branches that *run*, not your own, so the
-    change has to be committed on test. That is what the Push to test button does;
+    change has to be committed on test. That is what the Publish button does;
     doing it with git here keeps the fixture to one step.
     """
     nb = os.path.join(worktree, "hello.nb.md")

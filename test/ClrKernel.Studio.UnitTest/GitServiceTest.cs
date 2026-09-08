@@ -419,6 +419,65 @@ public class GitServiceTest {
             "a sha this repository has never seen is not a commit");
     }
 
+    /// <summary>
+    /// Publishing a subset: the files you pick travel, and the ones you do not stay
+    /// saved on your branch rather than being swept along with them.
+    ///
+    /// <para>
+    /// A deletion is staged too — <c>git add -A -- path</c> is what makes removing a
+    /// file a change you can publish on its own, and a push that quietly re-created
+    /// it would be the failure worth catching.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Publishing_a_subset_leaves_the_rest_on_the_branch() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "ready.nb.md", "done\n");
+        WriteUser(_grace, "wip.nb.md", "half finished\n");
+
+        Assert.IsTrue(
+            _git.PushToTest(_grace, "the finished one", "Grace", "g@x", "ready.nb.md").Pushed);
+
+        Assert.IsTrue(File.Exists(Path.Combine(_git.TestPath, "ready.nb.md")),
+            "the staged file is in test");
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "wip.nb.md")),
+            "the one left unstaged is not — that is the whole point of staging");
+        Assert.IsTrue(File.Exists(Path.Combine(_git.UserPath(_grace), "wip.nb.md")),
+            "and it is still here, saved");
+        Assert.IsTrue(_git.StandingOf(_grace).Dirty, "still something to publish");
+        CollectionAssert.Contains(
+            _git.Uncommitted(_grace).Select(f => f.Path).ToArray(), "wip.nb.md");
+
+        // A deletion is a change like any other, and staging one publishes it.
+        File.Delete(Path.Combine(_git.UserPath(_grace), "ready.nb.md"));
+        Assert.IsTrue(
+            _git.PushToTest(_grace, "drop it again", "Grace", "g@x", "ready.nb.md").Pushed);
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "ready.nb.md")),
+            "staging a deleted path removes it from test rather than re-creating it");
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "wip.nb.md")),
+            "and the unstaged file still has not travelled");
+    }
+
+    /// <summary>
+    /// The staging file a crashed save leaves behind is not work anybody can commit,
+    /// so it is not offered as any. <c>CommitAs</c> excludes it from every commit it
+    /// makes; listing it as uncommitted put a file in the publish dialog that ticking
+    /// could not send anywhere.
+    /// </summary>
+    [TestMethod]
+    public void A_half_written_save_is_not_uncommitted_work() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "reports/monthly.nb.md", "real\n");
+        WriteUser(_grace, "reports/.monthly.nb.md.saving", "half\n");
+
+        var paths = _git.Uncommitted(_grace).Select(f => f.Path).ToArray();
+        CollectionAssert.Contains(paths, "reports/monthly.nb.md");
+        CollectionAssert.DoesNotContain(paths, "reports/.monthly.nb.md.saving",
+            "a file no commit will ever take is not work waiting to be committed");
+    }
+
     [TestMethod]
     public void Contents_lists_a_folder_and_says_what_last_touched_each_row() {
         _git.Init();

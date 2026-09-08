@@ -1021,23 +1021,37 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
                 var user = context.CurrentUser();
-                var message = (await BodyOf<PushWrite>(context))?.Message?.Trim();
+                var write = await BodyOf<PushWrite>(context);
+                var message = write?.Message?.Trim();
                 if (string.IsNullOrWhiteSpace(message)) {
                     message = $"changes from {user?.DisplayName}";
                 }
-                // Every jobs file on the branch, before anything is committed. A
-                // broken one on your own branch is a file mid-edit; the same file in
-                // test is a job the scheduler will not run and nobody will notice.
-                // This is the moment it stops being yours.
+                // Every jobs file on the branch, before anything is committed — not
+                // only the ones being staged. A broken one on your own branch is a
+                // file mid-edit; the same file in test is a job the scheduler will
+                // not run and nobody will notice.
+                //
+                // Whole-branch rather than per-file on purpose, and it is not
+                // over-caution: the ff-merge below moves test to this branch's
+                // *head*, so anything already committed here arrives regardless of
+                // what was staged — and `UpdateFromTest` commits uncommitted work
+                // without passing through this check at all. Staging chooses what
+                // gets committed now; it does not choose what test ends up with.
                 if (InvalidJobsFiles(scope, user.Username) is { Count: > 0 } invalid) {
                     return Results.Json(new {
+                        // The count is what the dialog shows before it lists them.
+                        // It used to be the whole answer, which named no file, no
+                        // line and no problem — so "2 jobs files have problems" was
+                        // a message you could not act on.
                         error = invalid.Count == 1
-                            ? $"{invalid[0].Path} has a problem — fix it before pushing to test."
-                            : $"{invalid.Count} jobs files have problems — fix them before pushing to test.",
+                            ? $"{invalid[0].Path} has a problem — fix it before publishing."
+                            : $"{invalid.Count} jobs files have problems — fix them before publishing.",
                         invalid,
                     }, statusCode: 409);
                 }
-                var result = scope.Git.PushToTest(user.Username, message, user?.DisplayName, EmailFor(user));
+                var result = scope.Git.PushToTest(
+                    user.Username, message, user?.DisplayName, EmailFor(user),
+                    (write?.Paths ?? new List<string>()).ToArray());
                 if (!result.Pushed) {
                     return Results.Json(
                         new { error = result.Error, needsUpdate = result.NeedsUpdate },
@@ -1164,7 +1178,7 @@ public static class JobsApi {
 
         // What `Update from test` would actually do, before it does it.
         api.MapGet("/projects/{project}/branch/incoming", (
-            HttpContext context, ProjectRegistry projects, string project) => {
+            HttpContext context, ProjectRegistry projects, string project, bool? problems) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
@@ -1185,6 +1199,10 @@ public static class JobsApi {
                     // committed on the way in, and under what message.
                     uncommitted = scope.Git.Uncommitted(handle)
                         .Select(f => new { f.Status, f.Path }),
+                    // Only when asked. It is a directory walk and a YAML parse per
+                    // jobs file, and only the publish dialog needs it — the merge
+                    // preview would pay for an answer it never shows.
+                    problems = problems == true ? InvalidJobsFiles(scope, handle) : null,
                 });
             }).RequiresProject(ProjectRole.ProjectMember);
 
@@ -2778,6 +2796,11 @@ public static class JobsApi {
 /// <summary>The commit message a push carries.</summary>
 public sealed class PushWrite {
     public string Message { get; set; }
+    /// <summary>
+    /// The files to commit, or null/empty for everything saved on the branch.
+    /// Repo-relative, as <see cref="GitService.Uncommitted"/> reports them.
+    /// </summary>
+    public List<string> Paths { get; set; }
 }
 
 /// <summary>One grant, as the members API sets it.</summary>

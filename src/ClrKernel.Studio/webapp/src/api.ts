@@ -155,6 +155,17 @@ export interface ApiIncoming {
   mergeBase?: string | null;
   /** Yours, uncommitted. The merge commits these first, on your own branch. */
   uncommitted?: { status: string; path: string }[];
+  /**
+   * Jobs files that will not parse, each with where and what. Only present when
+   * asked for — the publish dialog wants them, the merge preview does not.
+   */
+  problems?: ApiInvalidJobsFile[] | null;
+}
+
+/** One `*.jobs.yaml` that will not parse, and every reason it will not. */
+export interface ApiInvalidJobsFile {
+  path: string;
+  problems: ApiJobsProblem[];
 }
 
 export interface Worktree {
@@ -880,16 +891,22 @@ export const api = {
     request<{ branch: string; path: string; entries: ApiEntry[] }>(
       `${scope(branch)}/contents?path=${encodeURIComponent(path)}`),
   /** What a merge from test would bring, and what of yours it would commit first. */
-  incoming: () => request<ApiIncoming>(`${project()}/branch/incoming`),
+  incoming: (withProblems = false) =>
+    request<ApiIncoming>(`${project()}/branch/incoming?problems=${withProblems}`),
 
   /** Where your own branch stands against test: unsaved work, and either drift. */
   branchStanding: () =>
     request<BranchStanding>(`${project()}/branch`),
-  /** Commits everything on your branch and fast-forwards test onto it. */
-  pushToTest: (message: string) =>
+  /**
+   * Commits your branch and fast-forwards test onto it — the publish moment.
+   *
+   * `paths` stages a subset; everything saved goes in when it is omitted. What is
+   * left out stays uncommitted on your branch rather than travelling.
+   */
+  pushToTest: (message: string, paths?: string[]) =>
     request<{ pushed: boolean; commitSha: string }>(`${project()}/branch/push`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, paths }),
     }),
   /** Merges test into your branch, in your own worktree. */
   updateFromTest: () =>

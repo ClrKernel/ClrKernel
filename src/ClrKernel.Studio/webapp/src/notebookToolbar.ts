@@ -15,8 +15,8 @@
  * which is the bar's *content* box and so 32px narrower than its clientWidth.
  * Each tier is what its own contents need. Re-measure if the controls change.
  *
- * They are measured **with Push to test on the bar**, which is where they went
- * wrong before: Push appears the moment you have unpushed work, which is most of
+ * They are measured **with Publish on the bar**, which is where they went
+ * wrong before: it appears the moment you have unpublished work, which is most of
  * a working session, and the previous numbers were taken without it. They were
  * 80–110px short in every tier, so the toolbar quietly scrolled sideways as soon
  * as you typed — the one thing this module exists to prevent. Adding Undo made

@@ -80,7 +80,7 @@ export function MergePreview({ onClose, onMerged }: {
               is easy to read the wrong way round. */}
           <p className="max-w-[78ch] text-base text-muted-foreground">
             Test's {incoming.length} commit(s) come <strong>into</strong> your branch.
-            Nothing of yours goes to test — that is <strong>Push to test</strong>, and it is
+            Nothing of yours goes to test — that is <strong>Publish</strong>, and it is
             still yours to press afterwards.
           </p>
 

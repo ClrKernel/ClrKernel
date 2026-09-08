@@ -209,6 +209,44 @@ imports `DiffView` and therefore Monaco, and Monaco touches `window` at import t
 — a vitest suite in the node environment cannot load it. Pure functions go in a
 pure module; that is what makes them testable here at all.
 
+## Publish is a dialog because being blocked is the interesting case
+
+The push was a text field on the toolbar. You typed a message into eleven
+characters of space, pressed Push, and got back
+`2 jobs files have problems — fix them before pushing to test` — no file, no
+line, no problem. The one thing needed in order to act on it was the one thing it
+did not say, and it arrived *after* the message was typed.
+
+So: a dialog, opened before anything is typed, that reads the problems up front.
+`/branch/incoming?problems=true` returns them — behind a flag because the merge
+preview shares that endpoint and a recursive walk plus a YAML parse per jobs file
+is not an answer it shows. Each file links to itself, each problem carries its
+line.
+
+**Staging.** `PushToTest` takes paths and forwards them to `CommitAs`, which
+already took a pathspec. Ticked files become the commit; unticked ones stay saved
+on the branch. All-ticked sends **no** paths at all rather than the full list —
+that is the server's own sweep, and it is the branch that excludes the
+`.name.saving` half-files a crashed save leaves.
+
+`Uncommitted` gained `-uall`. Git collapses a wholly-untracked folder to one
+`reports/` line, which is fine for "is there work" and useless for "tick the ones
+to send". It also drops `.saving` files now: `CommitAs` excludes them from every
+commit it makes, so offering one as a thing to commit was offering a tick that
+could not do anything.
+
+> **Validation stays whole-branch, deliberately.** A broken jobs file blocks the
+> publish whether or not it is staged. The ff-merge moves test to the branch
+> *head*, so anything already committed here travels regardless of the ticks — and
+> `UpdateFromTest` commits uncommitted work without passing through this check at
+> all. Staging chooses what gets committed now; it does not choose what test ends
+> up with. The dialog says so rather than letting the rule look like a bug.
+
+The button is **Publish** everywhere now — toolbar, `promotionSteps`, the autosave
+line, the merge preview's "that is Publish, and it is still yours to press",
+`docs/studio.md`, and the two harnesses. A rename that lands in four places out of
+seven is worse than no rename.
+
 ## Browser checks, and the trap that prose could not fix
 
 `test/tools/studio_ui_test.py` is the things only a browser can answer: whether a tooltip

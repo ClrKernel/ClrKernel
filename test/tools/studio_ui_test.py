@@ -702,6 +702,79 @@ def file_history(page, base, _root):
         + body[-1000:])
 
 
+@check("publish-dialog")
+def publish_dialog(page, base, _root):
+    """Publish says what is blocking it, and lets you send some of it.
+
+    The complaint this answers: the only thing a blocked push said was
+    "2 jobs files have problems — fix them before pushing to test" — no file, no
+    line, no problem, and it arrived after you had typed a commit message.
+    """
+    def write(path, text):
+        return page.evaluate("""async ({ path, text }) => (await fetch(
+            `/api/projects/default/branches/mine/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"path": path, "text": text})
+
+    def on_test(path):
+        return page.evaluate("""async ({ path }) => (await fetch(
+            `/api/projects/default/branches/test/notebooks/content?path=${path}`)).status""",
+            {"path": path})
+
+    assert write("ready.nb.md", "# Ready\n") == 200
+    assert write("wip.nb.md", "# Half done\n") == 200
+    # A misspelled key — the exact case JobsFileValidation exists for, which parses
+    # cleanly into a job that simply never runs.
+    assert write("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: nightly\n"
+                 "    scedule: '0 * * * *'\n") == 200
+
+    page.goto(f"{base}/files/default/mine/edit/ready.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(3000)
+    page.get_by_role("button", name="Publish").first.click()
+    page.wait_for_timeout(2500)
+
+    body = page.inner_text("body").replace("\xa0", " ")
+    # The three things the old message never said: which file, where, and what.
+    assert "etl.jobs.yaml" in body, "the blocked publish does not name the file:\n" + body[-1500:]
+    assert re.search(r"line \d+", body), (
+        "no line number against the problem:\n" + body[-1500:])
+    assert "scedule" in body, (
+        "the problem itself is not shown — only that there is one:\n" + body[-1500:])
+    publish = page.get_by_role("button", name=re.compile("^Publish .* to test"))
+    assert publish.count() == 1 and publish.first.is_disabled(), (
+        "publish is offered while the server would refuse it")
+
+    # Fix it, reopen, and the block is gone.
+    page.get_by_role("button", name="Cancel").click()
+    assert write("etl.jobs.yaml", "notebook: ./etl.nb.md\njobs:\n  - name: nightly\n"
+                 "    cron: '0 * * * *'\n") == 200
+    page.get_by_role("button", name="Publish").first.click()
+    page.wait_for_timeout(2500)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "will not parse" not in body, "still blocked after the fix:\n" + body[-1500:]
+
+    # Stage a subset: everything is ticked, so untick the one still being worked on.
+    boxes = page.locator('input[type="checkbox"]')
+    assert boxes.count() == 3, f"expected a row per saved file, got {boxes.count()}"
+    page.locator('input[id="stage-wip.nb.md"]').uncheck()
+    page.fill('input[aria-label="Publish message"]', "the finished one")
+    page.get_by_role("button", name=re.compile("^Publish 2 file")).click()
+    page.wait_for_timeout(4000)
+
+    assert on_test("ready.nb.md") == 200, "the staged file never reached test"
+    assert on_test("wip.nb.md") == 404, (
+        "the unstaged file went to test anyway — staging did nothing")
+
+    # And it is still there, saved, waiting to go later.
+    page.goto(f"{base}/files/default/mine/edit/ready.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(3000)
+    page.get_by_role("button", name="Publish").first.click()
+    page.wait_for_timeout(2500)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "wip.nb.md" in body, (
+        "the file left behind is gone from the branch too:\n" + body[-1500:])
+
+
 @check("merge-preview")
 def merge_preview(page, base, _root):
     """The merge says what it will do, and whose work is whose.
@@ -874,8 +947,8 @@ def behind_test(page, base, _root):
     assert "behind test" not in body, (
         "a file test has never seen was called behind it:\n" + body[:1200])
     # And the push is offered — disabled, saying why — rather than replaced.
-    push = page.get_by_role("button", name="Push to test")
-    assert push.count() == 1, "no Push to test at all:\n" + body[:1200]
+    push = page.get_by_role("button", name="Publish")
+    assert push.count() == 1, "no Publish button at all:\n" + body[:1200]
     assert push.first.is_disabled(), "push is offered while the server would refuse it"
 
     # The file test *did* change says so, on the same branch, in the same toolbar.

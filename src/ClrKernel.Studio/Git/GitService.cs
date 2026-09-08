@@ -840,7 +840,14 @@ public sealed class GitService {
     /// resolved by nobody. <c>Update from test</c> is the way forward from there.
     /// </para>
     /// </summary>
-    public PushResult PushToTest(string handle, string message, string authorName, string authorEmail) {
+    /// <param name="paths">
+    /// The files to commit, or empty for everything saved. A subset leaves the rest
+    /// uncommitted on the branch — the ff-merge below still moves test to this
+    /// branch's head, so what is *not* committed is what stays behind.
+    /// </param>
+    public PushResult PushToTest(
+        string handle, string message, string authorName, string authorEmail,
+        params string[] paths) {
         return WithLock(() => {
             var branch = BranchForUser(handle);
             var worktree = UserPath(handle);
@@ -852,9 +859,10 @@ public sealed class GitService {
                     "Resolve the conflicted files first, then push.", false);
             }
 
-            // Everything in the worktree becomes one commit with the message they
-            // typed. This is the point where saved work turns into history.
-            CommitAs(branch, message, authorName, authorEmail);
+            // The chosen files — or everything saved, when nothing was chosen —
+            // become one commit with the message they typed. This is the point
+            // where saved work turns into history.
+            CommitAs(branch, message, authorName, authorEmail, paths);
 
             var behind = TryRun(worktree, "merge-base", "--is-ancestor", TestBranch, branch);
             if (behind.Code != 0) {
@@ -1019,13 +1027,22 @@ public sealed class GitService {
         if (!Directory.Exists(worktree)) {
             return Array.Empty<CommitFile>();
         }
-        return Run(worktree, "status", "--porcelain")
+        // `-uall`, so a brand-new folder is its files rather than one line saying
+        // `reports/`. That is git's shorthand and it is the wrong shape here: this
+        // list is what the publish dialog stages by, and you cannot tick half a
+        // folder that is only ever shown as a folder.
+        return Run(worktree, "status", "--porcelain", "-uall")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.TrimEnd())
             .Where(line => line.Length > 3)
             // "XY path", where X is the index and Y the worktree. `??` is untracked.
             .Select(line => new CommitFile(line[..2].Trim() is { Length: > 0 } st ? st : "?",
                 line[3..].Trim().Trim('"')))
+            // `.name.saving` is half a notebook left by a save that crashed
+            // mid-write, and `CommitAs` excludes it from every commit it makes. A
+            // file that can never be committed has no business being offered as one
+            // to commit, or listed as work a merge is about to sweep up.
+            .Where(file => !NotebookTree.IsProtected(Path.GetFileName(file.Path)))
             .ToList();
     }
 

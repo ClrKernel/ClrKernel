@@ -16,6 +16,7 @@ import { DiffView } from '../components/DiffView';
 import { FileHistory } from '../components/FileHistory';
 import { JobsOverview } from '../components/JobsOverview';
 import { MergePreview } from '../components/MergePreview';
+import { PublishDialog } from '../components/PublishDialog';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { NotebookToolbar } from '../components/NotebookToolbar';
 import { SheetView } from '../components/SheetView';
@@ -324,6 +325,7 @@ export function Editor() {
   const [treeRefresh, setTreeRefresh] = useState(0);
   /** The merge preview, which is what the explorer's ↓ opens now. */
   const [previewMerge, setPreviewMerge] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const refreshTree = () => setTreeRefresh((n) => n + 1);
 
   // Polled, not fetched once: the run that unlocks promotion happens in test,
@@ -764,22 +766,16 @@ export function Editor() {
     }
   }
 
-  /** The commit moment: everything on your branch becomes one commit on test. */
-  async function push(message: string) {
+  /**
+   * The half of publishing that belongs to the editor: the dialog did the commit,
+   * this re-reads what it changed. Same shape as the merge preview beside it.
+   */
+  function published(message: string) {
     setError(null);
-    setNotice(null);
-    setBusy(true);
-    try {
-      await api.pushToTest(message);
-      setNotice('Pushed to test.');
-      reloadPromotion();
-      refreshTree();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-      reloadStanding();
-    }
+    setNotice(message);
+    reloadPromotion();
+    refreshTree();
+    reloadStanding();
   }
 
   /** Merges test into your branch. Conflicts come back as files, never resolved. */
@@ -1173,7 +1169,7 @@ export function Editor() {
         onPromote={promote}
         promotion={promotion}
         standing={standing}
-        onPush={push}
+        onPublish={() => setPublishing(true)}
         branch={branch}
         fileBehind={fileBehind}
         fileEditable={fileEditable(path)}
@@ -1420,6 +1416,10 @@ export function Editor() {
             </>
           )}
         </div>
+      )}
+
+      {publishing && (
+        <PublishDialog onClose={() => setPublishing(false)} onPublished={published} />
       )}
 
       {previewMerge && (

@@ -798,7 +798,7 @@ git init --bare /tmp/origin.git
 
 Then, in order:
 
-**1. Push a notebook to test.** Open any notebook, **Push to test**, and give it a
+**1. Publish a notebook to test.** Open any notebook, **Publish**, and give it a
 message. This is the first thing that pushes.
 
 **2. Ask the server what happened.** `/api/health` reports the last push per project —
@@ -914,9 +914,12 @@ The loop:
    page lists what you have written but not yet pushed, badged `mine`, so a job you
    just made is not missing from the page that exists to list your jobs. Nothing on
    a personal branch is ever scheduled.
-2. **Push to test** from the editor's toolbar. That is the commit: everything you
-   have saved becomes one commit on `test`, under a message you write, authored as
-   you. If `test` has moved since you branched, the push is refused and the button
+2. **Publish** from the editor's toolbar. That is the commit: a dialog lists what
+   you have saved, what of it you want to send, and any `*.jobs.yaml` that will not
+   parse — with the file and the line, because that is what a blocked publish has to
+   tell you. The files you tick become one commit on `test`, under a message you
+   write, authored as you; anything you leave stays saved on your branch. If `test`
+   has moved since you branched, the push is refused and the button
    becomes **Update from test** — the merge belongs in your own worktree where you
    can look at it. Conflicts come back as a list of files with the markers left in
    them; nothing is ever auto-resolved.
