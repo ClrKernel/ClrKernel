@@ -483,6 +483,42 @@ def branch_in_url(page, base, _root):
     page.goto(f"{base}/files/default/edit/mine/only-mine.nb.md", wait_until="networkidle")
     page.wait_for_url(lambda u: "/mine/edit/" in u, timeout=10000)
     assert page.url.endswith("/files/default/mine/edit/only-mine.nb.md"), page.url
+    page.wait_for_timeout(2500)
+
+    # The trail says the same thing as the address, in the same order: section,
+    # project, branch, file. It used to read "Studio / project / Files / file" with
+    # the branch stuck on the end as a pill — two scopes the wrong way round, and
+    # the branch reading as a property of the file rather than of where you are.
+    crumbs = page.locator('nav[aria-label="Breadcrumb"]')
+
+    def trail_of():
+        return [t.strip() for t in crumbs.inner_text().replace("\xa0", " ").split("/")]
+
+    # The project reads as its display name, whatever the harness called it — the
+    # order is what is being pinned, so the name comes from the control itself.
+    named = crumbs.locator('button[aria-label^="Project:"]').first.inner_text().strip()
+    trail = trail_of()
+    assert trail == ["ClrKernel Studio", "Files", named, "mine", "only-mine.nb.md"], trail
+
+    # And the branch is written like the project switcher beside it, not as a pill.
+    radius = crumbs.locator('button[aria-label^="Branch:"]').first.evaluate(
+        "el => getComputedStyle(el).borderRadius")
+    assert float(radius.replace("px", "")) < 20, f"the branch is still a pill: {radius}"
+
+    # Switching from there moves the page, which is what makes it part of the trail
+    # rather than a label on it.
+    crumbs.locator('button[aria-label^="Branch:"]').first.click()
+    page.get_by_role("menuitem", name=re.compile("test")).first.click()
+    page.wait_for_url(lambda u: "/test/edit/" in u, timeout=10000)
+
+    # On the shell there is no branch in the trail: the explorer's own picker is
+    # two inches below it, and two controls for one thing is one to keep in step.
+    page.goto(f"{base}/files/default/mine", wait_until="networkidle")
+    page.wait_for_timeout(2000)
+    trail = trail_of()
+    assert trail == ["ClrKernel Studio", "Files", named], trail
+    assert crumbs.locator('button[aria-label^="Branch:"]').count() == 0, (
+        "the shell has a second branch picker in the breadcrumb")
 
 
 @check("commit-detail")

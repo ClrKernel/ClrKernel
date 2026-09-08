@@ -30,7 +30,6 @@ describe('breadcrumbFor', () => {
   });
 
   it.each([
-    ['/files/default', 'Files'],
     ['/channels', 'Channels'],
     ['/settings', 'Settings'],
   ])('%s is a single crumb', (pathname, label) => {
@@ -55,30 +54,51 @@ describe('breadcrumbFor', () => {
     ]);
   });
 
-  it('takes the editor’s subject from the path, and its badge is the branch switcher', () => {
+  // The order is the point of this trail, and it is the thing a test of *which*
+  // crumbs are present would not catch: the project used to sit in front of the
+  // section and the branch hung off the file name as a pill.
+  const shape = (pathname: string) =>
+    breadcrumbFor(pathname).map((c) => c.slot ?? c.label);
+
+  it('narrows left to right: section, project, branch, file', () => {
+    expect(shape('/files/default/mine/edit/demo.nb.md'))
+      .toEqual(['Files', 'project', 'branch', 'demo.nb.md']);
+  });
+
+  it('stops at the project on the shell — the explorer has the branch picker', () => {
+    expect(shape('/files/default/mine')).toEqual(['Files', 'project']);
+    expect(breadcrumbFor('/files/default/mine')[0].to).toBeUndefined();
+  });
+
+  it('takes the editor’s subject from the path, and the branch is a switcher', () => {
     expect(breadcrumbFor('/files/default/mine/edit/demo.nb.md')).toEqual([
       { label: 'Files', to: '/files/default/mine' },
-      { label: 'demo.nb.md', badge: 'branch' },
+      { label: 'default', slot: 'project' },
+      { label: 'mine', slot: 'branch' },
+      { label: 'demo.nb.md' },
     ]);
   });
 
   it('is the same trail whichever way you are reading the file', () => {
     for (const view of ['edit', 'source', 'diff']) {
-      expect(breadcrumbFor(`/files/default/mine/${view}/demo.nb.md`)).toEqual([
-        { label: 'Files', to: '/files/default/mine' },
-        { label: 'demo.nb.md', badge: 'branch' },
-      ]);
+      expect(shape(`/files/default/mine/${view}/demo.nb.md`))
+        .toEqual(['Files', 'project', 'branch', 'demo.nb.md']);
     }
   });
 
+  // Not a view, so not a file: the commit page keeps the trail it can support.
+  it('leaves the commit page at the project', () => {
+    expect(shape('/files/default/test/commit/a1b2c3d4')).toEqual(['Files', 'project']);
+  });
+
   it('keeps a nested notebook path whole', () => {
-    expect(breadcrumbFor('/files/default/test/edit/reports/monthly.nb.md')[1].label)
+    expect(breadcrumbFor('/files/default/test/edit/reports/monthly.nb.md')[3].label)
       .toBe('reports/monthly.nb.md');
   });
 
   it('keeps the untruncated notebook path for the title attribute', () => {
     const long = 'reporting/monthly/very-long-notebook-name-for-testing.nb.md';
-    const crumb = breadcrumbFor(`/files/default/mine/edit/${long}`)[1];
+    const crumb = breadcrumbFor(`/files/default/mine/edit/${long}`)[3];
     expect(crumb.full).toBe(long);
     expect(crumb.label).not.toBe(long);
   });

@@ -247,6 +247,25 @@ line, the merge preview's "that is Publish, and it is still yours to press",
 `docs/studio.md`, and the two harnesses. A rename that lands in four places out of
 seven is worse than no rename.
 
+## The breadcrumb narrows, left to right
+
+`Files / project / branch / file`, which is the order `/files/:project/:branch/…`
+already put them in. It read `Studio / project / Files / file [branch]` — the
+project pinned in front of the trail by `TopBar` rather than placed in it, and the
+branch hanging off the file name as a pill, where it looked like a property *of
+the file* instead of the scope the file is being read in.
+
+`Crumb` gained `slot?: 'project' | 'branch'`: a step rendered as a switcher rather
+than as text. That is what moved the ordering into `breadcrumbFor`, where it is a
+pure function and a test can assert the *sequence* — `map(c => c.slot ?? c.label)`.
+A test that only checked which crumbs were present passed against the old order,
+which is the whole reason the shape is asserted rather than the contents.
+
+No branch on the Files shell. The explorer's own picker is two inches below it, and
+two controls for one thing is one more thing to keep in agreement. `Files` is
+therefore the unlinked current page there — everything after it is a control, not a
+place, so nothing else can carry `aria-current`.
+
 ## Browser checks, and the trap that prose could not fix
 
 `test/tools/studio_ui_test.py` is the things only a browser can answer: whether a tooltip

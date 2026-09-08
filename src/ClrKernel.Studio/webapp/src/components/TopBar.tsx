@@ -14,13 +14,12 @@ import { api, type BranchSummary } from '../api';
 import { breadcrumbFor } from '../breadcrumb';
 import { usePolling } from './common';
 import { useProjects } from '../projectContext';
-import { editPath, pathFromSplat, sectionOf, switchProject, type NotebookView } from '../routes';
+import { editPath, pathFromSplat, switchProject, type NotebookView } from '../routes';
 import { showsSearch, withQuery } from '../search';
 import type { AccentName, ThemeName } from '../theme/palette';
 import type { ThemeMode } from '../theme/theme';
 import { AccentPicker } from './AccentPicker';
 import { ThemePicker } from './ThemePicker';
-import { EnvBadge } from './common';
 
 /**
  * Which project everything below is about, as the root of the breadcrumb.
@@ -153,10 +152,11 @@ function ProjectSwitcher() {
 /**
  * Which branch the open notebook is being read from.
  *
- * Beside the file name rather than in the page toolbar: the toolbar is what you
- * can *do* here, and which branch you are on is part of what you are looking at.
- * Everything but your own is read-only, which the list says rather than leaving
- * you to infer it from a name.
+ * In the trail rather than in the page toolbar: the toolbar is what you can *do*
+ * here, and which branch you are on is part of where you are — between the
+ * project and the file, which is where the URL puts it too. Everything but your
+ * own is read-only, which the list says rather than leaving you to infer it from
+ * a name.
  */
 function BranchSwitcher({ project, branch: current, path, view }: {
   project: string;
@@ -180,7 +180,11 @@ function BranchSwitcher({ project, branch: current, path, view }: {
         <button
           type="button"
           aria-label={`Branch: ${here?.label ?? current}`}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-surface-panel px-2 py-px text-xs font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          // Written like the project switcher beside it, because it is the same
+          // kind of thing: one step of the trail you can move sideways from. As a
+          // pill it read as a tag *on the file name* — a property of the file
+          // rather than the scope it is being read in.
+          className="flex shrink-0 items-center gap-1 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {here?.mine ? 'mine' : here?.label ?? current}
           <ChevronDown className="size-3" aria-hidden="true" />
@@ -238,7 +242,6 @@ export function TopBar({
   // /jobs/:project/… and /files/:project/edit/:branch/*path — the trail is built
   // from the path, so the pieces the switchers need come from it too.
   const segments = location.pathname.split('/').filter(Boolean);
-  const inProject = sectionOf(location.pathname) != null;
 
   return (
     <header className="flex h-12.5 shrink-0 items-center border-b border-border bg-card px-4">
@@ -246,25 +249,30 @@ export function TopBar({
         <Link to="/" className="shrink-0 font-semibold text-foreground hover:no-underline">
           ClrKernel Studio
         </Link>
-        {/* Only where a project is what the page is about. The dashboard is the
-            whole server, and Channels is server-wide: a selector there would be a
-            control with nothing to change. Settings is mostly server-wide too —
-            its one project-scoped tab, Secrets, carries a picker of its own
-            rather than making this one appear for the other six. */}
-        {inProject && (
-          <>
-            <span aria-hidden="true" className="shrink-0 text-status-idle">
-              /
-            </span>
-            <ProjectSwitcher />
-          </>
-        )}
+        {/* Every step in one loop, switchers included. The project used to be
+            pinned in front of the trail by this component, which is what put it
+            on the wrong side of the section it belongs to — `breadcrumbFor` says
+            where each one goes now, and the ordering is testable because of it.
+
+            Which pages get a project switcher at all is still that function's
+            call: the dashboard is the whole server and Channels is server-wide,
+            so a selector there would be a control with nothing to change, and
+            Settings' one project-scoped tab carries a picker of its own. */}
         {crumbs.map((crumb, index) => (
-          <Fragment key={`${crumb.label}-${index}`}>
+          <Fragment key={`${crumb.slot ?? crumb.label}-${index}`}>
             <span aria-hidden="true" className="shrink-0 text-status-idle">
               /
             </span>
-            {crumb.to ? (
+            {crumb.slot === 'project' ? (
+              <ProjectSwitcher />
+            ) : crumb.slot === 'branch' ? (
+              <BranchSwitcher
+                project={segments[1]}
+                branch={segments[2]}
+                path={pathFromSplat(segments.slice(4).join('/'))}
+                view={segments[3] as NotebookView}
+              />
+            ) : crumb.to ? (
               <Link
                 to={crumb.to}
                 className="shrink-0 rounded-sm text-muted-foreground outline-none hover:text-foreground hover:no-underline focus-visible:ring-2 focus-visible:ring-ring"
@@ -281,18 +289,6 @@ export function TopBar({
               >
                 {crumb.label}
               </span>
-            )}
-            {/* On the editor the badge is the branch, and the branch is a place
-                you can move to — so it is the switcher rather than a label. */}
-            {crumb.badge === 'branch' ? (
-              <BranchSwitcher
-                project={segments[1]}
-                branch={segments[2]}
-                path={pathFromSplat(segments.slice(4).join('/'))}
-                view={segments[3] as NotebookView}
-              />
-            ) : (
-              crumb.badge && <EnvBadge env={crumb.badge} />
             )}
           </Fragment>
         ))}

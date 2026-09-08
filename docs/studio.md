@@ -424,8 +424,9 @@ to find first.
 Registering by cloning a repo url is not there yet; put the clone on the server
 first and point at it.
 
-The project you are looking at is the first thing in the breadcrumb, and switching
-there switches the notebooks, jobs, runs and branches under it. Anything with a
+The project you are looking at is the breadcrumb's second stop — after **Files**,
+before the branch — and switching there switches the notebooks, jobs, runs and
+branches under it. Anything with a
 link of its own carries its project in the URL — `/jobs/finance/test/nightly` —
 because two projects may each have a job called `nightly`, and a link that meant
 whichever one you had selected would mean two different jobs.
@@ -489,9 +490,10 @@ evidence, and purging those runs leaves those ids pointing at rows that are gone
 The audit's own account — who promoted what, when, and what it switched off —
 survives; the link to the run does not.
 
-The branch you are reading is the chip beside the file name in the breadcrumb, and
-it is a switcher: your own branch, then everybody else's under **Read-only**, then
-`test` and `prod`. The **Files** page and the editor's explorer offer the same
+The branch you are reading is a step of the breadcrumb, between the project and
+the file — the trail narrows the way the URL does, `Files / project / branch /
+file` — and it is a switcher: your own branch, then everybody else's under
+**Read-only**, then `test` and `prod`. The **Files** page and the editor's explorer offer the same
 list, so somebody else's work is browsable and not only openable by a link you were
 sent. Branches are listed by the person's name, never by the id in the path.
 
@@ -997,7 +999,7 @@ been honest about living.
 
 A link has to mean one thing, and two projects may each have a `nightly` and a
 `reports/monthly.nb.md`. Having the project in the path is also what lets the
-selector at the root of the breadcrumb *go* somewhere: picking another project
+selector in the breadcrumb *go* somewhere: picking another project
 takes you to the same section in it, rather than changing what the page you are
 on is about while the address bar goes on naming the old one. It takes you to the
 section and not to the same page, because this project's `nightly` is not that
