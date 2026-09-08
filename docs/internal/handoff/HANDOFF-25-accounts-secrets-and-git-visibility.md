@@ -126,10 +126,23 @@ and it breaks them by dropping commits rather than failing.
 > git has to translate (`RefFor`), and anything handing it to `PathFor` must not. Without
 > that, a prod listing attributes nothing and reads as a folder nobody has ever changed.
 
-Windows git prints worktree paths with forward slashes and puts `\r` on the end of each
-line. Both halves of that have bitten: a test comparing a `Path.Combine` result to
-`git worktree list` could never match there, and its negative twin passed for the wrong
-reason. `Trim()` on every parsed line is not defensive, it is required.
+Windows git prints worktree paths with forward slashes. That has bitten: a test comparing
+a `Path.Combine` result to `git worktree list` could never match there, and its negative
+twin passed for the wrong reason. `Trim()` on every parsed line is not defensive, it is
+required.
+
+> **The `\r` on the end of each line was ours, not git's.** `TryRunAs` captured stdout
+> with `OutputDataReceived`, which hands over lines with their terminators removed, and
+> re-joined them with `AppendLine` — so every git command's output came back with its
+> line endings rewritten to `Environment.NewLine`, and anything with no trailing newline
+> gained one. Invisible to the parsers, which split and trim. Not invisible to `FileAt`,
+> whose whole job is to hand a diff the bytes that are in the commit: on Windows a file
+> committed with LF was served as CRLF. It reads to the end of both streams now — two
+> tasks, because draining one while the other fills its pipe deadlocks, which is why the
+> line-based version existed. `A_files_bytes_survive_the_trip_out_of_git` commits CRLF
+> and no trailing newline, so the failure reproduces on any platform rather than only in
+> CI. The same call now decodes as UTF-8 explicitly: a redirected stream otherwise uses
+> the console's encoding, which on Windows is an OEM code page.
 
 ## The graph is two lanes on purpose
 

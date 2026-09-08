@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Studio;
@@ -220,6 +221,11 @@ public sealed class GitService {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            // git speaks UTF-8. A redirected stream otherwise decodes with the
+            // console's encoding, which on Windows is an OEM code page — the same
+            // shape of bug as a Jupyter cell whose em-dash arrived as `???`.
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
         };
         // Pinned config: never trust (or require) ambient gitconfig.
         foreach (var arg in new[] {
@@ -244,11 +250,6 @@ public sealed class GitService {
         psi.Environment["GIT_COMMITTER_EMAIL"] = _authorEmail;
 
         using var process = new Process { StartInfo = psi };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) { stdout.AppendLine(e.Data); } };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) { stderr.AppendLine(e.Data); } };
-
         try {
             process.Start();
         } catch (Exception e) {
@@ -256,8 +257,19 @@ public sealed class GitService {
                 "git is not installed or not on PATH — the test/prod workflow needs it. " + e.Message);
         }
         process.StandardInput.Close();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        // Read to the end rather than line by line. `OutputDataReceived` hands over
+        // lines with their terminators removed, and re-joining them with
+        // `AppendLine` writes `Environment.NewLine` back — so on Windows every git
+        // command's output came back with its line endings rewritten to CRLF, and a
+        // file with no trailing newline gained one. Harmless for the parsers, which
+        // split and trim; wrong for `FileAt`, whose whole job is to hand back the
+        // bytes that are in the commit.
+        //
+        // Both streams are drained concurrently, which is the reason the line-based
+        // version existed: reading one to the end while the other fills its pipe
+        // deadlocks. Two tasks do the same job without touching the content.
+        var stdout = Task.Run(() => process.StandardOutput.ReadToEnd());
+        var stderr = Task.Run(() => process.StandardError.ReadToEnd());
 
         if (!process.WaitForExit((int)CommandTimeout.TotalMilliseconds)) {
             try {
@@ -268,8 +280,8 @@ public sealed class GitService {
             throw new GitException(
                 $"git {string.Join(' ', args)} exceeded {CommandTimeout.TotalSeconds:0}s and was killed.");
         }
-        process.WaitForExit(); // flush async readers
-        return (process.ExitCode, stdout.ToString(), stderr.ToString());
+        process.WaitForExit(); // the readers finish as the pipes close
+        return (process.ExitCode, stdout.Result, stderr.Result);
     }
 
     private static string Truncate(string text, int max) =>

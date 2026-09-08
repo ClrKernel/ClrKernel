@@ -316,6 +316,36 @@ public class GitServiceTest {
     }
 
     /// <summary>
+    /// A file comes back as the bytes that are in the commit — line endings and all,
+    /// and with no newline invented at the end of one that has none.
+    ///
+    /// <para>
+    /// It did not. Git's output was captured line by line and re-joined with
+    /// <c>AppendLine</c>, so every command's stdout came back with its line endings
+    /// rewritten to <c>Environment.NewLine</c>. On Windows that turned a file
+    /// committed with LF into CRLF, which is what CI caught; everywhere it added a
+    /// trailing newline that was never there. The parsers split and trim and never
+    /// noticed. <see cref="GitService.FileAt"/> hands the bytes to a diff, so it did.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_files_bytes_survive_the_trip_out_of_git() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+
+        // CRLF in the file itself, and no newline after the last line. Both are
+        // things the line-by-line capture could not represent: it dropped the \r
+        // as a line terminator and appended one of its own at the end.
+        const string exact = "alpha\r\nbeta\r\ngamma";
+        WriteUser(_grace, "crlf.md", exact);
+        Assert.IsTrue(_git.PushToTest(_grace, "windows line endings", "Grace", "g@x").Pushed);
+
+        var head = _git.History(GitService.TestBranch)[0];
+        Assert.AreEqual(exact, _git.FileAt(head.Sha, "crlf.md"),
+            "the diff is shown these bytes; git was given exactly them");
+    }
+
+    /// <summary>
     /// A file's history does not begin again because somebody moved it.
     ///
     /// <para>
