@@ -6,7 +6,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { api, projectSlug } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
+import { MergePreview } from '../components/MergePreview';
 import { NotebookExplorer } from '../components/NotebookExplorer';
+import { RepoBrowser } from '../components/RepoBrowser';
 import { Splitter } from '../components/Splitter';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import {
@@ -49,6 +51,7 @@ export function Files() {
   const [notice, setNotice] = useState<string | null>(null);
   const [setting, setSetting] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(() => loadLayout());
+  const [previewMerge, setPreviewMerge] = useState(false);
   useEffect(() => saveLayout(layout), [layout]);
   // The explorer's drag reports a viewport X; the sidebar's width is that minus
   // wherever this row actually starts, which is not the window's edge.
@@ -112,18 +115,7 @@ export function Files() {
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
         standing={standing}
-        onUpdate={async () => {
-          try {
-            const result = await api.updateFromTest();
-            toast.success(result.merged
-              ? 'Up to date with test.'
-              : `Conflicts left in ${result.conflicts.join(', ')} — open each and fix the markers.`);
-            reload();
-            reloadStanding();
-          } catch (e) {
-            setNotice((e as Error).message);
-          }
-        }}
+        onUpdate={() => setPreviewMerge(true)}
       />
       {!layout.explorerCollapsed && (
         <Splitter
@@ -179,26 +171,37 @@ export function Files() {
           </Alert>
         )}
 
-        {/* Centred in what is left, so an empty pane reads as empty rather than as
-            a page that failed to load its top-left corner. */}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="max-w-[46ch] text-base text-muted-foreground">
-            {/* "No files" only once the tree has actually arrived. Keyed off the
-                count alone it was also what the page said for the second before
-                the first fetch landed — an empty project and a slow one looked
-                identical, and the wrong one of the two is alarming. */}
-            {tree != null && environments.length === 0
-              ? 'No files under the notebooks root.'
-              : 'Pick a file on the left to open it here.'}
-          </p>
-          {mayWrite && (
-            <Button variant="outline" size="sm" onClick={create}>
-              <FilePlus2 className="size-3.5" aria-hidden="true" />
-              New notebook
-            </Button>
-          )}
-        </div>
+        {tree != null && environments.length === 0 ? (
+          <p className="text-base text-muted-foreground">No files under the notebooks root.</p>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex-1" />
+              {mayWrite && (
+                <Button variant="outline" size="sm" onClick={create}>
+                  <FilePlus2 className="size-3.5" aria-hidden="true" />
+                  New notebook
+                </Button>
+              )}
+            </div>
+            {/* The repo, rather than an empty pane with a button in the middle of
+                it: opening Files used to say nothing at all about the project you
+                had just opened. */}
+            <RepoBrowser branch={branch} />
+          </>
+        )}
       </div>
+
+      {previewMerge && (
+        <MergePreview
+          onClose={() => setPreviewMerge(false)}
+          onMerged={(message) => {
+            toast.success(message);
+            reload();
+            reloadStanding();
+          }}
+        />
+      )}
     </div>
   );
 }

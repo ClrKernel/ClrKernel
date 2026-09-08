@@ -215,17 +215,11 @@ export function NotebookExplorer({
         {env === 'mine' && behind > 0 && onUpdate != null && (
           <button
             type="button"
-            onClick={() => {
-              // It commits whatever you have not saved first, as "work in
-              // progress before updating from test" — a real act, and this is a
-              // small target next to Refresh.
-              if (confirm(
-                `Merge test into your branch?\n\n${behind} file(s) changed there. `
-                + 'Anything you have not committed is committed first, and anything '
-                + 'that cannot merge cleanly comes back as a conflict to fix.')) {
-                onUpdate();
-              }
-            }}
+            // Opens the preview rather than asking. A confirm() box had one
+            // paragraph to explain a merge in, and could not name a single file
+            // or say which branch was moving — so it read as "your work goes to
+            // test", which is the opposite of what happens.
+            onClick={onUpdate}
             title={`Test has moved on in ${behind} file(s) — merge it into your branch`}
             aria-label="Update from test"
             className="shrink-0 rounded-sm border border-status-warning/40 bg-status-warning/10 p-1 text-status-warning outline-none hover:border-status-warning focus-visible:ring-2 focus-visible:ring-ring"

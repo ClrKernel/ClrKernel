@@ -13,6 +13,7 @@ import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
 import { JobsOverview } from '../components/JobsOverview';
+import { MergePreview } from '../components/MergePreview';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { NotebookToolbar } from '../components/NotebookToolbar';
 import { SheetView } from '../components/SheetView';
@@ -264,6 +265,8 @@ export function Editor() {
   // A push adds files to test and a promote adds them to prod, and the editor stays
   // mounted through both — so nothing refetched the tree the explorer is showing.
   const [treeRefresh, setTreeRefresh] = useState(0);
+  /** The merge preview, which is what the explorer's ↓ opens now. */
+  const [previewMerge, setPreviewMerge] = useState(false);
   const refreshTree = () => setTreeRefresh((n) => n + 1);
 
   // Polled, not fetched once: the run that unlocks promotion happens in test,
@@ -711,15 +714,16 @@ export function Editor() {
   }
 
   /** Merges test into your branch. Conflicts come back as files, never resolved. */
-  async function updateFromTest() {
+  /**
+   * Re-read the file after a merge landed. The merge itself belongs to the
+   * preview dialog, which is the thing that showed you what it was going to do —
+   * this is only the half that has to happen to the editor afterwards.
+   */
+  async function reloadAfterMerge(message: string) {
     setError(null);
-    setNotice(null);
+    setNotice(message);
     setBusy(true);
     try {
-      const result = await api.updateFromTest();
-      setNotice(result.merged
-        ? 'Up to date with test.'
-        : `Conflicts left in ${result.conflicts.join(', ')} — resolve the markers, save, then push.`);
       // The merge changed files under the editor; re-read rather than keep a
       // buffer that no longer matches what is on disk.
       const text = await api.notebookContent(branch, path);
@@ -1039,7 +1043,7 @@ export function Editor() {
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
         refresh={treeRefresh}
         standing={standing}
-        onUpdate={updateFromTest}
+        onUpdate={() => setPreviewMerge(true)}
       />
       {!layout.explorerCollapsed && (
         <Splitter
@@ -1340,6 +1344,13 @@ export function Editor() {
             </>
           )}
         </div>
+      )}
+
+      {previewMerge && (
+        <MergePreview
+          onClose={() => setPreviewMerge(false)}
+          onMerged={reloadAfterMerge}
+        />
       )}
 
       {connectFor != null && cells?.[connectFor] &&

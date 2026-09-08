@@ -76,9 +76,12 @@ def files_shell(page, base, _root):
     shell_box = explorer(page).bounding_box()
 
     body = page.inner_text("body").replace("\xa0", " ")
-    assert "Pick a file on the left" in body, body[-900:]
-    # One tree, not two: the shell's and the editor's are the same component.
-    assert body.count("etl.nb.md") == 1, body
+    # The pane shows the repo now, not an empty state. The file appears twice on
+    # purpose — once in the explorer, once in the Contents table — which is why
+    # this counts the *explorer's* copy rather than the page's: one sidebar, not
+    # two, is the thing this check was written to protect.
+    assert "Contents" in body and "History" in body, body[-900:]
+    assert explorer(page).get_by_role("button", name="etl.nb.md").count() == 1, body
 
     page.get_by_role("button", name="etl.nb.md").first.click()
     page.wait_for_url(lambda u: "/edit/" in u, timeout=10000)
@@ -118,7 +121,8 @@ def branch_switch(page, base, _root):
     page.wait_for_url(lambda u: "/edit/" not in u, timeout=8000)
 
     assert page.url.rstrip("/").endswith("/files/default"), page.url
-    assert "Pick a file on the left" in page.inner_text("body")
+    # Landed on the shell, which is the repo browser now rather than an empty pane.
+    assert "Contents" in page.inner_text("body")
     page.wait_for_timeout(2500)
     text = page.evaluate("""async () => await (await fetch(
         '/api/projects/default/branches/mine/notebooks/content?path=etl.nb.md')).text()""")
@@ -378,6 +382,122 @@ def secrets_project(page, base, root):
     # And the value never travelled, for either of them.
     body = page.inner_text("body")
     assert "sk-from-" not in body, body[-900:]
+
+
+@check("repo-browser")
+def repo_browser(page, base, _root):
+    """The Files route shows the repo, not an empty pane.
+
+    Contents lists the folder with the commit that last touched each row —
+    the column a filesystem cannot answer — and History is the branch's log.
+    """
+    def write(branch, path, text):
+        return page.evaluate("""async ({ branch, path, text }) => (await fetch(
+            `/api/projects/default/branches/${branch}/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"branch": branch, "path": path, "text": text})
+
+    assert write("mine", "reports/monthly.nb.md", "# Monthly\n") == 200
+    page.evaluate("""async () => { await fetch('/api/projects/default/branch/push',
+        { method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ message: 'add the monthly report' }) }); }""")
+
+    page.goto(f"{base}/files/default", wait_until="networkidle")
+    # Two fetches land here — the tree for the explorer and the listing for the
+    # table — so wait for the row rather than guessing at a number.
+    page.get_by_role("row", name=re.compile("reports")).first.wait_for(timeout=15000)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "Contents" in body and "History" in body, "no Contents/History tabs:\n" + body[:900]
+
+    # Contents: the folder, and why it last changed.
+    table = page.locator("table").last.inner_text().replace("\xa0", " ")
+    assert "reports" in table, table
+    assert "add the monthly report" in table, (
+        "no last-commit column — that is the whole point of this table:\n" + table)
+
+    # Descend into it. Scoped to the table: the explorer has a `reports` folder
+    # too, it comes first in the DOM, and clicking that one only expands the
+    # sidebar — leaving the table showing the root and the assertion below
+    # blaming the wrong thing.
+    page.locator("table").last.get_by_role("button", name="reports", exact=True).click()
+    # The filename, not "monthly": the root listing's `reports` row carries the
+    # commit message "add the monthly report", so the looser pattern matched
+    # before the click had even landed — and the table was then read during the
+    # refetch, empty, blaming the descend for a race in the wait.
+    page.get_by_role("row", name=re.compile(r"monthly\.nb\.md")).first.wait_for(timeout=15000)
+    table = page.locator("table").last.inner_text().replace("\xa0", " ")
+    assert "monthly.nb.md" in table, "descending showed no file: " + table
+
+    # History is the branch's log.
+    page.get_by_role("tab", name="History").click()
+    page.wait_for_timeout(2000)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "add the monthly report" in body, "History does not show the commit:\n" + body[-1000:]
+
+
+@check("merge-preview")
+def merge_preview(page, base, _root):
+    """The merge says what it will do, and whose work is whose.
+
+    The complaint this answers: a confirm() box saying "1 file(s) changed there.
+    Anything you have not committed is committed first" — which named no file,
+    and read as though the person's own work was being merged into test.
+    """
+    def write(branch, path, text):
+        return page.evaluate("""async ({ branch, path, text }) => (await fetch(
+            `/api/projects/default/branches/${branch}/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"branch": branch, "path": path, "text": text})
+
+    assert write("mine", "shared.nb.md", "# Base\n") == 200
+    page.evaluate("""async () => { await fetch('/api/projects/default/branch/push',
+        { method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ message: 'base' }) }); }""")
+
+    # Somebody else moves test on.
+    import subprocess
+    root = page.evaluate("async () => (await (await fetch('/api/health')).json()).notebooksRoot")
+    test_tree = os.path.join(root, "test")
+    with open(os.path.join(test_tree, "shared.nb.md"), "w") as f:
+        f.write("# Theirs\n")
+    for args in (["add", "-A"], ["-c", "user.email=t@x", "-c", "user.name=Grace Hopper",
+                                 "commit", "-m", "rework the rollup"]):
+        subprocess.run(["git", *args], cwd=test_tree, check=True, capture_output=True)
+
+    # And I have something of my own, unsaved.
+    assert write("mine", "only-mine.nb.md", "# Mine\n") == 200
+
+    page.goto(f"{base}/files/default", wait_until="networkidle")
+    page.wait_for_timeout(2500)
+    explorer(page).get_by_role("button", name="Update from test").click()
+    page.wait_for_timeout(3000)
+
+    # The dialog, not the page: every one of these filenames is also in the
+    # explorer behind it, so reading the body would pass on a preview that showed
+    # nothing at all.
+    dialog = page.locator(".modal").last.inner_text().replace("\xa0", " ")
+    # The commit arriving, named, with its author and its file.
+    assert "rework the rollup" in dialog, "the preview does not name what is coming:\n" + dialog
+    assert "Grace Hopper" in dialog, dialog
+    assert "shared.nb.md" in dialog, dialog
+    # My own work, named separately, and said to stay on my branch.
+    assert "only-mine.nb.md" in dialog, (
+        "the preview does not say which of my files it commits:\n" + dialog)
+    assert "Nothing of yours goes to test" in dialog, dialog
+    # And the picture.
+    assert page.locator(".modal svg[role=img]").count() >= 1, "no branch graph"
+
+    # It merges only when asked, and reports what happened.
+    page.get_by_role("button", name=re.compile("Merge .* into my branch")).click()
+    for _ in range(20):
+        page.wait_for_timeout(1000)
+        if "Up to date with test" in page.inner_text("body"):
+            break
+    assert "Up to date with test" in page.inner_text("body"), page.inner_text("body")[-900:]
+    # The file test changed is now mine, and my own is untouched.
+    got = page.evaluate("""async () => await (await fetch(
+        '/api/projects/default/branches/mine/notebooks/content?path=shared.nb.md')).text()""")
+    assert "Theirs" in got, got
 
 
 @check("behind-test")

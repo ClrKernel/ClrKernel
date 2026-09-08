@@ -115,6 +115,44 @@ export interface BranchStanding {
   behindFiles?: string[];
 }
 
+
+/** One commit, as the history views read it. */
+export interface ApiCommit {
+  sha: string;
+  shortSha: string;
+  author: string;
+  when: string;
+  subject: string;
+  /** Full shas, first parent first. Two of them is a merge. */
+  parents: string[];
+  /** Present where the caller asked for them — a merge preview, not a plain list. */
+  files: { status: string; path: string }[];
+}
+
+/** One row of a folder listing. */
+export interface ApiEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+  modified: string;
+  /** Null until the branch has a commit touching it — a file only just written. */
+  lastCommit: ApiCommit | null;
+}
+
+/** What `Update from test` would do, before it does it. */
+export interface ApiIncoming {
+  hasBranch: boolean;
+  branch?: string;
+  /** On test and not on your branch — what arrives. */
+  incoming?: ApiCommit[];
+  /** On your branch and not on test — the other lane of the picture. */
+  outgoing?: ApiCommit[];
+  mergeBase?: string | null;
+  /** Yours, uncommitted. The merge commits these first, on your own branch. */
+  uncommitted?: { status: string; path: string }[];
+}
+
 export interface Worktree {
   /** The name of the branch and of the directory — and what removes it. */
   handle: string;
@@ -817,6 +855,17 @@ export const api = {
   /** Every branch of this project, with who owns each and which you may write to. */
   branches: (slug?: string) => request<{ branches: BranchSummary[] }>(
     slug == null ? `${project()}/branches` : `/projects/${encodeURIComponent(slug)}/branches`),
+
+  /** A branch's commits, newest first. */
+  commits: (branch: string, limit = 50) =>
+    request<{ branch: string; commits: ApiCommit[] }>(
+      `${scope(branch)}/commits?limit=${limit}`),
+  /** One folder of a branch, each row with the commit that last touched it. */
+  contents: (branch: string, path = '') =>
+    request<{ branch: string; path: string; entries: ApiEntry[] }>(
+      `${scope(branch)}/contents?path=${encodeURIComponent(path)}`),
+  /** What a merge from test would bring, and what of yours it would commit first. */
+  incoming: () => request<ApiIncoming>(`${project()}/branch/incoming`),
 
   /** Where your own branch stands against test: unsaved work, and either drift. */
   branchStanding: () =>
