@@ -14,8 +14,8 @@ when you want it to start diffing like the rest of your repo.
 
 C# cells are evaluated with Roslyn's scripting engine
 ([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
-and a cell can also be **SQL, DAX, PowerShell, shell (bash/zsh/sh), HTTP, or
-Mermaid** in the same session — one kernel, one set of variables. Cell languages
+and a cell can also be **SQL, DAX, Python, PowerShell, shell (bash/zsh/sh), HTTP,
+or Mermaid** in the same session — one kernel, one set of variables. Cell languages
 are registered rather than built in, so a package can add one
 ([below](#extending-the-kernel-your-own-cell-language)).
 
@@ -23,7 +23,7 @@ Four ways to run the same notebook:
 
 | | |
 |---|---|
-| **VS Code** | the [ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks) extension — `.nb.md` opens as a notebook, with completion, diagnostics and per-cell run. No Python, no Jupyter. [Read the extension docs](editors/vscode/README.md). |
+| **VS Code** | the [ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks) extension — `.nb.md` opens as a notebook, with completion, diagnostics and per-cell run. No Jupyter, and no Python install unless a notebook asks for `#!python` cells. [Read the extension docs](editors/vscode/README.md). |
 | **JupyterLab** | a standard Jupyter kernel, for anyone already there |
 | **Headless** | `clrkernel run notebook.nb.md` with papermill-style parameters, for CI and schedulers |
 | **Studio** | a scheduler and web app that runs notebooks as cron jobs — [below](#scheduling-notebooks--clrkernel-studio-preview) |
@@ -108,6 +108,28 @@ PowerShell state lives in a persistent remote runspace; remote shell cells keep
 their working directory per target. Targets can be saved in `connections.json`.
 See [samples/Shell.nb.md](samples/Shell.nb.md) and
 [samples/PowerShell.nb.md](samples/PowerShell.nb.md).
+
+### Python cells
+
+`#!python` (or `#!py`) cells run in one resident interpreter per notebook, so
+names carry across cells the way C# ones do. A trailing expression is displayed,
+a DataFrame renders as a table, and a matplotlib figure appears without
+`plt.show()`.
+
+**Nothing to install first.** With no `python3` on the machine the kernel
+provisions one for the notebook — a pinned [uv](https://docs.astral.sh/uv/) and a
+CPython, checksum-verified, under your local application data. Point
+`CLRKERNEL_PYTHON` at an interpreter of your own to skip that entirely, which is
+also the answer on an air-gapped box.
+
+`#!python-install pandas` adds packages for that notebook alone — installed to a
+directory on `sys.path` rather than a virtualenv, so an import works in the next
+cell without a restart and nothing lands in your repo. `#!python-reset` restarts
+the interpreter and forgets everything in it.
+
+Completion, hover and signature help come from the live interpreter, so they know
+the objects a cell actually made rather than what a static analyser guessed. See
+[samples/Python.nb.md](samples/Python.nb.md).
 
 ### SQL cells
 
@@ -367,7 +389,8 @@ needs a live tenant, so validate against your own workspace.)
 
 ### Headless execution
 
-Headless / scheduled execution needs no Python:
+Headless / scheduled execution needs no Jupyter, and no Python unless the
+notebook has `#!python` cells:
 
 ```bash
 clrkernel run etl.nb.md -p run_date 2026-08-04 -o runs/etl_out.ipynb
