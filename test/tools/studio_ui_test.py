@@ -500,6 +500,66 @@ def merge_preview(page, base, _root):
     assert "Theirs" in got, got
 
 
+@check("missing-file")
+def missing_file(page, base, _root):
+    """A file that is not on the branch you are looking at says so.
+
+    Every pane rendered "Loading…" for ever instead: `null` meant both "still
+    reading" and "the read failed", and the pane could not tell them apart — so
+    it contradicted the error banner directly above it, and the spinner was the
+    more believable half.
+    """
+    import subprocess
+    root = page.evaluate("async () => (await (await fetch('/api/health')).json()).notebooksRoot")
+
+    def commit_into(tree, name, body, message):
+        with open(os.path.join(root, tree, name), "w") as f:
+            f.write(body)
+        for args in (["add", "-A"], ["-c", "user.email=t@x", "-c", "user.name=Grace Hopper",
+                                     "commit", "-m", message]):
+            subprocess.run(["git", *args], cwd=os.path.join(root, tree), check=True,
+                           capture_output=True)
+
+    # Visit first, so the personal branch forks from test's head *now* — a branch
+    # made afterwards would already carry everything below and prove nothing.
+    page.goto(f"{base}/files/default", wait_until="networkidle")
+    page.wait_for_timeout(2500)
+
+    commit_into("prod", "prod-only.nb.md", "# Prod only\n", "prod only")
+    commit_into("test", "test-only.nb.md", "# Test only\n", "test only")
+
+    # On prod's file from your own branch: nothing to update, so it points at the
+    # branch picker.
+    page.goto(f"{base}/files/default/edit/mine/prod-only.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(3000)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "prod-only.nb.md is not on this branch" in body, body[-900:]
+    assert "Loading" not in body, "still says it is loading:\n" + body[-900:]
+    assert "branch picker" in body, body[-900:]
+
+    # Same file, same story, from test — the case worth checking separately
+    # because test is not your branch and has no ↓ of its own.
+    page.goto(f"{base}/files/default/edit/test/prod-only.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(3000)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "prod-only.nb.md is not on this branch" in body, body[-900:]
+    assert "Loading" not in body, body[-900:]
+
+    # And test's file from your own branch, which *is* recoverable: this is the
+    # one that should name the fix rather than shrug.
+    page.goto(f"{base}/files/default/edit/mine/test-only.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(4000)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "test-only.nb.md is not on this branch" in body, body[-900:]
+    assert "update from test" in body, (
+        "a file test has and yours does not should name the way to get it:\n" + body[-900:])
+
+    # The Diff tab is where this was first noticed, so check it too.
+    page.goto(f"{base}/files/default/diff/mine/prod-only.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(3000)
+    assert "Loading" not in page.inner_text("body"), "the Diff tab still hangs"
+
+
 @check("behind-test")
 def behind_test(page, base, _root):
     """Being behind test is said about the file, not about every file.
