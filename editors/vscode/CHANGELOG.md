@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.0] - 2026-09-08
+
+**Needs kernel 0.12.x.** Python cells, and nothing else changes.
+
+- **Python cells.** `#!python` (and `#!py`) is a cell language now: syntax
+  highlighting, the cell-language picker, the fence-tag map used when a `.nb.md`
+  is read and written, and the selector prepended when a cell runs. The kernel
+  runs it in one resident interpreter per notebook and will fetch a private
+  CPython if the machine has none, so there is nothing to install first — see the
+  kernel's README for `#!python-install` and `#!python-reset`.
+- The pairing moves to kernel **0.12.x** because of that: 0.11 has no Python
+  language, so a `#!python` cell would fail on a selector it does not know. The
+  `clrkernel/*` RPC surface is unchanged, so if you stay on 0.11 every other cell
+  goes on working and the warning says so.
+
 ## [0.8.0] - 2026-09-02
 
 **Needs kernel 0.11.x.** No change to what the extension does — the pairing moves

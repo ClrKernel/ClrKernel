@@ -12,7 +12,7 @@ can open in VS Code or Jupyter.
 running, what failed, and what the crons will fire next](images/studio/dashboard.png)
 
 > Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.11.x as "try it on real notebooks and tell us
+> production soak time yet — treat 0.12.x as "try it on real notebooks and tell us
 > what breaks".
 
 ## Install
@@ -921,10 +921,13 @@ The loop:
    parse — with the file and the line, because that is what a blocked publish has to
    tell you. The files you tick become one commit on `test`, under a message you
    write, authored as you; anything you leave stays saved on your branch. If `test`
-   has moved since you branched, the push is refused and the button
-   becomes **Update from test** — the merge belongs in your own worktree where you
-   can look at it. Conflicts come back as a list of files with the markers left in
-   them; nothing is ever auto-resolved.
+   has moved since you branched, the push is refused and the explorer's toolbar
+   grows a **↓** beside the branch picker — the merge belongs in your own worktree
+   where you can look at it. Pressing it opens a preview rather than asking: which
+   commits arrive, whose they are, what of yours gets committed on the way in, and
+   the two branches drawn so the direction is not something to infer. Conflicts
+   come back as a list of files with the markers left in them; nothing is ever
+   auto-resolved.
 3. **Run** the notebook's jobs in test — manually or via the API. Test jobs never run
    on a schedule; cron and chaining fire only in prod. Each run records the test
    commit it executed and whether the tree was dirty.
@@ -963,6 +966,31 @@ test and prod runs of the same job never mix. In Docker, mount `/notebooks` writ
 (owned by uid 1654) when git is enabled; worktree paths are repaired automatically
 when the volume is mounted at a different path.
 
+### Reading the history
+
+The repo is what the Files page opens on, rather than an empty pane with a New
+notebook button: **Contents** lists the folders and files at the root of the branch
+with the commit that last touched each, and **History** is that branch's commits.
+Neither needs a checkout or a terminal, and both read the bare repo directly.
+
+A commit in that list is a **link to its own page**, not a row that expands:
+`/files/<project>/<branch>/commit/<sha>`. The page has the files it changed down the
+left — deleted struck through, added carrying a plus — and either every change at
+once, a card per file, or the one file you pick. The graph column beside the list is
+a dot per commit with a line joining them and a merge drawn hollow; it is
+deliberately not a lane graph, because the walk is a single first-parent line and
+that is all the picture can honestly claim.
+
+Every text file also has a **History** tab of its own, between Source and Diff. It
+lists the commits that touched *that file* and shows the file either side of the one
+you pick, in the same side-by-side editor the branch comparisons use — there is no
+reason "what changed when" and "what differs between branches" should be read two
+different ways. **It follows renames**: a file's history does not begin again because
+somebody moved it, and the diffs from before the rename are read at the path the file
+had then. The commit that renamed it says so. It stops at a path that was deleted and
+later reused by something else — that is `git log --follow`'s own guess, and Studio
+lives with git's answer rather than keeping a rename index of its own.
+
 ## Getting around
 
 Navigation is a fixed 48px icon rail on the left — Dashboard, Files, Connections,
@@ -970,13 +998,30 @@ Channels, and Settings at the foot — with the label on hover. The bar across t
 a context strip and nothing else: a breadcrumb saying where you are, a search box, and
 the theme picker. What you can *do* lives on the page, not in the chrome.
 
-![The Files section: a project's notebooks and the `*.jobs.yaml` beside each one, on a
-branch picked from the toolbar](images/studio/files.png)
+![The Files section: the branch's folders and files with the commit that last
+touched each, the explorer beside it, and the History tab next to
+Contents](images/studio/files.png)
 
 **The URL names its project**, and that is the rule the whole shape follows:
 
 | | |
 |---|---|
+| `/` | the dashboard's Overview — every project's jobs, grouped, and the recent runs |
+| `/monitoring` | the dashboard's Monitoring grid — every project's runs, filtered and sorted by the server |
+| `/files/<project>` | the door — it opens on the branch you were last on |
+| `/files/<project>/<branch>` | that branch: its **Contents** and its **History** |
+| `/files/<project>/<branch>/edit\|overview\|preview\|source\|history\|diff/<path>` | one file, on one branch, read one of six ways |
+| `/files/<project>/<branch>/commit/<sha>` | one commit — every file it changed |
+| `/files/<project>/<branch>/commit/<sha>/<path>` | what that commit did to one of them |
+| `/runs/<id>` | one run |
+| `/channels`, `/settings/<section>` | server-wide, so no project |
+
+The segments narrow left to right — project, then branch, then how you are
+reading it, then what — and the breadcrumb says the same thing in the same order.
+That ordering is what makes changing branch a *navigation*: the shell and the
+editor differ only in what follows the branch, so the explorer's picker moves you
+rather than mutating state every pane beside it has to notice.
+
 **A job has no page of its own.** It is an entry in a `*.jobs.yaml`, so it opens
 as that file's Overview tab in Files, and its history is the monitoring grid
 filtered to it (`/monitoring?project=…&env=…&job=…`). A section of its own was a
@@ -987,15 +1032,6 @@ where there is a file describing a job but no job yet.
 
 `parameters:` and `notify:` stay on the YAML tab, which is where they have always
 been honest about living.
-
-| `/` | the dashboard's Overview — every project's jobs, grouped, and the recent runs |
-| `/monitoring` | the dashboard's Monitoring grid — every project's runs, filtered and sorted by the server |
-| `/jobs/<project>` | that project's jobs |
-| `/jobs/<project>/<branch>/<name>` | one job |
-| `/files/<project>` | that project's files, on one branch |
-| `/files/<project>/edit\|overview\|preview\|source\|diff/<branch>/<path>` | one file, on one branch, read one of five ways |
-| `/runs/<id>` | one run |
-| `/channels`, `/settings/<section>` | server-wide, so no project |
 
 A link has to mean one thing, and two projects may each have a `nightly` and a
 `reports/monthly.nb.md`. Having the project in the path is also what lets the
@@ -1009,9 +1045,9 @@ The notebook path goes last because it is the only part that can be any number o
 segments deep; the view and the branch are one segment each, so
 `reports/monthly.nb.md` stays readable instead of becoming one escaped blob.
 
-**Notebook, Source and Diff vs production are three URLs**, the same way the
-Settings tabs are — a view is something you can link to, reload into and go back
-from. They are three readings of one file, not three permissions: read-only comes
+**Notebook, Source, History and Diff vs production are four URLs**, the same way
+the Settings tabs are — a view is something you can link to, reload into and go
+back from. They are readings of one file, not permissions: read-only comes
 from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
@@ -1203,8 +1239,8 @@ across notebooks.
 The editor is a notebook, not a text box: each cell is a Monaco editor with syntax highlighting, a language picker fed by
 whatever the kernel declares (so a `#!sql` cell highlights as SQL and a shell cell as
 shell), and controls to add, delete and reorder cells. A **Source** tab shows the raw
-file when you want to see exactly what is on disk, and **Diff vs production** shows
-what promoting would ship, side by side.
+file when you want to see exactly what is on disk, **History** is the file's own
+commits, and **Diff vs production** shows what promoting would ship, side by side.
 
 ![The Source tab: the same notebook as the plain `.nb.md` on disk, fenced blocks and
 all](images/studio/editor-source.png)
@@ -1230,8 +1266,8 @@ now the button itself answers. Both used to be permanent banners, one above the 
 it; neither changes while you work, so both cost a strip of the screen to repeat
 themselves every time you scrolled past.
 
-**Source** and **Diff vs production** fill the window and scroll inside themselves, so
-a long file does not push the toolbar off the top.
+**Source**, **History** and **Diff vs production** fill the window and scroll inside
+themselves, so a long file does not push the toolbar off the top.
 
 Cells run against a **warm kernel** — one per notebook, started on the first run and
 kept alive so variables persist between cells and between runs, exactly as they do in

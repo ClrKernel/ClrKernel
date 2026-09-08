@@ -9,22 +9,23 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.11.*';
+export const SUPPORTED_KERNEL_RANGE = '0.12.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.11.x';
+export const SUPPORTED_KERNEL_LABEL = '0.12.x';
 
 /** The lowest kernel in the line that carries every RPC this build calls.
  *
- *  0.11.0 adds no `clrkernel/*` method: the RPC surface is exactly 0.10.0's, and
- *  the pairing moves only because the check below compares major.minor. What is
- *  new in the kernel this build expects is PostgreSQL in the box — an
- *  `#!ansisql` cell opens a Postgres connection without a `#r`, which the
- *  connection UI offers and 0.10 would refuse. */
-export const SUPPORTED_KERNEL_MIN = '0.11.0';
+ *  0.12.0 adds no `clrkernel/*` method either: the RPC surface has been exactly
+ *  0.10.0's for three releases now, and the pairing moves because the check below
+ *  compares major.minor. What is new in the kernel this build expects is the
+ *  Python cell language — this extension highlights `#!python` cells and offers
+ *  them in the picker, and 0.11 has no language to run them with, so the cell
+ *  would fail on a selector the kernel does not know. */
+export const SUPPORTED_KERNEL_MIN = '0.12.0';
 
 const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 11;
+const SUPPORTED_MINOR = 12;
 const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';

@@ -294,6 +294,14 @@ that was done, and two of those passed against the bug they were written for.
 - **Per-file last-commit beyond one folder.** `Contents` walks the log once per listing
   and stops when every row is attributed; a repo with thousands of files in one folder
   would want a cache keyed on the branch head.
-- **Opening a file that exists only on test.** Its Diff tab sits on `Loading…` rather
-  than saying the file is not on your branch yet.
 - **`IAccountProvider` route contribution**, and a second provider to shape it.
+- **Publishing from the Files shell.** The dialog is opened from the editor's toolbar,
+  so publishing means opening a file first — which is odd now that the shell is where a
+  branch switch lands you.
+- **A branch switcher on the commit page.** It sits in the URL slot the views use but is
+  not one, and the switcher builds an editor path; switching from a commit would need a
+  destination of its own (the branch's shell) rather than a file that may not be there.
+
+Fixed since this was written, and no longer on this list: opening a file that exists
+only on test used to sit on `Loading…` for ever rather than saying the file is not on
+your branch yet.
