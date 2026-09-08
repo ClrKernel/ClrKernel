@@ -270,6 +270,7 @@ jobs:
           dotnet-version: 10.0.x
 
       - uses: actions/setup-python@v6
+        id: python
         with:
           python-version: '3.12'
 
@@ -283,10 +284,25 @@ jobs:
         run: ./scripts/install-dev-kernel.sh Release
 
       - name: Execute smoke notebook (must pass)
+        # CLRKERNEL_PYTHON pins the `#!python` cells to the interpreter this job
+        # already set up. Without it the kernel would find one on PATH anyway —
+        # but "would" is doing the work in that sentence, and the fallback when
+        # it finds none is to download uv and a CPython, which is not a thing a
+        # smoke test should be able to start.
+        env:
+          CLRKERNEL_PYTHON: ${{ steps.python.outputs.python-path }}
         run: |
           jupyter nbconvert --to notebook --execute \
             --ExecutePreprocessor.kernel_name=clrkernel-dev \
             --output /tmp/smoke_out.ipynb test/notebooks/smoke.ipynb
+          # nbconvert is happy as long as no cell raised. These are the outputs
+          # that say the Python half actually ran, rather than a cell quietly
+          # producing nothing: the interpreter answered, it kept its state
+          # between cells, and the C# session was still there afterwards.
+          for expected in "cell5: python 3." "and state carried" "cell7: csharp still has counter=10"; do
+            grep -qF "$expected" /tmp/smoke_out.ipynb \
+              || { echo "ERROR: smoke output is missing: $expected" >&2; exit 1; }
+          done
 
       - name: Execute failing notebook (must exit non-zero)
         run: |
