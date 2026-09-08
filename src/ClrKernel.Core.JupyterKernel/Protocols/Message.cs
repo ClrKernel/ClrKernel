@@ -51,12 +51,12 @@ public class Message<T> {
             msg[0].Buffer
         };
 
-        Delimiter = msg[1].ConvertToString();
-        Signature = msg[2].ConvertToString();
+        Delimiter = msg[1].Utf8();
+        Signature = msg[2].Utf8();
         Header = header;
-        ParentHeader = ProtocolJson.Deserialize<Header>(msg[4].ConvertToString());
-        Metadata = ProtocolJson.Deserialize<Dictionary<string, object>>(msg[5].ConvertToString());
-        Content = ProtocolJson.Deserialize<T>(msg[6].ConvertToString());
+        ParentHeader = ProtocolJson.Deserialize<Header>(msg[4].Utf8());
+        Metadata = ProtocolJson.Deserialize<Dictionary<string, object>>(msg[5].Utf8());
+        Content = ProtocolJson.Deserialize<T>(msg[6].Utf8());
         Buffers = new List<byte[]>();
     }
 }

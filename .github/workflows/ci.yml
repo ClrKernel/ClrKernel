@@ -295,14 +295,33 @@ jobs:
           jupyter nbconvert --to notebook --execute \
             --ExecutePreprocessor.kernel_name=clrkernel-dev \
             --output /tmp/smoke_out.ipynb test/notebooks/smoke.ipynb
-          # nbconvert is happy as long as no cell raised. These are the outputs
-          # that say the Python half actually ran, rather than a cell quietly
-          # producing nothing: the interpreter answered, it kept its state
-          # between cells, and the C# session was still there afterwards.
-          for expected in "cell5: python 3." "and state carried" "cell7: csharp still has counter=10"; do
-            grep -qF "$expected" /tmp/smoke_out.ipynb \
-              || { echo "ERROR: smoke output is missing: $expected" >&2; exit 1; }
-          done
+          # nbconvert is happy as long as no cell raised, so a cell that runs and
+          # says nothing is a passing cell. These check what came *out*.
+          #
+          # Outputs only, never a grep over the file: the source is in there too,
+          # and every one of these strings appears in the cell that produces it —
+          # so grepping the notebook passes while the kernel is mangling
+          # everything, which is exactly what it did when this was written.
+          python - <<'PYCHECK'
+          import json, sys
+          nb = json.load(open("/tmp/smoke_out.ipynb"))
+          got = []
+          for cell in nb["cells"]:
+              for out in cell.get("outputs", []):
+                  text = out.get("text") or (out.get("data") or {}).get("text/plain") or ""
+                  got.append("".join(text) if isinstance(text, list) else text)
+          got = "\n".join(got)
+          missing = [w for w in (
+              "cell5: python 3.",            # a Python cell ran at all
+              "and state carried",           # the interpreter is resident
+              "cell7: csharp still has counter=10",  # C# survived it
+              "cell8: — café ✓ 你好",        # non-ASCII over the wire, both ways
+          ) if w not in got]
+          if missing:
+              print("ERROR: smoke output is missing: " + ", ".join(missing), file=sys.stderr)
+              print("--- what came out ---\n" + got, file=sys.stderr)
+              sys.exit(1)
+          PYCHECK
 
       - name: Execute failing notebook (must exit non-zero)
         run: |
