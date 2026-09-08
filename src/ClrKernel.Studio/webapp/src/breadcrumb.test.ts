@@ -56,29 +56,29 @@ describe('breadcrumbFor', () => {
   });
 
   it('takes the editor’s subject from the path, and its badge is the branch switcher', () => {
-    expect(breadcrumbFor('/files/default/edit/mine/demo.nb.md')).toEqual([
-      { label: 'Files', to: '/files/default' },
+    expect(breadcrumbFor('/files/default/mine/edit/demo.nb.md')).toEqual([
+      { label: 'Files', to: '/files/default/mine' },
       { label: 'demo.nb.md', badge: 'branch' },
     ]);
   });
 
   it('is the same trail whichever way you are reading the file', () => {
     for (const view of ['edit', 'source', 'diff']) {
-      expect(breadcrumbFor(`/files/default/${view}/mine/demo.nb.md`)).toEqual([
-        { label: 'Files', to: '/files/default' },
+      expect(breadcrumbFor(`/files/default/mine/${view}/demo.nb.md`)).toEqual([
+        { label: 'Files', to: '/files/default/mine' },
         { label: 'demo.nb.md', badge: 'branch' },
       ]);
     }
   });
 
   it('keeps a nested notebook path whole', () => {
-    expect(breadcrumbFor('/files/default/edit/test/reports/monthly.nb.md')[1].label)
+    expect(breadcrumbFor('/files/default/test/edit/reports/monthly.nb.md')[1].label)
       .toBe('reports/monthly.nb.md');
   });
 
   it('keeps the untruncated notebook path for the title attribute', () => {
     const long = 'reporting/monthly/very-long-notebook-name-for-testing.nb.md';
-    const crumb = breadcrumbFor(`/files/default/edit/mine/${long}`)[1];
+    const crumb = breadcrumbFor(`/files/default/mine/edit/${long}`)[1];
     expect(crumb.full).toBe(long);
     expect(crumb.label).not.toBe(long);
   });

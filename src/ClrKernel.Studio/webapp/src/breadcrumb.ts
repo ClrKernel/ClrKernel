@@ -60,8 +60,13 @@ export function breadcrumbFor(pathname: string): Crumb[] {
       if (segments.length < 2) {
         return [leaf('Files')];
       }
-      const to = `/files/${segments[1]}`;
-      // /files/:project/<view>/:branch/*path. The badge is a switcher here rather
+      // Back to the branch, not to the project's door: the door would bounce you
+      // to whichever branch you were last on, which is not necessarily the one
+      // whose file you are looking at.
+      const to = segments.length >= 3
+        ? `/files/${segments[1]}/${segments[2]}`
+        : `/files/${segments[1]}`;
+      // /files/:project/:branch/<view>/*path. The badge is a switcher here rather
       // than a label: which branch you are reading is a place you can move to.
       // This only says where it goes; the top bar renders it.
       if (viewOf(pathname) != null) {

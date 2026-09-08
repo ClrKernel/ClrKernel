@@ -120,7 +120,11 @@ def branch_switch(page, base, _root):
     page.get_by_role("option", name="test", exact=True).click()
     page.wait_for_url(lambda u: "/edit/" not in u, timeout=8000)
 
-    assert page.url.rstrip("/").endswith("/files/default"), page.url
+    # The branch is in the address now, so switching it is a navigation — which
+    # is what makes the Contents and History beside the tree follow along. This
+    # asserts the *new* branch, not just that the file closed: landing on the
+    # shell for the branch you left would be the old bug wearing a new URL.
+    assert page.url.rstrip("/").endswith("/files/default/test"), page.url
     # Landed on the shell, which is the repo browser now rather than an empty pane.
     assert "Contents" in page.inner_text("body")
     page.wait_for_timeout(2500)
@@ -160,11 +164,12 @@ def completions(page, base, _root):
         # A trigger character, so a request is certainly in flight as we leave.
         page.keyboard.type("Console.")
         if how == "link":
-            page.locator('a[href="/files/default"]').first.click()
+            # The breadcrumb points at the branch, not the project's door.
+            page.locator('a[href^="/files/default/"]').first.click()
         else:
             explorer(page).get_by_role("combobox", name="Branch").click()
             page.get_by_role("option", name="test", exact=True).click()
-        page.wait_for_url(lambda u: u.rstrip("/").endswith("/files/default"), timeout=8000)
+        page.wait_for_url(lambda u: "/edit/" not in u, timeout=8000)
         page.wait_for_timeout(3000)
         assert page.errors == [], f"leaving by {how}: {sorted(set(page.errors))}"
 
@@ -433,6 +438,84 @@ def repo_browser(page, base, _root):
     page.wait_for_timeout(2000)
     body = page.inner_text("body").replace("\xa0", " ")
     assert "add the monthly report" in body, "History does not show the commit:\n" + body[-1000:]
+
+
+@check("branch-in-url")
+def branch_in_url(page, base, _root):
+    """The branch is part of the address, and switching it moves the whole page.
+
+    Reported: switching branch in the explorer left Contents and History showing
+    the branch you had just left. The tree read its own state; the panes beside
+    it read a branch computed from localStorage on render, and nothing re-ran
+    when the tree wrote to it.
+    """
+    def write(branch, path, text):
+        return page.evaluate("""async ({ branch, path, text }) => (await fetch(
+            `/api/projects/default/branches/${branch}/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"branch": branch, "path": path, "text": text})
+
+    # A file only your branch has, so the two listings cannot be confused.
+    assert write("mine", "only-mine.nb.md", "# Mine\n") == 200
+
+    # The door redirects to a branch rather than being a place of its own.
+    page.goto(f"{base}/files/default", wait_until="networkidle")
+    page.wait_for_url(lambda u: "/files/default/" in u, timeout=10000)
+    assert page.url.rstrip("/").endswith("/files/default/mine"), page.url
+
+    page.get_by_role("row", name=re.compile(r"only-mine")).first.wait_for(timeout=15000)
+
+    # Switch, and everything moves: the URL, the tree, and the table beside it.
+    explorer(page).get_by_role("combobox", name="Branch").click()
+    page.get_by_role("option", name="test", exact=True).click()
+    page.wait_for_url(lambda u: u.rstrip("/").endswith("/files/default/test"), timeout=10000)
+    page.wait_for_timeout(2500)
+    table = page.locator("table").last.inner_text().replace("\xa0", " ")
+    assert "only-mine.nb.md" not in table, (
+        "Contents is still showing the branch you left:\n" + table)
+
+    # History follows too — the other half of the same complaint.
+    page.get_by_role("tab", name="History").click()
+    page.wait_for_timeout(2500)
+    assert "adopt existing notebooks" in page.inner_text("body"), page.inner_text("body")[-800:]
+
+    # And a link written before the branch moved in front of the view still lands.
+    page.goto(f"{base}/files/default/edit/mine/only-mine.nb.md", wait_until="networkidle")
+    page.wait_for_url(lambda u: "/mine/edit/" in u, timeout=10000)
+    assert page.url.endswith("/files/default/mine/edit/only-mine.nb.md"), page.url
+
+
+@check("commit-detail")
+def commit_detail(page, base, _root):
+    """A commit in History opens to show what it changed."""
+    def write(branch, path, text):
+        return page.evaluate("""async ({ branch, path, text }) => (await fetch(
+            `/api/projects/default/branches/${branch}/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"branch": branch, "path": path, "text": text})
+
+    assert write("mine", "reports/monthly.nb.md", "# Monthly\n") == 200
+    page.evaluate("""async () => { await fetch('/api/projects/default/branch/push',
+        { method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ message: 'add the monthly report' }) }); }""")
+
+    page.goto(f"{base}/files/default/mine", wait_until="networkidle")
+    page.wait_for_timeout(2000)
+    page.get_by_role("tab", name="History").click()
+    page.wait_for_timeout(2500)
+
+    # Collapsed: the subject, and not yet the files.
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "add the monthly report" in body, body[-900:]
+    assert "reports/monthly.nb.md" not in body, (
+        "the files are already open — nothing to click:\n" + body[-900:])
+
+    page.get_by_role("button", name=re.compile("add the monthly report")).first.click()
+    page.wait_for_timeout(800)
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "reports/monthly.nb.md" in body, (
+        "clicking a commit showed no files:\n" + body[-900:])
+    assert "added" in body, "no status against the file: " + body[-600:]
 
 
 @check("merge-preview")

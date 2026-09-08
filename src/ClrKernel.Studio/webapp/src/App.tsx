@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Rail } from './components/Rail';
@@ -16,7 +16,10 @@ import { Settings } from './pages/Settings';
 import { Invite } from './pages/Invite';
 import { SignIn, Setup } from './pages/SignIn';
 import { ProjectProvider, ProjectScope, useProjects } from './projectContext';
-import { NOTEBOOK_VIEWS, filesPath, isFullBleed, legacyEditPath } from './routes';
+import { loadBranch } from './prefs';
+import {
+  NOTEBOOK_VIEWS, filesPath, isFullBleed, legacyEditPath, legacyFilesPath,
+} from './routes';
 import { loadSession, type SessionState } from './auth';
 import { SessionContext } from './sessionContext';
 import { AccentContext, applyAccent, loadAccent } from './theme/accent';
@@ -195,22 +198,33 @@ export function App() {
                   The bare section is a door for the rail, a bookmark and a typed
                   URL; it opens on the project you were last in. */}
               <Route path="/files" element={<LastProject />} />
-              <Route path="/files/:project" element={<ProjectScope><Files /></ProjectScope>} />
-              {/* The path goes last because it is the only variable-length part:
-                  the view and the branch are one segment each, so
-                  `reports/monthly.nb.md` can stay readable rather than becoming
-                  one escaped blob.
+              {/* Without a branch it is a door, not a place: it opens on the one
+                  you were last on, and every link from there carries it. */}
+              <Route path="/files/:project" element={<LastBranch />} />
+              <Route
+                path="/files/:project/:branch"
+                element={<ProjectScope><Files /></ProjectScope>}
+              />
+              {/* The branch before the view, so `/files/p/test` is a place and
+                  the editor is that place with a file in it. Changing branch is
+                  then a navigation rather than state a page has to notice.
 
-                  One route per view rather than a `:view` parameter: the three
-                  are a closed set, and a typo'd fourth should be Not found
-                  rather than the editor shell rendering nothing. */}
+                  The file path goes last because it is the only variable-length
+                  part, so `reports/monthly.nb.md` stays readable rather than
+                  becoming one escaped blob.
+
+                  One route per view rather than a `:view` parameter: they are a
+                  closed set, and a typo'd fifth should be Not found rather than
+                  the editor shell rendering nothing. */}
               {NOTEBOOK_VIEWS.map((view) => (
                 <Route
                   key={view}
-                  path={`/files/:project/${view}/:branch/*`}
+                  path={`/files/:project/:branch/${view}/*`}
                   element={<ProjectScope><Editor /></ProjectScope>}
                 />
               ))}
+              {/* Links written against the old `/:view/:branch/` ordering. */}
+              <Route path="/files/:project/:view/:branch/*" element={<LegacyFiles />} />
 
               {/* No project segment: a connection belongs to the server, not to
                   a repo, so there is nothing for one to name. */}
@@ -232,7 +246,7 @@ export function App() {
 
               <Route
               path="*"
-              element={<p className="text-base text-muted-foreground">Not found.</p>}
+              element={<NotFound />}
             />
             </Routes>
           </main>
@@ -257,6 +271,27 @@ export function App() {
 function LastProject() {
   const { current } = useProjects();
   return <Navigate to={filesPath(current)} replace />;
+}
+
+/** `/files/:project` — opens on the branch you were last on in it. */
+function LastBranch() {
+  const { project = 'default' } = useParams<{ project: string }>();
+  return <Navigate to={filesPath(project, loadBranch(project) ?? 'mine')} replace />;
+}
+
+/**
+ * A link written against `/files/:project/:view/:branch/*`, which is how these
+ * read before the branch moved in front of the view. Anything that is not one of
+ * those falls through to Not found rather than being guessed at.
+ */
+function LegacyFiles() {
+  const { pathname } = useLocation();
+  const moved = legacyFilesPath(pathname);
+  return moved == null ? <NotFound /> : <Navigate to={moved} replace />;
+}
+
+function NotFound() {
+  return <p className="text-base text-muted-foreground">Not found.</p>;
 }
 
 /** `/edit?project=…&path=…&branch=…`, as it is spelled now. */

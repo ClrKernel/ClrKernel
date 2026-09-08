@@ -1,4 +1,5 @@
-import { FileDiff } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileDiff } from 'lucide-react';
+import { useState } from 'react';
 import type { ApiCommit } from '../api';
 import { timeAgo } from '../ipynb';
 
@@ -24,37 +25,48 @@ export function FileChange({ status, path }: { status: string; path: string }) {
 }
 
 /**
- * A list of commits, newest first — the history view, and the body of the merge
- * preview.
- *
- * Files are shown when the commit carries them: history asks git for the subjects
- * alone, and a preview asks for the name-status too, so one component covers both
- * without a flag saying which it is.
+ * One commit. Expandable where the caller says so — History, where a subject
+ * line is a summary and the files are the answer to "what did that actually
+ * change"; flat in the merge preview, where everything arriving is already open
+ * because that is the whole question being asked.
  */
-export function CommitList({
-  commits,
-  empty = 'No commits yet.',
-}: {
-  commits: ApiCommit[];
-  empty?: string;
-}) {
-  if (commits.length === 0) {
-    return <p className="text-base text-muted-foreground">{empty}</p>;
-  }
+function Commit({ commit, expandable }: { commit: ApiCommit; expandable: boolean }) {
+  const [open, setOpen] = useState(!expandable);
+  const merge = commit.parents.length > 1;
+
+  const head = (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-left">
+      {expandable && (
+        open
+          ? <ChevronDown className="size-3 shrink-0 text-muted-subtle" aria-hidden="true" />
+          : <ChevronRight className="size-3 shrink-0 text-muted-subtle" aria-hidden="true" />
+      )}
+      <code className="font-mono text-xs text-primary">{commit.shortSha}</code>
+      <span className="text-base font-medium">{commit.subject || '(no message)'}</span>
+      <span className="ml-auto whitespace-nowrap text-xs text-muted-subtle">
+        {commit.author} · {timeAgo(commit.when)}
+        {/* Two parents is a merge, which is worth saying: its file list is
+            against the first parent, so it is not the whole story. */}
+        {merge && ' · merge'}
+      </span>
+    </div>
+  );
+
   return (
-    <ol className="flex flex-col gap-3">
-      {commits.map((commit) => (
-        <li key={commit.sha} className="rounded-lg border border-border bg-card px-3 py-2">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <code className="font-mono text-xs text-primary">{commit.shortSha}</code>
-            <span className="text-base font-medium">{commit.subject || '(no message)'}</span>
-            <span className="ml-auto whitespace-nowrap text-xs text-muted-subtle">
-              {commit.author} · {timeAgo(commit.when)}
-              {/* Two parents is a merge, which is worth saying: its file list is
-                  against the first parent, so it is not the whole story. */}
-              {commit.parents.length > 1 && ' · merge'}
-            </span>
-          </div>
+    <li className="rounded-lg border border-border bg-card px-3 py-2">
+      {expandable ? (
+        <button
+          type="button"
+          className="w-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {head}
+        </button>
+      ) : head}
+
+      {open && (
+        <>
           {commit.files.length > 0 && (
             <ul className="mt-1.5 flex flex-col gap-0.5 border-t border-border pt-1.5">
               {commit.files.map((file) => (
@@ -62,13 +74,44 @@ export function CommitList({
               ))}
             </ul>
           )}
-          {commit.files.length === 0 && commit.parents.length > 1 && (
-            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-subtle">
-              <FileDiff className="size-3" aria-hidden="true" />
-              a merge — its changes are the commits it brought in
+          {commit.files.length === 0 && (
+            <p className="mt-1.5 flex items-center gap-1.5 border-t border-border pt-1.5 text-xs text-muted-subtle">
+              <FileDiff className="size-3 shrink-0" aria-hidden="true" />
+              {merge
+                ? 'a merge — its changes are the commits it brought in'
+                : 'no files changed'}
             </p>
           )}
-        </li>
+          {expandable && (
+            <p className="mt-1.5 font-mono text-xs text-muted-subtle">{commit.sha}</p>
+          )}
+        </>
+      )}
+    </li>
+  );
+}
+
+/**
+ * A list of commits, newest first — the history view, and the body of the merge
+ * preview.
+ */
+export function CommitList({
+  commits,
+  empty = 'No commits yet.',
+  expandable = false,
+}: {
+  commits: ApiCommit[];
+  empty?: string;
+  /** Collapse each commit to its subject, and open it on click. */
+  expandable?: boolean;
+}) {
+  if (commits.length === 0) {
+    return <p className="text-base text-muted-foreground">{empty}</p>;
+  }
+  return (
+    <ol className="flex flex-col gap-2">
+      {commits.map((commit) => (
+        <Commit key={commit.sha} commit={commit} expandable={expandable} />
       ))}
     </ol>
   );

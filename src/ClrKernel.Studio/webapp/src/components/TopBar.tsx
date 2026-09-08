@@ -287,9 +287,9 @@ export function TopBar({
             {crumb.badge === 'branch' ? (
               <BranchSwitcher
                 project={segments[1]}
-                branch={segments[3]}
+                branch={segments[2]}
                 path={pathFromSplat(segments.slice(4).join('/'))}
-                view={segments[2] as NotebookView}
+                view={segments[3] as NotebookView}
               />
             ) : (
               crumb.badge && <EnvBadge env={crumb.badge} />

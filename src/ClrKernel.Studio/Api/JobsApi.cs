@@ -1055,7 +1055,7 @@ public static class JobsApi {
         // people ask each other instead.
         scoped.MapGet("/commits", (
             HttpContext context, ProjectRegistry projects, string project, string branch,
-            int? limit) => {
+            int? limit, bool? files) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
@@ -1064,7 +1064,13 @@ public static class JobsApi {
                 }
                 return Results.Ok(new {
                     branch = resolved,
-                    commits = scope.Git.History(GitService.RefFor(resolved), limit ?? 50)
+                    // `files` asks git for each commit's name-status in the same
+                    // walk. One process either way, so the history list takes it
+                    // and expands a commit in place rather than going back for
+                    // one — there is nothing to fetch that it did not already
+                    // have.
+                    commits = scope.Git
+                        .History(GitService.RefFor(resolved), limit ?? 50, files == true)
                         .Select(CommitView.From),
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);

@@ -857,9 +857,9 @@ export const api = {
     slug == null ? `${project()}/branches` : `/projects/${encodeURIComponent(slug)}/branches`),
 
   /** A branch's commits, newest first. */
-  commits: (branch: string, limit = 50) =>
+  commits: (branch: string, limit = 50, withFiles = false) =>
     request<{ branch: string; commits: ApiCommit[] }>(
-      `${scope(branch)}/commits?limit=${limit}`),
+      `${scope(branch)}/commits?limit=${limit}&files=${withFiles}`),
   /** One folder of a branch, each row with the commit that last touched it. */
   contents: (branch: string, path = '') =>
     request<{ branch: string; path: string; entries: ApiEntry[] }>(

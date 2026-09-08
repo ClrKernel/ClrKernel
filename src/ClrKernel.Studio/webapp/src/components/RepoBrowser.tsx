@@ -36,7 +36,7 @@ export function RepoBrowser({ branch }: { branch: string }) {
   const { data: contents, error: contentsError } = usePolling(
     () => api.contents(branch, folder), null, [branch, folder]);
   const { data: history, error: historyError } = usePolling(
-    () => (tab === 'history' ? api.commits(branch, 50) : Promise.resolve(null)),
+    () => (tab === 'history' ? api.commits(branch, 50, true) : Promise.resolve(null)),
     null, [branch, tab]);
 
   // Reset on a branch change: `reports/` may not be there on the other one, and a
@@ -162,6 +162,7 @@ export function RepoBrowser({ branch }: { branch: string }) {
             <CommitList
               commits={history.commits}
               empty="No commits on this branch yet."
+              expandable
             />
           )}
         </div>

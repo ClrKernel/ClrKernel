@@ -185,21 +185,18 @@ export function NotebookExplorer({
           value={env}
           onValueChange={(next) => {
             setEnv(next);
-            // The same memory the Files shell keeps: picking a branch in either
-            // place is picking it for the project.
+            // The same memory the door keeps, so `/files/:project` reopens here.
             saveBranch(projectSlug(), next);
-            // With a file open, the branch under it just changed and the pane
-            // beside this is still showing the other branch's copy — the same
-            // path on two branches is two files, and one of them may not exist
-            // at all. So the file closes and you are back at the shell, which is
-            // this tree with an empty pane: pick the one you meant.
+            // Always a navigation, because the branch is in the address now: it
+            // is what the shell reads for its Contents and History, and what the
+            // editor reads for the file. Setting state alone moved this tree and
+            // left everything beside it on the branch you had just left.
             //
-            // Not "open the same path over there": that silently swaps which
-            // file you are editing, and on test or prod it swaps a writable file
-            // for a read-only one under an unsaved edit.
-            if (path != null) {
-              navigate(filesPath(projectSlug()));
-            }
+            // To the shell rather than the same file on the other branch: the
+            // same path on two branches is two files, one of them may not exist
+            // at all, and on test or prod it would swap a writable file for a
+            // read-only one under an unsaved edit.
+            navigate(filesPath(projectSlug(), next));
           }}
         >
           <SelectTrigger size="sm" className="min-w-0 flex-1 bg-card text-xs" aria-label="Branch">

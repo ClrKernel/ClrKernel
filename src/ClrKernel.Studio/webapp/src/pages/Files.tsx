@@ -1,6 +1,6 @@
 import { FilePlus2, FolderGit2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { RepoBrowser } from '../components/RepoBrowser';
 import { Splitter } from '../components/Splitter';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import {
-  DEFAULT_LAYOUT, loadBranch, loadLayout, MAX_EXPLORER, MIN_EXPLORER, saveLayout,
+  DEFAULT_LAYOUT, loadLayout, MAX_EXPLORER, MIN_EXPLORER, saveLayout,
   type LayoutPrefs,
 } from '../prefs';
 import { editPath } from '../routes';
@@ -57,10 +57,12 @@ export function Files() {
   // wherever this row actually starts, which is not the window's edge.
   const shell = useRef<HTMLDivElement>(null);
 
-  // The branch you were last on in this project. The explorer keeps its own
-  // selection and falls back to the first branch when this names one that no
-  // longer exists — the same guard the card had, in one place now.
-  const branch = loadBranch(projectSlug()) ?? 'mine';
+  // From the URL, so changing it is a navigation and everything on the page is
+  // re-rendered against the new one. It used to be read from localStorage on
+  // every render, which nothing re-ran when the explorer wrote to it — so the
+  // tree moved to the other branch and the Contents and History beside it did
+  // not, showing one branch's files under another branch's name.
+  const { branch = 'mine' } = useParams<{ branch: string }>();
 
   /**
    * Turns this project's folder into a test/prod workspace — what
