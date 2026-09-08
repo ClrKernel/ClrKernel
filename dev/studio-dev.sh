@@ -120,8 +120,15 @@ else
 fi
 API_PID=$!
 
+# --strictPort, because Vite's default is to take the next free port instead:
+# with an earlier loop still holding $UI_PORT, a second one binds $UI_PORT+2 and
+# says so in a line nobody reads, while its /api still proxies to *this* script's
+# API_PORT. What you get is a browser showing one instance's files against
+# another instance's kernel, and no error anywhere. Refusing to start is the only
+# honest answer — the port is the address you were told to open.
 CLRKERNEL_STUDIO_API="http://localhost:$API_PORT" \
-    npm --prefix "$REPO/src/ClrKernel.Studio/webapp" run dev -- --port "$UI_PORT" < /dev/null &
+    npm --prefix "$REPO/src/ClrKernel.Studio/webapp" run dev -- \
+        --port "$UI_PORT" --strictPort < /dev/null &
 UI_PID=$!
 set +m
 

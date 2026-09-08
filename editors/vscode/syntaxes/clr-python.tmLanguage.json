@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "clr-python",
+  "scopeName": "source.clr-python",
+  "patterns": [
+    {
+      "comment": "Delegates to the Python grammar VS Code ships, so cells highlight exactly like a .py file. The id is not `python` for the reason `csharp-script` is not `csharp`: Pylance would attach to every cell, and it cannot know that names come from earlier cells or that packages live in the kernel's own target directory — so every notebook would carry an unresolved-import squiggle on every import and an undefined-name squiggle on everything the notebook already bound.",
+      "include": "source.python"
+    }
+  ]
+}

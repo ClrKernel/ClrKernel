@@ -70,7 +70,9 @@ public static class Program {
 
         `new-admin-invite` prints a fresh Server Admin invite code. Self-hosted with
         no email means a lost device is otherwise a permanent lockout; anyone with a
-        shell on this box could do worse, so this is not a new exposure.
+        shell on this box could do worse, so this is not a new exposure. It takes
+        `--name` and `--username` for the account it will create; without them the
+        account is Administrator, on the branch user/administrator.
 
         Jobs are *.jobs.yaml files beside your notebooks. Example:
 
@@ -136,7 +138,7 @@ public static class Program {
         }
         switch (command) {
             case "new-admin-invite":
-                return await NewAdminInviteAsync(options);
+                return await NewAdminInviteAsync(options, flags);
             case "serve":
                 return await ServeAsync(projects, options);
             case "list":
@@ -159,7 +161,8 @@ public static class Program {
     /// The way back in. Prints one single-use Server Admin invite and exits; it
     /// touches nothing else, so it is safe to run against a live server.
     /// </summary>
-    private static async Task<int> NewAdminInviteAsync(JobsOptions options) {
+    private static async Task<int> NewAdminInviteAsync(
+        JobsOptions options, IReadOnlyDictionary<string, string> flags) {
         IAuthStore store;
         try {
             // Create() migrates on the way out, which matters because this may be
@@ -172,9 +175,33 @@ public static class Program {
             return 2;
         }
 
+        // An invite names the account it will create, and the web form is where
+        // that is normally decided. There is no form here — this is the command you
+        // run when you cannot get in — so the flags are optional and the fallbacks
+        // are ones that always work.
+        var displayName = flags.TryGetValue("name", out var given) && given.Length > 0
+            ? given
+            : "Administrator";
+        var taken = await store.UsernamesAsync();
+        string username;
+        if (flags.TryGetValue("username", out var wanted) && wanted.Length > 0) {
+            if (UserName.Problem(wanted) is { } problem) {
+                Console.Error.WriteLine(problem);
+                return 2;
+            }
+            if (taken.Contains(wanted, StringComparer.OrdinalIgnoreCase)) {
+                Console.Error.WriteLine($"'{wanted}' is already somebody's username.");
+                return 2;
+            }
+            username = wanted;
+        } else {
+            username = UserName.Unique(UserName.Suggest(displayName), taken);
+        }
+
         var invite = await store.CreateInviteAsync(
             AuthService.NewInviteCode(), UserRole.ServerAdmin, "created from the command line",
-            null, DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
+            displayName, username, null, DateTime.UtcNow,
+            TimeSpan.FromDays(options.InviteLifetimeDays));
         // The configured origin, not the bind url: on a real server --urls is
         // something like http://0.0.0.0:5000, and this printed link is the entire
         // delivery mechanism for the way back in.
@@ -182,7 +209,8 @@ public static class Program {
         Console.WriteLine(invite.Code);
         Console.WriteLine($"{origin}/invite/{invite.Code}");
         Console.Error.WriteLine(
-            $"Single use, expires {invite.ExpiresAt:u}. Opening it creates a new Server Admin.");
+            $"Single use, expires {invite.ExpiresAt:u}. Opening it creates {displayName} "
+            + $"(user/{username}) as a Server Admin.");
         Console.Error.WriteLine(
             "The host and port above are this server's own. Reaching it somewhere else — a "
             + $"published container port, a reverse proxy — means opening /invite/{invite.Code} there.");
@@ -275,11 +303,32 @@ public static class Program {
         // only writable store was a plaintext file gets those passwords moved into
         // the real one, and the file removed. Doing it here rather than lazily means
         // it happens once, on a start, with the outcome in the log.
-        var secrets = new Core.Secrets.SecretStore();
+        Core.Secrets.SecretStore secrets;
+        try {
+            secrets = SecretStoreFactory.Create(options, Console.Error.WriteLine);
+        } catch (ArgumentException e) {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
         if (secrets.AdoptFileSecrets() is > 0 and var moved) {
             Console.Error.WriteLine(
                 $"Moved {moved} saved password(s) out of the plaintext secrets file and into " +
                 $"{secrets.ProviderNames.FirstOrDefault(n => n != "memory")}. The file is gone.");
+        }
+
+        // Personal branches named for an account id become branches named for its
+        // handle. Here rather than beside the dev → test rename because it needs the
+        // accounts, and they live in the store that has only just been proven above.
+        try {
+            var handles = (await RunStoreFactory.CreateAuthStore(options).ListUsersAsync())
+                .ToDictionary(u => u.User.Id, u => u.User.Username);
+            foreach (var renamed in projects.AdoptUserHandles(handles)) {
+                Console.Error.WriteLine($"  {renamed}");
+            }
+        } catch (Exception e) {
+            // A workspace that cannot be renamed still serves: the old names keep
+            // working, because IsUserBranch accepts both.
+            Console.Error.WriteLine($"Could not rename personal branches to usernames: {e.Message}");
         }
 
         var app = BuildApp(options, projects, store, secrets: secrets);
@@ -331,6 +380,15 @@ public static class Program {
         builder.Services.AddSingleton(provider => new AuthService(
             provider.GetRequiredService<IAuthStore>(), options,
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<AuthService>()));
+        // The one way of proving who somebody is that this server has. Registered as
+        // itself and as IAccountProvider: the routes need the ceremonies, and
+        // anything enumerating what a sign-in page can offer needs the interface.
+        builder.Services.AddSingleton(provider => new PasskeyProvider(
+            provider.GetRequiredService<IAuthStore>(),
+            provider.GetRequiredService<AuthService>(), options,
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<PasskeyProvider>()));
+        builder.Services.AddSingleton<IAccountProvider>(
+            provider => provider.GetRequiredService<PasskeyProvider>());
 
         var settings = SettingsRegistry.CreateDefault(options);
         settings.Add(new SettingsSection {
@@ -370,6 +428,36 @@ public static class Program {
             },
         });
         settings.Add(new SettingsSection {
+            // The same key the Secrets tab uses: these two fields sit above the
+            // per-branch table there, because "which store" and "what is in it"
+            // are one question and a second tab for the first half is one too many.
+            Key = "secrets",
+            Title = "Secrets",
+            Description =
+                "Where this server keeps a value it is asked to save. A laptop can discover "
+                + "one; a server should be told, so that a missing keyring is a startup message "
+                + "rather than a password quietly going nowhere.",
+            Fields = {
+                new SettingField {
+                    Name = "secretStore", Label = "Store", Type = "string",
+                    Value = options.SecretStore ?? "auto", Source = options.SourceOf("secretStore"),
+                    Choices = new[] { "auto", "os", "file" },
+                    WebWritable = true, RestartRequired = true,
+                    Help = "os — the machine's credential store, and nothing else writable. "
+                        + "file — a JSON file, unencrypted, as protected as the disk it sits on. "
+                        + "auto — keyring, then the file if one was configured, then the environment.",
+                },
+                new SettingField {
+                    Name = "secretsFile", Label = "Secrets file", Type = "string",
+                    Value = options.SecretsFile ?? "",
+                    Source = options.SourceOf("secretsFile"),
+                    WebWritable = true, RestartRequired = true,
+                    Help = "Only read when the store is `file`. Empty means secrets.json in the "
+                        + "data dir. Keep it out of a git worktree — a push would take it along.",
+                },
+            },
+        });
+        settings.Add(new SettingsSection {
             Key = "connections",
             Title = "Connections",
             Description =
@@ -390,9 +478,15 @@ public static class Program {
             },
         });
         builder.Services.AddSingleton(settings);
+        // Secrets a notebook resolves itself, kept per branch. Given to the job
+        // executor so a scheduled run carries its own branch's and no other's.
+        builder.Services.AddSingleton(provider => new BranchSecrets(
+            RunStoreFactory.ContextFactory(options),
+            secrets ?? new Core.Secrets.SecretStore(),
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<BranchSecrets>()));
         builder.Services.AddSingleton(provider => new JobExecutor(
             store, options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<JobExecutor>(),
-            projects));
+            projects, provider.GetRequiredService<BranchSecrets>()));
         builder.Services.AddSingleton(provider => new Notifier(
             options, provider.GetRequiredService<ILoggerFactory>().CreateLogger<Notifier>(),
             secrets: null, store: store));
@@ -415,7 +509,15 @@ public static class Program {
         builder.Services.AddSingleton(provider => new ConnectionMaterializer(
             projects, provider.GetRequiredService<ConnectionStore>(),
             provider.GetRequiredService<ConnectionProviderCatalog>(),
-            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionMaterializer>()));
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<ConnectionMaterializer>(),
+            // A worktree directory is named for a handle; a private connection is
+            // owned by an account id. This is the only thing the materializer needs
+            // to know about accounts.
+            handle => provider.GetService<IAuthStore>() is { } auth
+                ? auth.ListUsersAsync().GetAwaiter().GetResult()
+                    .FirstOrDefault(u => string.Equals(
+                        u.User.Username, handle, StringComparison.OrdinalIgnoreCase))?.User.Id
+                : null));
         builder.Services.AddSingleton(provider => new QueryRunner(
             secrets ?? new Core.Secrets.SecretStore(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<QueryRunner>()));

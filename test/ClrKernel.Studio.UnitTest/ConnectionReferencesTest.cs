@@ -158,6 +158,28 @@ public class ConnectionReferencesTest {
         Assert.AreEqual(0, found.Count);
     }
 
+    /// <summary>
+    /// A directive line this cannot bind names no connection — it must not escape
+    /// as an exception.
+    ///
+    /// <para>
+    /// This scan runs on every request that lists a project's private connections,
+    /// so a single notebook the parser dislikes used to 500 that endpoint for the
+    /// whole project. It was found by `#!python-install pandas`, which is not a
+    /// typo at all: a directive taking free-form arguments. Either way the answer
+    /// here is the same — no connection — and the real complaint belongs at the
+    /// cell that runs.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void ADirectiveThatDoesNotParseNamesNothingRatherThanThrowing() {
+        var notebook = Cell("#!sql --nonsense boom\nSELECT 1")
+            + Cell("#!sql --connection reporting\nSELECT 1");
+
+        CollectionAssert.AreEqual(new[] { "reporting" }, Read(notebook).ToArray(),
+            "the unparseable cell is skipped and the rest of the notebook is still read");
+    }
+
     [TestMethod]
     public void AnEmptyNotebookNamesNothing() {
         Assert.AreEqual(0, Read(string.Empty).Count);

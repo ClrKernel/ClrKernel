@@ -1,10 +1,12 @@
 import {
+  ArrowDownToLine,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   FilePlus2,
   FolderClosed,
   GitBranch,
+  RefreshCw,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -14,10 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { api, projectSlug, type TreeNode } from '../api';
+import { api, projectSlug, type BranchStanding, type TreeNode } from '../api';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
-import { editPath } from '../routes';
+import { editPath, filesPath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 import { BranchOptions, CollapsedRail, usePolling } from './common';
 import { FileBadge } from './FileBadge';
@@ -68,8 +70,9 @@ function flatten(nodes: TreeNode[], collapsed: Set<string>, depth = 0): Row[] {
 }
 
 /**
- * The editor's file sidebar. It exists only here and on the Notebooks page —
- * a tree on the dashboard would be navigation furniture nobody asked for.
+ * The file sidebar for the whole Files area: the editor, and the shell you get
+ * before opening anything. A tree on the dashboard would be navigation furniture
+ * nobody asked for.
  *
  * Collapsed it becomes a 16px strip rather than disappearing, so there is
  * always something to click to get it back.
@@ -81,9 +84,15 @@ export function NotebookExplorer({
   collapsed,
   onCollapse,
   refresh = 0,
+  standing = null,
+  onUpdate,
 }: {
-  /** The notebook currently open, highlighted in the tree. */
-  path: string;
+  /**
+   * The notebook currently open, highlighted in the tree. Null on the Files
+   * shell, which is this same explorer with nothing open beside it — so nothing
+   * is highlighted, rather than an empty string standing in for "none".
+   */
+  path: string | null;
   /** The branch that notebook is open on, so the tree shows the same files. */
   branch: string;
   width: number;
@@ -97,6 +106,15 @@ export function NotebookExplorer({
    * there until the page was reloaded.
    */
   refresh?: number;
+  /**
+   * Where your branch stands against test. Here rather than in the file toolbar
+   * because that is what it is about: one `behind` for the whole branch, drawn
+   * over a file, read as a statement about that file — including files test has
+   * never seen.
+   */
+  standing?: BranchStanding | null;
+  /** Merges test into your branch. Absent where there is nothing to merge into. */
+  onUpdate?: () => void;
 }) {
   const navigate = useNavigate();
   const [env, setEnv] = useState('');
@@ -141,6 +159,7 @@ export function NotebookExplorer({
 
   const selected = environments.find((e) => e.name === env);
   const rows = flatten(selected?.tree?.children ?? [], shut);
+  const behind = (standing?.hasBranch === true ? standing.behindFiles?.length : 0) ?? 0;
 
   return (
     <div
@@ -164,11 +183,23 @@ export function NotebookExplorer({
         <GitBranch className="size-[13px] shrink-0 text-muted-subtle" aria-hidden="true" />
         <Select
           value={env}
-          onValueChange={(branch) => {
-            setEnv(branch);
-            // The same memory the Notebooks page keeps: picking a branch in
-            // either place is picking it for the project.
-            saveBranch(projectSlug(), branch);
+          onValueChange={(next) => {
+            setEnv(next);
+            // The same memory the Files shell keeps: picking a branch in either
+            // place is picking it for the project.
+            saveBranch(projectSlug(), next);
+            // With a file open, the branch under it just changed and the pane
+            // beside this is still showing the other branch's copy — the same
+            // path on two branches is two files, and one of them may not exist
+            // at all. So the file closes and you are back at the shell, which is
+            // this tree with an empty pane: pick the one you meant.
+            //
+            // Not "open the same path over there": that silently swaps which
+            // file you are editing, and on test or prod it swaps a writable file
+            // for a read-only one under an unsaved edit.
+            if (path != null) {
+              navigate(filesPath(projectSlug()));
+            }
           }}
         >
           <SelectTrigger size="sm" className="min-w-0 flex-1 bg-card text-xs" aria-label="Branch">
@@ -178,6 +209,42 @@ export function NotebookExplorer({
             <BranchOptions branches={environments} />
           </SelectContent>
         </Select>
+        {/* Only on your own branch, and only when test has actually moved: this
+            is about the branch the picker beside it names, which is why it lives
+            here rather than over whichever file is open. */}
+        {env === 'mine' && behind > 0 && onUpdate != null && (
+          <button
+            type="button"
+            onClick={() => {
+              // It commits whatever you have not saved first, as "work in
+              // progress before updating from test" — a real act, and this is a
+              // small target next to Refresh.
+              if (confirm(
+                `Merge test into your branch?\n\n${behind} file(s) changed there. `
+                + 'Anything you have not committed is committed first, and anything '
+                + 'that cannot merge cleanly comes back as a conflict to fix.')) {
+                onUpdate();
+              }
+            }}
+            title={`Test has moved on in ${behind} file(s) — merge it into your branch`}
+            aria-label="Update from test"
+            className="shrink-0 rounded-sm border border-status-warning/40 bg-status-warning/10 p-1 text-status-warning outline-none hover:border-status-warning focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowDownToLine className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+        {/* A cell that writes a file beside the notebook is invisible here until
+            the tree is fetched again, and reloading the page to see it loses the
+            editor's state. The reload is the one usePolling already returns. */}
+        <button
+          type="button"
+          onClick={reload}
+          title="Refresh"
+          aria-label="Refresh files"
+          className="shrink-0 rounded-sm border border-input p-1 text-muted-subtle outline-none hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <RefreshCw className="size-3.5" aria-hidden="true" />
+        </button>
         {mayCreate && (
           <button
             type="button"
@@ -191,7 +258,10 @@ export function NotebookExplorer({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* pb-8: without it the last row sits flush against the bottom edge, which
+          reads as "the list continues" and is awkward to click. Scrolling a little
+          past the end is what says you have reached it. */}
+      <div className="min-h-0 flex-1 overflow-auto pb-8">
         {rows.map((row) => {
           const active = row.path != null && row.path === path;
           return (

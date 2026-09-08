@@ -142,6 +142,14 @@
           "dark": "./images/tsql-icon.svg"
         },
         "configuration": "./language-configuration.sql-dialect.json"
+      },
+      {
+        "id": "clr-python",
+        "aliases": [
+          "Python (ClrKernel)",
+          "clr-python"
+        ],
+        "configuration": "./language-configuration.python.json"
       }
     ],
     "grammars": [
@@ -182,6 +190,11 @@
         "language": "clr-sql",
         "scopeName": "source.clr-sql",
         "path": "./syntaxes/clr-sql.tmLanguage.json"
+      },
+      {
+        "language": "clr-python",
+        "scopeName": "source.clr-python",
+        "path": "./syntaxes/clr-python.tmLanguage.json"
       }
     ],
     "configuration": {

@@ -28,7 +28,22 @@ public interface IAuthStore {
     /// Generating a fresh one here would leave every credential pointing at a user
     /// that does not exist, and assertion fails with nothing readable to say why.
     /// </summary>
-    Task<User> CreateUserAsync(Guid id, string displayName, UserRole role);
+    /// <summary>
+    /// <paramref name="username"/> is the handle git will know the account by, and
+    /// is required: there is no valid account without one, and a nullable parameter
+    /// here would push the problem to the first branch this person tries to open.
+    /// Throws when it is already taken — the unique index would anyway, less kindly.
+    /// </summary>
+    Task<User> CreateUserAsync(Guid id, string username, string displayName, UserRole role);
+
+    /// <summary>Every handle in use, for picking one that is not.</summary>
+    Task<IReadOnlyList<string>> UsernamesAsync();
+
+    /// <summary>
+    /// Changes the handle. The caller is responsible for moving the branch and the
+    /// worktree that are named after it — this only writes the row.
+    /// </summary>
+    Task<bool> SetUsernameAsync(Guid id, string username);
     Task<bool> RenameUserAsync(Guid id, string displayName);
 
     /// <summary>False when it would leave no enabled admin.</summary>
@@ -49,8 +64,27 @@ public interface IAuthStore {
 
     Task RecordCredentialUseAsync(string credentialId, long signCount, DateTime at);
 
-    Task<Invite> CreateInviteAsync(string code, UserRole role, string label, Guid? createdBy,
-        DateTime now, TimeSpan lifetime);
+    /// <summary>
+    /// Who presented this, or null. The one lookup every sign-in goes through,
+    /// whatever proved it — a passkey today, a directory account later.
+    /// </summary>
+    Task<Identity> FindIdentityAsync(string provider, string subject);
+
+    Task AddIdentityAsync(Identity identity);
+
+    /// <summary>Every way this account can sign in.</summary>
+    Task<IReadOnlyList<Identity>> IdentitiesForAsync(Guid userId);
+
+    Task RecordIdentityUseAsync(Guid id, DateTime at);
+
+    /// <summary>
+    /// <paramref name="displayName"/> and <paramref name="username"/> are the
+    /// account this invite will create. Both are settled here, on a form, rather
+    /// than at redemption, where the invitee is holding a security key and a
+    /// "that name is taken" has nowhere to go.
+    /// </summary>
+    Task<Invite> CreateInviteAsync(string code, UserRole role, string label,
+        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime);
     Task<IReadOnlyList<Invite>> ListInvitesAsync();
     Task<Invite> FindInviteAsync(string code);
 
@@ -118,10 +152,14 @@ public sealed class EfAuthStore : IAuthStore {
         return await db.Users.FirstOrDefaultAsync(u => u.Id == id);
     }
 
-    public async Task<User> CreateUserAsync(Guid id, string displayName, UserRole role) {
+    public async Task<User> CreateUserAsync(Guid id, string username, string displayName, UserRole role) {
+        if (UserName.Problem(username) is { } problem) {
+            throw new ArgumentException(problem, nameof(username));
+        }
         await using var db = _contextFactory();
         var user = new User {
             Id = id,
+            Username = username,
             DisplayName = displayName,
             Role = role,
             CreatedAt = DateTime.UtcNow,
@@ -129,6 +167,44 @@ public sealed class EfAuthStore : IAuthStore {
         db.Users.Add(user);
         await db.SaveChangesAsync();
         return user;
+    }
+
+    public async Task<IReadOnlyList<string>> UsernamesAsync() {
+        await using var db = _contextFactory();
+        return await db.Users.Select(u => u.Username).ToListAsync();
+    }
+
+    public async Task<bool> SetUsernameAsync(Guid id, string username) {
+        if (UserName.Problem(username) is { } problem) {
+            throw new ArgumentException(problem, nameof(username));
+        }
+        await using var db = _contextFactory();
+        return await db.Users.Where(u => u.Id == id)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.Username, username)) > 0;
+    }
+
+    public async Task<Identity> FindIdentityAsync(string provider, string subject) {
+        await using var db = _contextFactory();
+        return await db.Identities.Include(i => i.User)
+            .FirstOrDefaultAsync(i => i.Provider == provider && i.Subject == subject);
+    }
+
+    public async Task AddIdentityAsync(Identity identity) {
+        await using var db = _contextFactory();
+        db.Identities.Add(identity);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<Identity>> IdentitiesForAsync(Guid userId) {
+        await using var db = _contextFactory();
+        return await db.Identities.Where(i => i.UserId == userId)
+            .OrderBy(i => i.CreatedAt).ToListAsync();
+    }
+
+    public async Task RecordIdentityUseAsync(Guid id, DateTime at) {
+        await using var db = _contextFactory();
+        await db.Identities.Where(i => i.Id == id)
+            .ExecuteUpdateAsync(set => set.SetProperty(i => i.LastUsedAt, at));
     }
 
     public async Task<bool> RenameUserAsync(Guid id, string displayName) {
@@ -255,9 +331,17 @@ public sealed class EfAuthStore : IAuthStore {
         if (await db.Credentials.CountAsync(c => c.UserId == userId) <= 1) {
             return false;
         }
-        return await db.Credentials
-            .Where(c => c.UserId == userId && c.Id == credentialId)
-            .ExecuteDeleteAsync() > 0;
+        if (await db.Credentials
+                .Where(c => c.UserId == userId && c.Id == credentialId)
+                .ExecuteDeleteAsync() == 0) {
+            return false;
+        }
+        // The identity goes with it. Left behind it would be a way to sign in whose
+        // credential no longer exists — resolvable, and backed by nothing.
+        await db.Identities
+            .Where(i => i.Provider == IdentityProviders.Passkey && i.Subject == credentialId)
+            .ExecuteDeleteAsync();
+        return true;
     }
 
     public async Task RecordCredentialUseAsync(string credentialId, long signCount, DateTime at) {
@@ -269,12 +353,14 @@ public sealed class EfAuthStore : IAuthStore {
     }
 
     public async Task<Invite> CreateInviteAsync(string code, UserRole role, string label,
-        Guid? createdBy, DateTime now, TimeSpan lifetime) {
+        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime) {
         await using var db = _contextFactory();
         var invite = new Invite {
             Code = code,
             Role = role,
             Label = label,
+            DisplayName = displayName,
+            Username = username,
             CreatedBy = createdBy,
             CreatedAt = now,
             ExpiresAt = now + lifetime,

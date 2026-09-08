@@ -166,7 +166,7 @@ public static class NotebookMarkdown {
     /// <summary>Writes cells back to executable markdown, preserving each cell's
     /// spacing. A new cell defaults to one blank line, matching the usual layout.</summary>
     /// <summary>
-    /// The line ending a document uses, for handing back to <see cref="Serialize"/>.
+    /// The line ending a document uses, for handing back to <see cref="Serialize(IEnumerable{MarkdownCell}, string)"/>.
     ///
     /// <para>
     /// Whichever there are more of, so one stray ending in a file does not decide it.

@@ -1,4 +1,3 @@
-import { MarkdownBody } from '../components/MarkdownBody';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -14,7 +13,12 @@ import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
 import { JobsOverview } from '../components/JobsOverview';
+import { MarkdownBody } from '../components/MarkdownBody';
 import { NotebookToolbar } from '../components/NotebookToolbar';
+import { SheetView } from '../components/SheetView';
+import {
+  ROW_LIMIT, delimiterFor, readDelimited, readWorkbook, type SheetPage,
+} from '../sheet';
 import { ensureJobsFile, moveNotebookTo, saveNotebookAs } from '../newNotebook';
 import { Splitter } from '../components/Splitter';
 import { registerLanguageProviders } from '../monaco/language';
@@ -56,6 +60,7 @@ import {
   mergeStatus,
   moveCell,
   opensAsCells,
+  isWorkbook,
   previewKind,
   pushUndo,
   readOnlyReason,
@@ -113,6 +118,9 @@ export function Editor() {
   // Not the same question as "is this markdown": scheduling and the cells API say
   // yes to both, and the two cell-level things a script has no room for (adding a
   // cell, picking a language for it) are off separately in `script`.
+  // The branch this file goes to next, and what to call it on screen.
+  const diffAgainst = branch === 'test' ? 'prod' : 'test';
+  const diffLabel = diffAgainst === 'prod' ? 'production' : 'test';
   const cellFile = opensAsCells(path);
   const script = isScript(path);
   // A picture is looked at, not opened. Read before the content fetch, because
@@ -148,11 +156,45 @@ export function Editor() {
   const [saved, setSaved] = useState<ApiCell[]>([]);
   const [languages, setLanguages] = useState<ApiLanguage[]>([]);
   const [source, setSource] = useState<string | null>(null);
+
+  // Only for the files that have one, and only once the text is in hand for the
+  // ones that are text: a workbook is fetched as bytes, while a csv is already
+  // loaded for its Source tab and asking the server again would be a second copy
+  // of a file the page is holding.
+  const { data: sheet, error: sheetError } = usePolling<SheetPage[] | null>(
+    () => {
+      if (preview !== 'sheet') {
+        return Promise.resolve(null);
+      }
+      if (isWorkbook(path)) {
+        return fetch(api.notebookFileUrl(branch, path))
+          .then((r) => (r.ok
+            ? r.arrayBuffer()
+            : Promise.reject(new Error(`Could not read ${path}.`))))
+          .then(readWorkbook);
+      }
+      return source == null
+        ? Promise.resolve(null)
+        : readDelimited(source, delimiterFor(path), path.split('/').pop() ?? path);
+    },
+    null,
+    [branch, path, preview, source],
+  );
   const [savedSource, setSavedSource] = useState<string | null>(null);
   /** Bumped when the file changed underneath the editor — a merge, or a reload. */
   const [reloads, setReloads] = useState(0);
-  /** Production's copy of this file: null while loading, '' when it has none. */
-  const [prod, setProd] = useState<string | null>(null);
+  /**
+   * The other side of the diff: null while loading, '' when that branch has no
+   * such file.
+   *
+   * Which branch that is follows the one you are on, because it is the branch
+   * this file goes to next: from your own that is test, and from test it is
+   * production. It used to be production from both — so on your own branch the
+   * tab compared you against a branch you cannot push to, skipping the one you
+   * can, under a caption that claimed your branch was not in the comparison at
+   * all. It was.
+   */
+  const [other, setOther] = useState<string | null>(null);
   // Which reading of the file you asked for. In the URL rather than in state, so
   // it survives a reload, a bookmark and the back button — and so switching is a
   // navigation, which is what makes re-reading the file on the way in the
@@ -604,6 +646,36 @@ export function Editor() {
     }
   }
 
+  /**
+   * The file onto the machine the browser is on.
+   *
+   * `flush()` first, then the server's copy — the same two steps as "Save a copy
+   * as…", and for the same reason: what you downloaded should be what you were
+   * looking at, including the edit you made a second ago. Fetching without the
+   * flush would hand back the last autosave instead.
+   */
+  async function download() {
+    setError(null);
+    setNotice(null);
+    try {
+      await flush();
+      const text = await api.notebookContent(branch, path);
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = path.split('/').pop() || 'notebook.nb.md';
+      // Appended, because Firefox ignores a click on an anchor that is not in the
+      // document. Revoked on a timeout rather than immediately: the download is
+      // started by the click but the object URL is read after it returns.
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   /** Rename, or move to another folder — one operation, and the same one. */
   async function move() {
     setError(null);
@@ -782,15 +854,15 @@ export function Editor() {
       return;
     }
     let live = true;
-    setProd(null);
+    setOther(null);
     api
-      .notebookContent('prod', path)
-      .then((text) => live && setProd(text))
-      .catch(() => live && setProd(''));
+      .notebookContent(diffAgainst, path)
+      .then((text) => live && setOther(text))
+      .catch(() => live && setOther(''));
     return () => {
       live = false;
     };
-  }, [tab, path]);
+  }, [tab, path, diffAgainst]);
 
   /**
    * Create-or-open the jobs file paired with this notebook, and go to its form.
@@ -823,11 +895,15 @@ export function Editor() {
         : 'no schedule';
       return `  • ${job.name}${job.cron ? ` (${job.cron})` : ''} — ${next}`;
     });
+    // "in test", not just the path: this button is on the bar from your own
+    // branch too, and there it ships what *test* holds — which is not
+    // necessarily what is on the screen behind the dialog.
+    const asking = `Promote the version of ${path} in test to production?`;
     const question = stopping.length > 0
-      ? `Promote ${path} to production?\n\nThis stops ${
+      ? `${asking}\n\nThis stops ${
           stopping.length === 1 ? 'this schedule' : `these ${stopping.length} schedules`
         }:\n${stopping.join('\n')}`
-      : `Promote ${path} to production?`;
+      : asking;
     if (!confirm(question)) {
       return;
     }
@@ -962,6 +1038,8 @@ export function Editor() {
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
         refresh={treeRefresh}
+        standing={standing}
+        onUpdate={updateFromTest}
       />
       {!layout.explorerCollapsed && (
         <Splitter
@@ -1020,11 +1098,12 @@ export function Editor() {
         promotion={promotion}
         standing={standing}
         onPush={push}
-        onUpdate={updateFromTest}
         branch={branch}
+        fileBehind={branch === 'mine' && (standing?.behindFiles ?? []).includes(path)}
         fileEditable={fileEditable(path)}
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
+        onDownload={download}
         onMove={move}
         onSchedule={cellFile ? schedule : undefined}
       />
@@ -1212,7 +1291,14 @@ export function Editor() {
       )}
 
       {tab === 'preview' && (
-        <FilePreview kind={preview} branch={branch} path={path} source={source} />
+        <FilePreview
+          kind={preview}
+          branch={branch}
+          path={path}
+          source={source}
+          sheet={sheet}
+          sheetError={sheetError}
+        />
       )}
 
       {tab === 'source' && (
@@ -1236,21 +1322,21 @@ export function Editor() {
 
       {tab === 'diff' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
-          {prod == null || savedSource == null ? (
+          {other == null || savedSource == null ? (
             <p className="text-base text-muted-foreground">Loading…</p>
-          ) : prod === savedSource ? (
+          ) : other === savedSource ? (
             <p className="text-base text-muted-foreground">
-              No differences — test and production are identical for this file.
+              No differences — {diffLabel} and this branch are identical for this file.
             </p>
           ) : (
             <>
               <p className="mb-2 max-w-[78ch] shrink-0 text-base text-muted-foreground">
-                Production (left) vs test (right)
-                {prod === '' && ' — this file does not exist in production yet'}
-                {'. Your own branch is not in this: it compares what is committed on '}
-                {'each of the two branches that run.'}
+                {diffLabel} (left) vs this branch (right)
+                {other === '' && ` — this file does not exist in ${diffLabel} yet`}
+                {`. Left is the file as it stands in ${diffLabel}; right is your `}
+                {'working copy, so anything saved here but not yet pushed is in it.'}
               </p>
-              <DiffView original={prod} modified={savedSource} language={fileLanguage(path)} />
+              <DiffView original={other} modified={savedSource} language={fileLanguage(path)} />
             </>
           )}
         </div>
@@ -1286,14 +1372,26 @@ export function Editor() {
  * as bytes and read nothing, markdown renders the text the page already loaded.
  */
 function FilePreview({
-  kind, branch, path, source,
+  kind, branch, path, source, sheet, sheetError,
 }: {
   kind: PreviewKind | null;
   branch: string;
   path: string;
   /** The file's text, for the one kind that is text. */
   source: string | null;
+  /** Rows and tabs, for the one kind that is a grid. */
+  sheet: SheetPage[] | null;
+  sheetError: string | null;
 }) {
+  if (kind === 'sheet') {
+    if (sheetError != null) {
+      return <p className="px-4 text-base text-status-danger">{sheetError}</p>;
+    }
+    return sheet == null
+      ? <p className="px-4 text-base text-muted-foreground">Loading…</p>
+      : <SheetView sheets={sheet} rowLimit={ROW_LIMIT} />;
+  }
+
   if (kind === 'markdown') {
     return (
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-8">

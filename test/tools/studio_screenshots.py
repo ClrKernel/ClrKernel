@@ -29,19 +29,16 @@ and docker for the Connections shots.
 """
 
 import argparse
-import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
-import tempfile
-import time
-import urllib.error
-import urllib.request
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STUDIO = os.path.join(REPO, "src", "ClrKernel.Studio")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from studio_harness import (  # noqa: E402
+    REPO, STUDIO, authenticator, build, first_run, serving, sh, studio, temp_root,
+)
+
 COMPOSE = os.path.join(REPO, "dev", "docker-compose.dbs.yml")
 
 # --------------------------------------------------------------------------- fixture
@@ -112,29 +109,6 @@ ORDER BY placed_at DESC"""
 # rule every connection in this repo follows.
 DEMO_DSN = dict(host="localhost", port="55432", database="clrkernel_studio",
                 user="postgres", password="devonly", secret_ref="DEMO")
-
-
-def sh(args, **kw):
-    """Run a command, letting its output through. A silenced build in a harness
-    keeps serving the last binary that compiled — see the studio-webapp-dev skill."""
-    print(f"$ {' '.join(args)}", flush=True)
-    subprocess.run(args, check=True, cwd=REPO, **kw)
-
-
-def studio(*args, data, notebooks):
-    sh(["dotnet", "run", "--project", STUDIO, "-f", "net8.0", "--no-build", "--",
-        *args, "--notebooks", notebooks, "--data-dir", data, "--store", "sqlite"])
-
-
-def wait_for(url, timeout=90):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=2) as r:
-                return json.load(r)
-        except (urllib.error.URLError, OSError, json.JSONDecodeError):
-            time.sleep(1)
-    raise SystemExit(f"studio never answered {url}")
 
 
 def workspace(root):
@@ -429,21 +403,8 @@ def shoot(base, out, only, with_db):
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
 
-        # Passkeys are the only way in, so the browser needs an authenticator
-        # before the first navigation.
-        cdp = ctx.new_cdp_session(page)
-        cdp.send("WebAuthn.enable")
-        cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {
-            "protocol": "ctap2", "transport": "internal", "hasResidentKey": True,
-            "hasUserVerification": True, "isUserVerified": True,
-            "automaticPresenceSimulation": True}})
-
-        page.goto(f"{base}/", wait_until="networkidle")
-        if not page.url.rstrip("/").endswith("/setup"):
-            raise SystemExit(f"expected the first-run setup screen, got {page.url}")
-        page.fill('input[placeholder="Ada Lovelace"]', "Ada Lovelace")
-        page.get_by_role("button", name="Create the admin account").click()
-        page.wait_for_url(lambda u: not u.endswith("/setup"), timeout=30000)
+        authenticator(page)
+        first_run(page, base)
 
         s = Studio(page, base, out)
         seed(s, with_db)
@@ -499,11 +460,7 @@ def main():
         raise SystemExit(f"no such shot: {', '.join(sorted(unknown))}. --list to see them.")
 
     if not args.no_build:
-        # The web app first: wwwroot is copied into the output at *build* time, so
-        # building the C# before the bundle packages the previous one.
-        sh(["./build.sh", "Web"])
-        sh(["dotnet", "build", os.path.join(STUDIO, "ClrKernel.Studio.csproj"),
-            "-c", "Debug", "-f", "net8.0"])
+        build()
 
     wants_db = any(needs_db for n, _, _, needs_db in SHOTS if not only or n in only)
     with_db = wants_db and not args.no_database and database()
@@ -511,31 +468,12 @@ def main():
         print("no docker, so the Connections shots are skipped", flush=True)
 
     os.makedirs(args.out, exist_ok=True)
-    root = tempfile.mkdtemp(prefix="clrkernel-shots-")
-    base = f"http://localhost:{args.port}"
-    server = None
-    try:
+    with temp_root("clrkernel-shots-") as root:
         nb, data = workspace(root)
-        log = open(os.path.join(root, "serve.log"), "w")
-        server = subprocess.Popen(
-            ["dotnet", "run", "--project", STUDIO, "-f", "net8.0", "--no-build", "--",
-             "serve", "--notebooks", nb, "--data-dir", data, "--store", "sqlite",
-             "--urls", base],
-            cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
-            # The connection stores a secret *reference*; this is what it resolves to.
-            env={**os.environ,
-                 "CLRKERNEL_SECRET_" + DEMO_DSN["secret_ref"]: DEMO_DSN["password"]},
-            start_new_session=True)  # its own group, so teardown gets the child too
-        health = wait_for(f"{base}/api/health")
-        if health.get("errors"):
-            raise SystemExit("studio reported: " + "; ".join(health["errors"]))
-        print(f"studio {health['version']} on {base}", flush=True)
-        taken = shoot(base, args.out, only, with_db)
-    finally:
-        if server:
-            os.killpg(os.getpgid(server.pid), signal.SIGTERM)
-            server.wait(timeout=30)
-        shutil.rmtree(root, ignore_errors=True)
+        # The connection stores a secret *reference*; this is what it resolves to.
+        env = {"CLRKERNEL_SECRET_" + DEMO_DSN["secret_ref"]: DEMO_DSN["password"]}
+        with serving(nb, data, args.port, env) as base:
+            taken = shoot(base, args.out, only, with_db)
     print(f"\nwrote {len(taken)} to {args.out}")
 
 

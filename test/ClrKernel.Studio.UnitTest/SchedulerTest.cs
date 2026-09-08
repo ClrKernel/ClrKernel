@@ -79,7 +79,7 @@ public class SchedulerTest {
             Assert.IsTrue(SchedulerService.Schedules(environment), environment);
         }
         foreach (var environment in new[] {
-            "mine", GitService.BranchForUser(Guid.NewGuid()), "user/ada", "dev", "staging",
+            "mine", GitService.BranchForUser("ada"), "user/grace", "dev", "staging",
         }) {
             Assert.IsFalse(SchedulerService.Schedules(environment), environment);
         }

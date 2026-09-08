@@ -76,24 +76,48 @@ public sealed class GitService {
     // --- personal branches --------------------------------------------------
 
     /// <summary>
-    /// Branches are named for the account id, not for anything a person types. A
-    /// display name can change and is not unique; the branch a year of commits sits
-    /// on cannot. Every screen shows the display name — this is what git sees.
+    /// Branches are named for the account's <em>handle</em> — its username — not for
+    /// its display name and no longer for its id.
+    ///
+    /// <para>
+    /// The rule that made it an id still holds: what git sees has to be unique and
+    /// must not change under a year of commits, and a display name is neither. A
+    /// username is both, which is why it exists (see <see cref="UserName"/>). What
+    /// it adds is legibility — the branch, the worktree directory and the author of
+    /// every commit were all a guid.
+    /// </para>
     /// </summary>
     public const string UserBranchPrefix = "user/";
 
+    /// <summary>
+    /// Whether this names somebody's own branch.
+    ///
+    /// <para>
+    /// A guid counts as well as a handle: a workspace upgraded from 0.11 still holds
+    /// <c>user/&lt;guid&gt;</c> branches until the startup pass renames them, and
+    /// this predicate decides whether a branch is personal <em>at all</em>. Saying
+    /// no about one does not throw — it routes the request to the wrong root and
+    /// answers "test and prod are read-only" about somebody's own notebook.
+    /// </para>
+    /// </summary>
     public static bool IsUserBranch(string branch) =>
-        branch != null && branch.StartsWith(UserBranchPrefix, StringComparison.Ordinal)
-        && Guid.TryParse(branch[UserBranchPrefix.Length..], out _);
+        HandleOf(branch) is { Length: > 0 } handle
+        && (UserName.IsValid(handle) || Guid.TryParse(handle, out _));
 
-    public static string BranchForUser(Guid userId) => UserBranchPrefix + userId.ToString("D");
+    public static string BranchForUser(string handle) => UserBranchPrefix + handle;
+
+    /// <summary>The handle a personal branch is named for, or null.</summary>
+    public static string HandleOf(string branch) =>
+        branch != null && branch.StartsWith(UserBranchPrefix, StringComparison.Ordinal)
+            ? branch[UserBranchPrefix.Length..]
+            : null;
 
     private static string UserOf(string branch) => branch[UserBranchPrefix.Length..];
 
     /// <summary>One worktree per person per project, beside test/ and prod/.</summary>
-    public string UserPath(string userId) => Path.Combine(_workspace, "user-" + userId);
+    public string UserPath(string handle) => Path.Combine(_workspace, "user-" + handle);
 
-    public bool HasUserWorktree(Guid userId) => Directory.Exists(UserPath(userId.ToString("D")));
+    public bool HasUserWorktree(string handle) => Directory.Exists(UserPath(handle));
 
     /// <summary>
     /// Creates someone's branch and worktree if they have none, cut from test.
@@ -105,9 +129,8 @@ public sealed class GitService {
     /// interleave with it.
     /// </para>
     /// </summary>
-    public string EnsureUserWorktree(Guid userId) {
-        var name = userId.ToString("D");
-        var path = UserPath(name);
+    public string EnsureUserWorktree(string handle) {
+        var path = UserPath(handle);
         if (Directory.Exists(path)) {
             return path;
         }
@@ -115,7 +138,7 @@ public sealed class GitService {
             if (Directory.Exists(path)) {
                 return path;
             }
-            var branch = BranchForUser(userId);
+            var branch = BranchForUser(handle);
             var exists = TryRun(BareRepoPath, "show-ref", "--verify", "--quiet",
                 $"refs/heads/{branch}").Code == 0;
             if (!exists) {
@@ -352,6 +375,63 @@ public sealed class GitService {
             return changed;
         });
     }
+
+    /// <summary>
+    /// Moves somebody's branch and worktree to a new handle, in place.
+    ///
+    /// <para>
+    /// Modelled on <see cref="MigrateLegacyLayout"/>, and for the same reasons: a
+    /// rename rather than a copy, so no history is rewritten and nothing is
+    /// duplicated; <c>worktree move</c> rather than a directory move, because the
+    /// worktree's gitdir pointer and its entry under
+    /// <c>.repo.git/worktrees/&lt;name&gt;</c> have to travel with it; and the
+    /// workspace lock, because a promotion running at this moment must not
+    /// interleave with it.
+    /// </para>
+    /// <para>
+    /// Refuses when the target already exists rather than merging into it — two
+    /// people's work is not this method's to combine. Returns null when it did
+    /// something (including when there was nothing to do), and the reason otherwise.
+    /// Idempotent: renaming to a handle that is already in place is a no-op.
+    /// </para>
+    /// <para>
+    /// The remote is deliberately untouched, exactly as the dev → test migration
+    /// leaves it: personal branches are never pushed by <see cref="TryPush"/>, and
+    /// deleting a branch on a shared remote is not this process's call.
+    /// </para>
+    /// </summary>
+    public string RenameUser(string from, string to) {
+        if (string.Equals(from, to, StringComparison.Ordinal)) {
+            return null;
+        }
+        if (UserName.Problem(to) is { } invalid) {
+            return invalid;
+        }
+        return WithLock(() => {
+            var oldPath = UserPath(from);
+            var newPath = UserPath(to);
+            var oldBranch = BranchForUser(from);
+            var newBranch = BranchForUser(to);
+
+            if (Directory.Exists(newPath) || HasBranch(newBranch)) {
+                return $"This project already has a branch or worktree called '{to}'.";
+            }
+            if (HasBranch(oldBranch)) {
+                // Renames the branch even where a worktree has it checked out — git
+                // rewrites that worktree's HEAD as part of the rename.
+                Run(BareRepoPath, "branch", "-m", oldBranch, newBranch);
+            }
+            if (Directory.Exists(oldPath)) {
+                Run(BareRepoPath, "worktree", "move", oldPath, newPath);
+            }
+            _logger.LogInformation(
+                "Renamed {Old} to {New} in {Workspace}.", oldBranch, newBranch, _workspace);
+            return null;
+        });
+    }
+
+    private bool HasBranch(string branch) =>
+        TryRun(BareRepoPath, "show-ref", "--verify", "--quiet", $"refs/heads/{branch}").Code == 0;
 
     /// <summary>Fixes worktree gitdir pointers after the workspace moved (volumes do).</summary>
     public void Repair() {
@@ -593,30 +673,48 @@ public sealed class GitService {
         return HeadSha("prod");
     }
 
-    /// <summary>One personal worktree, as an admin deciding whether to prune sees it.</summary>
+    /// <summary>
+    /// One personal worktree, as an admin deciding whether to prune sees it.
+    /// <para>
+    /// <see cref="Handle"/> is what the directory is named. <see cref="UserId"/> is
+    /// who that is, and is null when nothing answers to the handle — an orphan left
+    /// by a deleted account, which is precisely what a prune screen exists to show.
+    /// </para>
+    /// </summary>
     public sealed record UserWorktree(
-        Guid UserId, string Path, DateTime LastCommit, bool Dirty, bool Merged);
+        string Handle, Guid? UserId, string Path, DateTime LastCommit, bool Dirty, bool Merged);
 
-    /// <summary>Every personal worktree in this workspace.</summary>
-    public IReadOnlyList<UserWorktree> UserWorktrees() {
+    /// <summary>
+    /// Every personal worktree in this workspace.
+    ///
+    /// <para>
+    /// The directory is named for a handle, and a handle is not an account id, so
+    /// something has to map one to the other. That something is passed in: this
+    /// class knows about git and a workspace, and handing it an auth store to hold
+    /// would be a dependency pointing the wrong way.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<UserWorktree> UserWorktrees(Func<string, Guid?> resolve = null) {
         if (!Directory.Exists(_workspace)) {
             return Array.Empty<UserWorktree>();
         }
         var found = new List<UserWorktree>();
         foreach (var directory in Directory.EnumerateDirectories(_workspace, "user-*")) {
-            if (!Guid.TryParse(System.IO.Path.GetFileName(directory)["user-".Length..], out var user)) {
+            var handle = System.IO.Path.GetFileName(directory)["user-".Length..];
+            if (handle.Length == 0) {
                 continue;
             }
-            found.Add(Describe(user, directory));
+            found.Add(Describe(handle, resolve?.Invoke(handle), directory));
         }
         return found.OrderBy(w => w.LastCommit).ToList();
     }
 
-    private UserWorktree Describe(Guid user, string directory) {
-        var branch = BranchForUser(user);
+    private UserWorktree Describe(string handle, Guid? user, string directory) {
+        var branch = BranchForUser(handle);
         var stamp = TryRun(directory, "log", "-1", "--format=%ct", branch);
         var seconds = long.TryParse(stamp.Stdout.Trim(), out var value) ? value : 0;
         return new UserWorktree(
+            handle,
             user,
             directory,
             DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime,
@@ -634,20 +732,20 @@ public sealed class GitService {
     /// when it declines, and null when it removed one.
     /// </para>
     /// </summary>
-    public string RemoveUserWorktree(Guid userId, bool force) {
+    public string RemoveUserWorktree(string handle, bool force) {
         return WithLock(() => {
-            var path = UserPath(userId.ToString("D"));
+            var path = UserPath(handle);
             if (!Directory.Exists(path)) {
                 return "There is no worktree for that account here.";
             }
-            var state = Describe(userId, path);
+            var state = Describe(handle, null, path);
             if (!force && (state.Dirty || !state.Merged)) {
                 return state.Dirty
                     ? "That branch has work that was never saved to test."
                     : "That branch has commits test has never seen.";
             }
             Run(BareRepoPath, "worktree", "remove", "--force", path);
-            Run(BareRepoPath, "branch", "-D", BranchForUser(userId));
+            Run(BareRepoPath, "branch", "-D", BranchForUser(handle));
             _logger.LogInformation("Removed worktree {Path}.", path);
             return null;
         });
@@ -659,14 +757,14 @@ public sealed class GitService {
     /// something that already exists elsewhere. An idle branch with unpushed work
     /// stays until a person decides about it.
     /// </summary>
-    public IReadOnlyList<Guid> PruneIdleUserWorktrees(TimeSpan idle, DateTime now) {
-        var pruned = new List<Guid>();
+    public IReadOnlyList<string> PruneIdleUserWorktrees(TimeSpan idle, DateTime now) {
+        var pruned = new List<string>();
         foreach (var worktree in UserWorktrees()) {
             if (worktree.Dirty || !worktree.Merged || now - worktree.LastCommit < idle) {
                 continue;
             }
-            if (RemoveUserWorktree(worktree.UserId, force: false) == null) {
-                pruned.Add(worktree.UserId);
+            if (RemoveUserWorktree(worktree.Handle, force: false) == null) {
+                pruned.Add(worktree.Handle);
             }
         }
         return pruned;
@@ -675,26 +773,44 @@ public sealed class GitService {
     // --- personal branch → test -----------------------------------------------
 
     /// <summary>Where one person's branch stands relative to test.</summary>
+    /// <param name="BehindFiles">
+    /// The files test has changed since the two branches parted — the per-file
+    /// half of <paramref name="Behind"/>. A file only you have never appears in
+    /// it, which is the point: "your branch is behind" is true of the branch and
+    /// says nothing about the file somebody happens to have open.
+    /// </param>
     public sealed record BranchStanding(
-        bool Dirty, int Ahead, int Behind, IReadOnlyList<string> Conflicts);
+        bool Dirty, int Ahead, int Behind, IReadOnlyList<string> Conflicts,
+        IReadOnlyList<string> BehindFiles);
 
     /// <summary>
     /// Uncommitted work, and how far the branch has moved either way. <c>Behind</c>
     /// is what blocks a push: test having moved on means the merge has to happen in
     /// the person's own worktree, where they can see it, rather than in test.
     /// </summary>
-    public BranchStanding StandingOf(Guid userId) {
-        var worktree = UserPath(userId.ToString("D"));
+    public BranchStanding StandingOf(string handle) {
+        var worktree = UserPath(handle);
         if (!Directory.Exists(worktree)) {
-            return new BranchStanding(false, 0, 0, Array.Empty<string>());
+            return new BranchStanding(false, 0, 0, Array.Empty<string>(), Array.Empty<string>());
         }
         var counts = Run(worktree, "rev-list", "--left-right", "--count",
-            $"{BranchForUser(userId)}...{TestBranch}").Trim().Split('\t', ' ');
+            $"{BranchForUser(handle)}...{TestBranch}").Trim().Split('\t', ' ');
+        var behindCount = counts.Length > 1 && int.TryParse(counts[^1], out var b) ? b : 0;
         return new BranchStanding(
             Dirty: Run(worktree, "status", "--porcelain").Trim().Length > 0,
             Ahead: counts.Length > 0 && int.TryParse(counts[0], out var ahead) ? ahead : 0,
-            Behind: counts.Length > 1 && int.TryParse(counts[^1], out var behind) ? behind : 0,
-            Conflicts: ConflictsIn(worktree));
+            Behind: behindCount,
+            Conflicts: ConflictsIn(worktree),
+            // Three dots: what test changed since the merge base, not what the two
+            // branches differ by. Two dots would also list every file *you* changed
+            // and call it something test had moved on.
+            BehindFiles: behindCount == 0
+                ? Array.Empty<string>()
+                : Run(worktree, "diff", "--name-only", $"{BranchForUser(handle)}...{TestBranch}")
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(f => f.Trim())
+                    .Where(f => f.Length > 0)
+                    .ToList());
     }
 
     private IReadOnlyList<string> ConflictsIn(string worktree) =>
@@ -715,10 +831,10 @@ public sealed class GitService {
     /// resolved by nobody. <c>Update from test</c> is the way forward from there.
     /// </para>
     /// </summary>
-    public PushResult PushToTest(Guid userId, string message, string authorName, string authorEmail) {
+    public PushResult PushToTest(string handle, string message, string authorName, string authorEmail) {
         return WithLock(() => {
-            var branch = BranchForUser(userId);
-            var worktree = UserPath(userId.ToString("D"));
+            var branch = BranchForUser(handle);
+            var worktree = UserPath(handle);
             if (!Directory.Exists(worktree)) {
                 return new PushResult(false, null, "You have nothing to push here yet.", false);
             }
@@ -750,15 +866,15 @@ public sealed class GitService {
     /// conflicted files — never a resolution: taking one side automatically is how a
     /// merge silently loses work.
     /// </summary>
-    public IReadOnlyList<string> UpdateFromTest(Guid userId, string authorName, string authorEmail) {
+    public IReadOnlyList<string> UpdateFromTest(string handle, string authorName, string authorEmail) {
         return WithLock(() => {
-            var worktree = UserPath(userId.ToString("D"));
+            var worktree = UserPath(handle);
             if (!Directory.Exists(worktree)) {
                 return Array.Empty<string>();
             }
             // Uncommitted work first: a merge refuses to start over a dirty tree, and
             // stashing it would hide it exactly when it matters.
-            CommitAs(BranchForUser(userId), "work in progress before updating from test",
+            CommitAs(BranchForUser(handle), "work in progress before updating from test",
                 authorName, authorEmail);
             var merge = TryRunAs(worktree, authorName, authorEmail, "merge", "--no-edit", TestBranch);
             return merge.Code == 0 ? Array.Empty<string>() : ConflictsIn(worktree);

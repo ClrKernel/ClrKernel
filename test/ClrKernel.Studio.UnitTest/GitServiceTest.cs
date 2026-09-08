@@ -62,11 +62,12 @@ public class GitServiceTest {
         Assert.IsFalse(File.Exists(Path.Combine(_dir, "etl.nb.md")), "no stray copy left behind");
     }
 
-    private static readonly Guid _ada = new("11111111-1111-1111-1111-111111111111");
-    private static readonly Guid _grace = new("22222222-2222-2222-2222-222222222222");
+    // Handles, not ids: a branch and a worktree are named for the username now.
+    private const string _ada = "ada";
+    private const string _grace = "grace";
 
-    private void WriteUser(Guid user, string relative, string content) {
-        var path = Path.Combine(_git.UserPath(user.ToString("D")), relative);
+    private void WriteUser(string user, string relative, string content) {
+        var path = Path.Combine(_git.UserPath(user), relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, content);
     }
@@ -87,13 +88,138 @@ public class GitServiceTest {
         Assert.AreEqual(path, _git.EnsureUserWorktree(_ada), "idempotent");
     }
 
+    /// <summary>
+    /// A rename moves the branch, the directory, and the commits on it — and the
+    /// worktree keeps working afterwards, which is what `worktree move` buys over
+    /// moving the folder.
+    /// </summary>
+    [TestMethod]
+    public void Renaming_moves_the_branch_and_the_worktree_with_its_work() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        WriteUser(_ada, "etl.nb.md", "mine\n");
+        Assert.IsTrue(_git.PushToTest(_ada, "add etl", "Ada", "a@users.local").Pushed);
+        WriteUser(_ada, "wip.nb.md", "not pushed\n");
+
+        Assert.IsNull(_git.RenameUser(_ada, "ada-lovelace"));
+
+        Assert.IsFalse(Directory.Exists(_git.UserPath(_ada)), "the old directory is gone");
+        var moved = _git.UserPath("ada-lovelace");
+        Assert.IsTrue(Directory.Exists(moved));
+        Assert.AreEqual("not pushed\n", File.ReadAllText(Path.Combine(moved, "wip.nb.md")),
+            "unsaved work travels with it");
+
+        // Registered at its new address, which is what `worktree move` buys over
+        // moving the folder. Moving it leaves the repo's own record pointing at the
+        // old path: commands run inside the worktree still work, because its .git
+        // file names the admin directory and that has not moved — but `git worktree
+        // list` reports where it used to be, and the next `worktree prune` sees a
+        // registration whose path is gone and unregisters it.
+        // Compared by directory name, which is the part the rename changes, and the
+        // only part that reads the same on every platform. Two things defeat the
+        // obvious spellings of this assertion:
+        //
+        //  - git prints these paths with forward slashes on Windows too, where
+        //    Path.Combine gives backslashes. A substring test against a .NET path
+        //    therefore failed there — and its negative twin passed for the wrong
+        //    reason, unable to find the old path either.
+        //  - on macOS git resolves /var to /private/var, so a full-path equality
+        //    test fails here instead. (A substring test survived that one by luck:
+        //    "/private/var/x" does contain "/var/x".)
+        //
+        // Whole segments rather than a substring regardless, because `user-ada` is
+        // a prefix of `user-ada-lovelace` — a substring test finds the old name
+        // inside the new one and calls a successful rename a failure.
+        var registered = _git.RunForTests("worktree", "list")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0].TrimEnd('/'))
+            .Select(path => path[(path.LastIndexOf('/') + 1)..])
+            .ToList();
+        CollectionAssert.Contains(registered, "user-ada-lovelace",
+            "registered at its new address; git listed " + string.Join(", ", registered));
+        CollectionAssert.DoesNotContain(registered, "user-" + _ada,
+            "and the old path is not still registered");
+
+        var standing = _git.StandingOf("ada-lovelace");
+        Assert.IsTrue(standing.Dirty, "the unsaved file is still seen as unsaved");
+        Assert.IsTrue(_git.PushToTest("ada-lovelace", "wip", "Ada", "a@users.local").Pushed,
+            "and it can still push");
+    }
+
+    [TestMethod]
+    public void Renaming_is_idempotent_and_refuses_to_land_on_somebody_else() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        Assert.IsNull(_git.RenameUser(_ada, _ada), "renaming to the same handle does nothing");
+        Assert.IsTrue(Directory.Exists(_git.UserPath(_ada)));
+
+        var refusal = _git.RenameUser(_ada, _grace);
+        Assert.IsNotNull(refusal, "two people's work is not this method's to merge");
+        StringAssert.Contains(refusal, _grace);
+        Assert.IsTrue(Directory.Exists(_git.UserPath(_ada)), "and it left the original alone");
+
+        StringAssert.Contains(_git.RenameUser(_ada, "Not A Handle"), "username");
+    }
+
+    /// <summary>
+    /// The upgrade: a workspace whose personal branches are still named for account
+    /// ids, with work on them, becomes one named for handles — and the work is still
+    /// there afterwards. This is the pass a real 0.11 server runs once, on start.
+    /// </summary>
+    [TestMethod]
+    public void A_workspace_named_for_account_ids_is_renamed_to_handles() {
+        _git.Init();
+        var id = Guid.NewGuid();
+        var old = id.ToString("D");
+        _git.EnsureUserWorktree(old);
+        WriteUser(old, "wip.nb.md", "unsaved\n");
+
+        Assert.IsNull(_git.RenameUser(old, "jeremy"));
+
+        Assert.IsFalse(Directory.Exists(_git.UserPath(old)));
+        Assert.AreEqual("unsaved\n",
+            File.ReadAllText(Path.Combine(_git.UserPath("jeremy"), "wip.nb.md")));
+        CollectionAssert.Contains(
+            _git.UserWorktrees().Select(w => w.Handle).ToList(), "jeremy");
+        Assert.IsFalse(_git.UserWorktrees().Any(w => w.Handle == old));
+
+        // And the branch went with it, rather than a directory being renamed under a
+        // branch that still has the old name.
+        Assert.AreEqual(_git.UserPath("jeremy"), _git.PathFor(GitService.BranchForUser("jeremy")));
+        Assert.IsTrue(_git.PushToTest("jeremy", "keep", "Jeremy", "j@users.local").Pushed);
+    }
+
     [TestMethod]
     public void PathFor_refuses_a_branch_this_workspace_does_not_have() {
         _git.Init();
         // Not a fallback to test: an unknown branch resolving there would put a write
         // meant for somebody's own branch into the one nobody may write to.
-        Assert.ThrowsExactly<GitException>(() => _git.PathFor("user/not-a-guid"));
         Assert.ThrowsExactly<GitException>(() => _git.PathFor("whatever"));
+
+        // `user/…` followed by something no account could be called. This used to be
+        // "anything that is not a guid", which `not-a-guid` satisfied; a handle makes
+        // that string a perfectly good branch name, so the cases that are actually
+        // malformed are the ones a username may not contain.
+        foreach (var branch in new[] { "user/", "user/Not A Handle", "user/-dash", "user/UPPER" }) {
+            Assert.ThrowsExactly<GitException>(() => _git.PathFor(branch), branch);
+        }
+    }
+
+    /// <summary>
+    /// A workspace upgraded from 0.11 still has `user/&lt;guid&gt;` branches until the
+    /// startup pass renames them, so the guid form has to keep resolving — and it is
+    /// a predicate, so getting this wrong routes somebody's own notebook to the wrong
+    /// root instead of failing.
+    /// </summary>
+    [TestMethod]
+    public void A_branch_named_the_old_way_still_resolves() {
+        _git.Init();
+        var old = "user/" + Guid.NewGuid().ToString("D");
+
+        Assert.IsTrue(GitService.IsUserBranch(old));
+        Assert.AreEqual(_git.UserPath(GitService.HandleOf(old)), _git.PathFor(old));
     }
 
     [TestMethod]
@@ -108,6 +234,48 @@ public class GitServiceTest {
         Assert.AreEqual("mine\n", File.ReadAllText(Path.Combine(_git.TestPath, "etl.nb.md")));
         Assert.AreEqual(result.Sha, _git.HeadSha("test"));
         StringAssert.Contains(_git.RunForTests("log", "-1", "--format=%an", "test"), "Ada Lovelace");
+    }
+
+    /// <summary>
+    /// Which files test has moved on, as opposed to how many commits.
+    ///
+    /// <para>
+    /// The report that prompted this: every file said "Update from test", files
+    /// that exist only on the person's own branch included. The branch was behind;
+    /// the file was not, and the toolbar could not tell the two apart because the
+    /// count was all it had.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void BehindFiles_names_what_test_changed_and_nothing_of_yours() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        // Nested, and with a forward slash: the editor matches these against its
+        // own `reports/monthly.nb.md`, so a backslash or a leading `./` here is a
+        // badge that silently never appears.
+        WriteUser(_grace, "reports/monthly.nb.md", "hers\n");
+        WriteUser(_grace, "shared.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "hers", "Grace", "g@users.local").Pushed);
+
+        // Ada has a file of her own, committed on her branch and not on test. The
+        // refused push is what commits it — `git diff` compares commits, so a file
+        // still only in the worktree is invisible to this either way, which is how
+        // the first version of this test passed against `..` as well as `...`.
+        WriteUser(_ada, "only-mine.nb.md", "mine\n");
+        Assert.IsFalse(_git.PushToTest(_ada, "mine", "Ada", "a@users.local").Pushed);
+        Assert.AreEqual(1, _git.StandingOf(_ada).Ahead, "her file is committed on her branch");
+
+        var standing = _git.StandingOf(_ada);
+        Assert.IsTrue(standing.Behind > 0, "the branch is behind test");
+        CollectionAssert.AreEqual(
+            new[] { "reports/monthly.nb.md", "shared.nb.md" },
+            standing.BehindFiles.OrderBy(f => f, StringComparer.Ordinal).ToArray(),
+            "only what test changed — a file test has never seen is not behind it");
+
+        Assert.AreEqual(0, _git.UpdateFromTest(_ada, "Ada", "a@users.local").Count);
+        Assert.AreEqual(0, _git.StandingOf(_ada).BehindFiles.Count, "and nothing after a merge");
     }
 
     [TestMethod]
@@ -151,7 +319,7 @@ public class GitServiceTest {
         var conflicts = _git.UpdateFromTest(_ada, "Ada", "a@users.local");
 
         CollectionAssert.AreEqual(new[] { "shared.nb.md" }, conflicts.ToArray());
-        var left = File.ReadAllText(Path.Combine(_git.UserPath(_ada.ToString("D")), "shared.nb.md"));
+        var left = File.ReadAllText(Path.Combine(_git.UserPath(_ada), "shared.nb.md"));
         StringAssert.Contains(left, "mine", "both sides are left in the file, with markers");
         StringAssert.Contains(left, "hers");
         CollectionAssert.AreEqual(new[] { "shared.nb.md" }, _git.StandingOf(_ada).Conflicts.ToArray());

@@ -1,12 +1,8 @@
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using Fido2NetLib;
-using Fido2NetLib.Objects;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Studio;
@@ -26,28 +22,6 @@ internal static class Base64Url {
     }
 }
 
-/// <summary>Why a registration ceremony was started — it decides what completing it does.</summary>
-public enum RegistrationPurpose {
-    /// <summary>First run: creates the server's first admin.</summary>
-    Bootstrap,
-
-    /// <summary>Redeeming an invite: creates a user at the invite's role.</summary>
-    Invite,
-
-    /// <summary>An existing user adding a second device.</summary>
-    AddPasskey,
-}
-
-/// <summary>A ceremony in flight. Held in memory: short-lived, single use, server-local.</summary>
-internal sealed record PendingCeremony(
-    RegistrationPurpose Purpose,
-    Guid UserId,
-    string DisplayName,
-    string InviteCode,
-    CredentialCreateOptions Creation,
-    AssertionOptions Assertion,
-    DateTime ExpiresAt);
-
 /// <summary>The outcome of a completed ceremony: a user, or a reason there isn't one.</summary>
 public sealed record AuthResult(User User, string Error) {
     public bool Ok => User != null;
@@ -56,251 +30,156 @@ public sealed record AuthResult(User User, string Error) {
 }
 
 /// <summary>
-/// Passkey ceremonies and sessions.
+/// Accounts and sessions — everything about signing in that is not about <em>how</em>
+/// somebody proved who they are.
+///
 /// <para>
-/// Verification is <c>Fido2NetLib</c>'s: attestation statements and COSE keys are
-/// not something to parse by hand. What lives here is the part that is this
-/// application's — which ceremony creates which kind of account, what a session is,
-/// and the signature-counter check that catches a cloned authenticator.
-/// </para>
-/// <para>
-/// The relying party id and the allowed origins come from configuration, never from
-/// the request. Deriving them from the Host header is how you build an app that
-/// authenticates against whatever domain an attacker puts in front of it.
+/// It creates an account (first run, or an invite), links an identity to one,
+/// resolves an identity back to a user, and issues the session cookie. None of that
+/// mentions a passkey: the proof arrives as a <see cref="ProvenIdentity"/>, which a
+/// directory login or an OIDC subject reduces to just as well. The WebAuthn half
+/// lives in <see cref="PasskeyProvider"/>.
 /// </para>
 /// </summary>
 public sealed class AuthService {
-    /// <summary>Long enough to use a phone, short enough that a stale one is gone.</summary>
-    private static readonly TimeSpan _ceremonyLifetime = TimeSpan.FromMinutes(5);
-
     public const string CookieName = "clrkernel_studio_session";
 
     private readonly IAuthStore _store;
     private readonly JobsOptions _options;
     private readonly ILogger<AuthService> _log;
-    private readonly Fido2 _fido;
-    private readonly ConcurrentDictionary<string, PendingCeremony> _pending = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Fido2> _loopbackVerifiers = new(StringComparer.Ordinal);
 
     public AuthService(IAuthStore store, JobsOptions options, ILogger<AuthService> log) {
         _store = store;
         _options = options;
         _log = log;
-        _fido = new Fido2(new Fido2Configuration {
-            ServerDomain = options.RelyingPartyId,
-            ServerName = "ClrKernel Studio",
-            Origins = new HashSet<string>(options.Origins, StringComparer.OrdinalIgnoreCase),
-        }, metadataService: null);
     }
 
     public IAuthStore Store => _store;
 
-    /// <summary>
-    /// The verifier to check a ceremony against, given the origin the browser
-    /// actually sent.
-    /// <para>
-    /// Normally this is the one built from configuration. The exception is the
-    /// development loop: Vite serves the app on :5173 and proxies <c>/api</c> to
-    /// the server on :5000, so the browser's origin is not the bind url and the
-    /// ceremony is rejected — which is what happens if you follow this repo's own
-    /// dev instructions.
-    /// </para>
-    /// <para>
-    /// A WebAuthn relying party is a *domain*; the port is not part of it, and the
-    /// browser already scopes the credential accordingly. So when the relying party
-    /// is <c>localhost</c> — which is a development configuration by definition,
-    /// and whose passkeys are documented as throwaway — another loopback port is
-    /// the same relying party and refusing it is stricter than WebAuthn itself.
-    /// Anything else, including a real hostname on loopback, still has to be in the
-    /// configured list.
-    /// </para>
-    /// </summary>
-    private Fido2 VerifierFor(string requestOrigin) {
-        if (requestOrigin == null
-            || _options.RelyingPartyId != "localhost"
-            || _options.Origins.Contains(requestOrigin, StringComparer.OrdinalIgnoreCase)
-            || !IsLoopbackOrigin(requestOrigin)) {
-            return _fido;
-        }
-        return _loopbackVerifiers.GetOrAdd(requestOrigin, origin => new Fido2(new Fido2Configuration {
-            ServerDomain = _options.RelyingPartyId,
-            ServerName = "ClrKernel Studio",
-            Origins = new HashSet<string>(
-                _options.Origins.Append(origin), StringComparer.OrdinalIgnoreCase),
-        }, metadataService: null));
-    }
-
-    internal static bool IsLoopbackOrigin(string origin) =>
-        Uri.TryCreate(origin, UriKind.Absolute, out var uri)
-        && uri.Scheme is "http" or "https"
-        && uri.Host is "localhost" or "127.0.0.1" or "::1" or "[::1]";
-
     public Task<int> UserCountAsync() => _store.UserCountAsync();
 
-    // --- registration ------------------------------------------------------
+    // --- provisioning ------------------------------------------------------
 
     /// <summary>
-    /// Starts a registration. `existing` is the user's current credentials, which
-    /// become excludeCredentials: an authenticator that already holds a passkey for
-    /// this account then declines rather than silently making a second one.
+    /// The account a completed registration belongs to: found, for somebody adding
+    /// a second credential, and otherwise created.
+    ///
+    /// <para>
+    /// Every rule about <em>which</em> account gets made is here rather than in the
+    /// provider that ran the ceremony: an invite's role and handle, the empty-server
+    /// window, the collision re-check. A provider knows how to prove somebody is who
+    /// they say; it has no business knowing what an invite is.
+    /// </para>
     /// </summary>
-    public (string CeremonyId, CredentialCreateOptions Options) BeginRegistration(
-        RegistrationPurpose purpose, Guid userId, string displayName, string inviteCode,
-        IReadOnlyList<Credential> existing) {
-        var options = _fido.RequestNewCredential(new RequestNewCredentialParams {
-            User = new Fido2User {
-                Id = userId.ToByteArray(),
-                // There is no username in this system; the display name is all
-                // there is, and it is what the browser shows in the passkey list.
-                Name = displayName,
-                DisplayName = displayName,
-            },
-            ExcludeCredentials = existing
-                .Select(c => new PublicKeyCredentialDescriptor(Base64Url.Decode(c.Id)))
-                .ToList(),
-            AuthenticatorSelection = new AuthenticatorSelection {
-                // Discoverable, so signing in is one button and no username field.
-                ResidentKey = ResidentKeyRequirement.Required,
-                UserVerification = UserVerificationRequirement.Preferred,
-            },
-            // Nothing here consults an attestation metadata service, so asking for
-            // an attestation statement would be collecting evidence we never read.
-            AttestationPreference = AttestationConveyancePreference.None,
-        });
+    public async Task<AuthResult> ProvisionAsync(
+        RegistrationPurpose purpose, Guid userId, string ceremonyDisplayName, string inviteCode,
+        DateTime now) {
+        if (purpose == RegistrationPurpose.AddPasskey) {
+            var existing = await _store.FindUserAsync(userId);
+            return existing == null
+                ? AuthResult.Fail("That account no longer exists.")
+                : AuthResult.Success(existing);
+        }
 
-        return (Remember(new PendingCeremony(
-            purpose, userId, displayName, inviteCode, options, null,
-            DateTime.UtcNow + _ceremonyLifetime)), options);
+        var role = UserRole.ServerAdmin;
+        var displayName = ceremonyDisplayName;
+        string username = null;
+        if (purpose == RegistrationPurpose.Invite) {
+            var invite = await _store.FindInviteAsync(inviteCode);
+            if (invite == null || string.IsNullOrEmpty(invite.Username)) {
+                return AuthResult.Fail("This invite isn't valid.");
+            }
+            // Last check before the row is written. The API checks it when the page
+            // loads and again as the ceremony begins; between then and now an admin
+            // can still rename somebody onto this handle, and users.username is
+            // unique — so without this the failure is a 500 with a passkey already
+            // created.
+            if ((await _store.UsernamesAsync()).Contains(invite.Username, StringComparer.OrdinalIgnoreCase)) {
+                return AuthResult.Fail(
+                    $"The username on this invite ('{invite.Username}') has since been taken. "
+                    + "Ask for a new one.");
+            }
+            // Spent *before* the account exists, so a race that loses the redeem
+            // creates no user at all rather than a user with no invite.
+            if (!await _store.RedeemInviteAsync(inviteCode, userId, now)) {
+                return AuthResult.Fail("This invite isn't valid.");
+            }
+            role = invite.Role;
+            displayName = invite.DisplayName;
+            username = invite.Username;
+        } else if (await _store.UserCountAsync() > 0) {
+            // Two people racing the empty-server window; the second is not an admin
+            // by accident.
+            return AuthResult.Fail("This server already has an account.");
+        }
+        // First-run setup only, and the one place a handle is still derived: an
+        // empty server has no admin to fill in a form, and nothing to collide with
+        // either. Every other account gets its handle from its invite.
+        username ??= UserName.Unique(
+            UserName.Suggest(displayName), await _store.UsernamesAsync());
+        return AuthResult.Success(
+            await _store.CreateUserAsync(userId, username, displayName, role));
     }
 
     /// <summary>
-    /// Finishes a registration: verifies the attestation, then creates the account
-    /// (bootstrap, invite) or attaches the passkey to the existing one.
+    /// Records that <paramref name="proven"/> now names this account.
+    ///
+    /// <para>
+    /// Written when the credential is registered rather than derived at sign-in, so
+    /// the two cannot drift. Callers link <em>after</em> whatever the identity
+    /// points at exists — an identity is what sign-in resolves through, so one
+    /// written first names something nothing can verify.
+    /// </para>
     /// </summary>
-    public async Task<AuthResult> CompleteRegistrationAsync(
-        string ceremonyId, AuthenticatorAttestationRawResponse response, string passkeyName,
-        string requestOrigin = null) {
-        if (Claim(ceremonyId) is not { Creation: not null } ceremony) {
-            return AuthResult.Fail("That registration expired. Start again.");
-        }
-
-        RegisteredPublicKeyCredential credential;
-        try {
-            credential = await VerifierFor(requestOrigin).MakeNewCredentialAsync(new MakeNewCredentialParams {
-                AttestationResponse = response,
-                OriginalOptions = ceremony.Creation,
-                IsCredentialIdUniqueToUserCallback = async (parameters, _) =>
-                    await _store.FindCredentialAsync(Base64Url.Encode(parameters.CredentialId)) == null,
-            });
-        } catch (Exception e) {
-            _log.LogWarning(e, "Passkey registration rejected");
-            return AuthResult.Fail("That passkey could not be registered.");
-        }
-
-        var now = DateTime.UtcNow;
-        User user;
-        if (ceremony.Purpose == RegistrationPurpose.AddPasskey) {
-            user = await _store.FindUserAsync(ceremony.UserId);
-            if (user == null) {
-                return AuthResult.Fail("That account no longer exists.");
-            }
-        } else {
-            // The invite is spent *before* the account exists, so a race that loses
-            // the redeem creates no user at all rather than a user with no invite.
-            var role = UserRole.ServerAdmin;
-            if (ceremony.Purpose == RegistrationPurpose.Invite) {
-                var invite = await _store.FindInviteAsync(ceremony.InviteCode);
-                if (invite == null || !await _store.RedeemInviteAsync(
-                        ceremony.InviteCode, ceremony.UserId, now)) {
-                    return AuthResult.Fail("This invite isn't valid.");
-                }
-                role = invite.Role;
-            } else if (await _store.UserCountAsync() > 0) {
-                // Two people racing the empty-server window; the second is not an
-                // admin by accident.
-                return AuthResult.Fail("This server already has an account.");
-            }
-            user = await _store.CreateUserAsync(ceremony.UserId, ceremony.DisplayName, role);
-        }
-
-        await _store.AddCredentialAsync(new Credential {
-            Id = Base64Url.Encode(credential.Id),
+    public Task LinkIdentityAsync(User user, ProvenIdentity proven, DateTime now) =>
+        _store.AddIdentityAsync(new Identity {
+            Id = Guid.NewGuid(),
+            Provider = proven.Provider,
+            Subject = proven.Subject,
             UserId = user.Id,
-            PublicKey = credential.PublicKey,
-            SignCount = credential.SignCount,
-            Transports = credential.Transports == null
-                ? null
-                : string.Join(',', credential.Transports.Select(t => t.ToString())),
-            AaGuid = credential.AaGuid,
-            Name = string.IsNullOrWhiteSpace(passkeyName)
-                ? $"Passkey added {now:yyyy-MM-dd}"
-                : passkeyName.Trim(),
+            Label = proven.Label,
             CreatedAt = now,
         });
-        return AuthResult.Success(user);
-    }
 
     // --- sign-in -----------------------------------------------------------
 
     /// <summary>
-    /// Starts a sign-in. No allow-list: the credentials are discoverable, so the
-    /// authenticator offers what it holds and the server learns who it is from the
-    /// assertion. That is what removes the username field.
+    /// The account a proof belongs to, or why it is no good. The one lookup every
+    /// provider shares.
     /// </summary>
-    public (string CeremonyId, AssertionOptions Options) BeginAssertion() {
-        var options = _fido.GetAssertionOptions(new GetAssertionOptionsParams {
-            AllowedCredentials = Array.Empty<PublicKeyCredentialDescriptor>(),
-            UserVerification = UserVerificationRequirement.Preferred,
-        });
-        return (Remember(new PendingCeremony(
-            RegistrationPurpose.AddPasskey, Guid.Empty, null, null, null, options,
-            DateTime.UtcNow + _ceremonyLifetime)), options);
+    /// <param name="fallback">
+    /// Where the account can also be read from when the identity row is missing —
+    /// a passkey's own credential row, which already proves who this is. Healing
+    /// beats refusing: the alternative is locking somebody out of their own server
+    /// over a bookkeeping row. A provider with no second source passes null and
+    /// gets a refusal instead.
+    /// </param>
+    public async Task<AuthResult> SignInAsync(ProvenIdentity proven, Credential fallback = null) {
+        var identity = await _store.FindIdentityAsync(proven.Provider, proven.Subject);
+        if (identity == null) {
+            if (fallback?.User == null) {
+                return AuthResult.Fail("That sign-in is not registered here.");
+            }
+            await LinkIdentityAsync(
+                fallback.User, proven with { Label = fallback.Name }, fallback.CreatedAt);
+            _log.LogWarning(
+                "{Provider} {Subject} had no identity row; added one.",
+                proven.Provider, proven.Subject);
+            identity = await _store.FindIdentityAsync(proven.Provider, proven.Subject);
+        }
+
+        var user = identity?.User ?? fallback?.User;
+        if (user == null) {
+            return AuthResult.Fail("That sign-in is not registered here.");
+        }
+        return user.Disabled ? AuthResult.Fail("That account is disabled.") : AuthResult.Success(user);
     }
 
-    public async Task<AuthResult> CompleteAssertionAsync(
-        string ceremonyId, AuthenticatorAssertionRawResponse response, string requestOrigin = null) {
-        if (Claim(ceremonyId) is not { Assertion: not null } ceremony) {
-            return AuthResult.Fail("That sign-in expired. Try again.");
+    /// <summary>Notes that this identity was just used, for the "last seen" column.</summary>
+    public async Task RecordIdentityUseAsync(ProvenIdentity proven, DateTime now) {
+        if (await _store.FindIdentityAsync(proven.Provider, proven.Subject) is { } identity) {
+            await _store.RecordIdentityUseAsync(identity.Id, now);
         }
-
-        // `Id` arrives base64url-encoded, which is exactly how credentials are keyed.
-        var credential = await _store.FindCredentialAsync(response.Id);
-        if (credential?.User == null) {
-            return AuthResult.Fail("That passkey is not registered here.");
-        }
-        if (credential.User.Disabled) {
-            return AuthResult.Fail("That account is disabled.");
-        }
-
-        VerifyAssertionResult verified;
-        try {
-            verified = await VerifierFor(requestOrigin).MakeAssertionAsync(new MakeAssertionParams {
-                AssertionResponse = response,
-                OriginalOptions = ceremony.Assertion,
-                StoredPublicKey = credential.PublicKey,
-                StoredSignatureCounter = (uint)credential.SignCount,
-                IsUserHandleOwnerOfCredentialIdCallback = (parameters, _) =>
-                    Task.FromResult(new Guid(parameters.UserHandle) == credential.UserId),
-            });
-        } catch (Exception e) {
-            _log.LogWarning(e, "Passkey assertion rejected for credential {Credential}", credential.Id);
-            return AuthResult.Fail("That passkey could not be verified.");
-        }
-
-        // A counter that has not advanced means the same signature could be
-        // replayed, or the authenticator has been cloned. Authenticators that do
-        // not implement counters report zero forever, which is allowed — the check
-        // only bites once a credential has ever reported a non-zero count.
-        if (credential.SignCount > 0 && verified.SignCount <= credential.SignCount) {
-            _log.LogError(
-                "Rejecting assertion for credential {Credential} (user {User}): signature counter " +
-                "went from {Stored} to {Presented}. This is what a cloned authenticator looks like.",
-                credential.Id, credential.UserId, credential.SignCount, verified.SignCount);
-            return AuthResult.Fail("That passkey could not be verified.");
-        }
-
-        await _store.RecordCredentialUseAsync(credential.Id, verified.SignCount, DateTime.UtcNow);
-        return AuthResult.Success(credential.User);
     }
 
     // --- sessions ----------------------------------------------------------
@@ -338,33 +217,4 @@ public sealed class AuthService {
 
     /// <summary>A URL-safe invite code with 160 bits behind it — not guessable.</summary>
     public static string NewInviteCode() => Base64Url.Encode(RandomNumberGenerator.GetBytes(20));
-
-    // --- ceremony bookkeeping ---------------------------------------------
-
-    private string Remember(PendingCeremony ceremony) {
-        Sweep();
-        var id = Base64Url.Encode(RandomNumberGenerator.GetBytes(16));
-        _pending[id] = ceremony;
-        return id;
-    }
-
-    /// <summary>Takes the ceremony out of the table — single use, whatever happens next.</summary>
-    private PendingCeremony Claim(string id) {
-        if (id == null || !_pending.TryRemove(id, out var ceremony)) {
-            return null;
-        }
-        return ceremony.ExpiresAt > DateTime.UtcNow ? ceremony : null;
-    }
-
-    private void Sweep() {
-        if (_pending.Count < 64) {
-            return;
-        }
-        var now = DateTime.UtcNow;
-        foreach (var (id, ceremony) in _pending) {
-            if (ceremony.ExpiresAt <= now) {
-                _pending.TryRemove(id, out _);
-            }
-        }
-    }
 }

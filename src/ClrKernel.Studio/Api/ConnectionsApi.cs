@@ -306,9 +306,14 @@ public static class ConnectionsApi {
     /// of everything on the way down.
     /// </para>
     /// </summary>
-    internal static void OnWorktreeCreated(HttpContext context, GitService git, Guid userId) =>
+    /// <summary>
+    /// The secrets a notebook resolves by name, per branch. Names and whether each
+    /// is set — never a value, not even masked, which is the same rule the
+    /// connection views follow.
+    /// </summary>
+    internal static void OnWorktreeCreated(HttpContext context, GitService git, User user) =>
         (context.RequestServices.GetService(typeof(ConnectionMaterializer)) as ConnectionMaterializer)
-            ?.SyncUser(git, userId);
+            ?.SyncUser(git, user);
 
     private static IResult Save(
         HttpContext context, ConnectionStore store, JobsOptions options, ConnectionMaterializer files,

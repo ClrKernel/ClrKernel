@@ -38,15 +38,33 @@ public sealed class ConnectionMaterializer {
     private readonly ConnectionStore _store;
     private readonly ConnectionProviderCatalog _providers;
     private readonly ILogger _logger;
+    private readonly Func<string, Guid?> _ownerOf;
 
     public ConnectionMaterializer(
         ProjectRegistry projects, ConnectionStore store, ConnectionProviderCatalog providers,
-        ILogger<ConnectionMaterializer> logger) {
+        ILogger<ConnectionMaterializer> logger, Func<string, Guid?> ownerOf = null) {
         _projects = projects;
         _store = store;
         _providers = providers;
         _logger = logger;
+        _ownerOf = ownerOf;
     }
+
+    /// <summary>
+    /// Who a worktree belongs to. A directory is named for a handle and a private
+    /// connection is owned by an account id, so writing one into the other needs the
+    /// map between them.
+    ///
+    /// <para>
+    /// The map rather than the auth store, deliberately: this is the whole of what
+    /// is needed from accounts, it keeps an async store off a synchronous
+    /// whole-workspace write, and it is a lambda in a test rather than a database.
+    /// Without one only the shared list is written, which is what the tests that
+    /// have no accounts at all want.
+    /// </para>
+    /// </summary>
+    private Guid? OwnerOf(string handle) =>
+        _ownerOf == null || string.IsNullOrEmpty(handle) ? null : _ownerOf(handle);
 
     /// <summary>
     /// Brings every project's files in line with the store.
@@ -101,8 +119,13 @@ public sealed class ConnectionMaterializer {
                 }
             }
 
-            foreach (var worktree in git.UserWorktrees()) {
-                Write(Path.Combine(worktree.Path, PrivateFileName), PrivateFor(worktree.UserId));
+            foreach (var worktree in git.UserWorktrees(OwnerOf)) {
+                // An orphan — a worktree whose account is gone — gets no overlay
+                // rather than an empty one: there is nobody whose private list it
+                // would be.
+                if (worktree.UserId is { } owner) {
+                    Write(Path.Combine(worktree.Path, PrivateFileName), PrivateFor(owner));
+                }
                 WriteSharedInto(git, worktree);
             }
         });
@@ -122,7 +145,7 @@ public sealed class ConnectionMaterializer {
     /// </para>
     /// </summary>
     private void WriteSharedInto(GitService git, GitService.UserWorktree worktree) {
-        if (git.Tracks(GitService.BranchForUser(worktree.UserId), SharedFileName)) {
+        if (git.Tracks(GitService.BranchForUser(worktree.Handle), SharedFileName)) {
             return;
         }
         Write(Path.Combine(worktree.Path, SharedFileName), Shared());
@@ -136,19 +159,19 @@ public sealed class ConnectionMaterializer {
     /// branch appearing should not write to test and prod.
     /// </para>
     /// </summary>
-    public void SyncUser(GitService git, Guid userId) {
+    public void SyncUser(GitService git, User user) {
         try {
             git.EnsureExcluded(SharedFileName);
             git.EnsureExcluded(PrivateFileName);
-            var branch = GitService.BranchForUser(userId);
+            var branch = GitService.BranchForUser(user.Username);
             var worktree = git.PathFor(branch);
-            Write(Path.Combine(worktree, PrivateFileName), PrivateFor(userId));
+            Write(Path.Combine(worktree, PrivateFileName), PrivateFor(user.Id));
             if (!git.Tracks(branch, SharedFileName)) {
                 Write(Path.Combine(worktree, SharedFileName), Shared());
             }
         } catch (Exception e) {
             _logger?.LogWarning(
-                "Could not write the private connections for {User}: {Error}", userId, e.Message);
+                "Could not write the private connections for {User}: {Error}", user?.Username, e.Message);
         }
     }
 

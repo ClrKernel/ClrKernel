@@ -205,36 +205,36 @@ public static class AuthApi {
         // --- bootstrap ------------------------------------------------------
 
         api.MapPost("/setup/begin", async (
-            HttpContext context, AuthService auth, DisplayNameBody body) => {
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, DisplayNameBody body) => {
                 if (await BootstrapRefusal(context, auth) is { } refusal) {
                     return refusal;
                 }
                 if (Clean(body?.DisplayName) is not { } name) {
                     return Results.BadRequest(new { error = "A display name is required." });
                 }
-                var (ceremonyId, creation) = auth.BeginRegistration(
+                var (ceremonyId, creation) = passkeys.BeginRegistration(
                     RegistrationPurpose.Bootstrap, Guid.NewGuid(), name, null, Array.Empty<Credential>());
                 return Ceremony(ceremonyId, creation);
             });
 
         api.MapPost("/setup/complete", async (
-            HttpContext context, AuthService auth, RegisterBody body) => {
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, RegisterBody body) => {
                 if (await BootstrapRefusal(context, auth) is { } refusal) {
                     return refusal;
                 }
-                return await FinishRegistration(context, auth, body);
+                return await FinishRegistration(context, auth, passkeys, body);
             });
 
         // --- sign in --------------------------------------------------------
 
-        api.MapPost("/signin/begin", (AuthService auth) => {
-            var (ceremonyId, options) = auth.BeginAssertion();
+        api.MapPost("/signin/begin", (PasskeyProvider passkeys) => {
+            var (ceremonyId, options) = passkeys.BeginAssertion();
             return Ceremony(ceremonyId, options);
         });
 
         api.MapPost("/signin/complete", async (
-            HttpContext context, AuthService auth, AssertBody body) => {
-                var result = await auth.CompleteAssertionAsync(
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, AssertBody body) => {
+                var result = await passkeys.CompleteAssertionAsync(
                 body?.CeremonyId,
                 body == null ? null : JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(
                     body.Response, _webAuthnJson),
@@ -257,29 +257,38 @@ public static class AuthApi {
         // Deliberately uniform: invalid, expired, revoked and already-used all look
         // the same from out here. Telling them apart is a way to learn which codes
         // exist.
-        api.MapGet("/invite/{code}", async (AuthService auth, string code) =>
-            Results.Ok(new {
-                valid = await auth.Store.FindInviteAsync(code) is { } invite
-                && invite.IsUsable(DateTime.UtcNow)
-            }));
+        api.MapGet("/invite/{code}", async (AuthService auth, string code) => {
+            // The name comes back only for an invite that is still usable — the same
+            // gate as `valid` itself. Answering for a spent one would tell whoever
+            // holds the code that an account by that name exists.
+            var invite = await auth.Store.FindInviteAsync(code);
+            return invite is { } found && found.IsUsable(DateTime.UtcNow)
+                ? Results.Ok(new { valid = true, displayName = found.DisplayName, username = found.Username })
+                : Results.Ok(new { valid = false });
+        });
 
+        // No body: the account's name and handle were settled by the admin who
+        // issued this, so there is nothing left to type. Everything that could be
+        // refused is refused here, before the passkey prompt appears.
         api.MapPost("/invite/{code}/begin", async (
-            AuthService auth, string code, DisplayNameBody body) => {
+            AuthService auth, PasskeyProvider passkeys, string code) => {
                 var invite = await auth.Store.FindInviteAsync(code);
                 if (invite == null || !invite.IsUsable(DateTime.UtcNow)) {
                     return Results.BadRequest(new { error = "This invite isn't valid." });
                 }
-                if (Clean(body?.DisplayName) is not { } name) {
-                    return Results.BadRequest(new { error = "A display name is required." });
+                if (await InviteRefusal(auth.Store, invite) is { } refusal) {
+                    return Results.BadRequest(new { error = refusal });
                 }
-                var (ceremonyId, creation) = auth.BeginRegistration(
-                    RegistrationPurpose.Invite, Guid.NewGuid(), name, code, Array.Empty<Credential>());
+                var (ceremonyId, creation) = passkeys.BeginRegistration(
+                    RegistrationPurpose.Invite, Guid.NewGuid(), invite.DisplayName, code,
+                    Array.Empty<Credential>());
                 return Ceremony(ceremonyId, creation);
             });
 
         api.MapPost("/invite/{code}/complete", async (
-            HttpContext context, AuthService auth, string code, RegisterBody body) =>
-            await FinishRegistration(context, auth, body));
+            HttpContext context, AuthService auth, PasskeyProvider passkeys, string code,
+            RegisterBody body) =>
+            await FinishRegistration(context, auth, passkeys, body));
 
         // --- your own account ------------------------------------------------
 
@@ -298,22 +307,23 @@ public static class AuthApi {
             });
         });
 
-        api.MapPost("/passkeys/begin", async (HttpContext context, AuthService auth) => {
-            if (context.CurrentUser() is not { } user) {
-                return Results.Json(new { error = "Sign in first." }, statusCode: 401);
-            }
-            var existing = await auth.Store.CredentialsForAsync(user.Id);
-            var (ceremonyId, creation) = auth.BeginRegistration(
-                RegistrationPurpose.AddPasskey, user.Id, user.DisplayName, null, existing);
-            return Ceremony(ceremonyId, creation);
-        });
+        api.MapPost("/passkeys/begin", async (
+            HttpContext context, AuthService auth, PasskeyProvider passkeys) => {
+                if (context.CurrentUser() is not { } user) {
+                    return Results.Json(new { error = "Sign in first." }, statusCode: 401);
+                }
+                var existing = await auth.Store.CredentialsForAsync(user.Id);
+                var (ceremonyId, creation) = passkeys.BeginRegistration(
+                    RegistrationPurpose.AddPasskey, user.Id, user.DisplayName, null, existing);
+                return Ceremony(ceremonyId, creation);
+            });
 
         api.MapPost("/passkeys/complete", async (
-            HttpContext context, AuthService auth, RegisterBody body) => {
+            HttpContext context, PasskeyProvider passkeys, RegisterBody body) => {
                 if (context.CurrentUser() == null) {
                     return Results.Json(new { error = "Sign in first." }, statusCode: 401);
                 }
-                var result = await auth.CompleteRegistrationAsync(
+                var result = await passkeys.CompleteRegistrationAsync(
                     body?.CeremonyId, Attestation(body), body?.PasskeyName, OriginOf(context));
                 return result.Ok
                     ? Results.Ok(new { added = true })
@@ -353,6 +363,7 @@ public static class AuthApi {
             context.RequireAdmin() ?? Results.Ok(new {
                 users = (await auth.Store.ListUsersAsync()).Select(u => new {
                     id = u.User.Id,
+                    username = u.User.Username,
                     displayName = u.User.DisplayName,
                     role = u.User.Role.ToString(),
                     disabled = u.User.Disabled,
@@ -397,6 +408,58 @@ public static class AuthApi {
                 return Results.Ok(new { disabled = body?.Disabled ?? false });
             });
 
+        // The handle is a branch and a directory in every project, so this moves
+        // those before it changes the row. Server Admin only: it is not a display
+        // name, and the person it belongs to cannot fix a half-done rename.
+        api.MapPost("/users/{id:guid}/username", async (
+            HttpContext context, AuthService auth, ProjectRegistry projects,
+            NotebookSessionManager sessions, Guid id, UsernameBody body) => {
+                if (context.RequireAdmin() is { } refusal) {
+                    return refusal;
+                }
+                var wanted = (body?.Username ?? string.Empty).Trim();
+                if (UserName.Problem(wanted) is { } problem) {
+                    return Results.BadRequest(new { error = problem });
+                }
+                if (await auth.Store.FindUserAsync(id) is not { } user) {
+                    return Results.NotFound(new { error = "No such account." });
+                }
+                if (string.Equals(user.Username, wanted, StringComparison.Ordinal)) {
+                    return Results.Ok(new { username = wanted, renamed = 0 });
+                }
+                if ((await auth.Store.UsernamesAsync()).Any(
+                        u => string.Equals(u, wanted, StringComparison.OrdinalIgnoreCase))) {
+                    return Results.Conflict(new { error = $"'{wanted}' is already somebody's username." });
+                }
+
+                // Git first, and all of it or none: a row saying one thing while a
+                // worktree is named another leaves that person unable to open their
+                // own branch, and nothing later would reconcile it. A rename back is
+                // cheap and local, so a failure half way undoes what it did.
+                var moved = new List<GitService>();
+                foreach (var project in projects.Projects) {
+                    if (projects.GitFor(project) is not { } git) {
+                        continue;
+                    }
+                    // Any kernel under the old directory dies now: it holds an
+                    // absolute path and is about to be writing into a folder that
+                    // does not exist.
+                    sessions?.DropUnder(git.UserPath(user.Username));
+                    if (git.RenameUser(user.Username, wanted) is { } failed) {
+                        foreach (var done in moved) {
+                            done.RenameUser(wanted, user.Username);
+                        }
+                        return Results.Conflict(new {
+                            error = $"{project.Slug}: {failed} Nothing was renamed.",
+                        });
+                    }
+                    moved.Add(git);
+                }
+
+                await auth.Store.SetUsernameAsync(id, wanted);
+                return Results.Ok(new { username = wanted, renamed = moved.Count });
+            });
+
         api.MapDelete("/users/{id:guid}", async (HttpContext context, AuthService auth, Guid id) => {
             if (context.RequireAdmin() is { } refusal) {
                 return refusal;
@@ -415,6 +478,8 @@ public static class AuthApi {
                     code = i.Code,
                     role = i.Role.ToString(),
                     label = i.Label,
+                    displayName = i.DisplayName,
+                    username = i.Username,
                     createdAt = i.CreatedAt,
                     expiresAt = i.ExpiresAt,
                     usedAt = i.UsedAt,
@@ -434,8 +499,26 @@ public static class AuthApi {
                 if (!Enum.TryParse<UserRole>(body?.Role, out var role)) {
                     return Results.BadRequest(new { error = "Unknown role." });
                 }
+                if (Clean(body?.DisplayName) is not { } displayName) {
+                    return Results.BadRequest(new { error = "A name is required." });
+                }
+                var username = Clean(body?.Username)?.ToLowerInvariant();
+                if (username == null) {
+                    return Results.BadRequest(new { error = "A username is required." });
+                }
+                if (UserName.Problem(username) is { } bad) {
+                    return Results.BadRequest(new { error = bad });
+                }
+                // Reserved against accounts *and* against invites nobody has opened
+                // yet: two open invites for `ada` would both look fine here and the
+                // second would fail at redemption, with somebody holding a key.
+                if (await TakenBy(auth.Store, username) is { } holder) {
+                    return Results.Json(
+                        new { error = $"'{username}' is already {holder}." }, statusCode: 409);
+                }
                 var invite = await auth.Store.CreateInviteAsync(
-                    AuthService.NewInviteCode(), role, Clean(body?.Label), context.CurrentUser()?.Id,
+                    AuthService.NewInviteCode(), role, Clean(body?.Label), displayName, username,
+                    context.CurrentUser()?.Id,
                     DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
                 return Results.Ok(new { code = invite.Code, expiresAt = invite.ExpiresAt });
             });
@@ -445,6 +528,44 @@ public static class AuthApi {
             ?? (await auth.Store.RevokeInviteAsync(code)
                 ? Results.Ok(new { revoked = true })
                 : Results.BadRequest(new { error = "That invite has already been used." })));
+    }
+
+    /// <summary>
+    /// What already holds this handle, or null when nothing does. Accounts and open
+    /// invites both count: an invite is a reservation, and one that can be issued
+    /// twice is not one.
+    /// </summary>
+    private static async Task<string> TakenBy(IAuthStore store, string username) {
+        if ((await store.UsernamesAsync()).Contains(username, StringComparer.OrdinalIgnoreCase)) {
+            return "somebody's username";
+        }
+        var now = DateTime.UtcNow;
+        return (await store.ListInvitesAsync()).Any(i =>
+            i.IsUsable(now) && string.Equals(i.Username, username, StringComparison.OrdinalIgnoreCase))
+            ? "reserved by an open invite"
+            : null;
+    }
+
+    /// <summary>
+    /// Why this invite cannot become an account, or null. Checked when the invitee
+    /// opens it and again as the ceremony begins, because the world moves between
+    /// issuing an invite and opening it: the admin can rename somebody onto the
+    /// reserved handle, and old invites carry no handle at all.
+    /// </summary>
+    private static async Task<string> InviteRefusal(IAuthStore store, Invite invite) {
+        if (string.IsNullOrEmpty(invite.Username) || string.IsNullOrEmpty(invite.DisplayName)) {
+            // Deliberately not "derive one from the display name": that was the old
+            // path, and leaving it reachable means never noticing it still fires.
+            return "This invite was made before invites carried a name. Ask for a new one.";
+        }
+        return (await store.UsernamesAsync()).Contains(invite.Username, StringComparer.OrdinalIgnoreCase)
+            ? $"The username on this invite ('{invite.Username}') has since been taken. "
+                + "Ask for a new one."
+            : null;
+    }
+
+    private sealed class UsernameBody {
+        public string Username { get; set; }
     }
 
     private const string _lastAdmin =
@@ -534,8 +655,8 @@ public static class AuthApi {
         context.Request.Headers.Origin.ToString() is { Length: > 0 } origin ? origin : null;
 
     private static async Task<IResult> FinishRegistration(
-        HttpContext context, AuthService auth, RegisterBody body) {
-        var result = await auth.CompleteRegistrationAsync(
+        HttpContext context, AuthService auth, PasskeyProvider passkeys, RegisterBody body) {
+        var result = await passkeys.CompleteRegistrationAsync(
             body?.CeremonyId, Attestation(body), body?.PasskeyName, OriginOf(context));
         if (!result.Ok) {
             return Results.BadRequest(new { error = result.Error });
@@ -595,5 +716,5 @@ public static class AuthApi {
     public sealed record AssertBody(string CeremonyId, JsonElement Response);
     public sealed record RoleBody(string Role);
     public sealed record DisabledBody(bool Disabled);
-    public sealed record InviteBody(string Role, string Label);
+    public sealed record InviteBody(string Role, string Label, string DisplayName, string Username);
 }

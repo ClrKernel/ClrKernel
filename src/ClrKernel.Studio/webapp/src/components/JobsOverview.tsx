@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Plus, Square, Trash2 } from 'lucide-react';
+import { History, Play, Plus, Square, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { CheckboxField, Field, FieldRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { api } from '../api';
+import { api, isActive } from '../api';
+import { timeAgo } from '../ipynb';
+import { StatusBadge, usePolling } from './common';
 import { addJob, readJobsFile, removeJob, setJobField, type JobView } from '../jobsFile';
 import { CronField } from './CronField';
 
@@ -219,6 +221,13 @@ export function JobsOverview({
 function JobActions({ project, branch, name }: { project: string; branch: string; name: string }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // The job's own last run, polled. "Started." was a note this component wrote
+  // to itself and then never revised — it still said Started long after the run
+  // had finished, which is worse than saying nothing. This is the run, so it
+  // says Running and then Succeeded, and it says it whether or not you were the
+  // one who pressed the button.
+  const { data: runs, reload } = usePolling(() => api.jobRuns(branch, name, 1), 3000, [branch, name]);
+  const last = runs?.[0] ?? null;
 
   async function press(what: 'run' | 'cancel') {
     setNote(null);
@@ -226,11 +235,11 @@ function JobActions({ project, branch, name }: { project: string; branch: string
     try {
       if (what === 'run') {
         await api.runJob(branch, name);
-        setNote('Started.');
       } else {
         await api.cancelJob(branch, name);
-        setNote('Cancelling.');
       }
+      // Ahead of the next tick, so the badge moves under the finger that pressed.
+      reload();
     } catch (e) {
       setNote((e as Error).message);
     } finally {
@@ -238,24 +247,41 @@ function JobActions({ project, branch, name }: { project: string; branch: string
     }
   }
 
+  const running = last != null && isActive(last.status);
+
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-      <Button variant="outline" size="sm" disabled={busy} onClick={() => press('run')}>
+      <Button variant="outline" size="sm" disabled={busy || running} onClick={() => press('run')}>
         <Play className="size-3.5" aria-hidden="true" />
         Run now
       </Button>
-      <Button variant="ghost" size="sm" disabled={busy} onClick={() => press('cancel')}>
-        <Square className="size-3.5" aria-hidden="true" />
-        Cancel run
+      {/* Only while there is something to stop. It used to sit there always,
+          offering to cancel a job that had not run since Tuesday. */}
+      {running && (
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => press('cancel')}>
+          <Square className="size-3.5" aria-hidden="true" />
+          Cancel run
+        </Button>
+      )}
+      <Button variant="ghost" size="sm" asChild>
+        <Link
+          className="hover:no-underline"
+          to={`/monitoring?project=${encodeURIComponent(project)}`
+            + `&env=${encodeURIComponent(branch)}&job=${encodeURIComponent(name)}`}
+        >
+          <History className="size-3.5" aria-hidden="true" />
+          View runs
+        </Link>
       </Button>
-      <Link
-        className="text-base text-primary hover:underline"
-        to={`/monitoring?project=${encodeURIComponent(project)}`
-          + `&env=${encodeURIComponent(branch)}&job=${encodeURIComponent(name)}`}
-      >
-        Its runs
-      </Link>
-      {note && <span className="text-base text-muted-foreground">{note}</span>}
+      {last != null && (
+        <span className="flex items-center gap-1.5">
+          <StatusBadge status={last.status} />
+          <span className="text-xs text-muted-subtle">
+            {running ? 'now' : timeAgo(last.finishedAt ?? last.startedAt ?? last.createdAt)}
+          </span>
+        </span>
+      )}
+      {note && <span className="text-base text-status-danger">{note}</span>}
     </div>
   );
 }

@@ -19,19 +19,56 @@ mkdir -p $S/nb $S/data
 printf '# Extract\n\n```sql\nSELECT 1\n```\n' > $S/nb/etl.nb.md
 
 # Once: the git workflow, which most of the app needs (Files, editing, promotion).
+# --data-dir must be the SAME directory the server runs with: `git init` writes
+# gitEnabled into that folder's settings.json, and pointing it anywhere else
+# leaves the server reading a file that never got the flag. What you see then is
+# every cell read-only behind "Editing needs the git workflow — run
+# `clrkernel-studio git init`", having just run exactly that.
 dotnet run --project src/ClrKernel.Studio -f net8.0 -- \
-    git init --notebooks "$S/nb" --data-dir "$S/gitcfg"
+    git init --notebooks "$S/nb" --data-dir "$S/data"
 
 DATA_DIR=$S/data API_PORT=5091 UI_PORT=5181 \
     nohup ./dev/studio-dev.sh $S/nb > $S/dev.log 2>&1 &
-echo $! > $S/pid
 
 until curl -sf localhost:5091/api/health >/dev/null; do sleep 2; done
 ````
 
-Then drive **`http://localhost:5181`**. Teardown: `kill -- -$(cat $S/pid)` — the
-process group, because `dotnet watch` spawns the app as a child and killing only
-the parent leaves the port held.
+Then drive **`http://localhost:5181`**.
+
+**Teardown: kill by port, not by pid.** `kill -- -$(cat $S/pid)` looks right and
+does not work here — the pid recorded by `$!` is the `nohup`'d shell, and under a
+non-interactive shell it is not the leader of the group the children are in, so
+the API and Vite outlive it. Use the ports the loop was told to use:
+
+```bash
+pkill -f "$S/nb"          # both halves of this loop, named by its notebooks root
+for p in 5091 5181; do kill $(lsof -nP -iTCP:$p -sTCP:LISTEN -t 2>/dev/null); done
+```
+
+Then check nothing of yours is left: `lsof -nP -iTCP -sTCP:LISTEN | grep -E ':(5091|5181) '`.
+**Never `pkill -f studio-dev.sh`** — the user's own loop matches it too, and the
+first sign is their browser going dead while you are looking at yours.
+
+**Verify the proxy before believing a browser check.** The UI port and the API
+port are two processes, and the page only proves something if the first is
+talking to the second. One line, and it has caught a misroute more than once:
+
+```bash
+[ "$(curl -s localhost:5091/api/health | jq -r .notebooksRoot)" \
+  = "$(curl -s localhost:5181/api/health | jq -r .notebooksRoot)" ] \
+  && echo "proxy ok" || echo "MISROUTED — the browser is not talking to your API"
+```
+
+`/api/health` answers without a key, but only `notebooksRoot` means anything to an
+anonymous caller. **`gitEnabled` there is computed over the projects the *caller*
+can see**, so `curl` always reports `false` and reading it as "git init did not
+work" sends you to rewrite something that was already right. Check it signed in,
+from inside the page: `await (await fetch('/api/health')).json()`.
+
+`dev/studio-dev.sh` passes `--strictPort` so a taken UI port fails loudly; before
+that, Vite quietly bound the next free one while still proxying to *your*
+API_PORT, and the browser showed one instance's files against another's kernel
+with no error anywhere. If you ever run Vite by hand, keep the flag.
 
 **Absolute paths.** `dotnet run --project` runs the app from the project folder,
 so a relative `--data-dir` or notebooks root lands under `src/ClrKernel.Studio`
@@ -117,6 +154,15 @@ page.wait_for_url(lambda u: not u.endswith('/setup'), timeout=15000)
   `DataTransfer` for the arithmetic.
 - Setup runs once per data dir. Re-run the reset before a script that creates the
   admin account, or `page.fill` times out on a sign-in screen.
+- **Drive `localhost`, never `[::1]`.** Vite binds IPv6 only, so the literal is
+  tempting and it loads — then registration fails with *"[::1] is an invalid
+  domain"*, because WebAuthn wants a hostname. Chromium reaches the IPv6 listener
+  through `localhost` anyway; `curl` does not always, which is why a wait loop may
+  need the bracketed form while the browser must not have it.
+- **The redirect to `/setup` lands a tick after first paint.** The `*` route
+  renders SignIn while `session` is still null, so asserting on `page.url` right
+  after `goto` catches that flash and concludes the server is already claimed.
+  `page.wait_for_url(lambda u: "/setup" in u)` instead.
 - **Seeded run ids must be UPPERCASE.** EF Core's sqlite provider stores `Guid` as
   uppercase TEXT and its id lookups compare case-sensitively, so a row seeded with
   `str(uuid.uuid4())` lists fine in `/api/runs` and 404s on every route that fetches

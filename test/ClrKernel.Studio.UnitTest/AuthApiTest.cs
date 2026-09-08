@@ -30,6 +30,7 @@ public class AuthApiTest {
     private IAuthStore _auth;
     private JobsOptions _options;
     private HttpClient _anonymous;
+    private ProjectRegistry _projects;
 
     [TestInitialize]
     public async Task Setup() {
@@ -48,8 +49,8 @@ public class AuthApiTest {
         _store.Migrate();
         _auth = TestAuth.StoreFor(dbPath);
 
-        _app = Program.BuildApp(
-            _options, new ProjectRegistry(_options, NullLoggerFactory.Instance), _store, _auth);
+        _projects = new ProjectRegistry(_options, NullLoggerFactory.Instance);
+        _app = Program.BuildApp(_options, _projects, _store, _auth);
         _app.Urls.Add("http://127.0.0.1:0");
         await _app.StartAsync();
         _anonymous = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
@@ -131,7 +132,7 @@ public class AuthApiTest {
         Assert.IsTrue(session.GetProperty("canSetUp").GetBoolean(),
             "the SPA decides between the setup form and the invite instructions on this");
 
-        await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
         session = await _anonymous.GetFromJsonAsync<JsonElement>("/api/auth/session");
         Assert.IsFalse(session.GetProperty("needsSetup").GetBoolean());
     }
@@ -160,7 +161,7 @@ public class AuthApiTest {
     /// <summary>Not a redirect with a helpful message — the route stops existing.</summary>
     [TestMethod]
     public async Task Setup_is_gone_once_the_server_has_an_account() {
-        await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
 
         var response = await _anonymous.PostAsJsonAsync(
             "/api/auth/setup/begin", new { displayName = "Interloper" });
@@ -220,26 +221,112 @@ public class AuthApiTest {
         using var admin = await ClientFor(UserRole.ServerAdmin);
 
         var response = await admin.PostAsJsonAsync("/api/invites",
-            new { role = "ServerViewer", label = "Bob" });
+            new { role = "ServerViewer", displayName = "Bob Barker", username = "bob", label = "Bob" });
         var code = (await response.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("code").GetString();
 
+        // The invitee is told who they are about to become — the whole reason the
+        // name moved to this end.
         var check = await _anonymous.GetFromJsonAsync<JsonElement>($"/api/auth/invite/{code}");
         Assert.IsTrue(check.GetProperty("valid").GetBoolean());
+        Assert.AreEqual("Bob Barker", check.GetProperty("displayName").GetString());
+        Assert.AreEqual("bob", check.GetProperty("username").GetString());
 
         var listed = await admin.GetFromJsonAsync<JsonElement>("/api/invites");
         Assert.AreEqual("open", listed.GetProperty("invites")[0].GetProperty("status").GetString());
+        Assert.AreEqual("bob", listed.GetProperty("invites")[0].GetProperty("username").GetString());
 
         Assert.AreEqual(HttpStatusCode.OK, (await admin.DeleteAsync($"/api/invites/{code}")).StatusCode);
         check = await _anonymous.GetFromJsonAsync<JsonElement>($"/api/auth/invite/{code}");
         Assert.IsFalse(check.GetProperty("valid").GetBoolean());
+        // And a withdrawn one goes back to saying nothing: the name would otherwise
+        // tell whoever holds the code that an account by it exists.
+        Assert.IsFalse(check.TryGetProperty("username", out _));
+    }
+
+    /// <summary>
+    /// The point of settling both names on the admin's form: everything that can be
+    /// refused is refused while somebody is looking at a form, not while they are
+    /// holding a security key.
+    /// </summary>
+    [TestMethod]
+    public async Task An_invite_needs_a_name_and_a_username_that_nothing_else_holds() {
+        using var admin = await ClientFor(UserRole.ServerAdmin, "Ada Lovelace");
+
+        async Task<(HttpStatusCode Status, string Body)> Create(object body) {
+            var reply = await admin.PostAsJsonAsync("/api/invites", body);
+            return (reply.StatusCode, await reply.Content.ReadAsStringAsync());
+        }
+
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await Create(new { role = "ServerUser", username = "bob" })).Status, "no name");
+        Assert.AreEqual(HttpStatusCode.BadRequest,
+            (await Create(new { role = "ServerUser", displayName = "Bob" })).Status, "no username");
+
+        var bad = await Create(new { role = "ServerUser", displayName = "Bob", username = "Bob Barker" });
+        Assert.AreEqual(HttpStatusCode.BadRequest, bad.Status);
+        StringAssert.Contains(bad.Body, "letters", "the refusal says what a username may hold");
+
+        // Taken by the admin who is signed in — whose handle came from their name.
+        var mine = await Create(new { role = "ServerUser", displayName = "Someone", username = "ada-lovelace" });
+        Assert.AreEqual(HttpStatusCode.Conflict, mine.Status, mine.Body);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await Create(new { role = "ServerUser", displayName = "Bob", username = "bob" })).Status);
+
+        // And an invite reserves it: the second one for `bob` is refused here rather
+        // than at redemption, where the loser is holding a passkey.
+        var twice = await Create(new { role = "ServerUser", displayName = "Other Bob", username = "bob" });
+        Assert.AreEqual(HttpStatusCode.Conflict, twice.Status);
+        StringAssert.Contains(twice.Body, "open invite");
+    }
+
+    /// <summary>
+    /// An invite issued before invites carried a name has nothing to create an
+    /// account from. Refused, and told to ask again — not quietly given a derived
+    /// handle, which is the path this change exists to close.
+    /// </summary>
+    [TestMethod]
+    public async Task An_invite_from_before_this_is_refused_rather_than_guessed() {
+        var now = DateTime.UtcNow;
+        await _auth.CreateInviteAsync(
+            "legacy", UserRole.ServerUser, "Bob on the data team", null, null, null, now,
+            TimeSpan.FromDays(7));
+
+        var reply = await _anonymous.PostAsJsonAsync("/api/auth/invite/legacy/begin", new { });
+
+        Assert.AreEqual(HttpStatusCode.BadRequest, reply.StatusCode);
+        StringAssert.Contains(await reply.Content.ReadAsStringAsync(), "Ask for a new one");
+    }
+
+    /// <summary>
+    /// The window the form cannot close: an admin renames somebody onto the handle
+    /// an open invite reserved. Caught before the ceremony starts — the alternative
+    /// is a unique-index violation with a passkey already created.
+    /// </summary>
+    [TestMethod]
+    public async Task A_username_taken_after_the_invite_was_issued_is_caught_before_the_passkey() {
+        using var admin = await ClientFor(UserRole.ServerAdmin);
+        var reply = await admin.PostAsJsonAsync("/api/invites",
+            new { role = "ServerUser", displayName = "Bob Barker", username = "bob" });
+        var code = (await reply.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("code").GetString();
+
+        // Somebody else gets there first, by any route that writes a username.
+        await _auth.CreateUserAsync(Guid.NewGuid(), "bob", "Bob Someone-Else", UserRole.ServerUser);
+
+        var begin = await _anonymous.PostAsJsonAsync($"/api/auth/invite/{code}/begin", new { });
+        Assert.AreEqual(HttpStatusCode.BadRequest, begin.StatusCode,
+            begin.StatusCode + " " + await begin.Content.ReadAsStringAsync());
+        StringAssert.Contains(await begin.Content.ReadAsStringAsync(), "has since been taken");
     }
 
     /// <summary>Every bad code answers the same, so none of them is a probe.</summary>
     [TestMethod]
     public async Task Bad_invite_codes_are_indistinguishable() {
         using var admin = await ClientFor(UserRole.ServerAdmin);
-        var response = await admin.PostAsJsonAsync("/api/invites", new { role = "ServerViewer" });
+        var response = await admin.PostAsJsonAsync("/api/invites",
+            new { role = "ServerViewer", displayName = "Bob", username = "bob" });
         var code = (await response.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("code").GetString();
         await admin.DeleteAsync($"/api/invites/{code}");
@@ -247,7 +334,7 @@ public class AuthApiTest {
         var messages = new List<string>();
         foreach (var candidate in new[] { code, "never-existed" }) {
             var begin = await _anonymous.PostAsJsonAsync(
-                $"/api/auth/invite/{candidate}/begin", new { displayName = "Bob" });
+                $"/api/auth/invite/{candidate}/begin", new { });
             Assert.AreEqual(HttpStatusCode.BadRequest, begin.StatusCode);
             messages.Add((await begin.Content.ReadFromJsonAsync<JsonElement>())
                 .GetProperty("error").GetString());
@@ -269,7 +356,7 @@ public class AuthApiTest {
     [TestMethod]
     public async Task An_admin_cannot_disable_or_remove_themselves() {
         using var admin = await ClientFor(UserRole.ServerAdmin, "Ada");
-        await _auth.CreateUserAsync(Guid.NewGuid(), "Grace", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "grace", "Grace", UserRole.ServerAdmin);
         var me = (await admin.GetFromJsonAsync<JsonElement>("/api/users"))
             .GetProperty("users").EnumerateArray().First(u => u.GetProperty("isYou").GetBoolean());
         var id = me.GetProperty("id").GetGuid();
@@ -305,16 +392,16 @@ public class AuthApiTest {
     /// </summary>
     [TestMethod]
     public void Loopback_origins_are_recognised() {
-        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://localhost:5173"));
-        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://127.0.0.1:5000"));
-        Assert.IsTrue(AuthService.IsLoopbackOrigin("http://[::1]:5000"));
+        Assert.IsTrue(PasskeyProvider.IsLoopbackOrigin("http://localhost:5173"));
+        Assert.IsTrue(PasskeyProvider.IsLoopbackOrigin("http://127.0.0.1:5000"));
+        Assert.IsTrue(PasskeyProvider.IsLoopbackOrigin("http://[::1]:5000"));
 
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("https://jobs.example.internal"));
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("http://localhost.evil.example"),
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("https://jobs.example.internal"));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("http://localhost.evil.example"),
             "a hostname that merely starts with localhost is somebody else's domain");
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("file:///tmp"));
-        Assert.IsFalse(AuthService.IsLoopbackOrigin("not a url"));
-        Assert.IsFalse(AuthService.IsLoopbackOrigin(null));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("file:///tmp"));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin("not a url"));
+        Assert.IsFalse(PasskeyProvider.IsLoopbackOrigin(null));
     }
 
     /// <summary>
@@ -361,7 +448,7 @@ public class AuthApiTest {
         Assert.AreEqual("/setup", response.Headers.Location?.OriginalString,
             "an unclaimed server sends every door to the same place");
 
-        await _auth.CreateUserAsync(Guid.NewGuid(), "Ada", UserRole.ServerAdmin);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerAdmin);
         response = await browser.GetAsync("/jobs");
         Assert.AreEqual("/signin", response.Headers.Location?.OriginalString);
 
@@ -371,5 +458,75 @@ public class AuthApiTest {
         // OK made a passing test mean "somebody ran vite on this machine once".
         Assert.AreNotEqual(HttpStatusCode.Redirect, (await browser.GetAsync("/signin")).StatusCode,
             "the page you are being sent to cannot itself redirect");
+    }
+
+    /// <summary>
+    /// A rename is a git operation before it is a database one: the handle names a
+    /// branch and a directory in every project.
+    /// </summary>
+    [TestMethod]
+    public async Task An_admin_renames_an_account_and_its_branch_moves() {
+        // Its own server, with the git workflow on: two tests in this class behave
+        // differently when it is, and this is the only one that needs a workspace.
+        var options = new JobsOptions {
+            DataDir = _options.DataDir,
+            NotebooksRoot = _options.NotebooksRoot,
+            GitEnabled = true,
+        };
+        var projects = new ProjectRegistry(options, NullLoggerFactory.Instance);
+        var git = projects.GitFor(projects.Default);
+        git.Init();
+        var app = Program.BuildApp(options, projects, _store, _auth);
+        app.Urls.Add("http://127.0.0.1:0");
+        await app.StartAsync();
+        try {
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.First()) };
+            await TestAuth.SignInAsync(app, client, UserRole.ServerAdmin);
+            var them = await _auth.CreateUserAsync(Guid.NewGuid(), "grace", "Grace", UserRole.ServerUser);
+            git.EnsureUserWorktree("grace");
+            File.WriteAllText(Path.Combine(git.UserPath("grace"), "wip.nb.md"), "hers\n");
+
+            var reply = await client.PostAsJsonAsync(
+                $"/api/users/{them.Id:D}/username", new { username = "grace-hopper" });
+
+            Assert.AreEqual(HttpStatusCode.OK, reply.StatusCode, await reply.Content.ReadAsStringAsync());
+            Assert.AreEqual("grace-hopper", (await _auth.FindUserAsync(them.Id)).Username);
+            Assert.IsFalse(Directory.Exists(git.UserPath("grace")));
+            Assert.AreEqual(
+                "hers\n", File.ReadAllText(Path.Combine(git.UserPath("grace-hopper"), "wip.nb.md")));
+        } finally {
+            await app.StopAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task A_rename_is_refused_before_it_moves_anything() {
+        using var _client = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
+        await TestAuth.SignInAsync(_app, _client, UserRole.ServerAdmin);
+        var them = await _auth.CreateUserAsync(Guid.NewGuid(), "grace", "Grace", UserRole.ServerUser);
+        await _auth.CreateUserAsync(Guid.NewGuid(), "ada", "Ada", UserRole.ServerUser);
+        foreach (var (wanted, expected) in new[] {
+            ("ada", HttpStatusCode.Conflict),          // somebody else has it
+            ("Grace Hopper", HttpStatusCode.BadRequest), // not a usable handle
+            ("test", HttpStatusCode.BadRequest),         // names a branch
+        }) {
+            var reply = await _client.PostAsJsonAsync(
+                $"/api/users/{them.Id:D}/username", new { username = wanted });
+            Assert.AreEqual(expected, reply.StatusCode, wanted);
+        }
+
+        Assert.AreEqual("grace", (await _auth.FindUserAsync(them.Id)).Username, "the row is untouched");
+    }
+
+    [TestMethod]
+    public async Task Only_an_admin_may_rename_an_account() {
+        using var _client = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
+        var me = await TestAuth.SignInAsync(_app, _client, UserRole.ServerUser);
+
+        var reply = await _client.PostAsJsonAsync(
+            $"/api/users/{me.Id:D}/username", new { username = "whatever" });
+
+        Assert.AreEqual(HttpStatusCode.Forbidden, reply.StatusCode,
+            "not even your own — a half-done rename is not yours to fix");
     }
 }

@@ -86,7 +86,7 @@ export function monacoLanguage(
  * than the plaintext it would otherwise have fallen back to. A future dialect
  * that wants its own highlighter is added here and there together.
  */
-const KNOWN_TO_MONACO = new Set(['csharp', 'sql', 'powershell', 'shell', 'plaintext', 'markdown']);
+const KNOWN_TO_MONACO = new Set(['csharp', 'sql', 'powershell', 'shell', 'python', 'plaintext', 'markdown']);
 
 /**
  * The cells to keep open on the kernel, for completion and hover.
@@ -190,12 +190,48 @@ export function isPdf(path: string): boolean {
 }
 
 /**
+ * A workbook: a spreadsheet stored as a binary file rather than as text.
+ *
+ * `.xls` is OLE2 and `.ods` is a zip of different XML — three formats with
+ * nothing in common but what they mean, which is the reason the reader is
+ * SheetJS and not something that speaks only OpenXML.
+ */
+export function isWorkbook(path: string): boolean {
+  return /\.(xlsx|xlsm|xls|ods)$/i.test(path ?? '');
+}
+
+/**
+ * A spreadsheet the Preview tab can lay out as a grid.
+ *
+ * CSV and TSV are here as well as being text: they *are* a table, and a table is
+ * the thing you opened them to look at. They keep their Source tab; a workbook
+ * has none to keep.
+ */
+export function isSpreadsheet(path: string): boolean {
+  return isWorkbook(path) || /\.(csv|tsv|tab)$/i.test(path ?? '');
+}
+
+/**
  * A file with no text in it. It gets a preview and nothing else: no Source tab
  * over mojibake, and no diff — `File.ReadAllText` over a PNG is not a thing to
- * compare two of.
+ * compare two of. A workbook is in the same position, and was the file that
+ * proved it: `.xlsx` opened as text is a screenful of zip header.
  */
 export function isBinary(path: string): boolean {
-  return isImage(path) || isPdf(path);
+  return isImage(path) || isPdf(path) || isWorkbook(path);
+}
+
+/**
+ * A spreadsheet column's name: A, B, … Z, AA, AB. Bijective base-26, which is
+ * not base-26 — there is no zero digit, so column 26 is "Z" and 27 is "AA"
+ * rather than "A@" or "BA".
+ */
+export function columnLabel(index: number): string {
+  let label = '';
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    label = String.fromCharCode(65 + ((n - 1) % 26)) + label;
+  }
+  return label;
 }
 
 /**
@@ -206,7 +242,7 @@ export function isBinary(path: string): boolean {
  * so this says what the Preview tab renders and `viewFor` decides which of the
  * two you land on.
  */
-export type PreviewKind = 'image' | 'svg' | 'pdf' | 'markdown';
+export type PreviewKind = 'image' | 'svg' | 'pdf' | 'markdown' | 'sheet';
 
 export function previewKind(path: string): PreviewKind | null {
   const name = (path ?? '').toLowerCase();
@@ -218,6 +254,9 @@ export function previewKind(path: string): PreviewKind | null {
   }
   if (isImage(name)) {
     return 'image';
+  }
+  if (isSpreadsheet(name)) {
+    return 'sheet';
   }
   // A `.nb.md` has the Notebook view, which renders its prose already.
   return name.endsWith('.md') && !opensAsCells(name) ? 'markdown' : null;
@@ -258,10 +297,14 @@ export function viewFor(asked: NotebookView, path: string): NotebookView {
 /**
  * Why this file cannot be written here, or null when it can.
  *
- * The toolbar says it out loud, and the reason matters: "not text" is true of a
- * picture and a lie about `connections.json`, which is text and is written from
- * your saved connections — the first version of this note said the wrong thing
- * to the one person who went looking for an answer.
+ * The reason matters: "not text" is true of a picture and a lie about
+ * `connections.json`, which is text and is written from your saved connections —
+ * the first version of this note said the wrong thing to the one person who went
+ * looking for an answer.
+ *
+ * The words "read-only" are not in it. This is the *why*, and the toolbar's pill
+ * is the *what* — a sentence beginning "read-only — " inside a chip that already
+ * says read-only said it twice, in a grey small enough to miss both times.
  */
 export function readOnlyReason(path: string): string | null {
   if (fileEditable(path)) {
@@ -269,15 +312,18 @@ export function readOnlyReason(path: string): string | null {
   }
   const name = (path ?? '').toLowerCase().split('/').pop() ?? '';
   if (GENERATED_NAMES.includes(name)) {
-    return 'read-only — written from your saved connections. Edit it on the Connections page.';
+    return 'This file is written from your saved connections. Edit it on the Connections page.';
+  }
+  if (isWorkbook(name)) {
+    return 'A workbook opens here to look at, not to edit.';
   }
   if (isPdf(name)) {
-    return 'read-only — a PDF opens to read';
+    return 'A PDF opens here to read, not to edit.';
   }
   if (isImage(name)) {
-    return 'read-only — a picture opens to look at';
+    return 'A picture opens here to look at, not to edit.';
   }
-  return 'read-only — this file is not text';
+  return 'This file is not text, so there is nothing here that could edit it.';
 }
 
 /**

@@ -137,7 +137,9 @@ describe('language registry', () => {
         expect(languageForTag('PS1')?.id).toBe('powershell');
         expect(languageForTag('zsh')?.id).toBe('shellscript');
         expect(languageForTag('csharp')).toBeUndefined();
-        expect(languageForTag('python')).toBeUndefined();
+        expect(languageForTag('python')?.id).toBe('python');
+        expect(languageForTag('py')?.id).toBe('python');
+        expect(languageForTag('ruby')).toBeUndefined();
     });
 
     it('prefers a tag own selector, falling back to the default', () => {

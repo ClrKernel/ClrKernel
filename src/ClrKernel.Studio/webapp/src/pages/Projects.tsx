@@ -299,15 +299,15 @@ function Worktrees({ project }: { project: Project }) {
   const { data, error, reload } = usePolling(() => api.worktrees(project.slug), null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  async function remove(userId: string, owner: string, force: boolean) {
+  async function remove(handle: string, owner: string, force: boolean) {
     setProblem(null);
     try {
-      await api.removeWorktree(project.slug, userId, force);
+      await api.removeWorktree(project.slug, handle, force);
       reload();
     } catch (e) {
       const message = (e as Error).message;
       if (!force && confirm(`${message}\n\nRemove ${owner}'s branch anyway? It cannot be undone.`)) {
-        await remove(userId, owner, true);
+        await remove(handle, owner, true);
         return;
       }
       setProblem(message);
@@ -322,7 +322,7 @@ function Worktrees({ project }: { project: Project }) {
         <table className="table">
           <tbody>
             {(data?.worktrees ?? []).map((w) => (
-              <tr key={w.userId}>
+              <tr key={w.handle}>
                 <td>{w.owner}</td>
                 <td className="text-muted-foreground">
                   {w.dirty
@@ -337,7 +337,7 @@ function Worktrees({ project }: { project: Project }) {
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`Remove ${w.owner}'s branch`}
-                    onClick={() => remove(w.userId, w.owner, false)}
+                    onClick={() => remove(w.handle, w.owner, false)}
                   >
                     <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>

@@ -65,6 +65,12 @@ export const bundledLanguages: LanguageDescriptor[] = [
         languageTags: ['pwsh', 'powershell', 'ps1'], hasEditorServices: true,
     },
     {
+        id: 'python', displayName: 'Python', defaultSelector: '#!python',
+        selectors: ['#!python', '#!py', '#!python-reset', '#!python-install'],
+        languageTags: ['python', 'py'],
+        editorLanguageId: 'clr-python', grammarId: 'python',
+    },
+    {
         id: 'shellscript', displayName: 'Shell', defaultSelector: '#!bash',
         selectors: ['#!bash', '#!zsh', '#!sh', '#!shell', '#!shell-connect'],
         languageTags: ['bash', 'zsh', 'sh', 'shell'],

@@ -29,6 +29,7 @@ public static class JobsApi {
         // contains a slash the moment user branches exist, and a write route that
         // cannot name someone else's branch cannot write to it.
         var scoped = api.MapGroup("/projects/{project}/branches/{branch}");
+        MapSecrets(scoped);
 
         api.MapGet("/health", async (HttpContext context, ProjectRegistry projects) => {
             // Counts and errors are scoped the same way the lists are: a project
@@ -297,8 +298,8 @@ public static class JobsApi {
                     // The one read that makes a branch, and it makes it here rather
                     // than in BranchFor: this is the page you open in order to have
                     // one, so it is the read that means you are about to work.
-                    var mine = scope.Git.EnsureUserWorktree(me.Id);
-                    ConnectionsApi.OnWorktreeCreated(context, scope.Git, me.Id);
+                    var mine = scope.Git.EnsureUserWorktree(me.Username);
+                    ConnectionsApi.OnWorktreeCreated(context, scope.Git, me);
                     // Annotated with this branch's jobs, which is none: the catalog
                     // scans environments, and a personal branch is not one. Leaving
                     // the environment out would annotate with every job on the
@@ -322,10 +323,10 @@ public static class JobsApi {
                     var caller = context.CurrentUser();
                     foreach (var user in (await auth.ListUsersAsync())
                                  .Where(u => caller == null || u.User.Id != caller.Id)
-                                 .Where(u => scope.Git.HasUserWorktree(u.User.Id))
+                                 .Where(u => scope.Git.HasUserWorktree(u.User.Username))
                                  .OrderBy(u => u.User.DisplayName, StringComparer.OrdinalIgnoreCase)) {
-                        var theirs = GitService.BranchForUser(user.User.Id);
-                        var named = _someoneBranch + user.User.Id.ToString("D");
+                        var theirs = GitService.BranchForUser(user.User.Username);
+                        var named = _someoneBranch + user.User.Username;
                         trees.Add(new {
                             name = named,
                             label = user.User.DisplayName,
@@ -399,7 +400,13 @@ public static class JobsApi {
                 }
                 context.Response.Headers["X-Content-Type-Options"] = "nosniff";
                 context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; sandbox";
-                return Results.File(resolved, contentType);
+                // A workbook is read by script and never rendered by the browser, so
+                // it goes back as an attachment: `fetch` ignores the disposition and
+                // gets its bytes, while somebody who navigates to the URL downloads
+                // the file instead of handing a macro-enabled one to Excel inline.
+                return WorkbookContentType(resolved) != null
+                    ? Results.File(resolved, contentType, Path.GetFileName(resolved))
+                    : Results.File(resolved, contentType);
             }).RequiresProject(ProjectRole.ProjectViewer);
 
         scoped.MapPut("/notebooks/content", async (
@@ -564,7 +571,7 @@ public static class JobsApi {
 
         scoped.MapPost("/notebooks/session", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
-            NotebookSessionManager sessions, KernelLanguages kernelLanguages,
+            NotebookSessionManager sessions, BranchSecrets secrets, KernelLanguages kernelLanguages,
             string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -579,7 +586,8 @@ public static class JobsApi {
                     // whenever #r adds one — one place, so the two cannot drift.
                     var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
                     var session = await sessions.GetOrStartAsync(
-                        resolved, context.RequestAborted, key, ephemeral);
+                        resolved, context.RequestAborted, key, ephemeral,
+                        await SecretsFor(secrets, scope, branch));
                     return Results.Ok(SessionView.From(session, false));
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message, kernelLog = sessions.Find(SessionFor(context, scope, branch, resolved).Key)?.KernelLog() });
@@ -604,7 +612,7 @@ public static class JobsApi {
 
         scoped.MapPost("/notebooks/run", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options, IRunStore store,
-            NotebookSessionManager sessions, string project, string branch, string path) => {
+            NotebookSessionManager sessions, BranchSecrets secrets, string project, string branch, string path) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
                 }
@@ -629,7 +637,8 @@ public static class JobsApi {
                 try {
                     var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
                     session = await sessions.GetOrStartAsync(
-                        resolved, context.RequestAborted, key, ephemeral);
+                        resolved, context.RequestAborted, key, ephemeral,
+                        await SecretsFor(secrets, scope, branch));
                 } catch (Exception e) {
                     return Results.BadRequest(new { error = e.Message });
                 }
@@ -785,7 +794,7 @@ public static class JobsApi {
         // browser never learns what a connection type is, it renders what it is told.
         scoped.MapGet("/notebooks/connections", async (
             HttpContext context, ProjectRegistry projects, JobsOptions options,
-            NotebookSessionManager sessions, string project, string branch,
+            NotebookSessionManager sessions, BranchSecrets secrets, string project, string branch,
             string path, string languageId) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -801,7 +810,8 @@ public static class JobsApi {
                 try {
                     var (key, ephemeral) = SessionFor(context, scope, branch, resolved);
                     var session = await sessions.GetOrStartAsync(
-                        resolved, context.RequestAborted, key, ephemeral);
+                        resolved, context.RequestAborted, key, ephemeral,
+                        await SecretsFor(secrets, scope, branch));
                     var reply = await session.DescribeConnectionsAsync(languageId, context.RequestAborted);
                     return Results.Ok(new { providers = reply });
                 } catch (Exception e) {
@@ -899,28 +909,37 @@ public static class JobsApi {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.Ok(new { worktrees = Array.Empty<object>() });
                 }
-                var users = (await auth.ListUsersAsync()).ToDictionary(u => u.User.Id);
+                var users = (await auth.ListUsersAsync())
+                    .ToDictionary(u => u.User.Username, StringComparer.OrdinalIgnoreCase);
                 return Results.Ok(new {
-                    worktrees = scope.Git.UserWorktrees().Select(w => new {
-                        userId = w.UserId,
-                        owner = users.TryGetValue(w.UserId, out var user)
+                    // Keyed by handle, which is what the directory is named and what
+                    // the delete route takes. The id rides along for anything that
+                    // still wants to know who, and is absent for an orphan.
+                    worktrees = scope.Git.UserWorktrees(
+                        h => users.TryGetValue(h, out var found) ? found.User.Id : null).Select(w => new {
+                            handle = w.Handle,
+                            userId = w.UserId,
+                            owner = users.TryGetValue(w.Handle, out var user)
                             ? user.User.DisplayName
                             // The account is gone but the branch is still here, which
                             // is exactly the case this page exists to clean up.
                             : "(removed account)",
-                        w.LastCommit,
-                        w.Dirty,
-                        w.Merged,
-                    }),
+                            w.LastCommit,
+                            w.Dirty,
+                            w.Merged,
+                        }),
                 });
             }).RequiresProject(ProjectRole.ProjectAdmin);
 
-        api.MapDelete("/projects/{project}/worktrees/{userId:guid}", (
-            ProjectRegistry projects, string project, Guid userId, bool? force) => {
+        // By handle, not by account id: the thing being removed is a directory and a
+        // branch, both named for the handle, and one may outlive the account it
+        // belonged to — which is the case this route mostly exists for.
+        api.MapDelete("/projects/{project}/worktrees/{handle}", (
+            ProjectRegistry projects, string project, string handle, bool? force) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
-                var refusal = scope.Git.RemoveUserWorktree(userId, force ?? false);
+                var refusal = scope.Git.RemoveUserWorktree(handle, force ?? false);
                 // Deleting somebody's branch is a thing an admin may do; doing it
                 // to unfinished work they have not shared takes saying so twice.
                 return refusal == null
@@ -950,10 +969,10 @@ public static class JobsApi {
                     }
                     foreach (var user in (await auth.ListUsersAsync())
                                  .Where(u => me == null || u.User.Id != me.Id)
-                                 .Where(u => scope.Git.HasUserWorktree(u.User.Id))
+                                 .Where(u => scope.Git.HasUserWorktree(u.User.Username))
                                  .OrderBy(u => u.User.DisplayName, StringComparer.OrdinalIgnoreCase)) {
                         branches.Add(new {
-                            id = _someoneBranch + user.User.Id.ToString("D"),
+                            id = _someoneBranch + user.User.Username,
                             label = user.User.DisplayName,
                             owner = user.User.DisplayName,
                             mine = false,
@@ -979,19 +998,20 @@ public static class JobsApi {
                     return Results.Ok(new { hasBranch = false });
                 }
                 var user = context.CurrentUser();
-                if (user == null || !scope.Git.HasUserWorktree(user.Id)) {
+                if (user == null || !scope.Git.HasUserWorktree(user.Username)) {
                     // No worktree yet is the normal state until the first edit, and
                     // asking about it must not be what creates one.
                     return Results.Ok(new { hasBranch = false });
                 }
-                var standing = scope.Git.StandingOf(user.Id);
+                var standing = scope.Git.StandingOf(user.Username);
                 return Results.Ok(new {
                     hasBranch = true,
-                    branch = GitService.BranchForUser(user.Id),
+                    branch = GitService.BranchForUser(user.Username),
                     standing.Dirty,
                     standing.Ahead,
                     standing.Behind,
                     standing.Conflicts,
+                    standing.BehindFiles,
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 
@@ -1009,7 +1029,7 @@ public static class JobsApi {
                 // broken one on your own branch is a file mid-edit; the same file in
                 // test is a job the scheduler will not run and nobody will notice.
                 // This is the moment it stops being yours.
-                if (InvalidJobsFiles(scope, user.Id) is { Count: > 0 } invalid) {
+                if (InvalidJobsFiles(scope, user.Username) is { Count: > 0 } invalid) {
                     return Results.Json(new {
                         error = invalid.Count == 1
                             ? $"{invalid[0].Path} has a problem — fix it before pushing to test."
@@ -1017,7 +1037,7 @@ public static class JobsApi {
                         invalid,
                     }, statusCode: 409);
                 }
-                var result = scope.Git.PushToTest(user.Id, message, user?.DisplayName, EmailFor(user));
+                var result = scope.Git.PushToTest(user.Username, message, user?.DisplayName, EmailFor(user));
                 if (!result.Pushed) {
                     return Results.Json(
                         new { error = result.Error, needsUpdate = result.NeedsUpdate },
@@ -1033,7 +1053,7 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
                 var user = context.CurrentUser();
-                var conflicts = scope.Git.UpdateFromTest(user.Id, user?.DisplayName, EmailFor(user));
+                var conflicts = scope.Git.UpdateFromTest(user.Username, user?.DisplayName, EmailFor(user));
                 // Conflicts come back as a list of files with markers left in them,
                 // never as a resolution: taking one side automatically is how a merge
                 // silently loses somebody's work.
@@ -1074,7 +1094,7 @@ public static class JobsApi {
             // against everything loaded — a prod-only leftover is not a reason to
             // hide the copy you are working on.
             if (context.CurrentUser() is { } user) {
-                var mine = GitService.BranchForUser(user.Id);
+                var mine = GitService.BranchForUser(user.Username);
                 foreach (var project in projects.Projects) {
                     if (!visible.TryGetValue(project.Slug, out var role)
                         || role < ProjectRole.ProjectMember) {
@@ -1083,7 +1103,7 @@ public static class JobsApi {
                     // Asked, never ensured: this route spans every project and the
                     // dashboard polls it, so making the worktree here would be a
                     // checkout in every registered project on page load.
-                    if (projects.GitFor(project) is not { } git || !git.HasUserWorktree(user.Id)) {
+                    if (projects.GitFor(project) is not { } git || !git.HasUserWorktree(user.Username)) {
                         continue;
                     }
                     var inTest = result.Jobs
@@ -1757,17 +1777,19 @@ public static class JobsApi {
                 // decides a read.
                 if (!HttpMethods.IsGet(context.Request.Method)
                     || context.GrantedRole() >= ProjectRole.ProjectMember) {
-                    Git.EnsureUserWorktree(user.Id);
-                    ConnectionsApi.OnWorktreeCreated(context, Git, user.Id);
+                    Git.EnsureUserWorktree(user.Username);
+                    ConnectionsApi.OnWorktreeCreated(context, Git, user);
                 }
-                return GitService.BranchForUser(user.Id);
+                return GitService.BranchForUser(user.Username);
             }
-            // Somebody else's, named as `user-<id>` because a route segment cannot
+            // Somebody else's, named `user-<handle>` because a route segment cannot
             // hold the slash the branch has. Never created here: a worktree comes
             // into being when its owner first edits, and only then.
-            if (branch.StartsWith(_someoneBranch, StringComparison.Ordinal)
-                && Guid.TryParse(branch[_someoneBranch.Length..], out var owner)) {
-                return Git.HasUserWorktree(owner) ? GitService.BranchForUser(owner) : null;
+            if (branch.StartsWith(_someoneBranch, StringComparison.Ordinal)) {
+                var owner = branch[_someoneBranch.Length..];
+                return owner.Length > 0 && Git.HasUserWorktree(owner)
+                    ? GitService.BranchForUser(owner)
+                    : null;
             }
             return branch;
         }
@@ -1784,7 +1806,7 @@ public static class JobsApi {
         /// </summary>
         public bool OwnedBy(HttpContext context, string branch) =>
             context.CurrentUser() is { } user
-            && branch == GitService.BranchForUser(user.Id);
+            && branch == GitService.BranchForUser(user.Username);
     }
 
     /// <summary>What a route calls the caller's own branch.</summary>
@@ -2075,9 +2097,9 @@ public static class JobsApi {
     /// Dot-directories are skipped for the same reasons the file tree skips them.
     /// </para>
     /// </summary>
-    private static List<InvalidJobsFile> InvalidJobsFiles(Scope scope, Guid userId) {
+    private static List<InvalidJobsFile> InvalidJobsFiles(Scope scope, string handle) {
         var invalid = new List<InvalidJobsFile>();
-        var root = scope.Git?.UserPath(userId.ToString("D"));
+        var root = scope.Git?.UserPath(handle);
         if (root == null || !Directory.Exists(root)) {
             return invalid;
         }
@@ -2292,8 +2314,27 @@ public static class JobsApi {
                 + $"This opens files up to {_textLimit / 1_000_000} MB — the same limit it saves."
             : "That is a binary file, so there is nothing to show as text.";
 
+    /// <summary>
+    /// The type a spreadsheet is served as, or null when the file is not one.
+    ///
+    /// <para>
+    /// These are read by the Preview tab's own parser rather than rendered by the
+    /// browser, which is why they may be served at all: the rule for this route is
+    /// that it hands over only what the preview shows, and the preview now shows
+    /// these. <c>.xls</c> and <c>.ods</c> included — the reader handles them, and a
+    /// spreadsheet the tree lists but refuses to open is worse than either.
+    /// </para>
+    /// </summary>
+    private static string WorkbookContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xlsm" => "application/vnd.ms-excel.sheet.macroEnabled.12",
+        ".xls" => "application/vnd.ms-excel",
+        ".ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        _ => null,
+    };
+
     /// <summary>The type this file is shown as, or null when it is not one this shows.</summary>
-    private static string PreviewContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch {
+    private static string PreviewContentType(string path) => WorkbookContentType(path) ?? Path.GetExtension(path).ToLowerInvariant() switch {
         ".png" => "image/png",
         ".jpg" or ".jpeg" => "image/jpeg",
         ".gif" => "image/gif",
@@ -2347,12 +2388,122 @@ public static class JobsApi {
     }
 
     /// <summary>
+    /// The secrets a kernel opened on this branch should carry — the branch's own
+    /// and no others, which is what makes a cell on prod unable to reach test's.
+    /// Null when nothing is configured, which is every test that does not care.
+    /// </summary>
+    /// <summary>
+    /// The secrets a branch's cells resolve by name.
+    ///
+    /// <para>
+    /// Here rather than beside the connections because the branch is the whole point
+    /// and only this class knows what a branch is called: the route says
+    /// <c>mine</c> or <c>user-ada</c>, <see cref="Scope.BranchFor"/> turns that into
+    /// <c>user/ada</c>, and the key a value is stored under has to be the same one
+    /// <see cref="SecretsFor"/> reads back when a kernel starts. A second vocabulary
+    /// would store <c>mine</c> and inject <c>user/ada</c>, and the secret would
+    /// simply never be found.
+    /// </para>
+    ///
+    /// <para>
+    /// Project Admin for an environment; your own branch is yours, so a member
+    /// manages that one. Values only ever travel inwards — every read here answers
+    /// "is it set", never "what is it".
+    /// </para>
+    /// </summary>
+    private static void MapSecrets(RouteGroupBuilder scoped) {
+        var api = scoped.MapGroup("/secrets");
+
+        api.MapGet("/", async (
+            HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+            string project, string branch) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) =>
+                Results.Ok(new {
+                    branch = resolved,
+                    canPersist = secrets.CanPersist,
+                    secrets = (await secrets.ListAsync(scope.Project.Slug, resolved)).Select(s => new {
+                        name = s.Row.Name,
+                        isSet = s.IsSet,
+                        createdBy = s.Row.CreatedByName,
+                        createdAt = s.Row.CreatedAt,
+                        updatedAt = s.Row.UpdatedAt,
+                    }),
+                }))).RequiresProject(ProjectRole.ProjectMember);
+
+        api.MapPut("/{name}", async (
+            HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+            string project, string branch, string name, SecretBody body) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) => {
+                var user = context.CurrentUser();
+                var refusal = await secrets.SetAsync(
+                    scope.Project.Slug, resolved, name, body?.Value, user?.Id, user?.DisplayName);
+                return refusal == null
+                    ? Results.Ok(new { name, isSet = true })
+                    : Results.BadRequest(new { error = refusal });
+            })).RequiresProject(ProjectRole.ProjectMember);
+
+        api.MapDelete("/{name}", async (
+            HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+            string project, string branch, string name) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) =>
+                await secrets.DeleteAsync(
+                    scope.Project.Slug, resolved, name, context.CurrentUser()?.DisplayName)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { error = $"No secret called '{name}' on {resolved}." })));
+    }
+
+    /// <summary>
+    /// The project, the real branch name, and permission to manage its secrets —
+    /// or the refusal. Shared by all three routes so that "may I read the names"
+    /// cannot drift from "may I set one": both are the same question about the
+    /// same branch, and both are answered here.
+    /// </summary>
+    private static async Task<IResult> Resolve(
+        HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
+        string project, string branch, Func<Scope, string, Task<IResult>> then) {
+        if (Scope.Of(projects, project) is not { } scope) {
+            return NoProject(project);
+        }
+        if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+            return Results.NotFound(new { error = $"No branch called '{branch}' in {project}." });
+        }
+        // An environment's secrets are the project's; a personal branch's are its
+        // owner's. Nobody edits somebody else's, whatever role they hold — the same
+        // rule the files on that branch follow.
+        var mine = scope.OwnedBy(context, resolved);
+        if (!mine && GitService.IsUserBranch(resolved)) {
+            // Results.Forbid() is the wrong one here and 500s: it asks the
+            // authentication scheme to write the response, and this app has none.
+            return Results.Json(
+                new { error = "A personal branch's secrets are its owner's." }, statusCode: 403);
+        }
+        if (!mine && context.GrantedRole() < ProjectRole.ProjectAdmin) {
+            return Results.Json(
+                new { error = $"Managing {resolved}'s secrets is for this project's admins." },
+                statusCode: 403);
+        }
+        return secrets == null
+            ? Results.BadRequest(new { error = "This server keeps no secrets." })
+            : await then(scope, resolved);
+    }
+
+    private sealed class SecretBody {
+        public string Value { get; set; }
+    }
+
+    private static async Task<IReadOnlyDictionary<string, string>> SecretsFor(
+        BranchSecrets secrets, Scope scope, string branch) =>
+        secrets == null || branch == null
+            ? null
+            : await secrets.EnvironmentForAsync(scope.Project.Slug, branch);
+
+    /// <summary>
     /// A git author address for an account. There are no email addresses in this
     /// system — passkeys need none — so this is a stable synthetic one rather than a
     /// claim about how to reach anybody.
     /// </summary>
     private static string EmailFor(User user) =>
-        user == null ? null : $"{user.Id:D}@users.clrkernel.local";
+        user == null ? null : $"{user.Username}@users.clrkernel.local";
 
     /// <summary>The run, or null when it does not exist or is not the caller's to see.</summary>
     private static async Task<Run> VisibleRun(

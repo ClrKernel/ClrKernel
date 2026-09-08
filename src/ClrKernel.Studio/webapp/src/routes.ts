@@ -58,7 +58,21 @@ export function jobsFilePath(project: string, env: string, jobsFile: string): st
  * each person's own, whichever project you happen to have been looking at.
  */
 export function isFullBleed(pathname: string): boolean {
-  return isEditorPath(pathname) || pathname.startsWith('/connections');
+  return isEditorPath(pathname) || isFilesShellPath(pathname)
+    || pathname.startsWith('/connections');
+}
+
+/**
+ * `/files/:project` — the Files area with nothing open yet.
+ *
+ * Its own predicate rather than a prefix match on `/files/`, which would also
+ * swallow the editor: the two are the same shell with and without a file in it,
+ * and the segment count is what tells them apart. Bare `/files` is not one — it
+ * redirects to the project you were last in and renders nothing on the way.
+ */
+export function isFilesShellPath(pathname: string): boolean {
+  const segments = pathname.split('/').filter(Boolean);
+  return segments.length === 2 && segments[0] === 'files';
 }
 
 export function connectionsPath(id?: string): string {

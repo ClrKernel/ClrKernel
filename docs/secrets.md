@@ -110,6 +110,55 @@ Nothing sets the variable for you.
 Prefer a real store where there is one. Studio's container image can run a keyring on its
 data volume instead; see [docker.md](docker.md#passwords).
 
+## Reading one from a C# cell
+
+A connection resolves its own secret and a cell never sees it. An API key is the other
+case — the token is yours to use — and the same store answers:
+
+```csharp
+using ClrKernel.Core.Secrets;
+using System.Net.Http;
+
+var secrets = new SecretStore();
+var key = secrets.Resolve("OPENAI");        // keychain, then CLRKERNEL_SECRET_OPENAI
+
+// `var`, not `using var`: a cell is a script submission, and a using
+// declaration there is a compile error rather than a scope.
+var http = new HttpClient();
+http.DefaultRequestHeaders.Authorization = new("Bearer", key);
+```
+
+No `#r` — the secrets assembly is already referenced by the engine. `Resolve` throws
+if there is nothing, and the message names every place it looked;
+`TryResolve(key, out var value)` is the version that does not.
+
+**Put the value in the store, not in the notebook.** `secrets.Store("OPENAI", "sk-…")`
+works, and writing that line into a `.nb.md` puts the key in a file you are about to
+commit — which is the thing this whole page exists to avoid. Set it once from a shell
+with [the commands above](#setting-one-by-hand), and let the notebook only ever
+`Resolve` it.
+
+Useful when the answer is "it says there is no secret":
+
+```csharp
+var secrets = new SecretStore();
+secrets.ProviderNames        // memory -> keychain -> env, in the order tried
+secrets.CanPersist           // false means nothing here would survive a restart
+secrets.EnvName("OPENAI")    // CLRKERNEL_SECRET_OPENAI — the variable to set
+```
+
+## In Studio, a secret belongs to a branch
+
+Everything above is one machine's store, where a name means one value. Studio adds
+a scope in front of it: a secret is set for a *branch*, so `OPENAI` on test and
+`OPENAI` on prod are two secrets. Studio resolves the branch's own secrets when it
+starts a kernel and passes them in as `CLRKERNEL_SECRET_*` variables — which is why
+the cell above needs no change to work there, and why a notebook on prod cannot
+reach test's value.
+
+Set them in **Settings → Secrets**. See
+[studio.md](studio.md#secrets-a-notebook-resolves-per-branch).
+
 ## Which secret a thing uses
 
 | What | Where the reference is written |
@@ -119,6 +168,7 @@ data volume instead; see [docker.md](docker.md#passwords).
 | A connection saved in Studio | the **Secret reference** field on the Connections page |
 | A notification channel | the channel's token field, on the Channels page |
 | A git remote | `remoteSecret` on the project — see [studio.md](studio.md#git-remotes) |
+| An API key a C# cell uses itself | nowhere — the cell asks for it by name, [above](#reading-one-from-a-c-cell) |
 
 For where Studio puts a password it saves for you, and what it does when it has nowhere
 to put one, see [studio.md](studio.md#where-a-saved-password-goes).

@@ -64,6 +64,15 @@ public static class ConnectionReferences {
         return found;
     }
 
+    private static DirectiveArgs Bind(DirectiveDefinition definition, string line) {
+        try {
+            return DirectiveParser.Parse(definition, line);
+        } catch (FormatException) {
+            // Reported where it matters — running the cell.
+            return null;
+        }
+    }
+
     private static IEnumerable<string> InLine(
         string line, LanguageDescriptor language,
         IReadOnlyList<ConnectionProviderDescriptor> descriptors) {
@@ -79,7 +88,15 @@ public static class ConnectionReferences {
         if (definition == null) {
             yield break;
         }
-        var args = DirectiveParser.Parse(definition, line);
+        // A line this cannot bind has no connection reference in it, which is all
+        // this scan is after. It used to escape as a FormatException and 500 the
+        // request — so one notebook with a directive typo took out the endpoint for
+        // the whole project, and a directive taking free-form arguments took it out
+        // while being perfectly valid.
+        var args = Bind(definition, line);
+        if (args == null) {
+            yield break;
+        }
 
         // "Run this cell on connection x" — the parameter says so itself.
         foreach (var parameter in definition.Parameters.Where(p => p.ValueRole == "connection")) {

@@ -107,6 +107,8 @@ export interface Passkey {
 
 export interface ManagedUser {
   id: string;
+  /** The handle git knows them by — their branch and their worktree directory. */
+  username: string;
   displayName: string;
   role: Role;
   disabled: boolean;
@@ -121,11 +123,45 @@ export interface ManagedInvite {
   code: string;
   role: Role;
   label: string | null;
+  /** The account this invite will create — both settled when it was issued. */
+  displayName: string | null;
+  username: string | null;
   createdAt: string;
   expiresAt: string;
   usedAt: string | null;
   revoked: boolean;
   status: 'open' | 'used' | 'revoked' | 'expired';
+}
+
+/**
+ * What an invite code is worth. The name is present only while the invite is
+ * usable — the same gate as `valid`, so a spent code tells a holder nothing about
+ * the account it made.
+ */
+export interface InviteOffer {
+  valid: boolean;
+  displayName?: string;
+  username?: string;
+}
+
+/**
+ * A username to offer for a display name. A *suggestion*: the server validates
+ * and is the only thing that decides, so this drifting from `UserName.Suggest`
+ * costs a refusal on the form, never a bad name in the database.
+ *
+ * Accents are decomposed and their marks dropped, so José suggests `jose` rather
+ * than `jos-`. UserNameSuggestTest pins the same cases the C# side does.
+ */
+export function suggestUsername(displayName: string): string {
+  const slug = (displayName ?? '')
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 39)
+    .replace(/[-.]+$/, '');
+  return slug;
 }
 
 async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -157,13 +193,17 @@ export const accounts = {
 
   users: () => get<{ users: ManagedUser[] }>('/api/users').then((r) => r.users),
   setRole: (id: string, role: Role) => send('PUT', `/api/users/${id}/role`, { role }),
+  /** Moves their branch and worktree in every project, then the row. */
+  setUsername: (id: string, username: string) =>
+    send('POST', `/api/users/${id}/username`, { username }),
   setDisabled: (id: string, disabled: boolean) =>
     send('PUT', `/api/users/${id}/disabled`, { disabled }),
   removeUser: (id: string) => send('DELETE', `/api/users/${id}`),
 
   invites: () => get<{ invites: ManagedInvite[] }>('/api/invites').then((r) => r.invites),
-  createInvite: (role: Role, label: string) =>
-    send<{ code: string; expiresAt: string }>('POST', '/api/invites', { role, label }),
+  createInvite: (role: Role, displayName: string, username: string, label: string) =>
+    send<{ code: string; expiresAt: string }>(
+      'POST', '/api/invites', { role, displayName, username, label }),
   revokeInvite: (code: string) => send('DELETE', `/api/invites/${encodeURIComponent(code)}`),
 };
 
@@ -172,12 +212,16 @@ export const auth = {
   setup: (displayName: string) =>
     register('/api/auth/setup/begin', '/api/auth/setup/complete', { displayName }),
 
-  /** Redeem an invite: creates an account at the invite's role and signs in. */
-  acceptInvite: (code: string, displayName: string) =>
+  /**
+   * Redeem an invite: creates an account at the invite's role and signs in. It
+   * carries no name — the admin who issued the invite settled both, so there is
+   * nothing to type and nothing left that can be refused mid-ceremony.
+   */
+  acceptInvite: (code: string) =>
     register(
       `/api/auth/invite/${encodeURIComponent(code)}/begin`,
       `/api/auth/invite/${encodeURIComponent(code)}/complete`,
-      { displayName },
+      {},
     ),
 
   /** Add a device to the account already signed in. */
@@ -203,8 +247,9 @@ export const auth = {
 
   signOut: () => post('/api/auth/signout'),
 
-  inviteIsValid: async (code: string): Promise<boolean> => {
+  /** Whether the code is usable and, when it is, who it makes you. */
+  invite: async (code: string): Promise<InviteOffer> => {
     const response = await fetch(`/api/auth/invite/${encodeURIComponent(code)}`);
-    return response.ok && ((await response.json()) as { valid: boolean }).valid;
+    return response.ok ? ((await response.json()) as InviteOffer) : { valid: false };
   },
 };

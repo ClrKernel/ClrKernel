@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -55,9 +56,15 @@ public sealed class KernelProcess : IDisposable {
     /// <param name="mode">Which surface to start. Job runs take the default
     /// <c>serve</c>; the editor takes <c>lsp</c>, so its cells reach the same server
     /// VS Code drives and get language features from it.</param>
+    /// <param name="environment">Extra variables for the child. This is how a
+    /// branch's secrets reach a notebook: the kernel resolves
+    /// <c>CLRKERNEL_SECRET_*</c> from its own environment, so handing it only this
+    /// branch's values is what makes the scoping strict — there is nothing else
+    /// there for it to fall back to.</param>
     public static KernelProcess Start(
         string configuredPath, string workingDirectory, Action<string> log,
-        KernelMode mode = KernelMode.Serve) {
+        KernelMode mode = KernelMode.Serve,
+        IReadOnlyDictionary<string, string> environment = null) {
         var clrkernel = ClrKernelLocator.Find(configuredPath);
         var argument = mode == KernelMode.Lsp ? "lsp" : "serve";
         var process = new Process {
@@ -72,6 +79,12 @@ public sealed class KernelProcess : IDisposable {
             },
             EnableRaisingEvents = true,
         };
+        foreach (var pair in environment ?? new Dictionary<string, string>()) {
+            // Set, not appended to: a value from this server's own environment must
+            // not shadow the branch's, and an empty one must not linger from a
+            // previous kernel's leftovers.
+            process.StartInfo.Environment[pair.Key] = pair.Value;
+        }
         process.ErrorDataReceived += (_, e) => {
             if (e.Data != null) {
                 log?.Invoke($"kernel: {e.Data}");

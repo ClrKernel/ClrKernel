@@ -30,9 +30,9 @@ public class NotebookCellsApiTest {
     /// The signed-in caller's own worktree — where editing happens now. Reads still
     /// come from test; only writes moved.
     /// </summary>
-    private string MinePath => _git.UserPath(_me.Id.ToString("D"));
+    private string MinePath => _git.UserPath(_me.Username);
 
-    private string MineBranch => GitService.BranchForUser(_me.Id);
+    private string MineBranch => GitService.BranchForUser(_me.Username);
     private WebApplication _app;
     private HttpClient _client;
     private EfRunStore _store;
@@ -216,7 +216,7 @@ public class NotebookCellsApiTest {
             new StringContent("hers\n"));
 
         var response = await _client.PostAsJsonAsync(
-            $"/api/projects/default/branches/user-{them.Id:D}/notebooks/run?path=hers.nb.md",
+            $"/api/projects/default/branches/user-{them.Username}/notebooks/run?path=hers.nb.md",
             new { cells = new[] { new { kind = "code", tag = "csharp", source = "1+1" } } });
 
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
@@ -249,7 +249,7 @@ public class NotebookCellsApiTest {
             "/api/projects/default/branches/mine/notebooks/content?path=hers.nb.md",
             new StringContent("hers\n"));
 
-        var theirs = $"user-{them.Id:D}";
+        var theirs = $"user-{them.Username}";
         var read = await _client.GetAsync(
             $"/api/projects/default/branches/{theirs}/notebooks/content?path=hers.nb.md");
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
@@ -275,7 +275,7 @@ public class NotebookCellsApiTest {
 
         // Someone with no worktree yet has no branch to browse.
         Assert.AreEqual(HttpStatusCode.NotFound, (await _client.GetAsync(
-            $"/api/projects/default/branches/user-{Guid.NewGuid():D}/notebooks/content?path=hers.nb.md"))
+            $"/api/projects/default/branches/user-nobody/notebooks/content?path=hers.nb.md"))
             .StatusCode);
     }
 
@@ -296,7 +296,7 @@ public class NotebookCellsApiTest {
             .ToList();
 
         CollectionAssert.AreEqual(
-            new[] { "mine", $"user-{them.Id:D}", "test", "prod" },
+            new[] { "mine", $"user-{them.Username}", "test", "prod" },
             branches.Select(b => b.Id).ToArray(),
             "yours first, then other people's, then what runs");
         Assert.AreEqual(1, branches.Count(b => b.Writable), "exactly one branch you may write to");
@@ -331,7 +331,7 @@ public class NotebookCellsApiTest {
             $"/api/projects/default/branches/mine/notebooks/cells?path={_notebook}");
 
         Assert.AreEqual(HttpStatusCode.NotFound, read.StatusCode);
-        Assert.IsFalse(Directory.Exists(_git.UserPath(them.Id.ToString("D"))),
+        Assert.IsFalse(Directory.Exists(_git.UserPath(them.Username)),
             "somebody who may never write anywhere accumulates no empty branches");
     }
 
@@ -349,7 +349,7 @@ public class NotebookCellsApiTest {
 
         StringAssert.Contains(File.ReadAllText(Path.Combine(MinePath, _notebook)), "MINE");
         StringAssert.Contains(
-            File.ReadAllText(Path.Combine(_git.UserPath(them.Id.ToString("D")), _notebook)), "THEIRS");
+            File.ReadAllText(Path.Combine(_git.UserPath(them.Username), _notebook)), "THEIRS");
         Assert.AreEqual(_source, File.ReadAllText(Path.Combine(_git.TestPath, _notebook)),
             "and neither has touched what runs");
     }
@@ -578,12 +578,12 @@ public class NotebookCellsApiTest {
     /// </summary>
     [TestMethod]
     public async Task The_file_list_offers_your_own_branch_before_you_have_used_it() {
-        Assert.IsFalse(_git.HasUserWorktree(_me.Id), "nothing has been written yet");
+        Assert.IsFalse(_git.HasUserWorktree(_me.Username), "nothing has been written yet");
 
         var mine = await _client.GetFromJsonAsync<JsonElement>("/api/projects/default/notebooks");
 
         CollectionAssert.Contains(EnvironmentsOf(mine), ProjectRegistry.MineEnvironment);
-        Assert.IsTrue(_git.HasUserWorktree(_me.Id), "and the branch was made so that is true");
+        Assert.IsTrue(_git.HasUserWorktree(_me.Username), "and the branch was made so that is true");
 
         using var readerClient = new HttpClient { BaseAddress = _client.BaseAddress };
         var reader = await TestAuth.SignInAsync(_app, readerClient, UserRole.ServerViewer);
@@ -592,7 +592,7 @@ public class NotebookCellsApiTest {
         CollectionAssert.DoesNotContain(
             EnvironmentsOf(theirs), ProjectRegistry.MineEnvironment,
             "a viewer can never write to a branch, so making them one is disk spent on nothing");
-        Assert.IsFalse(_git.HasUserWorktree(reader.Id));
+        Assert.IsFalse(_git.HasUserWorktree(reader.Username));
     }
 
     /// <summary>
@@ -616,7 +616,7 @@ public class NotebookCellsApiTest {
 
         var payload = await _client.GetFromJsonAsync<JsonElement>("/api/projects/default/notebooks");
         var theirs = payload.GetProperty("environments").EnumerateArray()
-            .Single(e => e.GetProperty("name").GetString() == $"user-{grace.Id:D}");
+            .Single(e => e.GetProperty("name").GetString() == $"user-{grace.Username}");
 
         Assert.AreEqual("Grace Hopper", theirs.GetProperty("label").GetString(),
             "named after the person; user-<guid> is not a thing to show anyone");
@@ -628,7 +628,7 @@ public class NotebookCellsApiTest {
         // And it stays hers. Reading it is allowed for everyone; writing it is
         // allowed for nobody, Server Admin included.
         Assert.AreEqual(HttpStatusCode.BadRequest, (await _client.PutAsync(
-            $"/api/projects/default/branches/user-{grace.Id:D}/notebooks/content?path=hopper.nb.md",
+            $"/api/projects/default/branches/user-{grace.Username}/notebooks/content?path=hopper.nb.md",
             new StringContent("mine now"))).StatusCode);
     }
 

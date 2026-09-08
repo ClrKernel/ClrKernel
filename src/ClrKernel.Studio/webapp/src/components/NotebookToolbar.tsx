@@ -1,5 +1,4 @@
 import {
-  ArrowDownToLine,
   Copy,
   FileOutput,
   Info,
@@ -20,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -111,15 +111,18 @@ export interface NotebookToolbarProps {
   /** Retry, for the one state where there is something to retry. */
   onSave: () => void;
   onPromote: () => void;
+  /** Saves the file to the machine the browser is on, not to a branch. */
+  onDownload: () => void;
   promotion: { eligible: boolean; isDeletion?: boolean; reasons: string[] } | null;
   /** Where your own branch stands against test. */
   standing: BranchStanding | null;
   onPush: (message: string) => void;
   /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
   onSchedule?: () => void;
-  onUpdate: () => void;
   /** Which branch is open — `mine`, `test`, `prod`, or `user-<id>`. */
   branch: string;
+  /** Test has changed *this file* since the branches parted. */
+  fileBehind: boolean;
   /** False for a file Files lists but nobody may write — a `.txt`, a plain yaml. */
   fileEditable: boolean;
   /** Copies what is on screen onto your own branch and opens it there. */
@@ -261,22 +264,25 @@ function SaveStatusChip({ status, onRetry }: { status: SaveStatus; onRetry: () =
  * Push to test, and the state that says whether it is worth offering.
  *
  * A single button rather than a dialog: the message is the only thing to collect,
- * and a prompt for one line is a modal for one line. `behind` swaps it for the
- * update it is blocked on, because pushing over somebody else's work is the case
- * the server refuses anyway.
+ * and a prompt for one line is a modal for one line.
+ *
+ * Being behind test used to *replace* this button with "Update from test", which
+ * is how "why is there no push?" became a question — the answer was on screen,
+ * wearing a different name, and the update itself is about the branch rather than
+ * about the file this toolbar is for. The update moved to the explorer, beside the
+ * branch picker. What is left here is the push, disabled while the server would
+ * refuse it, saying which.
  */
 function PushControl({
   standing,
   busy,
   onPush,
-  onUpdate,
 }: {
   standing: BranchStanding | null;
   busy: boolean;
   onPush: (message: string) => void;
   /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
   onSchedule?: () => void;
-  onUpdate: () => void;
 }) {
   const [message, setMessage] = useState('');
   const [open, setOpen] = useState(false);
@@ -308,17 +314,24 @@ function PushControl({
     );
   }
 
-  if (behind > 0) {
-    return (
-      <Button variant="outline" size="xs" disabled={busy} onClick={onUpdate}>
-        <ArrowDownToLine className="size-3.5" aria-hidden="true" />
-        Update from test
-      </Button>
-    );
-  }
-
   if (!pending) {
     return null;
+  }
+
+  if (behind > 0) {
+    // Disabled rather than gone: the server refuses a push while the branch is
+    // behind, and a button that is missing answers nothing.
+    return (
+      <Button
+        variant="outline"
+        size="xs"
+        disabled
+        title="Test has moved on. Update your branch first — the ↓ button beside the branch picker in the explorer."
+      >
+        <Upload className="size-3.5" aria-hidden="true" />
+        Push to test
+      </Button>
+    );
   }
 
   return open ? (
@@ -439,9 +452,60 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           {!props.binary && (
             <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
           )}
-          {!props.binary && <TabsTrigger value="diff">Diff vs production</TabsTrigger>}
+          {!props.binary && (
+            <TabsTrigger value="diff">
+              {/* Named, because it is not always production: the diff is against
+                  the branch this file goes to next. */}
+              Diff vs {props.branch === 'test' ? 'production' : 'test'}
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
+
+      {/* Beside the tabs because it is about the file, not about the branch —
+          which is why it shows on every branch now. It used to be a grey
+          sentence at the far end of this row, next to nothing that explained it
+          and small enough that the answer to "why can I not type" was a thing
+          you had to go and find. */}
+      {/* This file, not the branch. `behindFiles` is what test changed since the
+          branches parted, so a file only you have never appears here — which is
+          the whole complaint: every file used to carry the branch's status. */}
+      {props.fileBehind && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              tabIndex={0}
+              variant="outline"
+              className="ml-2 cursor-help self-center border-status-warning/40 bg-status-warning/10 font-semibold text-status-warning"
+            >
+              behind test
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[40ch]">
+            Test has a newer version of this file. Diff vs test to see what changed,
+            and update your branch from the ↓ beside the branch picker.
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {props.readOnlyReason != null && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* Badge, not a span with a radius on it: this row is `items-stretch`,
+                so a chip with no height of its own grew to the full 44px and
+                `rounded-full` turned that into an egg. Badge is `h-5 w-fit`, and
+                `self-center` keeps the row from having an opinion about it. */}
+            <Badge
+              tabIndex={0}
+              variant="outline"
+              className="ml-2 cursor-help self-center border-status-warning/40 bg-status-warning/10 font-semibold text-status-warning"
+            >
+              read-only
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[38ch]">{props.readOnlyReason}</TooltipContent>
+        </Tooltip>
+      )}
 
       <div className="flex-1" />
 
@@ -553,16 +617,6 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         </div>
       )}
 
-      {/* Readable, not writable. Said out loud, because the alternative is a
-          toolbar that quietly has no Save on it and an editor that ignores your
-          typing. Only on your own branch — on test or prod the branch note below
-          is the more important of the two, and two notes is noise. */}
-      {props.branch === 'mine' && props.readOnlyReason != null && (
-        <span className="whitespace-nowrap text-xs text-muted-subtle">
-          {props.readOnlyReason}
-        </span>
-      )}
-
       {/* Not your branch: say so, and offer the legitimate place to make the
           change you came here to make. */}
       {props.branch !== 'mine' && (
@@ -611,8 +665,15 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             <FileOutput className="size-3.5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        {/* w-auto: the default is the *trigger's* width, and the trigger is one
+            icon — so every label wrapped mid-phrase. Sized to its content instead,
+            which also survives the next item somebody adds. */}
+        <DropdownMenuContent align="end" className="w-auto whitespace-nowrap">
           <DropdownMenuItem onSelect={props.onSaveAs}>Save a copy as…</DropdownMenuItem>
+          {/* Beside "Save a copy as…" because they are the same act with two
+              destinations: one puts a copy on your branch, this one puts it on
+              your machine. */}
+          <DropdownMenuItem onSelect={props.onDownload}>Download file</DropdownMenuItem>
           <DropdownMenuItem onSelect={props.onMove}>Move or rename…</DropdownMenuItem>
           {/* The same act as `+ job` in the Files list, offered where promotion
               says a notebook with no job cannot prove itself — which is here,
@@ -628,7 +689,6 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
         standing={props.standing}
         busy={props.busy}
         onPush={props.onPush}
-        onUpdate={props.onUpdate}
       />
       </div>
       )}
@@ -636,6 +696,11 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       {promote !== 'hidden' && (
         <Button
           size="xs"
+          // The row is items-stretch and every other control sits inside a
+          // `flex items-center` group. This one is a bare child, and a button
+          // with a definite height (xs is h-6) ignores stretch and lands at the
+          // top of a 44px row — visibly higher than the buttons beside it.
+          className="self-center"
           // Never disabled by the gate. Disabling it put the reasons behind a
           // separate ⓘ — a smaller target than the thing people actually press,
           // and one that says "there is an explanation somewhere" rather than
@@ -643,7 +708,12 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           variant={promote === 'ready' ? 'default' : 'outline'}
           disabled={props.busy}
           onClick={promote === 'ready' ? props.onPromote : () => explainBlocked(progress)}
-          title={promote === 'ready' ? 'Ship to production' : 'What is left before this can ship'}
+          // Names its source, because on `mine` this button does not act on the
+          // branch you are looking at: promotion is test → prod and the call says
+          // `test` itself, so from your own branch it ships whatever test holds.
+          title={promote === 'ready'
+            ? 'Ship the version in test to production'
+            : 'What is left before this can ship'}
         >
           {props.promotion?.isDeletion
             ? 'Promote deletion'

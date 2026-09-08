@@ -84,6 +84,22 @@ public sealed class User {
     // beside them: SQLite has no native offset type, so EF cannot order or compare
     // a DateTimeOffset column there at all.
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// The handle git and the filesystem know this account by — the branch
+    /// <c>user/&lt;username&gt;</c>, the worktree <c>user-&lt;username&gt;</c>, and the
+    /// author address on their commits.
+    ///
+    /// <para>
+    /// Unique, lower-case and validated by <see cref="UserName"/>. Separate from
+    /// <see cref="DisplayName"/>, which is free text and may repeat, and from
+    /// <see cref="Id"/>, which every row points at and which can never change —
+    /// it is the WebAuthn user handle inside each of this account's passkeys.
+    /// Renaming this moves a branch and a directory, so it is an admin action.
+    /// </para>
+    /// </summary>
+    public string Username { get; set; }
+
     public string DisplayName { get; set; }
     public UserRole Role { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -92,6 +108,7 @@ public sealed class User {
     public bool Disabled { get; set; }
 
     public List<Credential> Credentials { get; set; } = new();
+    public List<Identity> Identities { get; set; } = new();
 }
 
 /// <summary>
@@ -122,6 +139,85 @@ public sealed class Credential {
 }
 
 /// <summary>
+/// One way an account proves who it is.
+///
+/// <para>
+/// A passkey today; a Windows account or an OIDC subject later. The pair
+/// (<see cref="Provider"/>, <see cref="Subject"/>) is what a sign-in presents and
+/// is unique across the server — the same directory account cannot be two people —
+/// while a person may hold as many as they like, which is what lets somebody sign
+/// in with a passkey on a laptop and with the company directory at a desk.
+/// </para>
+/// <para>
+/// Separate from <see cref="Credential"/> rather than a column on it, because a
+/// credential is specifically a passkey: a COSE public key and a signature counter,
+/// both required, and neither of which a directory account has. A passkey therefore
+/// has a row in each — the credential holds the cryptography, the identity holds
+/// who it belongs to.
+/// </para>
+/// </summary>
+public sealed class Identity {
+    public Guid Id { get; set; }
+
+    /// <summary>The kind of proof: <c>passkey</c> today. Lower-case and stable —
+    /// it is written into rows that outlive the code that made them.</summary>
+    public string Provider { get; set; }
+
+    /// <summary>
+    /// What the provider calls this person: the credential id for a passkey, a
+    /// directory SID, an OIDC subject. Opaque here.
+    /// </summary>
+    public string Subject { get; set; }
+
+    public Guid UserId { get; set; }
+    public User User { get; set; }
+
+    /// <summary>What to show beside it — a device name, a domain login. Theirs.</summary>
+    public string Label { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastUsedAt { get; set; }
+}
+
+/// <summary>
+/// The name of a secret a notebook can resolve, on one branch of one project.
+///
+/// <para>
+/// The <em>name</em> only — never the value, which lives in whichever store this
+/// server was configured with. This table exists because a secret store cannot be
+/// listed: <c>ISecretProvider</c> is get, set and delete, and no OS credential
+/// store enumerates by service portably. So Studio keeps its own index of what it
+/// has been asked to hold, and answers "set or not set" by trying to resolve each.
+/// </para>
+/// <para>
+/// One consequence worth knowing: a secret set from a shell will not appear here
+/// until somebody names it, because nothing told this server it exists.
+/// </para>
+/// </summary>
+public sealed class SecretName {
+    public Guid Id { get; set; }
+
+    public string Project { get; set; }
+
+    /// <summary>The branch it belongs to — <c>test</c>, <c>prod</c>, or somebody's
+    /// own <c>user/&lt;handle&gt;</c>. Values do not cross between them.</summary>
+    public string Branch { get; set; }
+
+    /// <summary>What a cell asks for: <c>Resolve("OPENAI")</c>.</summary>
+    public string Name { get; set; }
+
+    public Guid? CreatedBy { get; set; }
+    public string CreatedByName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>Known values for <see cref="Identity.Provider"/>.</summary>
+public static class IdentityProviders {
+    public const string Passkey = "passkey";
+}
+
+/// <summary>
 /// A single-use code that creates one account at a fixed role. There is no email
 /// in this system, so delivery is manual and the code is the whole mechanism.
 /// </summary>
@@ -131,6 +227,21 @@ public sealed class Invite {
     public UserRole Role { get; set; }
     /// <summary>Free text: who the admin meant it for. Never shown to the invitee.</summary>
     public string Label { get; set; }
+
+    /// <summary>
+    /// The name the account is created with. Chosen by the admin at invite time
+    /// rather than typed by the invitee, so that <see cref="Username"/> can be
+    /// checked for collisions while somebody is still looking at a form.
+    /// </summary>
+    public string DisplayName { get; set; }
+
+    /// <summary>
+    /// The handle the account is created with — its branch and its folder. Null
+    /// only on invites issued before this was required; those are refused at
+    /// redemption rather than falling back to a derived name, because a second
+    /// naming path is one nobody would notice firing.
+    /// </summary>
+    public string Username { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }

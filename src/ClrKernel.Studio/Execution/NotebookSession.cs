@@ -56,6 +56,7 @@ public sealed class NotebookSession : IDisposable {
     private const int _maxOutputBytesPerCell = 256 * 1024;
 
     private readonly string _clrkernelPath;
+    private readonly IReadOnlyDictionary<string, string> _environment;
     private readonly Action<string> _log;
     private readonly SemaphoreSlim _oneRunAtATime = new(1, 1);
     private readonly object _stateGate = new();
@@ -85,7 +86,9 @@ public sealed class NotebookSession : IDisposable {
     public NotebookSession(
         string id, string notebookPath, string clrkernelPath, Action<string> log = null,
         Func<CancellationToken, Task<KernelProcess>> startKernel = null,
-        Action<IReadOnlyList<LanguageDescriptor>> onLanguages = null) {
+        Action<IReadOnlyList<LanguageDescriptor>> onLanguages = null,
+        IReadOnlyDictionary<string, string> environment = null) {
+        _environment = environment;
         Id = id;
         NotebookPath = notebookPath;
         NotebookUri = ToNotebookUri(notebookPath);
@@ -99,7 +102,8 @@ public sealed class NotebookSession : IDisposable {
 
     private Task<KernelProcess> DefaultStartAsync(CancellationToken cancellationToken) =>
         Task.FromResult(KernelProcess.Start(
-            _clrkernelPath, System.IO.Path.GetDirectoryName(NotebookPath), Note, KernelMode.Lsp));
+            _clrkernelPath, System.IO.Path.GetDirectoryName(NotebookPath), Note, KernelMode.Lsp,
+            _environment));
 
     public string Id { get; }
     public string NotebookPath { get; }

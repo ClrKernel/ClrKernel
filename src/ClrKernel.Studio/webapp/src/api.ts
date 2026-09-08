@@ -27,6 +27,10 @@ const project = () => `/projects/${encodeURIComponent(currentProject)}`;
 /** `/projects/<slug>/branches/<branch>` — everything that reads or writes a worktree. */
 const scope = (branch: string) => `${project()}/branches/${encodeURIComponent(branch)}`;
 
+/** A named project's branch, for the pages that are not inside one. */
+const secretsIn = (slug: string, branch: string) =>
+  `/projects/${encodeURIComponent(slug)}/branches/${encodeURIComponent(branch)}/secrets`;
+
 /**
  * Which branch the open notebook is being read from. The same argument as
  * `currentProject`: the editor holds one notebook on one branch, and the seven
@@ -102,10 +106,20 @@ export interface BranchStanding {
   ahead?: number;
   behind?: number;
   conflicts?: string[];
+  /**
+   * The files test has changed since the branches parted — the per-file half of
+   * `behind`. A file only you have is never in it, which is what lets a toolbar
+   * say something true about the file in front of you rather than about the
+   * branch it happens to be on.
+   */
+  behindFiles?: string[];
 }
 
 export interface Worktree {
-  userId: string;
+  /** The name of the branch and of the directory — and what removes it. */
+  handle: string;
+  /** Who that is, absent when the account is gone and the branch is not. */
+  userId: string | null;
   owner: string;
   lastCommit: string;
   /** Saved but never pushed. */
@@ -392,6 +406,8 @@ export interface SettingField {
   webWritable: boolean;
   restartRequired: boolean;
   help?: string | null;
+  /** When present, the only accepted values — rendered as a picker. */
+  choices?: string[] | null;
 }
 
 export interface SettingsSection {
@@ -496,6 +512,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** One secret's name and whether it currently resolves. The value never travels. */
+export interface SecretEntry {
+  name: string;
+  isSet: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
 export const api = {
   health: () =>
     request<{
@@ -565,12 +590,31 @@ export const api = {
   /** The personal worktrees in a project, for whoever has to tidy up. */
   worktrees: (slug: string) =>
     request<{ worktrees: Worktree[] }>(`/projects/${encodeURIComponent(slug)}/worktrees`),
-  /** Removes one. `force` is needed for a branch holding work test has not seen. */
-  removeWorktree: (slug: string, userId: string, force = false) =>
+  /** Removes one, by handle: the branch and the folder are named for it, and one
+   *  can outlive the account it belonged to. `force` is needed for a branch
+   *  holding work test has not seen. */
+  removeWorktree: (slug: string, handle: string, force = false) =>
     request<void>(
-      `/projects/${encodeURIComponent(slug)}/worktrees/${userId}?force=${force}`,
+      `/projects/${encodeURIComponent(slug)}/worktrees/${encodeURIComponent(handle)}?force=${force}`,
       { method: 'DELETE' },
     ),
+
+  /** Secret names on one branch, and whether each has a value. Never the value. */
+  // The project is named rather than taken from `currentProject`, the way
+  // `members` names it: Settings is not inside a project, so the one you are
+  // looking at there is the one its own picker says — not whichever project you
+  // last had open somewhere else.
+  secrets: (slug: string, branch: string) =>
+    request<{ branch: string; canPersist: boolean; secrets: SecretEntry[] }>(
+      `${secretsIn(slug, branch)}/`),
+  setSecret: (slug: string, branch: string, name: string, value: string) =>
+    request<{ name: string }>(
+      `${secretsIn(slug, branch)}/${encodeURIComponent(name)}`,
+      { method: 'PUT', body: JSON.stringify({ value }) }),
+  deleteSecret: (slug: string, branch: string, name: string) =>
+    request<void>(
+      `${secretsIn(slug, branch)}/${encodeURIComponent(name)}`,
+      { method: 'DELETE' }),
 
   members: (slug: string) =>
     request<{ members: ProjectMember[]; candidates: { userId: string; displayName: string }[] }>(
@@ -771,7 +815,8 @@ export const api = {
     ),
 
   /** Every branch of this project, with who owns each and which you may write to. */
-  branches: () => request<{ branches: BranchSummary[] }>(`${project()}/branches`),
+  branches: (slug?: string) => request<{ branches: BranchSummary[] }>(
+    slug == null ? `${project()}/branches` : `/projects/${encodeURIComponent(slug)}/branches`),
 
   /** Where your own branch stands against test: unsaved work, and either drift. */
   branchStanding: () =>

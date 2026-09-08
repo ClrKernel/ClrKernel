@@ -30,7 +30,9 @@ internal static class TestAuth {
         WebApplication app, HttpClient client, UserRole role, string displayName = null) {
         var store = app.Services.GetRequiredService<IAuthStore>();
         var auth = app.Services.GetRequiredService<AuthService>();
-        var user = await store.CreateUserAsync(Guid.NewGuid(), displayName ?? role.ToString(), role);
+        var name = displayName ?? role.ToString();
+        var user = await store.CreateUserAsync(
+            Guid.NewGuid(), UserName.Unique(UserName.Suggest(name), await store.UsernamesAsync()), name, role);
         var token = await auth.IssueSessionAsync(user.Id);
         client.DefaultRequestHeaders.Remove("Cookie");
         client.DefaultRequestHeaders.Add("Cookie", $"{AuthService.CookieName}={token}");

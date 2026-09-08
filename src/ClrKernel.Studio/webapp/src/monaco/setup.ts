@@ -144,11 +144,15 @@ applyEditorTheme('light');
 export const cellEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
   minimap: { enabled: false },
-  lineNumbers: 'off',
+  // On, and three columns wide even for a five-line cell: this is also the Source
+  // tab's and the diff's editor, and a gutter that resizes itself per cell would
+  // put the same file's code at a different x on every tab. Three is what Focus
+  // Mode has always used, so the four agree.
+  lineNumbers: 'on',
+  lineNumbersMinChars: 3,
   glyphMargin: false,
   folding: false,
   lineDecorationsWidth: 8,
-  lineNumbersMinChars: 0,
   overviewRulerLanes: 0,
   scrollBeyondLastLine: false,
   scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },

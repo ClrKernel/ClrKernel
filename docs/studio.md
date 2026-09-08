@@ -284,9 +284,18 @@ The first person to reach a server with no accounts gets `/setup`, registers a
 passkey, and becomes its **Server Admin**. That page only accepts requests from the
 machine the server runs on, and it stops existing — 404, not a message — the moment
 an account exists. Everyone after that joins through an invite the admin creates
-under *Settings → Users*: pick a role, copy the link, send it however you like. There
-is no email in this system. Invites are single-use and expire after seven days
-(`--invite-days`).
+under *Settings → Users*: their name, their username and a role, then copy the link
+and send it however you like. There is no email in this system. Invites are
+single-use and expire after seven days (`--invite-days`).
+
+The **username** is settled on that form rather than by whoever opens the link,
+because it is the name of their git branch (`user/ada-lovelace`) and of its folder
+in every project — so a name already taken has to be refused while an admin is
+looking at a form, not while somebody is holding a security key. It is suggested
+from the name and editable; an admin can change it later, which moves the branch
+and the folder and stops any kernel that person has running. Whoever opens the link
+sees who they are about to become and registers a passkey; there is nothing for
+them to fill in.
 
 ### Roles
 
@@ -360,15 +369,39 @@ to be listed.
 Self-hosted with no email means a lost device is otherwise permanent. On the box:
 
 ```bash
-clrkernel-studio new-admin-invite --data-dir /var/lib/clrkernel-studio
+clrkernel-studio new-admin-invite --data-dir /var/lib/clrkernel-studio \
+    --name "Ada Lovelace" --username ada
 ```
 
 That prints one single-use Server Admin invite. Anyone with a shell there could do
-worse already, so this is not a new exposure.
+worse already, so this is not a new exposure. `--name` and `--username` are the
+account it will create — there is no form here, so without them it is
+*Administrator* on `user/administrator`.
 
 **There is no API key any more, and no machine-callable credential.** Passkeys are
 interactive by definition; if you need a script to drive `/api`, that needs per-user
 API tokens, which do not exist yet.
+
+## Files beside your notebooks
+
+The Files page shows everything in the project, not just the notebooks, and each
+file opens at whatever reading of it makes sense: a notebook as cells, a jobs file
+as its Overview, a picture as the picture, a Markdown document as the document.
+Source is the tab beside it whenever there is text to read.
+
+**Spreadsheets open as a grid** — `.csv`, `.tsv`, `.xlsx`, `.xlsm`, `.xls` and
+`.ods` — with lettered columns across the top, numbered rows down the side, and the
+workbook's tabs along the bottom. Cells show what the spreadsheet shows: a date
+reads as a date rather than as the number a date is stored as, and a cell's number
+format is applied. It is a viewer, not an editor — no formulas, no editing — and it
+answers the question that otherwise means downloading the file and opening Excel.
+
+A `.csv` is a table *and* text, so it keeps Source and Diff; a workbook is binary
+and has neither. Big sheets show their first 1,000 rows and say what they are a
+slice of.
+
+**Download file** in the ⋯ menu saves the file to the machine your browser is on,
+as opposed to **Save a copy as…**, which puts a copy on your branch.
 
 ## Projects
 
@@ -574,6 +607,56 @@ with no credential store at all. It is owner-only and unencrypted — as protect
 as the disk it sits on, so keep it out of any git worktree. Nothing sets it for
 you, and a server that gains a real store moves the file's contents into it on
 the next start and deletes it.
+
+### Choosing the store rather than discovering it
+
+A laptop can guess: try the keyring, fall back to a file, then the environment.
+A server should not. `secretStore` says which one, and a server that cannot
+honour the answer says so at startup instead of quietly using something else:
+
+| | |
+|---|---|
+| `os` | The machine's credential store, and nothing else writable. Says so at startup if there is none. |
+| `file` | A JSON file — `--secrets-file`, or `secrets.json` in the data dir. Unencrypted; keep it out of a worktree. |
+| `auto` | The default, and what every earlier version did: keyring, then the file if one was configured, then the environment. |
+
+`--secret-store` on the command line, `CLRKERNEL_STUDIO_SECRET_STORE` in the
+environment, or `secretStore` in `settings.json`, in that order. Pinned by a flag
+or a variable, Settings shows it and refuses to change it — the same rule every
+other option follows.
+
+### Secrets a notebook resolves, per branch
+
+**Settings → Secrets** is where an API key goes: a name, a value, and the branch
+it belongs to. A cell then asks for it by name and never sees where it came from.
+
+```csharp
+var key = new SecretStore().Resolve("OPENAI");
+```
+
+The branch is not a label on the secret — it is part of its identity. `OPENAI` on
+your branch, on test and on prod are three secrets with three values, and a
+notebook running on one of them cannot reach the other two: Studio resolves that
+branch's secrets when it starts the kernel and hands over only those, as
+`CLRKERNEL_SECRET_*` variables the kernel's own store reads. So a job promoted to
+production before production has its own key fails saying the secret is missing,
+rather than silently running on test's.
+
+A kernel is handed its branch's secrets **when it starts**. A notebook already
+open keeps the set it started with, so after adding one, restart that notebook's
+kernel — the cell would otherwise fail saying the secret is missing, which is
+true of the kernel and not of the branch.
+
+An environment's secrets belong to the project's admins. A personal branch's
+belong to whoever owns the branch, and to nobody else — a Server Admin can delete
+a stale branch and still cannot write a secret into it, the same rule its files
+follow.
+
+The page lists names and whether each is set. It never shows a value, not even
+masked, and there is no route that returns one. The consequence worth knowing:
+because no credential store can be listed, a secret set from a shell does not
+appear here until it is also named here — this table is the only record of what
+exists.
 
 ## Git remotes
 

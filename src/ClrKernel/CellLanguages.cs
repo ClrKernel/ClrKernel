@@ -42,6 +42,7 @@ public static class CellLanguages {
                 };
             },
             () => new[] { new DaxCellLanguage() },
+            () => new[] { new Language.Python.PythonCellLanguage() },
         });
         CellLanguageRegistry.DefaultContributions = new[] {
             // Fabric is reachable from C# cells (Fabric.Connect() -> warehouse

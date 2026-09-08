@@ -65,9 +65,16 @@ public sealed class NotebookSessionManager : BackgroundService {
     /// prod adds the person to it: two people running the same production notebook
     /// must not be sharing one kernel, whatever else is true.
     /// </param>
+    /// <param name="environment">
+    /// The branch's secrets, resolved by the caller — it is the one that knows which
+    /// project and branch this notebook is being opened on. A session already
+    /// running keeps the environment it started with, which is right: changing a
+    /// secret takes a kernel restart, exactly as changing one on disk does.
+    /// </param>
     public async Task<NotebookSession> GetOrStartAsync(
         string notebookPath, CancellationToken cancellationToken,
-        string key = null, bool ephemeral = false) {
+        string key = null, bool ephemeral = false,
+        IReadOnlyDictionary<string, string> environment = null) {
         key ??= notebookPath;
         if (_sessions.TryGetValue(key, out var existing)) {
             existing.Touch();
@@ -86,7 +93,8 @@ public sealed class NotebookSessionManager : BackgroundService {
                 // A live kernel outranks the cached probe, and keeps outranking it: a
                 // language registered mid-session by #r has to reach the parser too,
                 // or its cells stop being cells the next time the file is read.
-                onLanguages: languages => _languages?.Seed(languages)) { Ephemeral = ephemeral };
+                onLanguages: languages => _languages?.Seed(languages),
+                environment: environment) { Ephemeral = ephemeral };
             // Start the kernel here rather than on first run, so a broken
             // configuration is reported when the editor opens, not mid-cell.
             await session.EnsureKernelAsync(cancellationToken).ConfigureAwait(false);
@@ -111,6 +119,28 @@ public sealed class NotebookSessionManager : BackgroundService {
         _logger.LogInformation("Notebook session restarted for {Notebook}.", session.NotebookPath);
         session.Dispose();
         return true;
+    }
+
+    /// <summary>
+    /// Drops every session whose notebook lives under a directory — used when that
+    /// directory is about to move. A session holds an absolute path and a kernel
+    /// with that path as its working directory, so one left running across a rename
+    /// is a kernel writing into a folder that no longer exists.
+    /// </summary>
+    public int DropUnder(string directory) {
+        if (string.IsNullOrEmpty(directory)) {
+            return 0;
+        }
+        var prefix = System.IO.Path.GetFullPath(directory).TrimEnd(
+            System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+        var dropped = 0;
+        foreach (var entry in _sessions.ToArray()) {
+            if (entry.Value.NotebookPath?.StartsWith(prefix, StringComparison.Ordinal) == true
+                && Restart(entry.Key)) {
+                dropped++;
+            }
+        }
+        return dropped;
     }
 
     /// <summary>

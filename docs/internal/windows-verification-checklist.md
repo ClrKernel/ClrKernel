@@ -261,6 +261,28 @@ from. They need real resources and cannot be faked locally:
 - [ ] **Mermaid**: a ` ```mermaid ` flowchart renders **offline** (disconnect network briefly if you want to prove no-CDN) and follows the VS Code theme (toggle light/dark).
 - [ ] **⊞ PowerShell**: a ` ```powershell ` cell runs in-process; `$x = 1` persists to the next cell; IntelliSense completes a cmdlet/parameter/variable. Confirm no separate PowerShell install was needed.
 
+## 12a. Python provisioning on a managed Windows machine — **open**
+
+The audience for the provisioner *is* the locked-down Windows fleet, and all of it
+was verified on macOS. The unit tests are pure and pass anywhere; none of the
+runtime paths below run in CI.
+
+- [ ] **Cold**: `#!python` on a machine with no `python3` on PATH installs one under
+      `%LOCALAPPDATA%\clrkernel\python\interpreters` and the cell prints. Nothing lands
+      outside that tree — no PATH edit, no registry, no admin prompt.
+- [ ] **⊞ TLS interception**: on a machine whose traffic is re-signed by a corporate
+      root, the install either succeeds outright or logs *"uv did not trust the TLS
+      certificate it was shown — retrying against this machine's own certificate
+      store"* and then succeeds. This is the case that fails where NuGet works, and
+      the retry (`UV_SYSTEM_CERTS`) is untested against Schannel.
+- [ ] **⊞ Kill**: interrupt during the install and confirm no orphaned `uv.exe` —
+      `Kill(entireProcessTree: true)` is verified on macOS only.
+- [ ] **Mirror**: with `CLRKERNEL_PYTHON_UV_MIRROR` and `UV_PYTHON_INSTALL_MIRROR` at
+      an internal Artifactory/Nexus, provisioning works with github.com blocked.
+- [ ] **Refusal**: `CLRKERNEL_PYTHON_AUTO_INSTALL=0` and no interpreter → a message
+      naming all three places looked, and no network traffic.
+- [ ] `CLRKERNEL_PYTHON` pointed at an IT-managed `python.exe` skips all of it.
+
 ## 13. Executable-markdown round-trip & samples
 
 - [ ] Open the repo's `samples/*.nb.md` (Sql, SqlQuery, Dax, MultiProvider, FabricWarehouse, HttpRequests, MermaidDiagrams, PowerShell, AnalysisServices) — each opens as a notebook and the cells you have backends for run.

@@ -29,6 +29,14 @@ public sealed class SettingField {
     public bool WebWritable { get; init; }
     public bool RestartRequired { get; init; }
     public string Help { get; init; }
+
+    /// <summary>
+    /// The only values this field accepts, or null for free text. Both a refusal
+    /// and a picker: a setting the server reads back with a <c>switch</c> that
+    /// throws on the default case must not be free text in a web form, or a typo
+    /// here is a server that will not start.
+    /// </summary>
+    public IReadOnlyList<string> Choices { get; init; }
 }
 
 /// <summary>A group of settings one feature owns, rendered generically by the UI.</summary>
@@ -109,7 +117,11 @@ public sealed class SettingsRegistry {
                     if (raw.ValueKind != JsonValueKind.String) {
                         return $"'{name}' must be a string.";
                     }
-                    writes[name] = raw.GetString();
+                    var text = raw.GetString();
+                    if (field.Choices is { Count: > 0 } && !field.Choices.Contains(text)) {
+                        return $"'{name}' must be one of {string.Join(", ", field.Choices)}.";
+                    }
+                    writes[name] = text;
                     break;
             }
         }

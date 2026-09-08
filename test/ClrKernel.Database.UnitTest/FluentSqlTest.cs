@@ -100,6 +100,214 @@ public class FluentSqlMappingTest {
         Assert.AreEqual("Zoe", p.Name);
     }
 
+    public record Widened(long Id, string Name);
+    public record Keyed(Guid Key);
+
+    private static DataTable Of(params (string Name, Type Type, object Value)[] cells) {
+        var t = new DataTable();
+        foreach (var c in cells) {
+            t.Columns.Add(c.Name, c.Type);
+        }
+        t.Rows.Add(cells.Select(c => c.Value).ToArray());
+        return t;
+    }
+
+    /// <summary>
+    /// The column's type is the driver's business and the record's is the
+    /// notebook's, and they differ constantly: ODBC returns a number as text,
+    /// SQLite widens to Int64, `uniqueidentifier` arrives as a string.
+    ///
+    /// <para>
+    /// Dapper on its own refuses every one of these — it wants a constructor whose
+    /// signature matches the column types — so each of these cases fails with "a
+    /// parameterless default constructor or one matching signature is required"
+    /// if the by-name constructor map or the Guid handler is removed.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_records_parameter_types_need_not_match_the_columns() {
+        var widened = ObjectMapper.Map<Widened>(
+            Of(("Id", typeof(int), 7), ("Name", typeof(string), "Zoe"))).Single();
+        Assert.AreEqual(7L, widened.Id, "an int column into a long parameter");
+
+        var fromText = ObjectMapper.Map<Rec>(
+            Of(("Id", typeof(string), "7"), ("Name", typeof(string), "Zoe"))).Single();
+        Assert.AreEqual(7, fromText.Id, "a number a driver returned as text");
+
+        var guid = Guid.NewGuid();
+        Assert.AreEqual(guid,
+            ObjectMapper.Map<Keyed>(Of(("Key", typeof(string), guid.ToString()))).Single().Key,
+            "a uniqueidentifier a driver returned as text");
+    }
+
+    /// <summary>Nulls land as the type's default rather than throwing.</summary>
+    [TestMethod]
+    public void Null_columns_map_to_null_or_default() {
+        var row = ObjectMapper.Map<Rec>(
+            Of(("Id", typeof(int), DBNull.Value), ("Name", typeof(string), DBNull.Value))).Single();
+
+        Assert.AreEqual(0, row.Id, "DBNull into a non-nullable int is default(int)");
+        Assert.IsNull(row.Name);
+    }
+
+    /// <summary>Column order and case are the database's, not the type's.</summary>
+    [TestMethod]
+    public void Columns_match_by_name_whatever_their_case() {
+        var row = ObjectMapper.Map<Rec>(
+            Of(("NAME", typeof(string), "Zoe"), ("ID", typeof(int), 7))).Single();
+
+        Assert.AreEqual(7, row.Id);
+        Assert.AreEqual("Zoe", row.Name);
+    }
+
+    public record Stamped(int Id, DateTimeOffset At);
+
+    /// <summary>
+    /// `SELECT a.Id, b.Id FROM a JOIN b` — a real query, and one the reflection
+    /// mapper this replaced threw on: it built a dictionary keyed by column name
+    /// and a join has two called Id. First wins now, as it does everywhere else.
+    /// </summary>
+    [TestMethod]
+    public void A_join_that_repeats_a_column_name_maps_rather_than_throwing() {
+        using var reader = new RepeatedNameReader();
+
+        var row = ObjectMapper.Map<Rec>(reader).Single();
+
+        Assert.AreEqual(7, row.Id, "the first Id, not an exception");
+        Assert.AreEqual("Zoe", row.Name);
+    }
+
+    /// <summary>
+    /// `SELECT *` returns more columns than the record has, and in the table's
+    /// order rather than the record's. Both are ordinary; Dapper's constructor
+    /// matching is positional and exact, so the columns are lined up before it
+    /// sees them.
+    /// </summary>
+    [TestMethod]
+    public void Extra_columns_and_their_order_do_not_matter() {
+        var row = ObjectMapper.Map<Rec>(Of(
+            ("Extra", typeof(string), "ignored"),
+            ("Name", typeof(string), "Zoe"),
+            ("Id", typeof(int), 7),
+            ("Another", typeof(int), 99))).Single();
+
+        Assert.AreEqual(7, row.Id);
+        Assert.AreEqual("Zoe", row.Name);
+    }
+
+    /// <summary>A timestamp a driver returned as text — which ODBC does.</summary>
+    [TestMethod]
+    public void A_datetimeoffset_held_as_text_is_parsed() {
+        var row = ObjectMapper.Map<Stamped>(Of(
+            ("Id", typeof(int), 7),
+            ("At", typeof(string), "2026-03-14T10:00:00+00:00"))).Single();
+
+        Assert.AreEqual(DateTimeOffset.Parse("2026-03-14T10:00:00+00:00"), row.At);
+    }
+
+    /// <summary>Two columns called Id, which a join produces and a DataTable cannot hold.</summary>
+    private sealed class RepeatedNameReader : IDataReader {
+        private int _row;
+        public int FieldCount => 3;
+        public string GetName(int i) => i == 1 ? "Name" : "Id";
+        public object GetValue(int i) => i switch { 0 => 7, 1 => "Zoe", _ => 9 };
+        public Type GetFieldType(int i) => i == 1 ? typeof(string) : typeof(int);
+        public bool Read() => _row++ == 0;
+        public bool IsDBNull(int i) => false;
+        public void Dispose() { }
+        public int Depth => 0;
+        public bool IsClosed => false;
+        public int RecordsAffected => 0;
+        public void Close() { }
+        public DataTable GetSchemaTable() => null;
+        public bool NextResult() => false;
+        public object this[int i] => GetValue(i);
+        public object this[string name] => GetValue(GetOrdinal(name));
+        public bool GetBoolean(int i) => default;
+        public byte GetByte(int i) => default;
+        public long GetBytes(int i, long o, byte[] b, int bo, int l) => 0;
+        public char GetChar(int i) => default;
+        public long GetChars(int i, long o, char[] b, int bo, int l) => 0;
+        public IDataReader GetData(int i) => null;
+        public string GetDataTypeName(int i) => GetFieldType(i).Name;
+        public DateTime GetDateTime(int i) => default;
+        public decimal GetDecimal(int i) => default;
+        public double GetDouble(int i) => default;
+        public float GetFloat(int i) => default;
+        public Guid GetGuid(int i) => default;
+        public short GetInt16(int i) => default;
+        public int GetInt32(int i) => (int)GetValue(i);
+        public long GetInt64(int i) => default;
+        public int GetOrdinal(string name) =>
+            string.Equals(name, "Name", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        public string GetString(int i) => (string)GetValue(i);
+        public int GetValues(object[] values) => 0;
+    }
+
+    public record class Checkpoint {
+        public DateOnly CheckpointValue;
+    }
+    public record class Shift {
+        public TimeOnly StartsAt { get; set; }
+    }
+
+    /// <summary>
+    /// A public field, which is how somebody writing a throwaway type in a cell
+    /// declares it. The reflection mapper this replaced read properties only, so a
+    /// record of fields came back empty with nothing said.
+    /// </summary>
+    [TestMethod]
+    public void Public_fields_are_filled_not_only_properties() {
+        var row = ObjectMapper.Map<Checkpoint>(
+            Of(("CheckpointValue", typeof(DateTime), new DateTime(2010, 12, 29)))).Single();
+
+        Assert.AreEqual(new DateOnly(2010, 12, 29), row.CheckpointValue);
+    }
+
+    /// <summary>
+    /// `date` and `time` columns arrive as DateTime and TimeSpan, and DateOnly is
+    /// what you write when the time is not part of the answer. Dapper converts
+    /// neither on its own — both threw "Error parsing column 0".
+    /// </summary>
+    [TestMethod]
+    public void DateOnly_and_TimeOnly_are_converted_from_what_a_driver_returns() {
+        Assert.AreEqual(new DateOnly(2010, 12, 29),
+            ObjectMapper.Map<Checkpoint>(
+                Of(("CheckpointValue", typeof(DateTime), new DateTime(2010, 12, 29)))).Single().CheckpointValue);
+
+        Assert.AreEqual(new TimeOnly(9, 30),
+            ObjectMapper.Map<Shift>(
+                Of(("StartsAt", typeof(TimeSpan), new TimeSpan(9, 30, 0)))).Single().StartsAt);
+    }
+
+    /// <summary>
+    /// A type no column can fill is a mistake, and returning a row of defaults
+    /// hides it: `SELECT OrderDate` into a type whose member is `CheckpointValue`
+    /// came back as 1/1/0001, which looks like an answer. The refusal names both
+    /// sides and says how to fix it.
+    /// </summary>
+    [TestMethod]
+    public void A_type_no_column_can_fill_is_refused_rather_than_returned_empty() {
+        var e = Assert.ThrowsExactly<InvalidOperationException>(() => ObjectMapper.Map<Checkpoint>(
+            Of(("OrderDate", typeof(DateTime), new DateTime(2010, 12, 29)))));
+
+        StringAssert.Contains(e.Message, "OrderDate", "the columns it did get");
+        StringAssert.Contains(e.Message, "CheckpointValue", "the members it could not fill");
+        StringAssert.Contains(e.Message, "AS CheckpointValue", "and what to do about it");
+    }
+
+    /// <summary>
+    /// Partial matches stay legal — a type is often wider than one query, and only
+    /// *nothing* matching is always a mistake.
+    /// </summary>
+    [TestMethod]
+    public void A_type_wider_than_the_query_still_maps_what_it_can() {
+        var row = ObjectMapper.Map<Poco>(Of(("Id", typeof(int), 7))).Single();
+
+        Assert.AreEqual(7, row.Id);
+        Assert.IsNull(row.Name);
+    }
+
     [TestMethod]
     public void Maps_scalar_from_first_column() {
         var ids = ObjectMapper.Map<int>(Table());

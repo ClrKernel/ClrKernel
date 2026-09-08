@@ -16,6 +16,9 @@ import {
   keepIds,
   languageOptions,
   mergeStatus,
+  columnLabel,
+  isBinary,
+  isSpreadsheet,
   monacoLanguage,
   moveCell,
   notebookPaths,
@@ -61,6 +64,18 @@ describe('monacoLanguage with descriptors', () => {
       languageTags: ['pgsql'], editorLanguageId: 'clr-pgsql', grammarId: 'pgsql',
     }];
     expect(monacoLanguage('pgsql', null, exotic)).toBe('plaintext');
+  });
+
+  it('highlights a python cell as python, not as plaintext', () => {
+    // The kernel says grammarId: 'python'; Monaco ships that tokenizer and our
+    // providers are registered for it, so the gate lets it through. Without both
+    // halves a python cell is an uncoloured wall of text.
+    const python = [{
+      id: 'python', displayName: 'Python', defaultSelector: '#!python',
+      selectors: ['#!python', '#!py'], languageTags: ['python', 'py'],
+      editorLanguageId: 'clr-python', grammarId: 'python',
+    }];
+    expect(monacoLanguage('python', null, python)).toBe('python');
   });
 
   it('and needs no descriptors at all for the languages that predate the field', () => {
@@ -576,5 +591,42 @@ describe('opensAsCells', () => {
     expect(opensAsCells('legacy.dib')).toBe(false);
     expect(opensAsCells('etl.jobs.yaml')).toBe(false);
     expect(opensAsCells('notes.md')).toBe(false);
+  });
+});
+
+describe('spreadsheets', () => {
+  it('previews csv, tsv and xlsx as a sheet, and opens there first', () => {
+    for (const name of ['data.csv', 'DATA.TSV', 'book.xlsx', 'macro.xlsm']) {
+      expect(previewKind(name)).toBe('sheet');
+      expect(viewFor('source', name)).toBe(name.toLowerCase().endsWith('.csv')
+        || name.toLowerCase().endsWith('.tsv') ? 'source' : 'preview');
+      expect(viewFor('edit', name)).toBe('preview');
+    }
+    // The formats the switch to SheetJS was for: OLE2 and OpenDocument, neither
+    // of which an OpenXML reader can open.
+    expect(previewKind('old.xls')).toBe('sheet');
+    expect(previewKind('sheet.ods')).toBe('sheet');
+    expect(isBinary('old.xls')).toBe(true);
+  });
+
+  it('keeps Source for the text ones and refuses it for a workbook', () => {
+    // A csv IS text: reading it, diffing it and editing it all still work.
+    expect(isBinary('data.csv')).toBe(false);
+    expect(viewFor('diff', 'data.csv')).toBe('diff');
+
+    // A workbook is a zip. Source over it is a screenful of zip header.
+    expect(isBinary('book.xlsx')).toBe(true);
+    expect(viewFor('source', 'book.xlsx')).toBe('preview');
+    expect(viewFor('diff', 'book.xlsx')).toBe('preview');
+  });
+
+  it('names columns the way a spreadsheet does', () => {
+    expect([0, 1, 25, 26, 27, 51, 52, 701, 702].map(columnLabel))
+      .toEqual(['A', 'B', 'Z', 'AA', 'AB', 'AZ', 'BA', 'ZZ', 'AAA']);
+  });
+
+  it('is not fooled by a name that merely contains one', () => {
+    expect(isSpreadsheet('notes.csv.md')).toBe(false);
+    expect(isSpreadsheet('xlsx')).toBe(false);
   });
 });
