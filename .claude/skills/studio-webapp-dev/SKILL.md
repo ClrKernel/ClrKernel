@@ -109,13 +109,30 @@ app with `dotnet run --no-build`. `wwwroot` is copied into the output directory 
 indistinguishable from a fix that did not work. It has already cost an hour: two
 runs "reproducing" a bug that was fixed.
 
-If you ever do use that path, prove the bundle is current before believing a
-result:
+**`test/tools/studio_ui_test.py` uses that path**, because an automated suite
+needs a built app. So the check is in the harness rather than in this paragraph:
+`studio_harness.serving()` compares the newest mtime under `webapp/src` against
+the bundle in `bin/Debug/net8.0/wwwroot` and refuses to start when the sources
+are newer. `--no-build` is safe to reach for now — it will tell you.
+
+That guard exists because this paragraph did not work. The trap was written down
+here, and still cost three separate debugging rounds in one session: a
+break-test compiles a deliberately broken component, the next `--no-build` run
+serves *that*, and a working feature reads as broken until somebody notices. A
+rule you have to remember at the wrong moment is not a rule, it is a hope.
+
+If you use the packaged path by hand, prove the bundle is current before
+believing a result:
 
 ```bash
 diff <(curl -s localhost:PORT/ | grep -o 'assets/index[^"]*\.js') \
      <(grep -o 'assets/index[^"]*\.js' src/ClrKernel.Studio/wwwroot/index.html)
 ```
+
+And note the two hops: `./build.sh Web` writes `src/ClrKernel.Studio/wwwroot`,
+but the server serves the copy under `bin/`, which is written at **C# build**
+time. Building the web app alone leaves the old bundle in place — that is its
+own way into the same hole.
 
 Vite serves `/src/main.tsx` — source, no bundle — so on the dev loop staleness is
 not possible. That is the main reason to prefer it.
