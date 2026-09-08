@@ -10,4 +10,19 @@
   --sl-color-accent-high: #c6dbf9;
 }
 /* Result-grid screenshots are wide; let them breathe. */
-.sl-markdown-content img { border-radius: 6px; border: 1px solid var(--sl-color-hairline); }
+.sl-markdown-content img { border-radius: 6px; border: 1px solid var(--sl-color-hairline); cursor: zoom-in; }
+
+/* Click-to-enlarge lightbox (script in astro.config.mjs `head`). */
+#img-lightbox {
+  /* Starlight's reset zeroes margins; `auto` restores the UA centering of a modal dialog. */
+  margin: auto;
+  max-width: 96vw;
+  max-height: 96vh;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-out;
+}
+#img-lightbox[open] { display: flex; align-items: center; justify-content: center; }
+#img-lightbox::backdrop { background: rgb(0 0 0 / 0.8); }
+#img-lightbox img { max-width: 96vw; max-height: 96vh; object-fit: contain; display: block; }

@@ -33,6 +33,28 @@ export default defineConfig({
       ],
       lastUpdated: true,
       customCss: ['./src/styles/custom.css'],
+      head: [
+        {
+          // Click a screenshot to see it full size. Native <dialog>; styled in custom.css.
+          tag: 'script',
+          content: `document.addEventListener('click', e => {
+  const img = e.target.closest('.sl-markdown-content img');
+  if (!img || img.closest('a')) return;
+  let dlg = document.getElementById('img-lightbox');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'img-lightbox';
+    dlg.appendChild(document.createElement('img'));
+    dlg.addEventListener('click', () => dlg.close());
+    document.body.appendChild(dlg);
+  }
+  const big = dlg.firstChild;
+  big.src = img.currentSrc || img.src;
+  big.alt = img.alt;
+  dlg.showModal();
+});`,
+        },
+      ],
     }),
   ],
 });
