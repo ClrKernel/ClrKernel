@@ -1,6 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- Ref assembly on, though the SDK leaves it off for netstandard2.0. Roslyn's
+         MSBuildWorkspace matches each ProjectReference to the compiler's metadata
+         reference, which is the ref assembly where one exists; with TargetRefPath
+         empty there is nothing to match, so every load warned "Found project
+         reference without a matching metadata reference" and referencing projects
+         got this assembly as a plain dll instead of a live project reference. -->
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <!-- Records on netstandard2.0: the compiler supports them anywhere, it only
          needs IsExternalInit (shimmed in Compat/IsExternalInit.cs). -->
     <LangVersion>latest</LangVersion>
