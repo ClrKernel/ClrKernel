@@ -56,7 +56,7 @@ export function promotionProgress({ reasons, standing, isAdmin, eligible }: {
   const steps: PromotionStep[] = [];
 
   steps.push({
-    label: 'Push to test',
+    label: 'Publish to test',
     state: notInTest ? 'current' : 'done',
     detail: notInTest
       ? 'This notebook is not on test yet. Promotion ships what is committed there.'

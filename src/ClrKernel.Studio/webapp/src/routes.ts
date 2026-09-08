@@ -25,8 +25,12 @@
  *
  * Not to be confused with read-only, which is not a view: that comes from the
  * branch, and every one of these is read-only on a branch that is not yours.
+ *
+ * **`commit` is taken** — `/files/:project/:branch/commit/:sha` is the commit
+ * page, and it sits in the same slot. Adding it here would make `viewOf` claim
+ * every commit URL and hand it to the editor.
  */
-export const NOTEBOOK_VIEWS = ['edit', 'overview', 'preview', 'source', 'diff'] as const;
+export const NOTEBOOK_VIEWS = ['edit', 'overview', 'preview', 'source', 'history', 'diff'] as const;
 export type NotebookView = (typeof NOTEBOOK_VIEWS)[number];
 
 /**
@@ -58,7 +62,7 @@ export function jobsFilePath(project: string, env: string, jobsFile: string): st
  * each person's own, whichever project you happen to have been looking at.
  */
 export function isFullBleed(pathname: string): boolean {
-  return isEditorPath(pathname) || isFilesShellPath(pathname)
+  return isEditorPath(pathname) || isFilesShellPath(pathname) || isCommitPath(pathname)
     || pathname.startsWith('/connections');
 }
 
@@ -72,30 +76,83 @@ export function isFullBleed(pathname: string): boolean {
  */
 export function isFilesShellPath(pathname: string): boolean {
   const segments = pathname.split('/').filter(Boolean);
-  return segments.length === 2 && segments[0] === 'files';
+  return segments.length === 3 && segments[0] === 'files';
+}
+
+/** Which branch a Files path names, or null off the Files area. */
+export function branchOf(pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean);
+  return segments[0] === 'files' && segments.length >= 3
+    ? decodeURIComponent(segments[2])
+    : null;
 }
 
 export function connectionsPath(id?: string): string {
   return id == null ? '/connections' : `/connections/${slug(id)}`;
 }
 
-export function filesPath(project: string): string {
-  return `/files/${slug(project)}`;
+/**
+ * The Files area. With a branch it is a place; without one it is the door, and
+ * the door redirects to whichever branch you were last on.
+ */
+export function filesPath(project: string, branch?: string): string {
+  return branch == null
+    ? `/files/${slug(project)}`
+    : `/files/${slug(project)}/${slug(branch)}`;
 }
 
 /**
- * One notebook on one branch.
+ * One notebook on one branch: `/files/:project/:branch/:view/*path`.
  *
- * The path goes last and is the only variable-length part, so every segment
- * before it has a fixed job: `edit` is a literal, the branch is exactly one
- * segment, and everything after is the file. Its separators stay separators —
- * encoding them would make `reports/monthly.nb.md` one unreadable segment, and
- * the router hands the tail back raw either way.
+ * The branch comes before the view because it is the wider scope — the same
+ * ordering as the project before it, and it makes `/files/p/test` a place of its
+ * own rather than a prefix of nothing. That is what lets changing branch be a
+ * navigation: the shell and the editor differ only in what follows the branch,
+ * so the explorer moves you rather than mutating state the page has to notice.
+ *
+ * The file path goes last and is the only variable-length part, so every segment
+ * before it has a fixed job. Its separators stay separators — encoding them
+ * would make `reports/monthly.nb.md` one unreadable segment, and the router
+ * hands the tail back raw either way.
  */
 export function editPath(
   project: string, branch: string, path: string, view: NotebookView = 'edit'): string {
   const parts = path.split('/').filter(Boolean).map(encodeURIComponent);
-  return `/files/${slug(project)}/${view}/${slug(branch)}/${parts.join('/')}`;
+  return `/files/${slug(project)}/${slug(branch)}/${view}/${parts.join('/')}`;
+}
+
+/**
+ * One commit on one branch: `/files/:project/:branch/commit/:sha`, and with a file
+ * appended, that commit's change to that file.
+ *
+ * Its own segment beside the views rather than one of them, because it is not a
+ * reading of a file — it is a reading of a commit, and the file is what you pick
+ * once you are there.
+ */
+export function commitPath(
+  project: string, branch: string, sha: string, path?: string): string {
+  const head = `/files/${slug(project)}/${slug(branch)}/commit/${slug(sha)}`;
+  if (path == null || path === '') {
+    return head;
+  }
+  const parts = path.split('/').filter(Boolean).map(encodeURIComponent);
+  return `${head}/${parts.join('/')}`;
+}
+
+/**
+ * Back to the branch's History from a commit — the list you came in on.
+ *
+ * The tab is in the query rather than the path because it is one page with two
+ * readings, and only this one has anything to come back from.
+ */
+export function historyPath(project: string, branch: string): string {
+  return `${filesPath(project, branch)}?tab=history`;
+}
+
+/** True on a commit page, with or without a file chosen. */
+export function isCommitPath(pathname: string): boolean {
+  const segments = pathname.split('/').filter(Boolean);
+  return segments[0] === 'files' && segments.length >= 5 && segments[3] === 'commit';
 }
 
 /** The notebook path back out of a router splat, whatever it did to the escapes. */
@@ -139,7 +196,27 @@ export function viewOf(pathname: string): NotebookView | null {
   if (segments[0] !== 'files' || segments.length < 5) {
     return null;
   }
-  return NOTEBOOK_VIEWS.find((v) => v === segments[2]) ?? null;
+  return NOTEBOOK_VIEWS.find((v) => v === segments[3]) ?? null;
+}
+
+/**
+ * The new address of a link written against the old `/files/:project/:view/:branch/*`
+ * ordering, or null when the path is not one of those.
+ *
+ * Told apart by segment 2: the views are a closed set and no branch is called
+ * `edit` or `diff`, so a path whose third segment is a view name is an old one.
+ * Bookmarks and shared links predate the swap, and a dead link is a worse answer
+ * than a redirect.
+ */
+export function legacyFilesPath(pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments[0] !== 'files' || segments.length < 5) {
+    return null;
+  }
+  const view = NOTEBOOK_VIEWS.find((v) => v === segments[2]);
+  return view == null
+    ? null
+    : editPath(segments[1], segments[3], pathFromSplat(segments.slice(4).join('/')), view);
 }
 
 /** True on the notebook editor, which lays its own panes out full height. */

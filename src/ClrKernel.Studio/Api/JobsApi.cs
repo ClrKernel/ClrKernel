@@ -1021,23 +1021,37 @@ public static class JobsApi {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
                 var user = context.CurrentUser();
-                var message = (await BodyOf<PushWrite>(context))?.Message?.Trim();
+                var write = await BodyOf<PushWrite>(context);
+                var message = write?.Message?.Trim();
                 if (string.IsNullOrWhiteSpace(message)) {
                     message = $"changes from {user?.DisplayName}";
                 }
-                // Every jobs file on the branch, before anything is committed. A
-                // broken one on your own branch is a file mid-edit; the same file in
-                // test is a job the scheduler will not run and nobody will notice.
-                // This is the moment it stops being yours.
+                // Every jobs file on the branch, before anything is committed — not
+                // only the ones being staged. A broken one on your own branch is a
+                // file mid-edit; the same file in test is a job the scheduler will
+                // not run and nobody will notice.
+                //
+                // Whole-branch rather than per-file on purpose, and it is not
+                // over-caution: the ff-merge below moves test to this branch's
+                // *head*, so anything already committed here arrives regardless of
+                // what was staged — and `UpdateFromTest` commits uncommitted work
+                // without passing through this check at all. Staging chooses what
+                // gets committed now; it does not choose what test ends up with.
                 if (InvalidJobsFiles(scope, user.Username) is { Count: > 0 } invalid) {
                     return Results.Json(new {
+                        // The count is what the dialog shows before it lists them.
+                        // It used to be the whole answer, which named no file, no
+                        // line and no problem — so "2 jobs files have problems" was
+                        // a message you could not act on.
                         error = invalid.Count == 1
-                            ? $"{invalid[0].Path} has a problem — fix it before pushing to test."
-                            : $"{invalid.Count} jobs files have problems — fix them before pushing to test.",
+                            ? $"{invalid[0].Path} has a problem — fix it before publishing."
+                            : $"{invalid.Count} jobs files have problems — fix them before publishing.",
                         invalid,
                     }, statusCode: 409);
                 }
-                var result = scope.Git.PushToTest(user.Username, message, user?.DisplayName, EmailFor(user));
+                var result = scope.Git.PushToTest(
+                    user.Username, message, user?.DisplayName, EmailFor(user),
+                    (write?.Paths ?? new List<string>()).ToArray());
                 if (!result.Pushed) {
                     return Results.Json(
                         new { error = result.Error, needsUpdate = result.NeedsUpdate },
@@ -1045,6 +1059,151 @@ public static class JobsApi {
                 }
                 scope.Git.TryPush(scope.Project.Remote ?? options.GitPushRemote);
                 return Results.Ok(new { pushed = true, commitSha = result.Sha });
+            }).RequiresProject(ProjectRole.ProjectMember);
+
+
+        // --- git history ------------------------------------------------------
+
+        // Read-only, and a Project Viewer may see it: this is the same information
+        // `git log` gives anybody with the repo, and hiding it would only mean
+        // people ask each other instead.
+        scoped.MapGet("/commits", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            int? limit, bool? files, string path) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                return Results.Ok(new {
+                    branch = resolved,
+                    // `files` asks git for each commit's name-status in the same
+                    // walk. One process either way, so the history list takes it
+                    // and expands a commit in place rather than going back for
+                    // one — there is nothing to fetch that it did not already
+                    // have.
+                    // `path` narrows it to the commits that touched one file,
+                    // which is that file's own history rather than the branch's.
+                    commits = scope.Git
+                        .History(GitService.RefFor(resolved), limit ?? 50, files == true, path)
+                        .Select(CommitView.From),
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // One commit, by the sha in a URL. The commit page is a place you can link
+        // to and reload into, so it cannot depend on a list the app happened to
+        // have fetched — and an unknown sha is Not found rather than an empty
+        // object, which would render as a commit that changed nothing.
+        scoped.MapGet("/commits/{sha}", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            string sha) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                if (!System.Text.RegularExpressions.Regex.IsMatch(sha ?? "", "^[0-9a-fA-F]{4,40}$")) {
+                    return Results.BadRequest(new { error = "That is not a commit id." });
+                }
+                return scope.Git.Commit(sha) is { } commit
+                    ? Results.Ok(CommitView.From(commit))
+                    : Results.NotFound(new { error = $"No commit {sha} in this repository." });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // What one commit did to one file, as two texts. The client renders the
+        // same side-by-side editor the branch diffs use, so this returns content
+        // rather than a rendered diff — the shape of the comparison belongs to
+        // whoever is showing it.
+        scoped.MapGet("/commits/{sha}/file", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            string sha, string path, string previousPath) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                if (string.IsNullOrWhiteSpace(path)) {
+                    return Results.BadRequest(new { error = "A path is required." });
+                }
+                // A sha and nothing else: this reaches `git show <ref>:<path>`, and
+                // a ref is not a place to accept arbitrary text.
+                if (!System.Text.RegularExpressions.Regex.IsMatch(sha ?? "", "^[0-9a-fA-F]{4,40}$")) {
+                    return Results.BadRequest(new { error = "That is not a commit id." });
+                }
+                // `previousPath` is only ever the rename commit's other side, and it
+                // comes back from the same name-status the client already has — the
+                // browser is not guessing a path here, it is repeating git's.
+                var (before, after) = scope.Git.FileChange(sha, path, previousPath);
+                return Results.Ok(new {
+                    sha,
+                    path,
+                    // Null rather than empty on either side: added and deleted are
+                    // not the same as "was empty", and the diff view says so.
+                    before,
+                    after,
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        scoped.MapGet("/contents", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            string path) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                // Through the same guard the file routes use: a listing is a read of
+                // the tree, and `../` must not walk out of it.
+                var folder = path ?? string.Empty;
+                if (folder.Length > 0 && NotebookTree.SafeResolve(RootOf(scope, resolved), folder) == null) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                return Results.Ok(new {
+                    branch = resolved,
+                    path = folder,
+                    entries = scope.Git.Contents(resolved, folder).Select(e => new {
+                        e.Name,
+                        e.Path,
+                        e.IsDirectory,
+                        e.Size,
+                        e.Modified,
+                        lastCommit = e.LastCommit == null ? null : CommitView.From(e.LastCommit),
+                    }),
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // What `Update from test` would actually do, before it does it.
+        api.MapGet("/projects/{project}/branch/incoming", (
+            HttpContext context, ProjectRegistry projects, string project, bool? problems) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                var user = context.CurrentUser();
+                if (user == null || !scope.Git.HasUserWorktree(user.Username)) {
+                    return Results.Ok(new { hasBranch = false });
+                }
+                var handle = user.Username;
+                return Results.Ok(new {
+                    hasBranch = true,
+                    branch = GitService.BranchForUser(handle),
+                    // Both lanes, so the picture can show where they parted rather
+                    // than only what is arriving.
+                    incoming = scope.Git.IncomingFromTest(handle).Select(CommitView.From),
+                    outgoing = scope.Git.OutgoingToTest(handle).Select(CommitView.From),
+                    mergeBase = scope.Git.MergeBaseWithTest(handle),
+                    // The half the confirm box never showed: what of yours gets
+                    // committed on the way in, and under what message.
+                    uncommitted = scope.Git.Uncommitted(handle)
+                        .Select(f => new { f.Status, f.Path }),
+                    // Only when asked. It is a directory walk and a YAML parse per
+                    // jobs file, and only the publish dialog needs it — the merge
+                    // preview would pay for an answer it never shows.
+                    problems = problems == true ? InvalidJobsFiles(scope, handle) : null,
+                });
             }).RequiresProject(ProjectRole.ProjectMember);
 
         api.MapPost("/projects/{project}/branch/update", (
@@ -2637,6 +2796,11 @@ public static class JobsApi {
 /// <summary>The commit message a push carries.</summary>
 public sealed class PushWrite {
     public string Message { get; set; }
+    /// <summary>
+    /// The files to commit, or null/empty for everything saved on the branch.
+    /// Repo-relative, as <see cref="GitService.Uncommitted"/> reports them.
+    /// </summary>
+    public List<string> Paths { get; set; }
 }
 
 /// <summary>One grant, as the members API sets it.</summary>
@@ -2931,4 +3095,17 @@ public sealed class CellRunView {
     public bool Truncated { get; set; }
     /// <summary>nbformat outputs — the same shapes the run view already renders.</summary>
     public System.Text.Json.Nodes.JsonArray Outputs { get; set; }
+}
+
+/// <summary>One commit as the web app reads it.</summary>
+internal static class CommitView {
+    public static object From(GitService.CommitEntry commit) => new {
+        commit.Sha,
+        commit.ShortSha,
+        commit.Author,
+        commit.When,
+        commit.Subject,
+        commit.Parents,
+        files = commit.Files.Select(f => new { f.Status, f.Path, f.OldPath }),
+    };
 }

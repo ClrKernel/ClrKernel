@@ -16,7 +16,7 @@ describe('promotionProgress', () => {
       isAdmin: true,
       eligible: false,
     });
-    expect(at(steps, 'Push')).toBe('current');
+    expect(at(steps, 'Publish')).toBe('current');
     expect(at(steps, 'Add a job')).toBe('todo');
     expect(at(steps, 'Run')).toBe('todo');
     expect(steps[0].detail).toContain('committed there');
@@ -29,7 +29,7 @@ describe('promotionProgress', () => {
       isAdmin: true,
       eligible: false,
     });
-    expect(at(steps, 'Push')).toBe('done');
+    expect(at(steps, 'Publish')).toBe('done');
     expect(at(steps, 'Add a job')).toBe('current');
     expect(at(steps, 'Run')).toBe('todo');
   });

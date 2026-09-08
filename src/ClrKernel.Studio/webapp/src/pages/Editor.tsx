@@ -12,7 +12,11 @@ import { Button } from '@/components/ui/button';
 import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
+import { DiffView } from '../components/DiffView';
+import { FileHistory } from '../components/FileHistory';
 import { JobsOverview } from '../components/JobsOverview';
+import { MergePreview } from '../components/MergePreview';
+import { PublishDialog } from '../components/PublishDialog';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { NotebookToolbar } from '../components/NotebookToolbar';
 import { SheetView } from '../components/SheetView';
@@ -36,7 +40,7 @@ import {
   saveNotebookState,
   type LayoutPrefs,
 } from '../prefs';
-import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
+import { useFillEditor } from '../monaco/useMonaco';
 import { BranchAllows, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
 import {
@@ -86,6 +90,48 @@ import {
  * skipped, because a needless commit invalidates the notebook's promotion
  * evidence.
  */
+/**
+ * What a pane shows when it has no content.
+ *
+ * Two different states used to render the same word: still reading, and the
+ * read already failed. The second one said "Loading…" for ever, under a banner
+ * that had already said the file was not there — so the page contradicted
+ * itself and the spinner was the more believable half.
+ */
+function NoContent({ failed, path, branch, behind }: {
+  /** Why the read failed, or null while it is still going. */
+  failed: string | null;
+  path: string;
+  branch: string;
+  /** Test has this file and this branch does not — the common way to get here. */
+  behind: boolean;
+}) {
+  if (failed == null) {
+    return <p className="px-4 text-base text-muted-foreground">Loading…</p>;
+  }
+  const name = path.split('/').pop() ?? path;
+  return (
+    <div className="max-w-[70ch] px-4">
+      <p className="text-base font-medium">{name} is not on this branch.</p>
+      <p className="mt-1 text-base text-muted-foreground">
+        {behind ? (
+          <>
+            Test has it and <code className="font-mono text-code">{branch}</code> does not yet —
+            update from test with the ↓ beside the branch picker, and it arrives with everything
+            else test has moved on.
+          </>
+        ) : (
+          <>
+            Another branch may have it. The branch picker in the explorer switches between them,
+            and a link to a file is a link to it <em>on one branch</em> — which is usually how
+            somebody ends up here.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function Editor() {
   // /files/:project/edit/:branch/*path — the notebook is the splat because it is
   // the only part that can be any number of segments deep.
@@ -181,6 +227,14 @@ export function Editor() {
     [branch, path, preview, source],
   );
   const [savedSource, setSavedSource] = useState<string | null>(null);
+  /**
+   * Why the file could not be read, or null.
+   *
+   * Separate from `savedSource == null`, which means two different things —
+   * still reading, and never coming — and a pane that cannot tell them apart
+   * says "Loading…" for ever underneath a banner that already said why.
+   */
+  const [loadFailed, setLoadFailed] = useState<string | null>(null);
   /** Bumped when the file changed underneath the editor — a merge, or a reload. */
   const [reloads, setReloads] = useState(0);
   /**
@@ -261,9 +315,17 @@ export function Editor() {
     15000,
   );
 
+  // Test changed *this* file and this branch has not got it. Two readers: the
+  // toolbar's chip, and the pane that has nothing to show — which is how
+  // somebody arrives at a file their branch does not have.
+  const fileBehind = branch === 'mine' && (standing?.behindFiles ?? []).includes(path);
+
   // A push adds files to test and a promote adds them to prod, and the editor stays
   // mounted through both — so nothing refetched the tree the explorer is showing.
   const [treeRefresh, setTreeRefresh] = useState(0);
+  /** The merge preview, which is what the explorer's ↓ opens now. */
+  const [previewMerge, setPreviewMerge] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const refreshTree = () => setTreeRefresh((n) => n + 1);
 
   // Polled, not fetched once: the run that unlocks promotion happens in test,
@@ -355,6 +417,7 @@ export function Editor() {
   useEffect(() => {
     let live = true;
     setError(null);
+    setLoadFailed(null);
     if (tab === 'edit') {
       api
         .notebookCells(branch, path)
@@ -375,7 +438,12 @@ export function Editor() {
           });
           setReloads((n) => n + 1);
         })
-        .catch((e) => live && setError((e as Error).message));
+        .catch((e) => {
+          if (live) {
+            setError((e as Error).message);
+            setLoadFailed((e as Error).message);
+          }
+        });
     } else if (binary) {
       // Nothing to read on any tab: the file is served as bytes to an <img> or an
       // <iframe>. The text route would answer with File.ReadAllText over a PNG,
@@ -397,7 +465,13 @@ export function Editor() {
         // The server's own reason, not a generic one: it is the half that says
         // *why* — too big, or not text at all — and a file that will not open is
         // exactly when somebody needs to be told which.
-        .catch((e) => live && setError((e as Error).message || `Could not load ${path}.`));
+        .catch((e) => {
+          if (live) {
+            const why = (e as Error).message || `Could not load ${path}.`;
+            setError(why);
+            setLoadFailed(why);
+          }
+        });
     }
     // Two switches in quick succession are two requests, and they can come back
     // in either order. Whichever one is no longer the view on screen drops its
@@ -692,34 +766,29 @@ export function Editor() {
     }
   }
 
-  /** The commit moment: everything on your branch becomes one commit on test. */
-  async function push(message: string) {
+  /**
+   * The half of publishing that belongs to the editor: the dialog did the commit,
+   * this re-reads what it changed. Same shape as the merge preview beside it.
+   */
+  function published(message: string) {
     setError(null);
-    setNotice(null);
-    setBusy(true);
-    try {
-      await api.pushToTest(message);
-      setNotice('Pushed to test.');
-      reloadPromotion();
-      refreshTree();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-      reloadStanding();
-    }
+    setNotice(message);
+    reloadPromotion();
+    refreshTree();
+    reloadStanding();
   }
 
   /** Merges test into your branch. Conflicts come back as files, never resolved. */
-  async function updateFromTest() {
+  /**
+   * Re-read the file after a merge landed. The merge itself belongs to the
+   * preview dialog, which is the thing that showed you what it was going to do —
+   * this is only the half that has to happen to the editor afterwards.
+   */
+  async function reloadAfterMerge(message: string) {
     setError(null);
-    setNotice(null);
+    setNotice(message);
     setBusy(true);
     try {
-      const result = await api.updateFromTest();
-      setNotice(result.merged
-        ? 'Up to date with test.'
-        : `Conflicts left in ${result.conflicts.join(', ')} — resolve the markers, save, then push.`);
       // The merge changed files under the editor; re-read rather than keep a
       // buffer that no longer matches what is on disk.
       const text = await api.notebookContent(branch, path);
@@ -1022,7 +1091,10 @@ export function Editor() {
     : null;
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
-  const fills = focusing || tab === 'source' || tab === 'diff' || tab === 'preview';
+  // History too: it is a list beside a diff editor, both of which take the
+  // height of the pane and scroll inside themselves, so the page must not.
+  const fills = focusing
+    || tab === 'source' || tab === 'diff' || tab === 'preview' || tab === 'history';
 
   return (
     // Somebody else's branch reads exactly like your own and changes in none of
@@ -1039,7 +1111,7 @@ export function Editor() {
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
         refresh={treeRefresh}
         standing={standing}
-        onUpdate={updateFromTest}
+        onUpdate={() => setPreviewMerge(true)}
       />
       {!layout.explorerCollapsed && (
         <Splitter
@@ -1097,9 +1169,9 @@ export function Editor() {
         onPromote={promote}
         promotion={promotion}
         standing={standing}
-        onPush={push}
+        onPublish={() => setPublishing(true)}
         branch={branch}
-        fileBehind={branch === 'mine' && (standing?.behindFiles ?? []).includes(path)}
+        fileBehind={fileBehind}
         fileEditable={fileEditable(path)}
         onCopyToMine={copyToMine}
         onSaveAs={saveAs}
@@ -1128,7 +1200,7 @@ export function Editor() {
 
       {tab === 'edit' &&
         (cells == null ? (
-          <p className="px-4 text-base text-muted-foreground">Loading…</p>
+          <NoContent failed={loadFailed} path={path} branch={branch} behind={fileBehind} />
         ) : (
           <div className="notebook-editor">
             {/* Run All, Restart, the kernel badge and the mode toggle all live
@@ -1277,7 +1349,7 @@ export function Editor() {
 
       {tab === 'overview' && (
         source == null ? (
-          <p className="px-4 text-base text-muted-foreground">Loading…</p>
+          <NoContent failed={loadFailed} path={path} branch={branch} behind={fileBehind} />
         ) : (
           <JobsOverview
             text={source}
@@ -1298,15 +1370,15 @@ export function Editor() {
           source={source}
           sheet={sheet}
           sheetError={sheetError}
+          loadFailed={loadFailed}
+          fileBehind={fileBehind}
         />
       )}
 
       {tab === 'source' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {source == null ? (
-            // Nothing, once the read has failed: the banner above already says
-            // why, and "Loading…" under it says the opposite for ever.
-            error != null ? null : <p className="text-base text-muted-foreground">Loading…</p>
+            <NoContent failed={loadFailed} path={path} branch={branch} behind={fileBehind} />
           ) : (
             <SourceEditor
               value={source}
@@ -1320,10 +1392,14 @@ export function Editor() {
         </div>
       )}
 
+      {tab === 'history' && (
+        <FileHistory branch={branch} path={path} />
+      )}
+
       {tab === 'diff' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {other == null || savedSource == null ? (
-            <p className="text-base text-muted-foreground">Loading…</p>
+            <NoContent failed={loadFailed} path={path} branch={branch} behind={fileBehind} />
           ) : other === savedSource ? (
             <p className="text-base text-muted-foreground">
               No differences — {diffLabel} and this branch are identical for this file.
@@ -1340,6 +1416,17 @@ export function Editor() {
             </>
           )}
         </div>
+      )}
+
+      {publishing && (
+        <PublishDialog onClose={() => setPublishing(false)} onPublished={published} />
+      )}
+
+      {previewMerge && (
+        <MergePreview
+          onClose={() => setPreviewMerge(false)}
+          onMerged={reloadAfterMerge}
+        />
       )}
 
       {connectFor != null && cells?.[connectFor] &&
@@ -1372,11 +1459,15 @@ export function Editor() {
  * as bytes and read nothing, markdown renders the text the page already loaded.
  */
 function FilePreview({
-  kind, branch, path, source, sheet, sheetError,
+  kind, branch, path, source, sheet, sheetError, loadFailed, fileBehind,
 }: {
   kind: PreviewKind | null;
   branch: string;
   path: string;
+  /** Why the file could not be read, or null while it is still being read. */
+  loadFailed: string | null;
+  /** Test has this file and this branch does not — the usual way to get here. */
+  fileBehind: boolean;
   /** The file's text, for the one kind that is text. */
   source: string | null;
   /** Rows and tabs, for the one kind that is a grid. */
@@ -1388,7 +1479,7 @@ function FilePreview({
       return <p className="px-4 text-base text-status-danger">{sheetError}</p>;
     }
     return sheet == null
-      ? <p className="px-4 text-base text-muted-foreground">Loading…</p>
+      ? <NoContent failed={loadFailed} path={path} branch={branch} behind={fileBehind} />
       : <SheetView sheets={sheet} rowLimit={ROW_LIMIT} />;
   }
 
@@ -1396,7 +1487,7 @@ function FilePreview({
     return (
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-8">
         {source == null ? (
-          <p className="text-base text-muted-foreground">Loading…</p>
+          <NoContent failed={loadFailed} path={path} branch={branch} behind={fileBehind} />
         ) : (
           <div className="max-w-[80ch]">
             <MarkdownBody>{source}</MarkdownBody>
@@ -1476,19 +1567,6 @@ function SourceEditor({
   }, [problems, value]);
 
   return <div className="source-editor" ref={container} />;
-}
-
-/** What promotion would ship, side by side — the same view VS Code gives a
- *  branch comparison, rather than a unified diff to read in your head. */
-function DiffView({
-  original, modified, language,
-}: {
-  original: string;
-  modified: string;
-  language: string;
-}) {
-  const container = useDiffEditor(original, modified, language, true);
-  return <div className="diff-editor" ref={container} />;
 }
 
 /**

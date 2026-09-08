@@ -116,7 +116,8 @@ export interface NotebookToolbarProps {
   promotion: { eligible: boolean; isDeletion?: boolean; reasons: string[] } | null;
   /** Where your own branch stands against test. */
   standing: BranchStanding | null;
-  onPush: (message: string) => void;
+  /** Opens the publish dialog — the message and the staging live in there. */
+  onPublish: () => void;
   /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
   onSchedule?: () => void;
   /** Which branch is open — `mine`, `test`, `prod`, or `user-<id>`. */
@@ -221,8 +222,8 @@ function explainSaving(): void {
     'You are editing your own branch',
     <p className="mt-1">
       Saving writes the file to your branch — nobody else sees it and nothing runs from it on a
-      schedule. <strong>Push to test</strong> is the commit: everything you have saved becomes one
-      commit on test, under a message you write. Cells you run here execute in a warm kernel that
+      schedule. <strong>Publish</strong> is the commit: the files you pick become one commit on
+      test, under a message you write. Cells you run here execute in a warm kernel that
       is dropped after 30 idle minutes; those runs never appear in run history and never count
       towards promotion. Promotion unlocks when every job on this notebook has a clean green run in
       test of exactly this content.
@@ -261,7 +262,7 @@ function SaveStatusChip({ status, onRetry }: { status: SaveStatus; onRetry: () =
 }
 
 /**
- * Push to test, and the state that says whether it is worth offering.
+ * Publish, and the state that says whether it is worth offering.
  *
  * A single button rather than a dialog: the message is the only thing to collect,
  * and a prompt for one line is a modal for one line.
@@ -276,17 +277,14 @@ function SaveStatusChip({ status, onRetry }: { status: SaveStatus; onRetry: () =
 function PushControl({
   standing,
   busy,
-  onPush,
+  onPublish,
 }: {
   standing: BranchStanding | null;
   busy: boolean;
-  onPush: (message: string) => void;
+  onPublish: () => void;
   /** Create-or-open the paired `*.jobs.yaml`. Absent for a file that is not a notebook. */
   onSchedule?: () => void;
 }) {
-  const [message, setMessage] = useState('');
-  const [open, setOpen] = useState(false);
-
   if (standing?.hasBranch !== true) {
     return null;
   }
@@ -329,47 +327,18 @@ function PushControl({
         title="Test has moved on. Update your branch first — the ↓ button beside the branch picker in the explorer."
       >
         <Upload className="size-3.5" aria-hidden="true" />
-        Push to test
+        Publish
       </Button>
     );
   }
 
-  return open ? (
-    <span className="flex items-center gap-1">
-      <input
-        autoFocus
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && message.trim()) {
-            onPush(message.trim());
-            setMessage('');
-            setOpen(false);
-          }
-          if (e.key === 'Escape') {
-            setOpen(false);
-          }
-        }}
-        placeholder="What did you change?"
-        aria-label="Push message"
-        className="h-6 w-[190px] rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-      />
-      <Button
-        size="xs"
-        disabled={busy || !message.trim()}
-        onClick={() => {
-          onPush(message.trim());
-          setMessage('');
-          setOpen(false);
-        }}
-      >
-        Push
-      </Button>
-    </span>
-  ) : (
-    <Button variant="outline" size="xs" disabled={busy} onClick={() => setOpen(true)}>
+  // A button, and the dialog behind it does the rest. It used to be a text field
+  // that appeared on the bar: you typed a message into eleven characters of space
+  // and found out afterwards that a jobs file would not parse.
+  return (
+    <Button variant="outline" size="xs" disabled={busy} onClick={onPublish}>
       <Upload className="size-3.5" aria-hidden="true" />
-      Push to test
+      Publish
     </Button>
   );
 }
@@ -452,6 +421,11 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           {!props.binary && (
             <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
           )}
+          {/* Between Source and Diff, which is the order the three questions get
+              asked in: what does it say, what has it been, and how does it differ
+              from where it is going. Not for a binary — its history is a list of
+              shas with nothing to show between them. */}
+          {!props.binary && <TabsTrigger value="history">History</TabsTrigger>}
           {!props.binary && (
             <TabsTrigger value="diff">
               {/* Named, because it is not always production: the diff is against
@@ -688,7 +662,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       <PushControl
         standing={props.standing}
         busy={props.busy}
-        onPush={props.onPush}
+        onPublish={props.onPublish}
       />
       </div>
       )}

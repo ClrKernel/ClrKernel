@@ -115,6 +115,59 @@ export interface BranchStanding {
   behindFiles?: string[];
 }
 
+
+/** One commit, as the history views read it. */
+export interface ApiCommit {
+  sha: string;
+  shortSha: string;
+  author: string;
+  when: string;
+  subject: string;
+  /** Full shas, first parent first. Two of them is a merge. */
+  parents: string[];
+  /**
+   * Present where the caller asked for them — a merge preview, not a plain list.
+   * In a followed file history the path is the one the file had *at that commit*,
+   * and `oldPath` is set on the commit that renamed it.
+   */
+  files: { status: string; path: string; oldPath: string | null }[];
+}
+
+/** One row of a folder listing. */
+export interface ApiEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+  modified: string;
+  /** Null until the branch has a commit touching it — a file only just written. */
+  lastCommit: ApiCommit | null;
+}
+
+/** What `Update from test` would do, before it does it. */
+export interface ApiIncoming {
+  hasBranch: boolean;
+  branch?: string;
+  /** On test and not on your branch — what arrives. */
+  incoming?: ApiCommit[];
+  /** On your branch and not on test — the other lane of the picture. */
+  outgoing?: ApiCommit[];
+  mergeBase?: string | null;
+  /** Yours, uncommitted. The merge commits these first, on your own branch. */
+  uncommitted?: { status: string; path: string }[];
+  /**
+   * Jobs files that will not parse, each with where and what. Only present when
+   * asked for — the publish dialog wants them, the merge preview does not.
+   */
+  problems?: ApiInvalidJobsFile[] | null;
+}
+
+/** One `*.jobs.yaml` that will not parse, and every reason it will not. */
+export interface ApiInvalidJobsFile {
+  path: string;
+  problems: ApiJobsProblem[];
+}
+
 export interface Worktree {
   /** The name of the branch and of the directory — and what removes it. */
   handle: string;
@@ -818,14 +871,42 @@ export const api = {
   branches: (slug?: string) => request<{ branches: BranchSummary[] }>(
     slug == null ? `${project()}/branches` : `/projects/${encodeURIComponent(slug)}/branches`),
 
+  /** A branch's commits, newest first. With a `path`, that file's own — across renames. */
+  commits: (branch: string, limit = 50, withFiles = false, path?: string) =>
+    request<{ branch: string; commits: ApiCommit[] }>(
+      `${scope(branch)}/commits?limit=${limit}&files=${withFiles}`
+      + (path ? `&path=${encodeURIComponent(path)}` : '')),
+  /** One commit by its sha, with the files it touched. 404 when there is no such one. */
+  commit: (branch: string, sha: string) =>
+    request<ApiCommit>(`${scope(branch)}/commits/${encodeURIComponent(sha)}`),
+  /** One file on either side of one commit. Null on a side the file was not on. */
+  commitFile: (branch: string, sha: string, path: string, previousPath?: string | null) =>
+    request<{ sha: string; path: string; before: string | null; after: string | null }>(
+      `${scope(branch)}/commits/${encodeURIComponent(sha)}/file`
+      + `?path=${encodeURIComponent(path)}`
+      // Only the rename commit sends one, and only the path git itself reported.
+      + (previousPath ? `&previousPath=${encodeURIComponent(previousPath)}` : '')),
+  /** One folder of a branch, each row with the commit that last touched it. */
+  contents: (branch: string, path = '') =>
+    request<{ branch: string; path: string; entries: ApiEntry[] }>(
+      `${scope(branch)}/contents?path=${encodeURIComponent(path)}`),
+  /** What a merge from test would bring, and what of yours it would commit first. */
+  incoming: (withProblems = false) =>
+    request<ApiIncoming>(`${project()}/branch/incoming?problems=${withProblems}`),
+
   /** Where your own branch stands against test: unsaved work, and either drift. */
   branchStanding: () =>
     request<BranchStanding>(`${project()}/branch`),
-  /** Commits everything on your branch and fast-forwards test onto it. */
-  pushToTest: (message: string) =>
+  /**
+   * Commits your branch and fast-forwards test onto it — the publish moment.
+   *
+   * `paths` stages a subset; everything saved goes in when it is omitted. What is
+   * left out stays uncommitted on your branch rather than travelling.
+   */
+  pushToTest: (message: string, paths?: string[]) =>
     request<{ pushed: boolean; commitSha: string }>(`${project()}/branch/push`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, paths }),
     }),
   /** Merges test into your branch, in your own worktree. */
   updateFromTest: () =>

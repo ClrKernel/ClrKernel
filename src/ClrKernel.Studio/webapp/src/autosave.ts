@@ -42,7 +42,7 @@ export const STATUS_LABEL: Record<SaveStatus, string> = {
 };
 
 export const STATUS_TITLE: Record<SaveStatus, string> = {
-  saved: 'Everything is written to your branch. Push to test when you are ready.',
+  saved: 'Everything is written to your branch. Publish when you are ready.',
   unsaved: 'Writing to your branch in a moment. ⌘S / Ctrl+S writes now.',
   saving: 'Writing to your branch.',
   failed: 'The last write did not land. Click to try again.',

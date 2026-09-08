@@ -55,13 +55,67 @@ def wait_for(url, timeout=90):
     raise SystemExit(f"studio never answered {url}")
 
 
+
+# The bundle the server will actually serve, and the sources it was built from.
+# `dotnet run --no-build` serves the copy in the *output* directory, which is
+# written at C# build time — two hops from the TypeScript, and either can be
+# behind.
+_WEBAPP = os.path.join(STUDIO, "webapp", "src")
+_SERVED = os.path.join(STUDIO, "bin", "Debug", "net8.0", "wwwroot", "index.html")
+
+
+def _newest(root):
+    newest = 0.0
+    for folder, _, files in os.walk(root):
+        if "node_modules" in folder:
+            continue
+        for name in files:
+            try:
+                newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
+            except OSError:
+                pass
+    return newest
+
+
+def assert_fresh_bundle(allow_stale=False):
+    """Refuse to serve a bundle older than the code it is supposed to be.
+
+    This exists because the guidance did not work. The trap is documented in the
+    studio-webapp-dev skill and it was still hit three times in one session: a
+    break-test compiles a deliberately broken component, the next `--no-build`
+    run serves *that*, and a working feature reads as broken for as long as it
+    takes to notice. The failure is silent and looks exactly like a real one,
+    which is what makes it expensive.
+
+    So it is a check on the path every harness goes through rather than a
+    paragraph somebody has to remember at the wrong moment. `allow_stale` is for
+    the one honest case — testing the packaging itself — and has to be asked for.
+    """
+    if allow_stale or not os.path.exists(_SERVED):
+        return
+    sources, served = _newest(_WEBAPP), os.path.getmtime(_SERVED)
+    if sources <= served:
+        return
+    raise SystemExit(
+        "The web app on disk is newer than the bundle that would be served.\n"
+        f"  sources: {time.strftime('%H:%M:%S', time.localtime(sources))}"
+        f"  ({os.path.relpath(_WEBAPP, REPO)})\n"
+        f"  served:  {time.strftime('%H:%M:%S', time.localtime(served))}"
+        f"  ({os.path.relpath(_SERVED, REPO)})\n\n"
+        "Running anyway would test the previous build, which is indistinguishable\n"
+        "from a change that did not work. Drop --no-build, or build by hand:\n"
+        "  ./build.sh Web && dotnet build src/ClrKernel.Studio/ClrKernel.Studio.csproj "
+        "-c Debug -f net8.0")
+
+
 @contextlib.contextmanager
-def serving(nb, data, port, env=None):
+def serving(nb, data, port, env=None, allow_stale=False):
     """`serve` on a port, and its whole process group stopped afterwards.
 
     Its own session, because `dotnet run` starts the app as a child: killing only
     the parent leaves the port held by something nothing is watching.
     """
+    assert_fresh_bundle(allow_stale)
     base = f"http://localhost:{port}"
     log = open(os.path.join(data, "serve.log"), "w")
     server = subprocess.Popen(

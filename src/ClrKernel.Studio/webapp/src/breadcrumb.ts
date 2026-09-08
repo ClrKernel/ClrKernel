@@ -1,4 +1,4 @@
-import { pathFromSplat, viewOf } from './routes';
+import { filesPath, pathFromSplat, viewOf } from './routes';
 
 /**
  * Where you are, as the top bar says it.
@@ -11,10 +11,20 @@ export interface Crumb {
   label: string;
   /** Omitted on the leaf — the page you are on is not a link to itself. */
   to?: string;
-  /** Rendered as a Badge after the label. Only the notebook editor sets it. */
-  badge?: string;
   /** Set when `label` is shortened; the full value goes in `title`. */
   full?: string;
+  /**
+   * Rendered as a switcher rather than as text — a place in the trail you can
+   * move sideways from. `label` is then only what a key and a test read.
+   *
+   * Both used to sit outside the trail: the project was pinned in front of it by
+   * the top bar and the branch hung off the file name as a pill, so the strip
+   * read "Studio / project / Files / file [branch]" — two of the four scopes out
+   * of order, and the branch attached to the file rather than standing between
+   * the project and it. In the path they are `/files/:project/:branch/…`, and now
+   * the trail says the same thing in the same order.
+   */
+  slot?: 'project' | 'branch';
 }
 
 /** Longest a crumb gets before the middle is elided. */
@@ -38,9 +48,9 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function leaf(label: string, badge?: string): Crumb {
+function leaf(label: string): Crumb {
   const short = middleTruncate(label);
-  return { label: short, badge, ...(short === label ? {} : { full: label }) };
+  return { label: short, ...(short === label ? {} : { full: label }) };
 }
 
 /**
@@ -57,20 +67,30 @@ export function breadcrumbFor(pathname: string): Crumb[] {
 
   switch (segments[0]) {
     case 'files': {
-      if (segments.length < 2) {
+      const [, project, branch] = segments;
+      if (project == null) {
         return [leaf('Files')];
       }
-      const to = `/files/${segments[1]}`;
-      // /files/:project/<view>/:branch/*path. The badge is a switcher here rather
-      // than a label: which branch you are reading is a place you can move to.
-      // This only says where it goes; the top bar renders it.
-      if (viewOf(pathname) != null) {
-        return [
-          { label: 'Files', to },
-          leaf(pathFromSplat(segments.slice(4).join('/')) || 'Untitled', 'branch'),
-        ];
+      // Widest scope first, narrowing left to right: the section, the project,
+      // the branch, the file. Which is the order the URL puts them in.
+      const view = viewOf(pathname);
+      const crumbs: Crumb[] = [
+        // Back to the branch, not to the project's door: the door would bounce
+        // you to whichever branch you were last on, which is not necessarily the
+        // one whose file you are looking at. Not a link when it *is* that page —
+        // a breadcrumb's last stop is where you are, and on the shell that is
+        // Files itself, everything after it being a control rather than a place.
+        view == null ? leaf('Files') : { label: 'Files', to: filesPath(project, branch) },
+        { label: project, slot: 'project' },
+      ];
+      // The branch switcher belongs to a file, not to the shell: the shell has
+      // the explorer's own branch picker two inches below it, and a second one
+      // saying the same thing is a second thing to keep in agreement.
+      if (view != null) {
+        crumbs.push({ label: branch, slot: 'branch' });
+        crumbs.push(leaf(pathFromSplat(segments.slice(4).join('/')) || 'Untitled'));
       }
-      return [leaf('Files')];
+      return crumbs;
     }
 
     case 'connections':

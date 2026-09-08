@@ -1,16 +1,18 @@
 import { FilePlus2, FolderGit2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { api, projectSlug } from '../api';
 import { ErrorBanner, usePolling } from '../components/common';
+import { MergePreview } from '../components/MergePreview';
 import { NotebookExplorer } from '../components/NotebookExplorer';
+import { RepoBrowser } from '../components/RepoBrowser';
 import { Splitter } from '../components/Splitter';
 import { createNotebook, promptForNotebook } from '../newNotebook';
 import {
-  DEFAULT_LAYOUT, loadBranch, loadLayout, MAX_EXPLORER, MIN_EXPLORER, saveLayout,
+  DEFAULT_LAYOUT, loadLayout, MAX_EXPLORER, MIN_EXPLORER, saveLayout,
   type LayoutPrefs,
 } from '../prefs';
 import { editPath } from '../routes';
@@ -49,15 +51,18 @@ export function Files() {
   const [notice, setNotice] = useState<string | null>(null);
   const [setting, setSetting] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(() => loadLayout());
+  const [previewMerge, setPreviewMerge] = useState(false);
   useEffect(() => saveLayout(layout), [layout]);
   // The explorer's drag reports a viewport X; the sidebar's width is that minus
   // wherever this row actually starts, which is not the window's edge.
   const shell = useRef<HTMLDivElement>(null);
 
-  // The branch you were last on in this project. The explorer keeps its own
-  // selection and falls back to the first branch when this names one that no
-  // longer exists — the same guard the card had, in one place now.
-  const branch = loadBranch(projectSlug()) ?? 'mine';
+  // From the URL, so changing it is a navigation and everything on the page is
+  // re-rendered against the new one. It used to be read from localStorage on
+  // every render, which nothing re-ran when the explorer wrote to it — so the
+  // tree moved to the other branch and the Contents and History beside it did
+  // not, showing one branch's files under another branch's name.
+  const { branch = 'mine' } = useParams<{ branch: string }>();
 
   /**
    * Turns this project's folder into a test/prod workspace — what
@@ -112,18 +117,7 @@ export function Files() {
         collapsed={layout.explorerCollapsed}
         onCollapse={(explorerCollapsed) => setLayout({ ...layout, explorerCollapsed })}
         standing={standing}
-        onUpdate={async () => {
-          try {
-            const result = await api.updateFromTest();
-            toast.success(result.merged
-              ? 'Up to date with test.'
-              : `Conflicts left in ${result.conflicts.join(', ')} — open each and fix the markers.`);
-            reload();
-            reloadStanding();
-          } catch (e) {
-            setNotice((e as Error).message);
-          }
-        }}
+        onUpdate={() => setPreviewMerge(true)}
       />
       {!layout.explorerCollapsed && (
         <Splitter
@@ -179,26 +173,37 @@ export function Files() {
           </Alert>
         )}
 
-        {/* Centred in what is left, so an empty pane reads as empty rather than as
-            a page that failed to load its top-left corner. */}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="max-w-[46ch] text-base text-muted-foreground">
-            {/* "No files" only once the tree has actually arrived. Keyed off the
-                count alone it was also what the page said for the second before
-                the first fetch landed — an empty project and a slow one looked
-                identical, and the wrong one of the two is alarming. */}
-            {tree != null && environments.length === 0
-              ? 'No files under the notebooks root.'
-              : 'Pick a file on the left to open it here.'}
-          </p>
-          {mayWrite && (
-            <Button variant="outline" size="sm" onClick={create}>
-              <FilePlus2 className="size-3.5" aria-hidden="true" />
-              New notebook
-            </Button>
-          )}
-        </div>
+        {tree != null && environments.length === 0 ? (
+          <p className="text-base text-muted-foreground">No files under the notebooks root.</p>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex-1" />
+              {mayWrite && (
+                <Button variant="outline" size="sm" onClick={create}>
+                  <FilePlus2 className="size-3.5" aria-hidden="true" />
+                  New notebook
+                </Button>
+              )}
+            </div>
+            {/* The repo, rather than an empty pane with a button in the middle of
+                it: opening Files used to say nothing at all about the project you
+                had just opened. */}
+            <RepoBrowser branch={branch} />
+          </>
+        )}
       </div>
+
+      {previewMerge && (
+        <MergePreview
+          onClose={() => setPreviewMerge(false)}
+          onMerged={(message) => {
+            toast.success(message);
+            reload();
+            reloadStanding();
+          }}
+        />
+      )}
     </div>
   );
 }

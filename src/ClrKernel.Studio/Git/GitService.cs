@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Studio;
@@ -64,6 +66,14 @@ public sealed class GitService {
     /// branch string used to resolve there, and now that test refuses writes, a
     /// fallback would be a write landing in the one place nobody may write.
     /// </summary>
+    /// <summary>
+    /// The git ref behind an environment name. They are the same word except for
+    /// production, which the app calls <c>prod</c> and git calls <c>main</c> — so
+    /// anything handing one of these to git has to translate, and anything handing
+    /// it to <see cref="PathFor"/> must not.
+    /// </summary>
+    public static string RefFor(string branch) => branch == "prod" ? ProdBranch : branch;
+
     public string PathFor(string branch) => branch switch {
         "prod" => ProdPath,
         TestBranch => TestPath,
@@ -211,6 +221,11 @@ public sealed class GitService {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            // git speaks UTF-8. A redirected stream otherwise decodes with the
+            // console's encoding, which on Windows is an OEM code page — the same
+            // shape of bug as a Jupyter cell whose em-dash arrived as `???`.
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
         };
         // Pinned config: never trust (or require) ambient gitconfig.
         foreach (var arg in new[] {
@@ -235,11 +250,6 @@ public sealed class GitService {
         psi.Environment["GIT_COMMITTER_EMAIL"] = _authorEmail;
 
         using var process = new Process { StartInfo = psi };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) { stdout.AppendLine(e.Data); } };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) { stderr.AppendLine(e.Data); } };
-
         try {
             process.Start();
         } catch (Exception e) {
@@ -247,8 +257,19 @@ public sealed class GitService {
                 "git is not installed or not on PATH — the test/prod workflow needs it. " + e.Message);
         }
         process.StandardInput.Close();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        // Read to the end rather than line by line. `OutputDataReceived` hands over
+        // lines with their terminators removed, and re-joining them with
+        // `AppendLine` writes `Environment.NewLine` back — so on Windows every git
+        // command's output came back with its line endings rewritten to CRLF, and a
+        // file with no trailing newline gained one. Harmless for the parsers, which
+        // split and trim; wrong for `FileAt`, whose whole job is to hand back the
+        // bytes that are in the commit.
+        //
+        // Both streams are drained concurrently, which is the reason the line-based
+        // version existed: reading one to the end while the other fills its pipe
+        // deadlocks. Two tasks do the same job without touching the content.
+        var stdout = Task.Run(() => process.StandardOutput.ReadToEnd());
+        var stderr = Task.Run(() => process.StandardError.ReadToEnd());
 
         if (!process.WaitForExit((int)CommandTimeout.TotalMilliseconds)) {
             try {
@@ -259,8 +280,8 @@ public sealed class GitService {
             throw new GitException(
                 $"git {string.Join(' ', args)} exceeded {CommandTimeout.TotalSeconds:0}s and was killed.");
         }
-        process.WaitForExit(); // flush async readers
-        return (process.ExitCode, stdout.ToString(), stderr.ToString());
+        process.WaitForExit(); // the readers finish as the pipes close
+        return (process.ExitCode, stdout.Result, stderr.Result);
     }
 
     private static string Truncate(string text, int max) =>
@@ -831,7 +852,14 @@ public sealed class GitService {
     /// resolved by nobody. <c>Update from test</c> is the way forward from there.
     /// </para>
     /// </summary>
-    public PushResult PushToTest(string handle, string message, string authorName, string authorEmail) {
+    /// <param name="paths">
+    /// The files to commit, or empty for everything saved. A subset leaves the rest
+    /// uncommitted on the branch — the ff-merge below still moves test to this
+    /// branch's head, so what is *not* committed is what stays behind.
+    /// </param>
+    public PushResult PushToTest(
+        string handle, string message, string authorName, string authorEmail,
+        params string[] paths) {
         return WithLock(() => {
             var branch = BranchForUser(handle);
             var worktree = UserPath(handle);
@@ -843,9 +871,10 @@ public sealed class GitService {
                     "Resolve the conflicted files first, then push.", false);
             }
 
-            // Everything in the worktree becomes one commit with the message they
-            // typed. This is the point where saved work turns into history.
-            CommitAs(branch, message, authorName, authorEmail);
+            // The chosen files — or everything saved, when nothing was chosen —
+            // become one commit with the message they typed. This is the point
+            // where saved work turns into history.
+            CommitAs(branch, message, authorName, authorEmail, paths);
 
             var behind = TryRun(worktree, "merge-base", "--is-ancestor", TestBranch, branch);
             if (behind.Code != 0) {
@@ -879,6 +908,301 @@ public sealed class GitService {
             var merge = TryRunAs(worktree, authorName, authorEmail, "merge", "--no-edit", TestBranch);
             return merge.Code == 0 ? Array.Empty<string>() : ConflictsIn(worktree);
         });
+    }
+
+
+    // --- history -------------------------------------------------------------
+
+    /// <summary>One commit, and the files it touched when that was asked for.</summary>
+    /// <param name="Parents">
+    /// Short shas, in git's order — first parent first. The graph needs them: a
+    /// commit with two is a merge, and which lane a line comes from is the only
+    /// thing that says the branches ever met.
+    /// </param>
+    public sealed record CommitEntry(
+        string Sha, string ShortSha, string Author, DateTime When, string Subject,
+        IReadOnlyList<string> Parents, IReadOnlyList<CommitFile> Files);
+
+    /// <summary>A path and what happened to it. <c>Status</c> is git's letter: A, M, D, R.</summary>
+    /// <param name="OldPath">
+    /// Where a rename came from, and null for everything else. It is what lets a
+    /// followed history read the other side of the rename commit: the file is at
+    /// <c>Path</c> in that commit and at <c>OldPath</c> in its parent.
+    /// </param>
+    public sealed record CommitFile(string Status, string Path, string OldPath = null);
+
+    /// <summary>
+    /// The fields, NUL-separated, one commit per record.
+    ///
+    /// <para>
+    /// <c>0x01</c> starts a record and NUL separates the fields inside it, because a
+    /// commit subject can contain anything a person can type — including newlines
+    /// and pipes, which is what every simpler delimiter here would have been.
+    /// </para>
+    /// </summary>
+    private const string _commitFormat = "%x01%H%x00%h%x00%an%x00%aI%x00%s%x00%P";
+
+    /// <summary>
+    /// Commits on a branch, newest first. <paramref name="withFiles"/> asks git for
+    /// each one's name-status too, which is what a merge preview needs and a plain
+    /// history list does not.
+    /// </summary>
+    public IReadOnlyList<CommitEntry> History(
+        string branch, int limit = 50, bool withFiles = false, string path = null) {
+        var args = new List<string> { $"--max-count={Math.Clamp(limit, 1, 500)}" };
+        if (!string.IsNullOrEmpty(path)) {
+            // Across renames: a file's history is the file's, and it does not begin
+            // again because somebody moved it. Each commit's name-status then names
+            // the path the file had *at that commit*, which is what makes the diff
+            // below the list fetchable for the ones before the rename.
+            //
+            // ponytail: `--follow` is git's own guess and it can walk into unrelated
+            // history — delete a path, rename a different file onto it later, and the
+            // walk crosses over. Living with git's answer; the alternative is a rename
+            // index of our own.
+            args.Add("--follow");
+        }
+        args.Add(branch);
+        if (!string.IsNullOrEmpty(path)) {
+            // `--` so a path that looks like a ref is still a path. A file called
+            // `test` is not the test branch, and git would otherwise guess.
+            args.Add("--");
+            args.Add(path);
+        }
+        return CommitsFrom(BareRepoPath, withFiles, args.ToArray());
+    }
+
+    /// <summary>
+    /// One commit by its sha, with the files it touched, or null when there is no
+    /// such commit. Its own lookup rather than a search through
+    /// <see cref="History"/>: a commit page is reached by URL, and the commit it
+    /// names may be older than any list the app would have fetched.
+    /// </summary>
+    public CommitEntry Commit(string sha) =>
+        CommitsFrom(BareRepoPath, true, "--max-count=1", sha).FirstOrDefault();
+
+    /// <summary>
+    /// A file as one commit left it, or null when that commit does not have it —
+    /// which is the honest answer for the commit that added it (nothing before)
+    /// and the one that deleted it (nothing after).
+    /// </summary>
+    public string FileAt(string reference, string path) {
+        var result = TryRun(BareRepoPath, "show", $"{reference}:{path}");
+        return result.Code == 0 ? result.Stdout : null;
+    }
+
+    /// <summary>
+    /// What one commit did to one file: the text on either side of it.
+    ///
+    /// <para>
+    /// The parent is <c>sha^</c>, which is the first parent for a merge — the same
+    /// side <see cref="CommitsFrom"/> lists a merge's files against, so the diff
+    /// and the file list agree about what a merge changed. A root commit has no
+    /// parent and <c>Before</c> is null there rather than empty: "this file did
+    /// not exist" and "this file was empty" are different, and only one of them is
+    /// true.
+    /// </para>
+    /// </summary>
+    /// <param name="oldPath">
+    /// The path the file had in the parent, for the commit that renamed it. Without
+    /// it the left side of a rename is read at a path the parent does not have, and
+    /// the commit that only moved a file reads as the commit that created it.
+    /// </param>
+    public (string Before, string After) FileChange(string sha, string path, string oldPath = null) =>
+        (FileAt($"{sha}^", string.IsNullOrEmpty(oldPath) ? path : oldPath), FileAt(sha, path));
+
+    /// <summary>
+    /// What merging test would bring: the commits on test that this branch has not
+    /// got, newest first, each with the files it touches.
+    /// </summary>
+    public IReadOnlyList<CommitEntry> IncomingFromTest(string handle, int limit = 50) =>
+        CommitsFrom(BareRepoPath, true, $"--max-count={Math.Clamp(limit, 1, 500)}",
+            $"{BranchForUser(handle)}..{TestBranch}");
+
+    /// <summary>
+    /// And the other lane: this branch's own commits since it parted from test.
+    /// Two dots the other way round — what test has not got.
+    /// </summary>
+    public IReadOnlyList<CommitEntry> OutgoingToTest(string handle, int limit = 50) =>
+        CommitsFrom(BareRepoPath, false, $"--max-count={Math.Clamp(limit, 1, 500)}",
+            $"{TestBranch}..{BranchForUser(handle)}");
+
+    /// <summary>Where the two branches parted, or null when they share nothing.</summary>
+    public string MergeBaseWithTest(string handle) {
+        var result = TryRun(BareRepoPath, "merge-base", BranchForUser(handle), TestBranch);
+        return result.Code == 0 && result.Stdout.Trim() is { Length: > 0 } sha ? sha : null;
+    }
+
+    /// <summary>Files written but not committed, as git reports them.</summary>
+    public IReadOnlyList<CommitFile> Uncommitted(string handle) {
+        var worktree = UserPath(handle);
+        if (!Directory.Exists(worktree)) {
+            return Array.Empty<CommitFile>();
+        }
+        // `-uall`, so a brand-new folder is its files rather than one line saying
+        // `reports/`. That is git's shorthand and it is the wrong shape here: this
+        // list is what the publish dialog stages by, and you cannot tick half a
+        // folder that is only ever shown as a folder.
+        return Run(worktree, "status", "--porcelain", "-uall")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd())
+            .Where(line => line.Length > 3)
+            // "XY path", where X is the index and Y the worktree. `??` is untracked.
+            .Select(line => new CommitFile(line[..2].Trim() is { Length: > 0 } st ? st : "?",
+                line[3..].Trim().Trim('"')))
+            // `.name.saving` is half a notebook left by a save that crashed
+            // mid-write, and `CommitAs` excludes it from every commit it makes. A
+            // file that can never be committed has no business being offered as one
+            // to commit, or listed as work a merge is about to sweep up.
+            .Where(file => !NotebookTree.IsProtected(Path.GetFileName(file.Path)))
+            .ToList();
+    }
+
+    private IReadOnlyList<CommitEntry> CommitsFrom(string workdir, bool withFiles, params string[] range) {
+        var args = new List<string> { "log", "--format=" + _commitFormat };
+        if (withFiles) {
+            args.Add("--name-status");
+            // A merge's diff against its first parent, rather than the empty listing
+            // git gives a merge by default — otherwise every merge in the range looks
+            // like it touched nothing.
+            args.Add("-m");
+            args.Add("--first-parent");
+        }
+        args.AddRange(range);
+        var result = TryRun(workdir, args.ToArray());
+        if (result.Code != 0) {
+            // An unborn branch, or a range naming something that is not there yet.
+            // Nothing to show is a real answer here, and a throw would take the page
+            // with it.
+            return Array.Empty<CommitEntry>();
+        }
+        return result.Stdout
+            .Split('\u0001', StringSplitOptions.RemoveEmptyEntries)
+            .Select(ParseCommit)
+            .Where(c => c != null)
+            .ToList();
+    }
+
+    private static CommitEntry ParseCommit(string record) {
+        var head = record.Split('\n', 2);
+        var fields = head[0].Split('\0');
+        if (fields.Length < 6) {
+            return null;
+        }
+        var files = head.Length < 2
+            ? new List<CommitFile>()
+            : head[1]
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Split('\t', StringSplitOptions.RemoveEmptyEntries))
+                .Where(parts => parts.Length >= 2)
+                // A rename is "R100 old new": the last field is where it ended up,
+                // which is the one somebody is looking for in the list. The one
+                // before it is where it came from, and only a rename has three.
+                .Select(parts => new CommitFile(
+                    parts[0].Trim(), parts[^1].Trim(),
+                    parts.Length >= 3 ? parts[^2].Trim() : null))
+                .ToList();
+        return new CommitEntry(
+            Sha: fields[0].Trim(),
+            ShortSha: fields[1].Trim(),
+            Author: fields[2].Trim(),
+            When: DateTime.TryParse(fields[3].Trim(), CultureInfo.InvariantCulture,
+                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var when)
+                ? when
+                : default,
+            Subject: fields[4].Trim(),
+            Parents: fields[5].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries),
+            Files: files);
+    }
+
+
+    /// <summary>One row of a folder listing, with the commit that last touched it.</summary>
+    public sealed record Entry(
+        string Name, string Path, bool IsDirectory, long Size, DateTime Modified,
+        CommitEntry LastCommit);
+
+    /// <summary>
+    /// One folder of a branch's worktree, with the commit that last touched each
+    /// entry — the shape Azure DevOps shows, and the reason it is worth having is
+    /// the column nobody can get from the filesystem: <em>why</em> a file changed.
+    ///
+    /// <para>
+    /// One <c>git log</c> walk for the whole folder rather than one per entry: a
+    /// folder of forty files would otherwise be forty processes, and the walk stops
+    /// as soon as every entry has been attributed.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Entry> Contents(string branch, string relative) {
+        var root = PathFor(branch);
+        var reference = RefFor(branch);
+        var folder = string.IsNullOrEmpty(relative) ? root : System.IO.Path.Combine(root, relative);
+        if (!Directory.Exists(folder)) {
+            return Array.Empty<Entry>();
+        }
+        var prefix = string.IsNullOrEmpty(relative) ? "" : relative.Replace('\\', '/').TrimEnd('/') + "/";
+        var rows = new List<Entry>();
+        foreach (var directory in Directory.EnumerateDirectories(folder)) {
+            var name = System.IO.Path.GetFileName(directory);
+            // The git admin directory is not content, and neither is anything a
+            // person put a dot in front of.
+            if (name.StartsWith('.')) {
+                continue;
+            }
+            rows.Add(new Entry(name, prefix + name, true, 0, Directory.GetLastWriteTimeUtc(directory), null));
+        }
+        foreach (var file in Directory.EnumerateFiles(folder)) {
+            var info = new FileInfo(file);
+            if (info.Name.StartsWith('.')) {
+                continue;
+            }
+            rows.Add(new Entry(info.Name, prefix + info.Name, false, info.Length, info.LastWriteTimeUtc, null));
+        }
+
+        var attributed = LastCommitsUnder(reference, relative, rows.Select(r => r.Path).ToList());
+        return rows
+            .Select(r => attributed.TryGetValue(r.Path, out var commit) ? r with { LastCommit = commit } : r)
+            .OrderByDescending(r => r.IsDirectory)
+            .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// The newest commit touching each of <paramref name="paths"/>, walking the
+    /// branch once. A directory is attributed by anything underneath it.
+    /// </summary>
+    private Dictionary<string, CommitEntry> LastCommitsUnder(
+        string branch, string relative, IReadOnlyList<string> paths) {
+        var found = new Dictionary<string, CommitEntry>(StringComparer.Ordinal);
+        if (paths.Count == 0) {
+            return found;
+        }
+        var args = new List<string> { "log", "--format=" + _commitFormat, "--name-status", "-m", "--first-parent", branch };
+        if (!string.IsNullOrEmpty(relative)) {
+            args.Add("--");
+            args.Add(relative);
+        }
+        var result = TryRun(BareRepoPath, args.ToArray());
+        if (result.Code != 0) {
+            return found;
+        }
+        foreach (var commit in result.Stdout.Split('\u0001', StringSplitOptions.RemoveEmptyEntries)
+                     .Select(ParseCommit).Where(c => c != null)) {
+            foreach (var touched in commit.Files) {
+                foreach (var path in paths) {
+                    if (found.ContainsKey(path)) {
+                        continue;
+                    }
+                    // A folder is whatever is under it; a file is itself.
+                    if (touched.Path == path || touched.Path.StartsWith(path + "/", StringComparison.Ordinal)) {
+                        found[path] = commit with { Files = Array.Empty<CommitFile>() };
+                    }
+                }
+            }
+            if (found.Count == paths.Count) {
+                break;
+            }
+        }
+        return found;
     }
 
     // --- push ---------------------------------------------------------------------

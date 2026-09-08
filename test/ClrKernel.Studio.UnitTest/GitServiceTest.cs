@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -246,6 +247,338 @@ public class GitServiceTest {
     /// count was all it had.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// History, and what a merge from test would bring.
+    ///
+    /// <para>
+    /// The subject is whatever somebody typed, so the record and field separators
+    /// are \x01 and NUL rather than any character a person can reach: a message
+    /// with a pipe, a tab or a newline in it is the one that breaks a parser built
+    /// on the obvious delimiters, and it breaks it by silently dropping commits.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// A folder listing with the commit that last touched each row.
+    ///
+    /// <para>
+    /// The `prod` case is the one worth pinning: the app calls that environment
+    /// `prod` and git calls the ref `main`, so a listing that hands the environment
+    /// name straight to `git log` attributes nothing and every row comes back with
+    /// no commit on it — which looks like a folder nobody has ever changed.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// One file's history, and what each commit did to it.
+    ///
+    /// <para>
+    /// The edges are the point. A commit that <em>added</em> the file has nothing
+    /// before it, and null is the only honest answer there — an empty string says
+    /// "it was empty", which is a different thing and renders as a diff with no
+    /// changes rather than as a file being created.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void One_files_history_and_what_each_commit_did_to_it() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+
+        WriteUser(_grace, "reports/monthly.nb.md", "first\n");
+        WriteUser(_grace, "other.nb.md", "unrelated\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the monthly report", "Grace", "g@x").Pushed);
+
+        WriteUser(_grace, "reports/monthly.nb.md", "second\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rework the rollup", "Grace", "g@x").Pushed);
+
+        // Only the commits that touched it — the other file's is not in here, and
+        // that is the difference between a file's history and the branch's.
+        var history = _git.History(GitService.TestBranch, path: "reports/monthly.nb.md");
+        CollectionAssert.AreEqual(
+            new[] { "rework the rollup", "add the monthly report" },
+            history.Select(c => c.Subject).ToArray(),
+            "newest first, and only this file's commits");
+
+        // What the newest one did: second replaced first.
+        var latest = _git.FileChange(history[0].Sha, "reports/monthly.nb.md");
+        Assert.AreEqual("first\n", latest.Before);
+        Assert.AreEqual("second\n", latest.After);
+
+        // And what the oldest did: it created the file, so there is no before.
+        var created = _git.FileChange(history[1].Sha, "reports/monthly.nb.md");
+        Assert.IsNull(created.Before, "nothing before the commit that added it");
+        Assert.AreEqual("first\n", created.After);
+
+        // A path that looks like a ref is still a path.
+        WriteUser(_grace, "test", "a file called test\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "a file named for a branch", "Grace", "g@x").Pushed);
+        var awkward = _git.History(GitService.TestBranch, path: "test");
+        Assert.AreEqual("a file named for a branch", awkward[0].Subject,
+            "`--` keeps git from reading the path as the branch of the same name");
+    }
+
+    /// <summary>
+    /// A file comes back as the bytes that are in the commit — line endings and all,
+    /// and with no newline invented at the end of one that has none.
+    ///
+    /// <para>
+    /// It did not. Git's output was captured line by line and re-joined with
+    /// <c>AppendLine</c>, so every command's stdout came back with its line endings
+    /// rewritten to <c>Environment.NewLine</c>. On Windows that turned a file
+    /// committed with LF into CRLF, which is what CI caught; everywhere it added a
+    /// trailing newline that was never there. The parsers split and trim and never
+    /// noticed. <see cref="GitService.FileAt"/> hands the bytes to a diff, so it did.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_files_bytes_survive_the_trip_out_of_git() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+
+        // CRLF in the file itself, and no newline after the last line. Both are
+        // things the line-by-line capture could not represent: it dropped the \r
+        // as a line terminator and appended one of its own at the end.
+        const string exact = "alpha\r\nbeta\r\ngamma";
+        WriteUser(_grace, "crlf.md", exact);
+        Assert.IsTrue(_git.PushToTest(_grace, "windows line endings", "Grace", "g@x").Pushed);
+
+        var head = _git.History(GitService.TestBranch)[0];
+        Assert.AreEqual(exact, _git.FileAt(head.Sha, "crlf.md"),
+            "the diff is shown these bytes; git was given exactly them");
+    }
+
+    /// <summary>
+    /// A file's history does not begin again because somebody moved it.
+    ///
+    /// <para>
+    /// Following is only half done unless the diff follows too: each commit's
+    /// name-status names the path the file had <em>at that commit</em>, and the
+    /// rename commit names both. Read the left side of a rename at the new path and
+    /// git finds nothing there, so the commit that only moved a file reads as the
+    /// commit that created it — which is why the last assertion here is that
+    /// forgetting the old path is what makes <c>Before</c> null.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void A_files_history_follows_it_across_a_rename() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+
+        // Three lines so the rename below is still recognisably the same file: git
+        // detects a rename by similarity, and a one-line file that changes at all
+        // is 0% similar to itself.
+        WriteUser(_grace, "reports/old.nb.md", "alpha\nbeta\ngamma\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the report", "Grace", "g@x").Pushed);
+
+        WriteUser(_grace, "reports/old.nb.md", "alpha\nbeta\ndelta\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rework the rollup", "Grace", "g@x").Pushed);
+
+        // Moved and edited in one commit, which is the normal shape of a rename in
+        // this app: the editor's rename writes the new path and drops the old.
+        File.Delete(Path.Combine(_git.UserPath(_grace), "reports/old.nb.md"));
+        WriteUser(_grace, "reports/new.nb.md", "alpha\nbeta\nepsilon\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rename the report", "Grace", "g@x").Pushed);
+
+        var history = _git.History(
+            GitService.TestBranch, withFiles: true, path: "reports/new.nb.md");
+        CollectionAssert.AreEqual(
+            new[] { "rename the report", "rework the rollup", "add the report" },
+            history.Select(c => c.Subject).ToArray(),
+            "the commits from before the rename are this file's too");
+
+        // The rename commit carries both sides.
+        var moved = history[0].Files.Single();
+        StringAssert.StartsWith(moved.Status, "R", "git reports it as a rename");
+        Assert.AreEqual("reports/new.nb.md", moved.Path);
+        Assert.AreEqual("reports/old.nb.md", moved.OldPath);
+
+        // And every older commit names the path the file had then — the one thing
+        // that makes their diffs fetchable at all.
+        Assert.AreEqual("reports/old.nb.md", history[1].Files.Single().Path);
+        Assert.AreEqual("reports/old.nb.md", history[2].Files.Single().Path);
+        Assert.IsNull(history[1].Files.Single().OldPath, "only a rename has an old path");
+
+        // The diff across the rename: the left side is read at the old path.
+        var across = _git.FileChange(history[0].Sha, moved.Path, moved.OldPath);
+        Assert.AreEqual("alpha\nbeta\ndelta\n", across.Before);
+        Assert.AreEqual("alpha\nbeta\nepsilon\n", across.After);
+
+        // Forget it and the move reads as a creation — the failure this parameter
+        // exists to prevent, pinned rather than described.
+        Assert.IsNull(_git.FileChange(history[0].Sha, moved.Path).Before,
+            "the new path does not exist in the parent");
+
+        // A commit from before the rename, fetched at the path it used then.
+        var earlier = _git.FileChange(history[2].Sha, history[2].Files.Single().Path);
+        Assert.IsNull(earlier.Before, "nothing before the commit that added it");
+        Assert.AreEqual("alpha\nbeta\ngamma\n", earlier.After);
+    }
+
+    /// <summary>
+    /// One commit by its sha — what the commit page is reached by. Its own lookup
+    /// rather than a search through a history list, because the sha in a URL may be
+    /// older than any list the app would have fetched, and an unknown one has to be
+    /// distinguishable from a commit that changed nothing.
+    /// </summary>
+    [TestMethod]
+    public void A_commit_is_found_by_its_sha_with_what_it_changed() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "reports/monthly.nb.md", "first\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the monthly report", "Grace", "g@x").Pushed);
+
+        WriteUser(_grace, "reports/monthly.nb.md", "second\n");
+        WriteUser(_grace, "notes.md", "new\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rework the rollup", "Grace", "g@x").Pushed);
+
+        var head = _git.History(GitService.TestBranch)[0];
+        var found = _git.Commit(head.Sha);
+        Assert.IsNotNull(found);
+        Assert.AreEqual("rework the rollup", found.Subject);
+        Assert.AreEqual("Grace", found.Author);
+        CollectionAssert.AreEquivalent(
+            new[] { "notes.md", "reports/monthly.nb.md" },
+            found.Files.Select(f => f.Path).ToArray(),
+            "the files it touched, which is the page's whole content");
+        Assert.AreEqual("A", found.Files.Single(f => f.Path == "notes.md").Status);
+
+        // Abbreviated too — the page's URL carries eight characters, not forty.
+        Assert.AreEqual(head.Sha, _git.Commit(head.Sha[..8])?.Sha);
+
+        // And nothing for a sha that is not here: null is what the API turns into
+        // Not found, and an empty commit would render as one that changed nothing.
+        Assert.IsNull(_git.Commit("0123456789abcdef0123456789abcdef01234567"),
+            "a sha this repository has never seen is not a commit");
+    }
+
+    /// <summary>
+    /// Publishing a subset: the files you pick travel, and the ones you do not stay
+    /// saved on your branch rather than being swept along with them.
+    ///
+    /// <para>
+    /// A deletion is staged too — <c>git add -A -- path</c> is what makes removing a
+    /// file a change you can publish on its own, and a push that quietly re-created
+    /// it would be the failure worth catching.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Publishing_a_subset_leaves_the_rest_on_the_branch() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "ready.nb.md", "done\n");
+        WriteUser(_grace, "wip.nb.md", "half finished\n");
+
+        Assert.IsTrue(
+            _git.PushToTest(_grace, "the finished one", "Grace", "g@x", "ready.nb.md").Pushed);
+
+        Assert.IsTrue(File.Exists(Path.Combine(_git.TestPath, "ready.nb.md")),
+            "the staged file is in test");
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "wip.nb.md")),
+            "the one left unstaged is not — that is the whole point of staging");
+        Assert.IsTrue(File.Exists(Path.Combine(_git.UserPath(_grace), "wip.nb.md")),
+            "and it is still here, saved");
+        Assert.IsTrue(_git.StandingOf(_grace).Dirty, "still something to publish");
+        CollectionAssert.Contains(
+            _git.Uncommitted(_grace).Select(f => f.Path).ToArray(), "wip.nb.md");
+
+        // A deletion is a change like any other, and staging one publishes it.
+        File.Delete(Path.Combine(_git.UserPath(_grace), "ready.nb.md"));
+        Assert.IsTrue(
+            _git.PushToTest(_grace, "drop it again", "Grace", "g@x", "ready.nb.md").Pushed);
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "ready.nb.md")),
+            "staging a deleted path removes it from test rather than re-creating it");
+        Assert.IsFalse(File.Exists(Path.Combine(_git.TestPath, "wip.nb.md")),
+            "and the unstaged file still has not travelled");
+    }
+
+    /// <summary>
+    /// The staging file a crashed save leaves behind is not work anybody can commit,
+    /// so it is not offered as any. <c>CommitAs</c> excludes it from every commit it
+    /// makes; listing it as uncommitted put a file in the publish dialog that ticking
+    /// could not send anywhere.
+    /// </summary>
+    [TestMethod]
+    public void A_half_written_save_is_not_uncommitted_work() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "reports/monthly.nb.md", "real\n");
+        WriteUser(_grace, "reports/.monthly.nb.md.saving", "half\n");
+
+        var paths = _git.Uncommitted(_grace).Select(f => f.Path).ToArray();
+        CollectionAssert.Contains(paths, "reports/monthly.nb.md");
+        CollectionAssert.DoesNotContain(paths, "reports/.monthly.nb.md.saving",
+            "a file no commit will ever take is not work waiting to be committed");
+    }
+
+    [TestMethod]
+    public void Contents_lists_a_folder_and_says_what_last_touched_each_row() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+        WriteUser(_grace, "reports/monthly.nb.md", "hers\n");
+        WriteUser(_grace, "top.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the reports", "Grace", "g@users.local").Pushed);
+
+        var root = _git.Contents(GitService.TestBranch, "");
+        CollectionAssert.AreEqual(
+            new[] { "reports", "top.nb.md" }, root.Select(e => e.Name).ToArray(),
+            "folders first, then files, each sorted by name");
+        Assert.IsTrue(root[0].IsDirectory);
+        Assert.IsFalse(root[1].IsDirectory);
+        Assert.IsTrue(root[1].Size > 0, "a file knows its size");
+
+        // The column the filesystem cannot answer.
+        Assert.AreEqual("add the reports", root[0].LastCommit?.Subject, "a folder, by what is under it");
+        Assert.AreEqual("add the reports", root[1].LastCommit?.Subject);
+        Assert.AreEqual("Grace", root[1].LastCommit?.Author);
+
+        // Descending, and the paths are repo-relative rather than names.
+        var inner = _git.Contents(GitService.TestBranch, "reports");
+        CollectionAssert.AreEqual(new[] { "reports/monthly.nb.md" }, inner.Select(e => e.Path).ToArray());
+
+        // And prod, whose ref is `main` — the translation the API has to get right.
+        _git.CheckoutIntoProd("top.nb.md");
+        _git.CommitProd("ship it");
+        var shipped = _git.Contents("prod", "");
+        Assert.IsTrue(shipped.Count > 0, "prod lists its files");
+        Assert.IsNotNull(shipped[0].LastCommit,
+            "and attributes them — a listing that passed `prod` to git log would find no ref");
+    }
+
+    [TestMethod]
+    public void History_and_incoming_survive_a_subject_somebody_typed() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        _git.EnsureUserWorktree(_grace);
+
+        var awkward = "fix a|b\tand \"quote\" it";
+        WriteUser(_grace, "reports/monthly.nb.md", "hers\n");
+        Assert.IsTrue(_git.PushToTest(_grace, awkward, "Grace", "g@users.local").Pushed);
+
+        var history = _git.History(GitService.TestBranch);
+        Assert.IsTrue(history.Count > 0, "test has commits");
+        Assert.AreEqual(awkward, history[0].Subject, "the message survives the trip");
+        Assert.AreEqual("Grace", history[0].Author);
+        StringAssert.Matches(history[0].ShortSha, new Regex("^[0-9a-f]{7,}$"));
+        Assert.AreNotEqual(default, history[0].When, "and it is dated");
+
+        // Ada parted before that, and has something of her own uncommitted.
+        WriteUser(_ada, "only-mine.nb.md", "mine\n");
+
+        var incoming = _git.IncomingFromTest(_ada);
+        Assert.AreEqual(1, incoming.Count, "one commit is coming");
+        Assert.AreEqual(awkward, incoming[0].Subject);
+        CollectionAssert.AreEqual(
+            new[] { "reports/monthly.nb.md" }, incoming[0].Files.Select(f => f.Path).ToArray(),
+            "and it names the file, with the forward slashes git uses everywhere");
+        Assert.AreEqual("A", incoming[0].Files[0].Status, "added, on that commit");
+
+        // What is hers is not called mine: the uncommitted list is the other half of
+        // the preview, and it is the half the confirm box never showed.
+        var mine = _git.Uncommitted(_ada);
+        CollectionAssert.AreEqual(
+            new[] { "only-mine.nb.md" }, mine.Select(f => f.Path).ToArray());
+
+        Assert.IsNotNull(_git.MergeBaseWithTest(_ada), "the branches share a base");
+    }
+
     [TestMethod]
     public void BehindFiles_names_what_test_changed_and_nothing_of_yours() {
         _git.Init();
