@@ -1055,7 +1055,7 @@ public static class JobsApi {
         // people ask each other instead.
         scoped.MapGet("/commits", (
             HttpContext context, ProjectRegistry projects, string project, string branch,
-            int? limit, bool? files) => {
+            int? limit, bool? files, string path) => {
                 if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
                     return Results.BadRequest(new { error = "The git workflow is not enabled." });
                 }
@@ -1069,9 +1069,43 @@ public static class JobsApi {
                     // and expands a commit in place rather than going back for
                     // one — there is nothing to fetch that it did not already
                     // have.
+                    // `path` narrows it to the commits that touched one file,
+                    // which is that file's own history rather than the branch's.
                     commits = scope.Git
-                        .History(GitService.RefFor(resolved), limit ?? 50, files == true)
+                        .History(GitService.RefFor(resolved), limit ?? 50, files == true, path)
                         .Select(CommitView.From),
+                });
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // What one commit did to one file, as two texts. The client renders the
+        // same side-by-side editor the branch diffs use, so this returns content
+        // rather than a rendered diff — the shape of the comparison belongs to
+        // whoever is showing it.
+        scoped.MapGet("/commits/{sha}/file", (
+            HttpContext context, ProjectRegistry projects, string project, string branch,
+            string sha, string path) => {
+                if (Scope.Of(projects, project) is not { } scope || scope.Git == null) {
+                    return Results.BadRequest(new { error = "The git workflow is not enabled." });
+                }
+                if (scope.BranchFor(context, branch) is not { } resolved || !Reachable(scope, resolved)) {
+                    return Results.NotFound(new { error = $"No branch called '{branch}'." });
+                }
+                if (string.IsNullOrWhiteSpace(path)) {
+                    return Results.BadRequest(new { error = "A path is required." });
+                }
+                // A sha and nothing else: this reaches `git show <ref>:<path>`, and
+                // a ref is not a place to accept arbitrary text.
+                if (!System.Text.RegularExpressions.Regex.IsMatch(sha ?? "", "^[0-9a-fA-F]{4,40}$")) {
+                    return Results.BadRequest(new { error = "That is not a commit id." });
+                }
+                var (before, after) = scope.Git.FileChange(sha, path);
+                return Results.Ok(new {
+                    sha,
+                    path,
+                    // Null rather than empty on either side: added and deleted are
+                    // not the same as "was empty", and the diff view says so.
+                    before,
+                    after,
                 });
             }).RequiresProject(ProjectRole.ProjectViewer);
 

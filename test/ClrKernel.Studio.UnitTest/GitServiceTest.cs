@@ -267,6 +267,54 @@ public class GitServiceTest {
     /// no commit on it — which looks like a folder nobody has ever changed.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// One file's history, and what each commit did to it.
+    ///
+    /// <para>
+    /// The edges are the point. A commit that <em>added</em> the file has nothing
+    /// before it, and null is the only honest answer there — an empty string says
+    /// "it was empty", which is a different thing and renders as a diff with no
+    /// changes rather than as a file being created.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void One_files_history_and_what_each_commit_did_to_it() {
+        _git.Init();
+        _git.EnsureUserWorktree(_grace);
+
+        WriteUser(_grace, "reports/monthly.nb.md", "first\n");
+        WriteUser(_grace, "other.nb.md", "unrelated\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "add the monthly report", "Grace", "g@x").Pushed);
+
+        WriteUser(_grace, "reports/monthly.nb.md", "second\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "rework the rollup", "Grace", "g@x").Pushed);
+
+        // Only the commits that touched it — the other file's is not in here, and
+        // that is the difference between a file's history and the branch's.
+        var history = _git.History(GitService.TestBranch, path: "reports/monthly.nb.md");
+        CollectionAssert.AreEqual(
+            new[] { "rework the rollup", "add the monthly report" },
+            history.Select(c => c.Subject).ToArray(),
+            "newest first, and only this file's commits");
+
+        // What the newest one did: second replaced first.
+        var latest = _git.FileChange(history[0].Sha, "reports/monthly.nb.md");
+        Assert.AreEqual("first\n", latest.Before);
+        Assert.AreEqual("second\n", latest.After);
+
+        // And what the oldest did: it created the file, so there is no before.
+        var created = _git.FileChange(history[1].Sha, "reports/monthly.nb.md");
+        Assert.IsNull(created.Before, "nothing before the commit that added it");
+        Assert.AreEqual("first\n", created.After);
+
+        // A path that looks like a ref is still a path.
+        WriteUser(_grace, "test", "a file called test\n");
+        Assert.IsTrue(_git.PushToTest(_grace, "a file named for a branch", "Grace", "g@x").Pushed);
+        var awkward = _git.History(GitService.TestBranch, path: "test");
+        Assert.AreEqual("a file named for a branch", awkward[0].Subject,
+            "`--` keeps git from reading the path as the branch of the same name");
+    }
+
     [TestMethod]
     public void Contents_lists_a_folder_and_says_what_last_touched_each_row() {
         _git.Init();

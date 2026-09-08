@@ -452,6 +452,11 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
           {!props.binary && (
             <TabsTrigger value="source">{props.isJobsFile ? 'YAML' : 'Source'}</TabsTrigger>
           )}
+          {/* Between Source and Diff, which is the order the three questions get
+              asked in: what does it say, what has it been, and how does it differ
+              from where it is going. Not for a binary — its history is a list of
+              shas with nothing to show between them. */}
+          {!props.binary && <TabsTrigger value="history">History</TabsTrigger>}
           {!props.binary && (
             <TabsTrigger value="diff">
               {/* Named, because it is not always production: the diff is against

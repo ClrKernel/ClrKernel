@@ -518,6 +518,70 @@ def commit_detail(page, base, _root):
     assert "added" in body, "no status against the file: " + body[-600:]
 
 
+@check("file-history")
+def file_history(page, base, _root):
+    """A file's own History: the commits that touched it, and what each did.
+
+    Between Source and Diff, because that is the order the questions come in:
+    what does it say, what has it been, how does it differ from where it goes.
+    """
+    def write(path, text):
+        return page.evaluate("""async ({ path, text }) => (await fetch(
+            `/api/projects/default/branches/mine/notebooks/content?path=${path}`,
+            { method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: text })).status""",
+            {"path": path, "text": text})
+
+    def push(message):
+        page.evaluate("""async ({ message }) => { await fetch(
+            '/api/projects/default/branch/push', { method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ message }) }); }""", {"message": message})
+
+    # Three commits, one of which is about a different file entirely.
+    assert write("reports/monthly.nb.md", "# First\n") == 200
+    push("add the monthly report")
+    assert write("other.nb.md", "# Unrelated\n") == 200
+    push("something else entirely")
+    assert write("reports/monthly.nb.md", "# Second\n") == 200
+    push("rework the rollup")
+
+    page.goto(f"{base}/files/default/mine/history/reports/monthly.nb.md",
+              wait_until="networkidle")
+    page.wait_for_timeout(4000)
+    body = page.inner_text("body").replace("\xa0", " ")
+
+    # This file's commits, and not the branch's: the unrelated one is absent.
+    assert "rework the rollup" in body, body[-1200:]
+    assert "add the monthly report" in body, body[-1200:]
+    assert "something else entirely" not in body, (
+        "the branch's history, not the file's — a commit that never touched it:\n"
+        + body[-1200:])
+
+    # It opens on the newest change rather than making you click for anything.
+    assert "Before (left) and after (right)" in body, body[-1200:]
+    assert page.locator(".diff-editor").count() == 1, "no side-by-side diff"
+    for _ in range(15):
+        page.wait_for_timeout(1000)
+        if "Second" in page.inner_text("body"):
+            break
+    assert "Second" in page.inner_text("body"), "the newest version is not in the diff"
+
+    # And the graph rail is drawn beside the list.
+    assert page.locator("ol svg").count() >= 2, "no rail beside the commits"
+
+    # Clicking the oldest shows what it did — which was create the file, so it
+    # says so rather than diffing against an empty left-hand side.
+    page.get_by_role("button", name=re.compile("add the monthly report")).first.click()
+    for _ in range(15):
+        page.wait_for_timeout(1000)
+        if "Added by" in page.inner_text("body"):
+            break
+    body = page.inner_text("body").replace("\xa0", " ")
+    assert "Added by" in body, (
+        "the commit that created the file should say so, not show an empty before:\n"
+        + body[-1000:])
+
+
 @check("merge-preview")
 def merge_preview(page, base, _root):
     """The merge says what it will do, and whose work is whose.

@@ -922,8 +922,42 @@ public sealed class GitService {
     /// each one's name-status too, which is what a merge preview needs and a plain
     /// history list does not.
     /// </summary>
-    public IReadOnlyList<CommitEntry> History(string branch, int limit = 50, bool withFiles = false) =>
-        CommitsFrom(BareRepoPath, withFiles, $"--max-count={Math.Clamp(limit, 1, 500)}", branch);
+    public IReadOnlyList<CommitEntry> History(
+        string branch, int limit = 50, bool withFiles = false, string path = null) {
+        var args = new List<string> { $"--max-count={Math.Clamp(limit, 1, 500)}", branch };
+        if (!string.IsNullOrEmpty(path)) {
+            // `--` so a path that looks like a ref is still a path. A file called
+            // `test` is not the test branch, and git would otherwise guess.
+            args.Add("--");
+            args.Add(path);
+        }
+        return CommitsFrom(BareRepoPath, withFiles, args.ToArray());
+    }
+
+    /// <summary>
+    /// A file as one commit left it, or null when that commit does not have it —
+    /// which is the honest answer for the commit that added it (nothing before)
+    /// and the one that deleted it (nothing after).
+    /// </summary>
+    public string FileAt(string reference, string path) {
+        var result = TryRun(BareRepoPath, "show", $"{reference}:{path}");
+        return result.Code == 0 ? result.Stdout : null;
+    }
+
+    /// <summary>
+    /// What one commit did to one file: the text on either side of it.
+    ///
+    /// <para>
+    /// The parent is <c>sha^</c>, which is the first parent for a merge — the same
+    /// side <see cref="CommitsFrom"/> lists a merge's files against, so the diff
+    /// and the file list agree about what a merge changed. A root commit has no
+    /// parent and <c>Before</c> is null there rather than empty: "this file did
+    /// not exist" and "this file was empty" are different, and only one of them is
+    /// true.
+    /// </para>
+    /// </summary>
+    public (string Before, string After) FileChange(string sha, string path) =>
+        (FileAt($"{sha}^", path), FileAt(sha, path));
 
     /// <summary>
     /// What merging test would bring: the commits on test that this branch has not

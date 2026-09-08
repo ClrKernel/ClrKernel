@@ -26,7 +26,7 @@
  * Not to be confused with read-only, which is not a view: that comes from the
  * branch, and every one of these is read-only on a branch that is not yours.
  */
-export const NOTEBOOK_VIEWS = ['edit', 'overview', 'preview', 'source', 'diff'] as const;
+export const NOTEBOOK_VIEWS = ['edit', 'overview', 'preview', 'source', 'history', 'diff'] as const;
 export type NotebookView = (typeof NOTEBOOK_VIEWS)[number];
 
 /**

@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { ErrorBanner, usePolling } from '../components/common';
 import { FocusMode } from '../components/FocusMode';
 import { NotebookExplorer } from '../components/NotebookExplorer';
+import { DiffView } from '../components/DiffView';
+import { FileHistory } from '../components/FileHistory';
 import { JobsOverview } from '../components/JobsOverview';
 import { MergePreview } from '../components/MergePreview';
 import { MarkdownBody } from '../components/MarkdownBody';
@@ -37,7 +39,7 @@ import {
   saveNotebookState,
   type LayoutPrefs,
 } from '../prefs';
-import { useDiffEditor, useFillEditor } from '../monaco/useMonaco';
+import { useFillEditor } from '../monaco/useMonaco';
 import { BranchAllows, useCanWrite } from '../sessionContext';
 import { useAutosave } from '../useAutosave';
 import {
@@ -1093,7 +1095,10 @@ export function Editor() {
     : null;
   // Source and Diff are whole files, not a column of cells: they take the height
   // of the pane and scroll inside themselves, so the page must not scroll too.
-  const fills = focusing || tab === 'source' || tab === 'diff' || tab === 'preview';
+  // History too: it is a list beside a diff editor, both of which take the
+  // height of the pane and scroll inside themselves, so the page must not.
+  const fills = focusing
+    || tab === 'source' || tab === 'diff' || tab === 'preview' || tab === 'history';
 
   return (
     // Somebody else's branch reads exactly like your own and changes in none of
@@ -1391,6 +1396,10 @@ export function Editor() {
         </div>
       )}
 
+      {tab === 'history' && (
+        <FileHistory branch={branch} path={path} />
+      )}
+
       {tab === 'diff' && (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
           {other == null || savedSource == null ? (
@@ -1558,19 +1567,6 @@ function SourceEditor({
   }, [problems, value]);
 
   return <div className="source-editor" ref={container} />;
-}
-
-/** What promotion would ship, side by side — the same view VS Code gives a
- *  branch comparison, rather than a unified diff to read in your head. */
-function DiffView({
-  original, modified, language,
-}: {
-  original: string;
-  modified: string;
-  language: string;
-}) {
-  const container = useDiffEditor(original, modified, language, true);
-  return <div className="diff-editor" ref={container} />;
 }
 
 /**
