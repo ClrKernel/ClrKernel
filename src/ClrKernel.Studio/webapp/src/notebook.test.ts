@@ -478,6 +478,11 @@ describe('notebookPaths', () => {
 });
 
 describe('fileEditable', () => {
+  it('lets a NuGet.Config be edited, whatever its case', () => {
+    expect(fileEditable('NuGet.Config')).toBe(true);
+    expect(fileEditable('reports/nuget.config')).toBe(true);
+  });
+
   it('is true for notebooks, jobs files and text', () => {
     expect(fileEditable('reports/daily.nb.md')).toBe(true);
     expect(fileEditable('old.ipynb')).toBe(true);

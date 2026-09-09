@@ -38,16 +38,26 @@ public class InteractiveScriptEngine : ICellExecutionContext {
 
     private string _currentDirectory;
 
-    // Where Dotnet.Script generates its NuGet restore scratch projects. This
-    // Dotnet.Script version roots the scratch at the directory we pass to
-    // GetDependenciesForCode (mirroring its absolute path underneath), so
-    // passing the notebook's directory would litter user folders with a
-    // dotnet-script/ tree. Anchor it under the system temp instead.
-    // Note: nearest-NuGet.Config discovery anchors here too, so feed config
-    // comes from user/machine level; per-workspace feeds work via #i "nuget:<url>".
+    // Where Dotnet.Script generates its NuGet restore scratch projects: the
+    // directory its ScriptProjectProvider is constructed with, under the system
+    // temp so no dotnet-script/ tree lands in a user's folder. The directory
+    // handed to GetDependenciesForCode is a different thing — it is mirrored
+    // *underneath* this one, and it is where Dotnet.Script looks for the nearest
+    // NuGet.Config. That call gets the notebook's directory, so a NuGet.Config in
+    // the notebook's folder or any folder above it is the one restore uses.
+    //
+    // Dotnet.Script passes that file as --configfile, which NuGet treats as the
+    // whole configuration: a repo NuGet.Config replaces the user-level one rather
+    // than adding to it, so it has to name nuget.org itself if it wants it.
+    // Without one, the nearest file is the user-level config, as before.
     private readonly string _dependencyScratchDirectory;
 
     private string[] _references;
+
+    // `#r "project:"` builds, one set per session: which output is loaded for
+    // each project, so a re-run can replace it. Build output goes to Console.Out
+    // — the cell's stream, once a front has proxied it — as it arrives.
+    private readonly ProjectReferences _projects = new(line => Console.Out.WriteLine(line));
 
     // Ordered, successfully-compiled submissions (the initial usings preamble
     // then each executed cell). Language services replay these to reconstruct
@@ -579,7 +589,9 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             return false;
         }
 
-        var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_dependencyScratchDirectory, ScriptMode.REPL, new string[0], statement);
+        // The notebook's directory, for the NuGet.Config nearest to it; the scratch
+        // project itself still lands under the temp root (see the field's note).
+        var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_currentDirectory, ScriptMode.REPL, new string[0], statement);
         var lineDependencies = lineRuntimeDependencies.SelectMany(rtd => rtd.Assemblies).Distinct();
         var scriptMap = lineRuntimeDependencies.ToDictionary(rdt => rdt.Name, rdt => rdt.Scripts);
 
@@ -696,8 +708,58 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     }
 
     private string PrepareStatement(string statement) {
+        statement = ResolveProjectReferences(statement);
         TryLoadReferenceFromScript(statement);
         return NormalizeTrailingExpression(statement);
+    }
+
+    // --- #r "project:" -----------------------------------------------------------
+
+    /// <summary>
+    /// Builds each <c>#r "project: …"</c> line's project and references its output,
+    /// returning the statement with those lines blanked.
+    ///
+    /// <para>
+    /// Blanked rather than rewritten to <c>#r "…/Out.dll"</c>: the references are
+    /// added to the session's options the way a NuGet package's are, so Roslyn
+    /// never sees the directive — neither here, where it would look for a file
+    /// called <c>project: …</c>, nor in the language service's replay of this
+    /// submission. The line stays as an empty one so diagnostics keep their line
+    /// numbers.
+    /// </para>
+    /// </summary>
+    private string ResolveProjectReferences(string statement) {
+        if (statement.IndexOf(ProjectReferenceRequest.Prefix, StringComparison.OrdinalIgnoreCase) < 0) {
+            return statement;
+        }
+        var lines = statement.Split('\n');
+        var changed = false;
+        for (var i = 0; i < lines.Length; i++) {
+            // Relative to the file the line is in: the notebook, or the library a
+            // #!import is running — the rule imports themselves follow.
+            var request = ProjectReferenceRequest.TryParse(
+                lines[i], _importer.IsImporting ? _importer.ActivePath : _currentDirectory);
+            if (request == null) {
+                continue;
+            }
+            var result = _projects.Resolve(request);
+            foreach (var warning in result.Warnings) {
+                Console.Out.WriteLine("warning: " + warning);
+            }
+            if (result.Reloaded) {
+                // The previous build of the same project leaves first: two copies
+                // of one assembly identity is what Roslyn refuses as CS1703.
+                var superseded = new HashSet<string>(result.Superseded, StringComparer.OrdinalIgnoreCase);
+                _scriptOptions = _scriptOptions.WithReferences(_scriptOptions.MetadataReferences
+                    .Where(r => r is not PortableExecutableReference pe || pe.FilePath == null || !superseded.Contains(pe.FilePath))
+                    .Concat(result.ReferencePaths.Select(path => MetadataReference.CreateFromFile(path))));
+                ScanForPlugins(result.AssemblyPath);
+                _logger.LogInformation("#r project: referenced {Assembly}", result.AssemblyPath);
+            }
+            lines[i] = string.Empty;
+            changed = true;
+        }
+        return changed ? string.Join("\n", lines) : statement;
     }
 
     private static readonly CSharpParseOptions _scriptParseOptions =

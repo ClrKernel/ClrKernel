@@ -155,6 +155,8 @@ const EDITABLE_EXTENSIONS = [
 const EDITABLE_NAMES = [
   '.gitignore', '.gitattributes', '.editorconfig', '.dockerignore', '.gitmodules',
   'dockerfile', 'makefile', 'license', 'readme', 'changelog',
+  // The feeds a notebook's #r "nuget:" restores from — the server's list says the same.
+  'nuget.config',
 ];
 
 /**

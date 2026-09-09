@@ -86,6 +86,16 @@ public class JobExecutorTest {
         public void Shutdown() { }
     }
 
+    /// <summary>
+    /// What the notification handler does before the executor's own handler gets
+    /// its turn. The race this exists for: the kernel writes a display and then
+    /// the reply, in that order, but the client hands the display to a thread-pool
+    /// thread and completes the reply on another — so on a slow runner the executor
+    /// wrote the artifact before the display had been added to the cell. CI saw it
+    /// once in many runs; a handler that takes its time makes it happen every run.
+    /// </summary>
+    private Action<DisplayNotification> _beforeDisplay;
+
     private async Task<(Run Run, string Artifact)> RunNotebookAsync(string notebook, Dictionary<string, object> parameters = null) {
         var notebookPath = Path.Combine(_dir, "nb.nb.md");
         File.WriteAllText(notebookPath, notebook);
@@ -118,6 +128,10 @@ public class JobExecutorTest {
 
         var artifact = Path.Combine(_dir, "out.ipynb");
         using var client = new KernelClient(clientStream, clientStream);
+        if (_beforeDisplay != null) {
+            // Subscribed before the executor subscribes, so it runs first.
+            client.DisplayReceived += _beforeDisplay;
+        }
         await executor.ExecuteCellsAsync(client, run, plan, cells, artifact, _ => { }, CancellationToken.None);
         return (run, artifact);
     }
@@ -147,6 +161,21 @@ public class JobExecutorTest {
         StringAssert.Contains(json, "\"42\"", "execute_result mime bundle");
         StringAssert.Contains(json, "displayed!", "display notification captured");
         StringAssert.Contains(json, "# Title", "markdown passes through");
+    }
+
+    [TestMethod]
+    public async Task A_display_that_arrives_slowly_is_still_in_the_artifact() {
+        _beforeDisplay = _ => Thread.Sleep(300);
+        var (run, artifact) = await RunNotebookAsync(
+            """
+            ```csharp
+            Display("hi")
+            ```
+            """);
+
+        Assert.AreEqual(RunStatus.Succeeded, run.Status);
+        StringAssert.Contains(File.ReadAllText(artifact), "displayed!",
+            "the display was read before the reply and must be in the cell before the artifact is written");
     }
 
     [TestMethod]

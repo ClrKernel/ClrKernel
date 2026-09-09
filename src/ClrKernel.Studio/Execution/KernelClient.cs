@@ -41,6 +41,9 @@ public sealed class KernelClient : IDisposable {
 
     private bool Lsp => _mode == KernelMode.Lsp;
 
+    /// <summary>The reason and exception of the last disconnect, or null while connected.</summary>
+    public string LastDisconnect { get; private set; }
+
     /// <summary>Raised for every display/updateDisplay notification from the kernel.</summary>
     public event Action<DisplayNotification> DisplayReceived;
 
@@ -64,10 +67,100 @@ public sealed class KernelClient : IDisposable {
         formatter.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         formatter.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
         formatter.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase));
-        var handler = new HeaderDelimitedMessageHandler(sendingStream, receivingStream, formatter);
-        _rpc = new JsonRpc(handler);
+        _rpc = new JsonRpc(new CountingHandler(sendingStream, receivingStream, formatter, _displays));
         _rpc.AddLocalRpcTarget(new NotificationSink(this));
+        // Why the connection went, for the error a caller sees. StreamJsonRpc's own
+        // "connection lost before the request could complete" names no cause.
+        _rpc.Disconnected += (_, e) => LastDisconnect = $"{e.Reason}: {e.Description} {e.Exception}";
         _rpc.StartListening();
+    }
+
+    // Display notifications read off the wire versus handed to DisplayReceived.
+    //
+    // The kernel writes a cell's displays and then its reply, in that order. The
+    // client reads them in that order too — but hands each notification to a
+    // thread-pool thread and completes the reply's task on another, so whoever
+    // awaited the reply can run before the last display has reached its handler.
+    // A job executor then wrote the artifact without it, on a busy CI runner,
+    // once in many runs. Counting what was *read* (in the handler, where order is
+    // certain) against what was *handled* lets ExecuteAsync wait for the gap to
+    // close before it returns, so "the reply came back" means "and every display
+    // before it has been delivered".
+    private readonly DisplayCount _displays = new();
+
+    private sealed class DisplayCount {
+        private readonly object _gate = new();
+        private long _read;
+        private long _handled;
+        private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Read() => Interlocked.Increment(ref _read);
+
+        public void Handled() {
+            TaskCompletionSource signal;
+            lock (_gate) {
+                _handled++;
+                signal = _changed;
+                _changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+            signal.TrySetResult();
+        }
+
+        /// <summary>Waits until every display read so far has been handled.</summary>
+        public async Task DrainAsync(CancellationToken cancellationToken) {
+            var target = Interlocked.Read(ref _read);
+            while (true) {
+                Task wait;
+                lock (_gate) {
+                    if (_handled >= target) {
+                        return;
+                    }
+                    wait = _changed.Task;
+                }
+                await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static readonly HashSet<string> _displayMethods = new(StringComparer.Ordinal) {
+        "display", "updateDisplay", "clrkernel/display", "clrkernel/updateDisplay",
+    };
+
+    /// <summary>
+    /// The wire handler, with one job added: notice each display as it is read.
+    /// Everything else — buffer hand-back after deserialization, disposal — is
+    /// forwarded, because JsonRpc looks for those contracts on the handler it was
+    /// given and the inner one is what actually holds the buffers and the streams.
+    /// </summary>
+    /// <summary>
+    /// The wire handler, with one job added: notice each display as it is read.
+    ///
+    /// <para>
+    /// A subclass rather than a wrapper around <see cref="HeaderDelimitedMessageHandler"/>,
+    /// and not by preference: JsonRpc hands a message's buffer back to its handler
+    /// through an interface that is internal to StreamJsonRpc, so a handler that only
+    /// delegates never advances the reader, and the next read finds itself in the
+    /// middle of the last body — "No Content-Length header detected", on every
+    /// message after the first. Overriding the read keeps the base class's contract
+    /// intact.
+    /// </para>
+    /// </summary>
+    private sealed class CountingHandler : HeaderDelimitedMessageHandler {
+        private readonly DisplayCount _displays;
+
+        public CountingHandler(Stream sending, Stream receiving, IJsonRpcMessageFormatter formatter, DisplayCount displays)
+            : base(sending, receiving, formatter) {
+            _displays = displays;
+        }
+
+        protected override async ValueTask<StreamJsonRpc.Protocol.JsonRpcMessage> ReadCoreAsync(CancellationToken cancellationToken) {
+            var message = await base.ReadCoreAsync(cancellationToken).ConfigureAwait(false);
+            if (message is StreamJsonRpc.Protocol.JsonRpcRequest { IsNotification: true } request
+                && _displayMethods.Contains(request.Method)) {
+                _displays.Read();
+            }
+            return message;
+        }
     }
 
     public async Task<InitializeReply> InitializeAsync(CancellationToken cancellationToken = default) {
@@ -159,9 +252,14 @@ public sealed class KernelClient : IDisposable {
             })
             : Task.CompletedTask;
 
-    public Task<ExecuteReply> ExecuteAsync(string cellId, string code, CancellationToken cancellationToken = default) =>
-        _rpc.InvokeWithParameterObjectAsync<ExecuteReply>(
-            Lsp ? "clrkernel/execute" : "execute", new { cellId, code }, cancellationToken);
+    public async Task<ExecuteReply> ExecuteAsync(string cellId, string code, CancellationToken cancellationToken = default) {
+        var reply = await _rpc.InvokeWithParameterObjectAsync<ExecuteReply>(
+            Lsp ? "clrkernel/execute" : "execute", new { cellId, code }, cancellationToken).ConfigureAwait(false);
+        // Every display read before this reply has been handled by the time the
+        // caller sees it — see DisplayCount.
+        await _displays.DrainAsync(cancellationToken).ConfigureAwait(false);
+        return reply;
+    }
 
     /// <summary>The connection providers a language offers, and the settings each
     /// one takes — the schema the editor's connection wizard renders. Same payload
@@ -222,23 +320,33 @@ public sealed class KernelClient : IDisposable {
 
     public void Dispose() => _rpc.Dispose();
 
+    private void Deliver(DisplayNotification notification) {
+        try {
+            DisplayReceived?.Invoke(notification);
+        } finally {
+            // Counted after the handlers, throw or not: a handler that failed is
+            // still one that had its turn, and a drain waiting on it must not hang.
+            _displays.Handled();
+        }
+    }
+
     private sealed class NotificationSink {
         private readonly KernelClient _client;
         public NotificationSink(KernelClient client) => _client = client;
 
         [JsonRpcMethod("display", UseSingleObjectParameterDeserialization = true)]
-        public void Display(DisplayNotification notification) => _client.DisplayReceived?.Invoke(notification);
+        public void Display(DisplayNotification notification) => _client.Deliver(notification);
 
         [JsonRpcMethod("updateDisplay", UseSingleObjectParameterDeserialization = true)]
-        public void UpdateDisplay(DisplayNotification notification) => _client.DisplayReceived?.Invoke(notification);
+        public void UpdateDisplay(DisplayNotification notification) => _client.Deliver(notification);
 
         // The lsp surface names the same two notifications differently and sends the
         // same payload. Binding both sets means one sink rather than a mode switch.
         [JsonRpcMethod("clrkernel/display", UseSingleObjectParameterDeserialization = true)]
-        public void LspDisplay(DisplayNotification notification) => _client.DisplayReceived?.Invoke(notification);
+        public void LspDisplay(DisplayNotification notification) => _client.Deliver(notification);
 
         [JsonRpcMethod("clrkernel/updateDisplay", UseSingleObjectParameterDeserialization = true)]
-        public void LspUpdateDisplay(DisplayNotification notification) => _client.DisplayReceived?.Invoke(notification);
+        public void LspUpdateDisplay(DisplayNotification notification) => _client.Deliver(notification);
 
         [JsonRpcMethod("clrkernel/languagesChanged", UseSingleObjectParameterDeserialization = true)]
         public void LspLanguagesChanged(LanguagesReply notification) => _client.LanguagesChanged?.Invoke(notification);

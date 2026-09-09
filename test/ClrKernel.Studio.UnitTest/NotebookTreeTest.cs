@@ -118,6 +118,8 @@ public class NotebookTreeTest {
         Assert.IsTrue(NotebookTree.IsEditable("a/b.JOBS.YAML"));
         // Text, whatever kind of text. The tool that opens it is a text editor.
         Assert.IsTrue(NotebookTree.IsEditable("settings.json"));
+        Assert.IsTrue(NotebookTree.IsEditable("NuGet.Config"), "the feeds a notebook restores from");
+        Assert.IsTrue(NotebookTree.IsEditable("reports/nuget.config"));
         Assert.IsTrue(NotebookTree.IsEditable("a/b.yaml"));
         Assert.IsTrue(NotebookTree.IsEditable("a/b.txt"));
         Assert.IsTrue(NotebookTree.IsEditable("a/b.md"));

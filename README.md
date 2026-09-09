@@ -63,8 +63,9 @@ jupyter kernelspec list   # should show: clrkernel
 
 In VS Code, open a `.nb.md`. In JupyterLab, pick the **ClrKernel (C#)** kernel.
 Either way it is the same session: cells support
-`#r "nuget: Package, Version"` and `#r "path/to/local.dll"` references, with
-REPL-style state persisting across cells.
+`#r "nuget: Package, Version"`, `#r "path/to/local.dll"` and
+`#r "project: path/to/Lib.csproj"` references, with REPL-style state persisting
+across cells.
 
 Cells can even define **extension methods** (or namespaces) — declarations
 Roslyn's script mode can't host. Such a cell is compiled as a real class
@@ -90,6 +91,83 @@ once per session — re-importing is a no-op unless you pass `--force`
 (`#!import --force "lib.dib"`), which is handy while iterating on the library
 itself. Imported files can use `#r` directives, including `#r "nuget: ..."`,
 and can `#!import` further files.
+
+### Private feeds: a `NuGet.Config` beside the notebooks
+
+`#r "nuget:"` restores through the nearest `NuGet.Config` — the notebook's own
+folder, or any folder above it — the same search `dotnet restore` makes in a
+repo. Put one at the root and every notebook under it sees the feed:
+
+```xml
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+    <add key="internal" value="https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <internal>
+      <add key="Username" value="pat" />
+      <add key="ClearTextPassword" value="%CLRKERNEL_SECRET_FEED_PAT%" />
+    </internal>
+  </packageSourceCredentials>
+</configuration>
+```
+
+Two things about it. **The file is the whole configuration** when it is there —
+it replaces the user-level `NuGet.Config` rather than adding to it, so list
+`nuget.org` yourself if you still want it. And **credentials are environment
+references**, never values: NuGet expands `%NAME%` when it reads the file, so
+`CLRKERNEL_SECRET_FEED_PAT` in the environment is what signs in — which is the
+same variable the kernel's own [secret chain](docs/secrets.md) reads, and the one
+Studio sets per branch. Nothing secret is in the repo.
+
+Without a `NuGet.Config` in reach, restore uses your user-level one as before.
+In Studio the file is editable on your branch, and a notebook is promoted
+together with the `NuGet.Config` it restores through.
+
+### Referencing a local project
+
+`#r "project: …"` builds a `.csproj` with the .NET SDK and references whatever
+it produced — source generators, project-to-project references, `Exec` targets
+and `Directory.Build.props` all included, because MSBuild is the boundary and
+the kernel never reads a `.cs` file itself:
+
+```csharp
+#r "project: ../src/MyLib/MyLib.csproj"
+#r "project: ../src/MyLib/MyLib.csproj, Configuration=Release, Framework=net9.0"
+#r "project: ../src/MyLib/MyLib.csproj, NoBuild=true"
+```
+
+| Option | Default | |
+|---|---|---|
+| `Configuration` | `Debug` | passed as `-c` |
+| `Framework` | the highest target the kernel's runtime can load | passed as `-f`; needed only when a multi-targeted project has no loadable target, which is an error rather than a guess |
+| `NoBuild` | `false` | reference the project's own last build instead of building — for CI, where a step already did. Read once: a rebuild outside the kernel is not seen until the kernel restarts. A library's own build leaves its packages in the NuGet cache; set `CopyLocalLockFileAssemblies` in the project or the reference is refused, naming what is missing |
+
+The path is relative to the notebook — or, inside an imported file, to that
+file, the same rule `#!import` follows. Only a project file: a solution is one
+line per project. Build output streams into the cell as it happens, and a
+failed build is the cell's error, with MSBuild's message verbatim. The
+project's packages come along; one the kernel already ships (say
+`Newtonsoft.Json`) unifies with the kernel's copy, and a cell warning says
+which version that is.
+
+**Edit, rebuild, re-run.** Running the `#r` line again rebuilds; an unchanged
+build is recognised and nothing reloads, so `Run All` does not churn. A changed
+one loads beside the old — variables from earlier cells keep the types they
+had, and new cells see the new code. That is the loop the feature exists for:
+change the library, re-run one cell, carry on. A generator you run by hand
+belongs in a `BeforeBuild` target or a shell cell above; there is no pre-build
+hook here. Builds land under the kernel's temp folder, never in the project's
+`bin/`, so a loaded assembly never blocks the next `dotnet build`. One thing to
+avoid: a package already loaded in the session that ships an assembly with the
+*same name* as the project at a higher version wins at run time — the runtime
+unifies by name — so a project and its own published package do not mix in one
+notebook.
+
+Needs the SDK, not just the runtime — which the Studio Docker image does not
+carry; see [docs/docker.md](docs/docker.md#what-is-in-the-image).
 
 ### Shell & PowerShell cells — local and remote
 
