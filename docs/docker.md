@@ -171,6 +171,12 @@ graph. Of the 74 assemblies whose names appear in both, a good fifteen are
 application the other's copy. Studio spawns the kernel as a child process
 (`CLRKERNEL_STUDIO_CLRKERNEL` points at it), so both have to be here.
 
+What is **not** in the image is the .NET SDK — only the runtime, which is what
+runs notebooks. A cell that does `#r "project: …/Lib.csproj"` needs `dotnet build`
+and fails here saying so. Build the project outside and `#r` the dll, or derive
+your own image from `mcr.microsoft.com/dotnet/sdk` if notebooks in this container
+really must compile projects.
+
 Stop and clean up:
 
 ```bash

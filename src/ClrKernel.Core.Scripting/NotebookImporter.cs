@@ -59,6 +59,12 @@ public class NotebookImporter {
     public string ActivePath => _activePaths.TryPeek(out var current) ? current : Environment.CurrentDirectory;
 
     /// <summary>
+    /// True while a file's blocks are being executed — when a relative path in
+    /// one of them belongs to that file, not to the notebook that imported it.
+    /// </summary>
+    public bool IsImporting => _activePaths.Count > 0;
+
+    /// <summary>
     /// If the line is a #!import (or #!lib) directive, returns true and its parsed parts.
     /// </summary>
     public static bool TryParseDirective(string line, out string path, out bool force) {

@@ -31,4 +31,11 @@
     <None Include="..\..\samples\*.nb.md" LinkBase="samples" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Projects for `#r "project:"` to build. Each test copies the tree to a temp
+       folder before building, so three target-framework runs never share an obj/. -->
+  <ItemGroup>
+    <None Include="..\fixtures\projects\**\*" Exclude="..\fixtures\projects\**\bin\**;..\fixtures\projects\**\obj\**"
+          LinkBase="fixtures\projects" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

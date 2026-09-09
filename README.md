@@ -63,8 +63,9 @@ jupyter kernelspec list   # should show: clrkernel
 
 In VS Code, open a `.nb.md`. In JupyterLab, pick the **ClrKernel (C#)** kernel.
 Either way it is the same session: cells support
-`#r "nuget: Package, Version"` and `#r "path/to/local.dll"` references, with
-REPL-style state persisting across cells.
+`#r "nuget: Package, Version"`, `#r "path/to/local.dll"` and
+`#r "project: path/to/Lib.csproj"` references, with REPL-style state persisting
+across cells.
 
 Cells can even define **extension methods** (or namespaces) — declarations
 Roslyn's script mode can't host. Such a cell is compiled as a real class
@@ -90,6 +91,42 @@ once per session — re-importing is a no-op unless you pass `--force`
 (`#!import --force "lib.dib"`), which is handy while iterating on the library
 itself. Imported files can use `#r` directives, including `#r "nuget: ..."`,
 and can `#!import` further files.
+
+### Referencing a local project
+
+`#r "project: …"` builds a `.csproj` with the .NET SDK and references whatever
+it produced — source generators, project-to-project references, `Exec` targets
+and `Directory.Build.props` all included, because MSBuild is the boundary and
+the kernel never reads a `.cs` file itself:
+
+```csharp
+#r "project: ../src/MyLib/MyLib.csproj"
+#r "project: ../src/MyLib/MyLib.csproj, Configuration=Release, Framework=net9.0"
+#r "project: ../src/MyLib/MyLib.csproj, NoBuild=true"
+```
+
+| Option | Default | |
+|---|---|---|
+| `Configuration` | `Debug` | passed as `-c` |
+| `Framework` | the highest target the kernel's runtime can load | passed as `-f`; needed only when a multi-targeted project has no loadable target, which is an error rather than a guess |
+| `NoBuild` | `false` | reference the project's own last build instead of building — for CI, where a step already did. Read once: a rebuild outside the kernel is not seen until the kernel restarts |
+
+The path is relative to the notebook — or, inside an imported file, to that
+file, the same rule `#!import` follows. Only a project file: a solution is one
+line per project. Build output streams into the cell as it happens, and a
+failed build is the cell's error, with MSBuild's message verbatim.
+
+**Edit, rebuild, re-run.** Running the `#r` line again rebuilds; an unchanged
+build is recognised and nothing reloads, so `Run All` does not churn. A changed
+one loads beside the old — variables from earlier cells keep the types they
+had, and new cells see the new code. That is the loop the feature exists for:
+change the library, re-run one cell, carry on. A generator you run by hand
+belongs in a `BeforeBuild` target or a shell cell above; there is no pre-build
+hook here. Builds land under the kernel's temp folder, never in the project's
+`bin/`, so a loaded assembly never blocks the next `dotnet build`.
+
+Needs the SDK, not just the runtime — which the Studio Docker image does not
+carry; see [docs/docker.md](docs/docker.md#what-is-in-the-image).
 
 ### Shell & PowerShell cells — local and remote
 
