@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- No package: System.Text.Json's source generator ships with the SDK, so
+       this proves generated code follows a rebuild without a network restore. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>

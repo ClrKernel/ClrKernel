@@ -247,9 +247,24 @@ at execution, and not in the language service's replay of the submission, which
 would otherwise hit CS0006 on every keystroke. An empty line keeps diagnostics'
 line numbers.
 
-Not built, beyond the spec's own list: the `WithSourceGenerator` and `WithDepConflict`
-fixtures (each needs a package, which means a restore from the network inside the test
-suite — the version-mismatch warning is coded and reads `AssemblyName` on both sides,
-but nothing exercises it); and a `NoBuild` re-run after an *external* rebuild, which
-cannot bump the version and so cannot be reloaded — a kernel restart is the answer,
-and the README's option table says so.
+> **"The `-o` directory contains the full closure" is true of applications only.**
+> The `WithDepConflict` fixture found it: a *library* build sets
+> `CopyLocalLockFileAssemblies=false`, leaves its packages in the NuGet cache and
+> writes only their names to `deps.json`. The project dll loaded, and nothing in the
+> output was there to warn about — the first test run passed the "shipped assembly is
+> left out" assertion for the wrong reason and failed on the warning. The build now
+> passes `-p:CopyLocalLockFileAssemblies=true` (global, so the whole graph). NoBuild
+> cannot, since it copies a build it did not make; it reads the `deps.json` instead
+> and refuses when a runtime asset is neither in the copy nor shipped by the kernel,
+> naming the property to set. `MissingRuntimeAssemblies` is tested over a hand-written
+> `deps.json` rather than a fixture — the missing-package case would need a package the
+> kernel does not ship, and every candidate is a network restore.
+
+The `WithSourceGenerator` fixture needs no package at all: `System.Text.Json`'s
+generator ships in the SDK, and the test adds a second `[JsonSerializable]` between
+two runs of the `#r` — the generated member it then asks for did not exist at the
+first build. That is the regenerate → re-run → new types loop, end to end and offline.
+
+Not built, beyond the spec's own list: a `NoBuild` re-run after an *external*
+rebuild, which cannot bump the version and so cannot be reloaded — a kernel restart
+is the answer, and the README's option table says so.

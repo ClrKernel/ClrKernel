@@ -193,6 +193,73 @@ public class ProjectReferenceTest {
         Assert.AreEqual("Hello, Ada!", Text(await engine.ExecuteAsync("SimpleLib.Greeter.Greet(\"Ada\")")));
     }
 
+    [TestMethod]
+    public async Task Generated_code_is_there_and_follows_a_rebuild() {
+        var dir = FreshFixtures();
+        var engine = EngineIn(dir);
+        await engine.ExecuteAsync("#r \"project: WithSourceGenerator/WithSourceGenerator.csproj\"");
+        Assert.AreEqual("{\"X\":1,\"Y\":2}", Text(await engine.ExecuteAsync(
+            "System.Text.Json.JsonSerializer.Serialize(new WithSourceGenerator.Point(1, 2), WithSourceGenerator.Shapes.Default.Point)")),
+            "Shapes.Default.Point is what the generator wrote");
+
+        // The loop the feature exists for: change the source, re-run one line,
+        // and a member that did not exist at the first build is there.
+        File.WriteAllText(Path.Combine(dir, "WithSourceGenerator", "Shapes.cs"),
+            "using System.Text.Json.Serialization;\nnamespace WithSourceGenerator;\n"
+            + "public record Point(int X, int Y);\npublic record Line(Point A, Point B);\n"
+            + "[JsonSerializable(typeof(Point))]\n[JsonSerializable(typeof(Line))]\n"
+            + "public partial class Shapes : JsonSerializerContext { }\n");
+        await engine.ExecuteAsync("#r \"project: WithSourceGenerator/WithSourceGenerator.csproj\"");
+        Assert.AreEqual("{\"A\":{\"X\":0,\"Y\":0},\"B\":{\"X\":1,\"Y\":1}}", Text(await engine.ExecuteAsync(
+            "System.Text.Json.JsonSerializer.Serialize(new WithSourceGenerator.Line(new(0, 0), new(1, 1)), WithSourceGenerator.Shapes.Default.Line)")));
+    }
+
+    [TestMethod]
+    public async Task A_dependency_the_kernel_already_ships_unifies_with_a_warning() {
+        var dir = FreshFixtures();
+        var request = ProjectReferenceRequest.TryParse("#r \"project: WithDepConflict/WithDepConflict.csproj\"", dir);
+        var result = new ProjectReferences(null).Resolve(request);
+
+        // The project's 8.0 copy is in the output and is not referenced: the
+        // kernel's own is, and the warning says which version lost.
+        Assert.IsFalse(result.ReferencePaths.Any(p => p.EndsWith("Microsoft.Extensions.Logging.Abstractions.dll")),
+            "the shipped assembly is left out: " + string.Join(", ", result.ReferencePaths));
+        var warning = result.Warnings.SingleOrDefault(w => w.StartsWith("Microsoft.Extensions.Logging.Abstractions"));
+        Assert.IsNotNull(warning, "no version warning; got: " + string.Join(" | ", result.Warnings));
+        StringAssert.Contains(warning, "8.0.0.0");
+
+        // And the cell still runs — with the kernel's ILogger, which is only
+        // possible because the type unified rather than split into two.
+        var engine = EngineIn(dir);
+        await engine.ExecuteAsync("#r \"project: WithDepConflict/WithDepConflict.csproj\"");
+        Assert.AreEqual("HELLO", Text(await engine.ExecuteAsync(
+            "WithDepConflict.Loud.Announce(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, \"hello\")")));
+    }
+
+    [TestMethod]
+    public void A_deps_json_names_what_a_library_build_left_in_the_cache() {
+        var dir = Path.Combine(Path.GetTempPath(), "clrkernel-deps-test", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "Lib.dll"), "");
+        // The shape `dotnet build` writes: the project's own runtime asset is
+        // there; the package's is a path into the NuGet cache; the shared
+        // framework's assembly is named too, and the kernel already has that one.
+        var deps = Path.Combine(dir, "Lib.deps.json");
+        File.WriteAllText(deps, """
+            { "targets": { ".NETCoreApp,Version=v8.0": {
+                "Lib/1.0.0": { "runtime": { "Lib.dll": {} } },
+                "Some.Package/2.0.0": { "runtime": { "lib/net8.0/Some.Package.dll": {} } },
+                "System.Text.Json/8.0.0": { "runtime": { "lib/net8.0/System.Text.Json.dll": {} } }
+            } } }
+            """);
+
+        CollectionAssert.AreEqual(new[] { "Some.Package.dll" },
+            ProjectReferences.MissingRuntimeAssemblies(deps, dir).ToArray(),
+            "the one that is neither in the directory nor the kernel's");
+        Assert.AreEqual(0, ProjectReferences.MissingRuntimeAssemblies(Path.Combine(dir, "none.deps.json"), dir).Count,
+            "no deps.json is nothing to check, not a failure");
+    }
+
     // --- the fronts -----------------------------------------------------------
 
     [TestMethod]

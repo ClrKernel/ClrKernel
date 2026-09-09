@@ -188,6 +188,19 @@ public sealed class ProjectReferences {
                     + $"'{targetPath}'. Build the project first, or run this line once without NoBuild.");
             }
             CopyDirectory(Path.GetDirectoryName(targetPath), outDir);
+            // A library's bin/ has no package assemblies unless the project asked
+            // for them, and a missing one would surface later as a
+            // FileNotFoundException from inside the first call — which reads as a
+            // bug in the library. Refuse here and say what to set.
+            var missing = MissingRuntimeAssemblies(
+                Path.Combine(outDir, properties["TargetName"] + ".deps.json"), outDir);
+            if (missing.Count > 0) {
+                throw new InvalidOperationException(
+                    $"#r \"project:\": NoBuild=true, but the project's output lacks {string.Join(", ", missing)}. "
+                    + "A library's build does not copy its packages; set "
+                    + "<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies> in the project, "
+                    + "or run this line without NoBuild.");
+            }
         } else {
             // Built at the version that is already loaded, so an unchanged
             // rebuild is byte-identical to it — MVID equal, nothing to do. Roslyn
@@ -230,17 +243,53 @@ public sealed class ProjectReferences {
     private void Build(string dotnet, ProjectReferenceRequest request, string framework, string outDir, string version) {
         // -nodeReuse:false: a Studio kernel lives for one run, and an MSBuild
         // worker node left behind to speed up the next build outlives it.
-        // AssemblyVersion is a global property, so every project in the graph
-        // gets it — a private build for one session, not a package.
+        // CopyLocalLockFileAssemblies: a *library* build leaves its packages in
+        // the NuGet cache and writes only their names to deps.json — "the output
+        // directory contains the full closure" is true of applications alone.
+        // Without this the project dll loads and its first call into a package
+        // throws FileNotFoundException. Both are global properties, so every
+        // project in the graph gets them — a private build for one session, not
+        // a package.
         var (code, output) = DotnetCli.Run(dotnet, new[] {
             "build", request.ProjectPath, "-c", request.Configuration, "-f", framework, "-o", outDir,
-            $"-p:AssemblyVersion={version}", "--nologo", "-v:q", "-nodeReuse:false",
+            $"-p:AssemblyVersion={version}", "-p:CopyLocalLockFileAssemblies=true",
+            "--nologo", "-v:q", "-nodeReuse:false",
         }, _output, BuildTimeout);
         if (code != 0) {
             TryDelete(outDir);
             throw new InvalidOperationException(
                 $"#r \"project:\": dotnet build failed ({code}) for {request.ProjectPath}:\n{output.Trim()}");
         }
+    }
+
+    /// <summary>
+    /// Runtime assemblies the project's <c>deps.json</c> names that are neither in
+    /// <paramref name="directory"/> nor shipped by the kernel. Empty when there is
+    /// no deps.json to read — nothing to check against is not a failure.
+    /// </summary>
+    public static IReadOnlyList<string> MissingRuntimeAssemblies(string depsJsonPath, string directory) {
+        if (!File.Exists(depsJsonPath)) {
+            return Array.Empty<string>();
+        }
+        var missing = new List<string>();
+        using var json = JsonDocument.Parse(File.ReadAllText(depsJsonPath));
+        if (!json.RootElement.TryGetProperty("targets", out var targets)) {
+            return missing;
+        }
+        foreach (var target in targets.EnumerateObject()) {
+            foreach (var library in target.Value.EnumerateObject()) {
+                if (!library.Value.TryGetProperty("runtime", out var runtime)) {
+                    continue;
+                }
+                foreach (var asset in runtime.EnumerateObject()) {
+                    var name = Path.GetFileName(asset.Name);
+                    if (!File.Exists(Path.Combine(directory, name)) && !IsShipped(name) && !missing.Contains(name)) {
+                        missing.Add(name);
+                    }
+                }
+            }
+        }
+        return missing;
     }
 
     /// <summary>Major.minor.build of what the project declares; the revision is this session's.</summary>
@@ -313,9 +362,7 @@ public sealed class ProjectReferences {
     /// </summary>
     private static bool IsShipped(string path, List<string> warnings) {
         var name = Path.GetFileName(path);
-        var shipped = new[] { _frameworkDir, AppContext.BaseDirectory }
-            .Select(dir => Path.Combine(dir, name))
-            .FirstOrDefault(File.Exists);
+        var shipped = ShippedCopyOf(name);
         if (shipped == null) {
             return false;
         }
@@ -328,6 +375,13 @@ public sealed class ProjectReferences {
         }
         return true;
     }
+
+    private static bool IsShipped(string fileName) => ShippedCopyOf(fileName) != null;
+
+    private static string ShippedCopyOf(string fileName) =>
+        new[] { _frameworkDir, AppContext.BaseDirectory }
+            .Select(dir => Path.Combine(dir, fileName))
+            .FirstOrDefault(File.Exists);
 
     private static Version VersionOf(string path) {
         try {

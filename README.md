@@ -109,12 +109,15 @@ the kernel never reads a `.cs` file itself:
 |---|---|---|
 | `Configuration` | `Debug` | passed as `-c` |
 | `Framework` | the highest target the kernel's runtime can load | passed as `-f`; needed only when a multi-targeted project has no loadable target, which is an error rather than a guess |
-| `NoBuild` | `false` | reference the project's own last build instead of building — for CI, where a step already did. Read once: a rebuild outside the kernel is not seen until the kernel restarts |
+| `NoBuild` | `false` | reference the project's own last build instead of building — for CI, where a step already did. Read once: a rebuild outside the kernel is not seen until the kernel restarts. A library's own build leaves its packages in the NuGet cache; set `CopyLocalLockFileAssemblies` in the project or the reference is refused, naming what is missing |
 
 The path is relative to the notebook — or, inside an imported file, to that
 file, the same rule `#!import` follows. Only a project file: a solution is one
 line per project. Build output streams into the cell as it happens, and a
-failed build is the cell's error, with MSBuild's message verbatim.
+failed build is the cell's error, with MSBuild's message verbatim. The
+project's packages come along; one the kernel already ships (say
+`Newtonsoft.Json`) unifies with the kernel's copy, and a cell warning says
+which version that is.
 
 **Edit, rebuild, re-run.** Running the `#r` line again rebuilds; an unchanged
 build is recognised and nothing reloads, so `Run All` does not churn. A changed
