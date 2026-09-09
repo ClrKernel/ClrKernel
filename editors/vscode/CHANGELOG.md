@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.0] - 2026-09-09
+
+**Needs kernel 0.13.x.** Nothing in the extension changes — the pairing moves
+because the kernel did, and this build is what keeps a 0.13 kernel from being
+reported as newer than the extension supports.
+
+What 0.13 brings is all kernel-side, and it shows up in VS Code without an
+extension change:
+
+- **`#r "project: path/to/Lib.csproj"`** builds a local project with the SDK and
+  references its output — source generators, project references and
+  `Directory.Build.props` included. Completion and hover cover the project's
+  types with their `///` docs. Re-run the line after an edit and the new code
+  loads.
+- **A `NuGet.Config` beside the notebooks** is what `#r "nuget:"` restores
+  through — a private feed is declared once for the repo, with credentials as
+  `%ENV%` references rather than values.
+
 ## [0.9.0] - 2026-09-08
 
 **Needs kernel 0.12.x.** Python cells, and nothing else changes.

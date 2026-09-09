@@ -9,23 +9,22 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.12.*';
+export const SUPPORTED_KERNEL_RANGE = '0.13.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.12.x';
+export const SUPPORTED_KERNEL_LABEL = '0.13.x';
 
 /** The lowest kernel in the line that carries every RPC this build calls.
  *
- *  0.12.0 adds no `clrkernel/*` method either: the RPC surface has been exactly
- *  0.10.0's for three releases now, and the pairing moves because the check below
- *  compares major.minor. What is new in the kernel this build expects is the
- *  Python cell language — this extension highlights `#!python` cells and offers
- *  them in the picker, and 0.11 has no language to run them with, so the cell
- *  would fail on a selector the kernel does not know. */
-export const SUPPORTED_KERNEL_MIN = '0.12.0';
+ *  0.13.0 adds no `clrkernel/*` method either: the RPC surface has been exactly
+ *  0.10.0's for four releases now, and the pairing moves only because the check
+ *  below compares major.minor. Nothing in this build is new; it exists so a
+ *  0.13 kernel — `#r "project:"` and a repo NuGet.Config, both kernel-side — is
+ *  not reported as "newer than this extension supports". */
+export const SUPPORTED_KERNEL_MIN = '0.13.0';
 
 const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 12;
+const SUPPORTED_MINOR = 13;
 const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
