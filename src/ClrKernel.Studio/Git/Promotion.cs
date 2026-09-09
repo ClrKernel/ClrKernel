@@ -71,6 +71,14 @@ public static class Promotion {
 
         var testRoot = catalog.RootFor(GitService.TestBranch);
         var prodRoot = catalog.RootFor("prod");
+        // And the NuGet.Config the notebook restores through: the nearest one and
+        // every one above it, because that is the search restore does. A notebook
+        // promoted without its feed configuration is a notebook whose `#r "nuget:"`
+        // fails in prod for a package test could see — the same reason the jobs
+        // file travels. A change to one of these is a change to what runs, and is
+        // gated like a notebook edit below.
+        var configs = NuGetConfigsAbove(notebookPath, testRoot, prodRoot);
+        paths.AddRange(configs);
         var testNotebook = File.Exists(Path.Combine(testRoot, notebookPath));
         var prodNotebook = File.Exists(Path.Combine(prodRoot, notebookPath));
         var testYaml = File.Exists(Path.Combine(testRoot, jobsPath));
@@ -136,7 +144,8 @@ public static class Promotion {
             var changed = git.NameStatus(paths.ToArray()).Select(c => c.Path).ToList();
             var notebookChanged = changed.Any(c => Same(c, notebookPath));
             var parametersChanged = ParametersDiffer(prodJobs, testJobs);
-            var needsRun = notebookChanged || parametersChanged;
+            var feedsChanged = changed.Any(c => configs.Any(config => Same(c, config)));
+            var needsRun = notebookChanged || parametersChanged || feedsChanged;
 
             if (needsRun) {
                 foreach (var job in testJobs.Where(j => j.Enabled)) {
@@ -168,8 +177,9 @@ public static class Promotion {
                             "save (commit) and run again.");
                         continue;
                     }
-                    if (!git.UnchangedBetween(latest.CommitSha, GitService.TestBranch,
-                            notebookPath, jobsPath)) {
+                    // Every path the promotion carries, the feed configs included: a
+                    // run before the feed changed did not resolve what this would.
+                    if (!git.UnchangedBetween(latest.CommitSha, GitService.TestBranch, paths.ToArray())) {
                         reasons.Add($"'{job.Name}' files changed since its green run — run it again.");
                         continue;
                     }
@@ -234,6 +244,40 @@ public static class Promotion {
             IsDeletion = isDeletion,
             Unscheduling = unscheduling,
         };
+    }
+
+    /// <summary>
+    /// Every <c>NuGet.Config</c> from the notebook's folder up to the root, as
+    /// relative paths, spelled the way the file is on disk — in test, or in prod
+    /// for one being removed. NuGet finds the file whatever its case, so this
+    /// looks the same way.
+    /// </summary>
+    private static List<string> NuGetConfigsAbove(string notebookPath, string testRoot, string prodRoot) {
+        var found = new List<string>();
+        var directory = Path.GetDirectoryName(notebookPath)?.Replace('\\', '/') ?? string.Empty;
+        while (true) {
+            foreach (var root in new[] { testRoot, prodRoot }) {
+                var folder = Path.Combine(root, directory);
+                if (!Directory.Exists(folder)) {
+                    continue;
+                }
+                var config = Directory.EnumerateFiles(folder)
+                    .Select(Path.GetFileName)
+                    .FirstOrDefault(name => Same(name, "nuget.config"));
+                if (config != null) {
+                    var relative = Join(directory, config);
+                    if (!found.Any(f => Same(f, relative))) {
+                        found.Add(relative);
+                    }
+                    break;
+                }
+            }
+            if (directory.Length == 0) {
+                return found;
+            }
+            var slash = directory.LastIndexOf('/');
+            directory = slash < 0 ? string.Empty : directory[..slash];
+        }
     }
 
     private static PromotionEligibility Refused(string reason) =>

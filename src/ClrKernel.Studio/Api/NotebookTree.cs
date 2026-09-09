@@ -140,6 +140,9 @@ public static class NotebookTree {
     private static readonly string[] _editableNames = {
         ".gitignore", ".gitattributes", ".editorconfig", ".dockerignore", ".gitmodules",
         "dockerfile", "makefile", "license", "readme", "changelog",
+        // The feeds a notebook's #r "nuget:" restores from. Edited here so a
+        // private feed is set up on a branch and promoted like anything else.
+        "nuget.config",
     };
 
     /// <summary>

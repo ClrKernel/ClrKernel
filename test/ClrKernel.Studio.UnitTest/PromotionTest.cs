@@ -121,6 +121,62 @@ public class PromotionTest {
             _projects.Default, _projects, _store, "etl.nb.md", connections, new[] { _sql },
             new[] { ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor });
 
+    /// <summary>
+    /// The NuGet.Config a notebook restores through travels with it, the way its
+    /// jobs file does — and changing it is a change to what runs, so it needs a
+    /// green run like a notebook edit rather than riding through like a cron edit.
+    /// </summary>
+    [TestMethod]
+    public async Task The_NuGet_Config_above_a_notebook_is_promoted_with_it() {
+        SeedNotebookAndJob();
+        // At the root beside the notebook — where a repo keeps it. Lower-case,
+        // which NuGet accepts and a promotion must not miss.
+        CommitDev("nuget.config", "<configuration><packageSources><clear /></packageSources></configuration>");
+        await RecordRunAsync();
+
+        var result = await CheckAsync();
+        Assert.IsTrue(result.Eligible, string.Join(" | ", result.Reasons));
+        CollectionAssert.Contains(result.Paths, "nuget.config", "the feed configuration is part of the unit");
+
+        Promotion.Apply(_git, result, "etl.nb.md");
+        Assert.IsTrue(File.Exists(Path.Combine(_git.ProdPath, "nuget.config")), "and it reached prod");
+
+        // A feed change alone, after the run: the evidence is stale, because the
+        // packages the notebook resolves are no longer the ones that ran.
+        CommitDev("nuget.config",
+            "<configuration><packageSources><add key=\"x\" value=\"https://example.invalid/v3/index.json\" /></packageSources></configuration>");
+        var stale = await CheckAsync();
+        Assert.IsFalse(stale.Eligible, "a changed NuGet.Config needs a run that used it");
+        StringAssert.Contains(string.Join(" | ", stale.Reasons).ToLowerInvariant(), "run");
+    }
+
+    [TestMethod]
+    public async Task A_NuGet_Config_two_folders_up_is_still_the_notebooks() {
+        CommitDev("a/b/deep.nb.md", "```csharp\n1+1\n```\n");
+        CommitDev("a/b/deep.jobs.yaml", "notebook: ./deep.nb.md\njobs:\n  - name: deep\n");
+        CommitDev("NuGet.Config", "<configuration />");
+        CommitDev("a/nuget.config", "<configuration />");
+        await _store.CreateRunAsync(new Run {
+            Id = Guid.NewGuid(),
+            Project = ProjectRegistry.DefaultSlug,
+            Environment = "test",
+            JobName = "deep",
+            NotebookPath = "a/b/deep.nb.md",
+            Status = RunStatus.Succeeded,
+            Trigger = RunTrigger.Manual,
+            CreatedAt = DateTime.UtcNow,
+            StartedAt = DateTime.UtcNow,
+            FinishedAt = DateTime.UtcNow,
+            CommitSha = _git.HeadSha("test"),
+        });
+
+        var result = await Promotion.CheckAsync(_projects.Default, _projects, _store, "a/b/deep.nb.md");
+        Assert.IsTrue(result.Eligible, string.Join(" | ", result.Reasons));
+        // Both, nearest first — the whole search restore makes, not only the first hit.
+        CollectionAssert.AreEqual(new[] { "a/nuget.config", "NuGet.Config" },
+            result.Paths.Where(p => p.EndsWith("config", StringComparison.OrdinalIgnoreCase)).ToArray());
+    }
+
     [TestMethod]
     public async Task A_notebook_using_a_private_connection_is_not_promotable() {
         CommitDev("etl.nb.md", "```sql\n#!sql-connect --name scratch\nSELECT 1\n```\n");

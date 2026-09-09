@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Packed into a folder feed by NuGetConfigTest. Its own namespace, not
+       SimpleLib's: the language service builds its references from every
+       assembly loaded in the process, and two assemblies declaring SimpleLib.Greeter
+       made the type ambiguous for a test that had never heard of this package. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>

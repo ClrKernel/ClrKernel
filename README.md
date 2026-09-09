@@ -92,6 +92,40 @@ once per session — re-importing is a no-op unless you pass `--force`
 itself. Imported files can use `#r` directives, including `#r "nuget: ..."`,
 and can `#!import` further files.
 
+### Private feeds: a `NuGet.Config` beside the notebooks
+
+`#r "nuget:"` restores through the nearest `NuGet.Config` — the notebook's own
+folder, or any folder above it — the same search `dotnet restore` makes in a
+repo. Put one at the root and every notebook under it sees the feed:
+
+```xml
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+    <add key="internal" value="https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <internal>
+      <add key="Username" value="pat" />
+      <add key="ClearTextPassword" value="%CLRKERNEL_SECRET_FEED_PAT%" />
+    </internal>
+  </packageSourceCredentials>
+</configuration>
+```
+
+Two things about it. **The file is the whole configuration** when it is there —
+it replaces the user-level `NuGet.Config` rather than adding to it, so list
+`nuget.org` yourself if you still want it. And **credentials are environment
+references**, never values: NuGet expands `%NAME%` when it reads the file, so
+`CLRKERNEL_SECRET_FEED_PAT` in the environment is what signs in — which is the
+same variable the kernel's own [secret chain](docs/secrets.md) reads, and the one
+Studio sets per branch. Nothing secret is in the repo.
+
+Without a `NuGet.Config` in reach, restore uses your user-level one as before.
+In Studio the file is editable on your branch, and a notebook is promoted
+together with the `NuGet.Config` it restores through.
+
 ### Referencing a local project
 
 `#r "project: …"` builds a `.csproj` with the .NET SDK and references whatever
@@ -126,7 +160,11 @@ had, and new cells see the new code. That is the loop the feature exists for:
 change the library, re-run one cell, carry on. A generator you run by hand
 belongs in a `BeforeBuild` target or a shell cell above; there is no pre-build
 hook here. Builds land under the kernel's temp folder, never in the project's
-`bin/`, so a loaded assembly never blocks the next `dotnet build`.
+`bin/`, so a loaded assembly never blocks the next `dotnet build`. One thing to
+avoid: a package already loaded in the session that ships an assembly with the
+*same name* as the project at a higher version wins at run time — the runtime
+unifies by name — so a project and its own published package do not mix in one
+notebook.
 
 Needs the SDK, not just the runtime — which the Studio Docker image does not
 carry; see [docs/docker.md](docs/docker.md#what-is-in-the-image).

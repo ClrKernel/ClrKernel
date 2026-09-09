@@ -644,6 +644,12 @@ branch's secrets when it starts the kernel and hands over only those, as
 production before production has its own key fails saying the secret is missing,
 rather than silently running on test's.
 
+The same variables reach NuGet. A `NuGet.Config` in the repo that names a private
+feed can write its credential as `%CLRKERNEL_SECRET_FEED_PAT%` — NuGet expands
+that when it reads the file — and set `FEED_PAT` on each branch here. The feed
+is declared once in the repo; which token signs in is the branch's business, and
+none of it is in the file.
+
 A kernel is handed its branch's secrets **when it starts**. A notebook already
 open keeps the set it started with, so after adding one, restart that notebook's
 kernel — the cell would otherwise fail saying the secret is missing, which is
@@ -947,7 +953,12 @@ The loop:
 
 Deleting a notebook in test is promotable the same way (it removes the files and the
 jobs from prod). Promotion carries the notebook **and** its jobs files as a unit —
-sibling jobs share the notebook, so nothing smaller would be honest.
+sibling jobs share the notebook, so nothing smaller would be honest — and the
+`NuGet.Config` files above the notebook, because a `#r "nuget:"` that resolved in
+test through a feed prod has never heard of would fail there. A changed
+`NuGet.Config` needs a green run the way a changed notebook does: it changes what
+runs. One at the repo root is shared by every notebook, so promoting any one of
+them carries the change for all — promote the one whose run proved it.
 
 Every write lands atomically — into a file beside the target, then renamed over
 it. The editor writes every few seconds, so "crashed halfway through writing" stops

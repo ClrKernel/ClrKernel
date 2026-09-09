@@ -265,6 +265,17 @@ generator ships in the SDK, and the test adds a second `[JsonSerializable]` betw
 two runs of the `#r` — the generated member it then asks for did not exist at the
 first build. That is the regenerate → re-run → new types loop, end to end and offline.
 
+> **The version bump has a ceiling, and the suite found it.** The runtime unifies an
+> assembly by simple name to the highest version already loaded in the session. A
+> `NuGet.Config` test packed the `SimpleLib` fixture as a package — `SimpleLib,
+> 1.2.3.0` — and once that ran first, `ProjectReferenceTest`'s rebuilt `1.0.0.2`
+> compiled against the new code and *executed* the package's: `MissingMethodException:
+> SimpleLib.Greeter.Wave()`, in a test that passes on its own. Reproduced by running the
+> two classes together, gone once the package became a fixture of its own. For a user
+> the same thing happens on `#r`-ing a package that ships an assembly named like their
+> project at a higher version; the README says so, and nothing here can prevent it
+> short of renaming the project's assembly, which is not ours to do.
+
 Not built, beyond the spec's own list: a `NoBuild` re-run after an *external*
 rebuild, which cannot bump the version and so cannot be reloaded — a kernel restart
 is the answer, and the README's option table says so.

@@ -38,13 +38,18 @@ public class InteractiveScriptEngine : ICellExecutionContext {
 
     private string _currentDirectory;
 
-    // Where Dotnet.Script generates its NuGet restore scratch projects. This
-    // Dotnet.Script version roots the scratch at the directory we pass to
-    // GetDependenciesForCode (mirroring its absolute path underneath), so
-    // passing the notebook's directory would litter user folders with a
-    // dotnet-script/ tree. Anchor it under the system temp instead.
-    // Note: nearest-NuGet.Config discovery anchors here too, so feed config
-    // comes from user/machine level; per-workspace feeds work via #i "nuget:<url>".
+    // Where Dotnet.Script generates its NuGet restore scratch projects: the
+    // directory its ScriptProjectProvider is constructed with, under the system
+    // temp so no dotnet-script/ tree lands in a user's folder. The directory
+    // handed to GetDependenciesForCode is a different thing — it is mirrored
+    // *underneath* this one, and it is where Dotnet.Script looks for the nearest
+    // NuGet.Config. That call gets the notebook's directory, so a NuGet.Config in
+    // the notebook's folder or any folder above it is the one restore uses.
+    //
+    // Dotnet.Script passes that file as --configfile, which NuGet treats as the
+    // whole configuration: a repo NuGet.Config replaces the user-level one rather
+    // than adding to it, so it has to name nuget.org itself if it wants it.
+    // Without one, the nearest file is the user-level config, as before.
     private readonly string _dependencyScratchDirectory;
 
     private string[] _references;
@@ -584,7 +589,9 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             return false;
         }
 
-        var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_dependencyScratchDirectory, ScriptMode.REPL, new string[0], statement);
+        // The notebook's directory, for the NuGet.Config nearest to it; the scratch
+        // project itself still lands under the temp root (see the field's note).
+        var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_currentDirectory, ScriptMode.REPL, new string[0], statement);
         var lineDependencies = lineRuntimeDependencies.SelectMany(rtd => rtd.Assemblies).Distinct();
         var scriptMap = lineRuntimeDependencies.ToDictionary(rdt => rdt.Name, rdt => rdt.Scripts);
 
