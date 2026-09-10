@@ -44,13 +44,16 @@ public class InteractiveScriptEngine : ICellExecutionContext {
     // handed to GetDependenciesForCode is a different thing — it is mirrored
     // *underneath* this one, and it is where Dotnet.Script looks for the nearest
     // NuGet.Config. That call gets the notebook's directory, so a NuGet.Config in
-    // the notebook's folder or any folder above it is the one restore uses.
+    // the notebook's folder or any folder above it is the one restore sees.
     //
     // Dotnet.Script passes that file as --configfile, which NuGet treats as the
-    // whole configuration: a repo NuGet.Config replaces the user-level one rather
-    // than adding to it, so it has to name nuget.org itself if it wants it.
-    // Without one, the nearest file is the user-level config, as before.
+    // whole configuration — the user-level config and its nuget.org would be
+    // gone. So when there is a repo config, the restore is run here first, the
+    // way `dotnet restore` in a repo would run it (see PreRestoreWithRepoConfig),
+    // and Dotnet.Script's own restore then finds every package already in the
+    // global packages folder, which NuGet consults before any source.
     private readonly string _dependencyScratchDirectory;
+    private readonly Dotnet.Script.DependencyModel.ProjectSystem.ScriptProjectProvider _projectProvider;
 
     private string[] _references;
 
@@ -170,8 +173,8 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         LogFactory logFactory = (t) => (level, m, e) => {
             logger.Log(MapLogLevel(level), m, e);
         };
-        var projectProvider = new Dotnet.Script.DependencyModel.ProjectSystem.ScriptProjectProvider(logFactory, _dependencyScratchDirectory);
-        _runtimeDependencyResolver = new RuntimeDependencyResolver(projectProvider, logFactory, true);
+        _projectProvider = new Dotnet.Script.DependencyModel.ProjectSystem.ScriptProjectProvider(logFactory, _dependencyScratchDirectory);
+        _runtimeDependencyResolver = new RuntimeDependencyResolver(_projectProvider, logFactory, true);
 
         _interactiveOutput = new StringBuilder();
         _globals = new InteractiveScriptGlobals(new StringWriter(_interactiveOutput), CSharpObjectFormatter.Instance);
@@ -589,6 +592,9 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             return false;
         }
 
+        if (statement.Contains("nuget:", StringComparison.OrdinalIgnoreCase)) {
+            PreRestoreWithRepoConfig(statement);
+        }
         // The notebook's directory, for the NuGet.Config nearest to it; the scratch
         // project itself still lands under the temp root (see the field's note).
         var lineRuntimeDependencies = _runtimeDependencyResolver.GetDependenciesForCode(_currentDirectory, ScriptMode.REPL, new string[0], statement);
@@ -626,6 +632,69 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The nearest <c>NuGet.Config</c> from the notebook's directory upward, or
+    /// null. By name, case-insensitively, which is how NuGet finds it.
+    /// </summary>
+    private string RepoNuGetConfig() {
+        for (var directory = _currentDirectory; !string.IsNullOrEmpty(directory); directory = Path.GetDirectoryName(directory)) {
+            if (!Directory.Exists(directory)) {
+                continue;
+            }
+            var found = Directory.EnumerateFiles(directory)
+                .FirstOrDefault(f => Path.GetFileName(f).Equals("nuget.config", StringComparison.OrdinalIgnoreCase));
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Restores the cell's packages the way <c>dotnet restore</c> in a repo would,
+    /// before Dotnet.Script restores them its way.
+    ///
+    /// <para>
+    /// Dotnet.Script hands the nearest NuGet.Config to restore as
+    /// <c>--configfile</c>, and NuGet treats that file as the whole configuration:
+    /// the user-level config is not merged, so a repo file that names only a
+    /// private feed loses nuget.org — and every dependency the private package
+    /// has there. That is not what a NuGet.Config means anywhere else. A repo
+    /// config adds to the user's, and says <c>&lt;clear/&gt;</c> when it means
+    /// "only these".
+    /// </para>
+    /// <para>
+    /// There is no hook to change what Dotnet.Script passes, so the fix is to make
+    /// its restore moot: generate the same project it will (same path — the REPL
+    /// subfolder is what <c>GetDependenciesForCode</c> adds), restore it with
+    /// <c>RestoreRootConfigDirectory</c> at the notebook's folder, which is
+    /// NuGet's own hierarchical discovery from there, and let every package land
+    /// in the global packages folder. NuGet consults that folder before any
+    /// source, so the exclusive restore that follows finds all of it and asks no
+    /// feed for anything. Skipped when there is no repo config: then the two
+    /// restores would see the same file, and the second is the only one needed.
+    /// </para>
+    /// </summary>
+    private void PreRestoreWithRepoConfig(string statement) {
+        var config = RepoNuGetConfig();
+        if (config == null) {
+            return;
+        }
+        var environment = Dotnet.Script.DependencyModel.Environment.ScriptEnvironment.Default;
+        var project = _projectProvider.CreateProjectForRepl(
+            statement, Path.Combine(_currentDirectory, "REPL"), environment.TargetFramework);
+        var (code, output) = DotnetCli.Run(DotnetCli.Locate(), new[] {
+            "restore", project.Path, "-r", environment.RuntimeIdentifier, "-v", "q", "-nologo", "-nodeReuse:false",
+            $"-p:RestoreRootConfigDirectory={_currentDirectory}",
+        }, null, ProjectReferences.BuildTimeout);
+        if (code != 0) {
+            throw new InvalidOperationException(
+                $"#r \"nuget:\": restore failed. The sources were {Path.GetFileName(config)} at "
+                + $"{Path.GetDirectoryName(config)} plus your user-level NuGet.Config, unless the repo file "
+                + "says <clear/>.\n" + output.Trim());
+        }
     }
 
     // --- Runtime plugins ------------------------------------------------------

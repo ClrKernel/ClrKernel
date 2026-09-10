@@ -95,14 +95,14 @@ and can `#!import` further files.
 ### Private feeds: a `NuGet.Config` beside the notebooks
 
 `#r "nuget:"` restores through the nearest `NuGet.Config` — the notebook's own
-folder, or any folder above it — the same search `dotnet restore` makes in a
-repo. Put one at the root and every notebook under it sees the feed:
+folder, or any folder above it — with the same semantics `dotnet restore` has in
+a repo: the file **adds** to your user-level configuration, so nuget.org is still
+there for a private package's dependencies, and it says `<clear/>` when it means
+"only these". Put one at the root and every notebook under it sees the feed:
 
 ```xml
 <configuration>
   <packageSources>
-    <clear />
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
     <add key="internal" value="https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json" />
   </packageSources>
   <packageSourceCredentials>
@@ -114,10 +114,11 @@ repo. Put one at the root and every notebook under it sees the feed:
 </configuration>
 ```
 
-Two things about it. **The file is the whole configuration** when it is there —
-it replaces the user-level `NuGet.Config` rather than adding to it, so list
-`nuget.org` yourself if you still want it. And **credentials are environment
-references**, never values: NuGet expands `%NAME%` when it reads the file, so
+Two things about it. **A folder feed's path is relative to the file**, so a
+feed committed in the repo (`value="packages"`) works on every machine and in
+Studio's containers, where an absolute path from your Mac does not. And
+**credentials are environment references**, never values: NuGet expands
+`%NAME%` when it reads the file, so
 `CLRKERNEL_SECRET_FEED_PAT` in the environment is what signs in — which is the
 same variable the kernel's own [secret chain](docs/secrets.md) reads, and the one
 Studio sets per branch. Nothing secret is in the repo.
