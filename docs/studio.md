@@ -885,6 +885,9 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 
 > **Upgrading from 0.9**, where the editable branch was called `dev`: the first start
 > renames the branch and the worktree in place and rewrites the run history to match.
+> Renaming an account moves that person's worktree the same way, and on Windows a
+> folder with a running kernel in it will not move: close their notebooks — in VS
+> Code too — first. A refusal says so and changes nothing.
 > Nothing is copied and no commits move. A configured remote keeps its old `dev`
 > branch — delete it there yourself when you are ready; a shared remote is not this
 > process's to prune.
