@@ -90,13 +90,13 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
             executeReply = new ExecuteReplyError {
                 ExecutionCount = _executionCount,
                 EName = e.GetType().Name,
-                EValue = e.Message,
-                Traceback = e.StackTrace.Split(Environment.NewLine).ToList()
+                EValue = SecretRedaction.Redact(e.Message),
+                Traceback = SecretRedaction.Redact(e.StackTrace ?? string.Empty).Split(Environment.NewLine).ToList()
             };
 
             _logger.LogError(e, "Failed to run the code: " + message.Content.Code);
 
-            var error = e.Message + Environment.NewLine + e.StackTrace;
+            var error = SecretRedaction.Redact(e.Message + Environment.NewLine + e.StackTrace);
             var errorDisplay = new DisplayData();
             errorDisplay.Data["text/plain"] = error;
             errorDisplay.Data["text/html"] = $"<p style=\"color:red;\">{error}</p>";

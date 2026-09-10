@@ -48,7 +48,9 @@ public class ConsoleProxy : IDisposable {
     }
 
     private void OnLineReceived(string line) {
-        _consoleHandler(line);
+        // Every Console.WriteLine of every front passes here — the one place a
+        // printed secret can be caught before it is a stream output somewhere.
+        _consoleHandler(ClrKernel.Core.Primitives.SecretRedaction.Redact(line));
     }
 
     #region IDisposable Support

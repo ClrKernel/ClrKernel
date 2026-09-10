@@ -159,6 +159,10 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             .Concat(_contributions.SelectMany(c => c.UsingStatics))
             .ToArray();
         _currentDirectory = currentDir;
+        // The secrets this kernel was started with are secrets whether or not a
+        // cell goes through the store for them — Environment.GetEnvironmentVariable
+        // and `#!bash env` print the same value.
+        SecretRedaction.SeedFromEnvironment();
         _dependencyScratchDirectory = Path.Combine(Path.GetTempPath(), "clrkernel", "restore");
         Directory.CreateDirectory(_dependencyScratchDirectory);
         _logger = logger;

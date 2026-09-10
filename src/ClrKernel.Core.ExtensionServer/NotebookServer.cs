@@ -102,8 +102,10 @@ public class NotebookServer {
                 status = "error",
                 error = new {
                     name = e.GetType().Name,
-                    message = e.Message,
-                    stack = e.StackTrace,
+                    // An exception can quote what it was handed — a bad URL with a
+                    // token in it, say — and this message ends up in a notification.
+                    message = SecretRedaction.Redact(e.Message),
+                    stack = SecretRedaction.Redact(e.StackTrace),
                 },
             };
         } finally {

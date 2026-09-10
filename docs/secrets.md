@@ -147,6 +147,27 @@ secrets.CanPersist           // false means nothing here would survive a restart
 secrets.EnvName("OPENAI")    // CLRKERNEL_SECRET_OPENAI — the variable to set
 ```
 
+## A printed secret is masked
+
+Print one anyway — `Console.WriteLine(key)`, a trailing `key` on the last line, an
+exception whose message quotes it — and what comes out is `***`. The kernel is the
+one process that knows the value, because it resolved it, so it masks the value on
+every path a cell's output takes: console lines, `Display()` and trailing values,
+HTML and markdown, shell and PowerShell cell output, and the error a failing cell
+reports. That covers a scheduled run's artifact and log, the run page, the
+notifications a failure sends, and the outputs VS Code saves into an `.ipynb`.
+
+What counts as a secret: every value the store has resolved in this kernel, every
+value it has stored, and — from the moment the kernel starts — every
+`CLRKERNEL_SECRET_*` variable in its environment. The last one matters: a cell that
+reads the variable directly, or a `#!bash env`, prints the same value the store would
+have handed over.
+
+Two honest limits, the same ones GitHub Actions has for `secrets.*`. It is a safety
+net, not a boundary: a value that has been base64'd, split in two, or JSON-escaped
+walks past it. And a value shorter than eight characters is not masked at all —
+masking a six-letter secret would mask every six-letter word that happens to match.
+
 ## In Studio, a secret belongs to a branch
 
 Everything above is one machine's store, where a name means one value. Studio adds

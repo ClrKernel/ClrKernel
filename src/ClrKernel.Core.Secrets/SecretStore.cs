@@ -120,6 +120,9 @@ public sealed class SecretStore {
                 if (_useCache && !ReferenceEquals(provider, _cache)) {
                     _cache.Set(key, secret);
                 }
+                // From here on the value can be printed, and the kernel's output
+                // paths mask what is registered here.
+                ClrKernel.Core.Primitives.SecretRedaction.Register(secret);
                 return true;
             }
         }
@@ -145,6 +148,7 @@ public sealed class SecretStore {
 
     /// <summary>Stores a secret in the first store-capable provider and caches it.</summary>
     public string Store(string key, string secret) {
+        ClrKernel.Core.Primitives.SecretRedaction.Register(secret);
         var target = _providers.FirstOrDefault(p => p.CanStore && !ReferenceEquals(p, _cache))
             ?? _providers.FirstOrDefault(p => p.CanStore)
             ?? throw new InvalidOperationException("No writable secret provider is available.");

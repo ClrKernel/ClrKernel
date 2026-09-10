@@ -172,10 +172,11 @@ public static class NotebookRunner {
                     outputs.Add(display);
                 }
                 if (error != null) {
-                    var traceback = (error.StackTrace ?? string.Empty)
+                    var message = SecretRedaction.Redact(error.Message);
+                    var traceback = SecretRedaction.Redact(error.StackTrace ?? string.Empty)
                         .Replace("\r\n", "\n").Split('\n').Where(l => l.Length > 0);
-                    outputs.Add(IpynbWriter.ErrorOutput(error.GetType().Name, error.Message, traceback));
-                    realStdout.WriteLine($"{error.GetType().Name}: {error.Message}");
+                    outputs.Add(IpynbWriter.ErrorOutput(error.GetType().Name, message, traceback));
+                    realStdout.WriteLine($"{error.GetType().Name}: {message}");
                 } else if (result is DisplayData rd && rd.Data is { Count: > 0 }) {
                     outputs.Add(IpynbWriter.ExecuteResultOutput(execCount, rd.Data));
                 }
