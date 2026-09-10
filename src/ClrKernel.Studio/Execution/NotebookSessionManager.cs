@@ -68,8 +68,9 @@ public sealed class NotebookSessionManager : BackgroundService {
     /// <param name="environment">
     /// The branch's secrets, resolved by the caller — it is the one that knows which
     /// project and branch this notebook is being opened on. A session already
-    /// running keeps the environment it started with, which is right: changing a
-    /// secret takes a kernel restart, exactly as changing one on disk does.
+    /// running keeps the environment it started with: changing a secret takes a
+    /// kernel restart, exactly as changing one on disk does — which is why the
+    /// secrets routes <see cref="DropUnder"/> the branch when one changes.
     /// </param>
     public async Task<NotebookSession> GetOrStartAsync(
         string notebookPath, CancellationToken cancellationToken,

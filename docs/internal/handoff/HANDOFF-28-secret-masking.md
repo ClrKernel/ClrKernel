@@ -61,6 +61,17 @@ cells and asserts the artifact holds `printed: ***`, `displayed: ***` and
 same text is masked after and not before. Each chokepoint was removed in turn to
 watch its assertion fail.
 
+## The harness was testing the released kernel
+
+The browser check for "a secret set while a kernel runs reaches the next run" came
+back with the value **unmasked** — and the redaction unit tests were green. Studio
+had spawned `~/.dotnet/tools/clrkernel`, the published 0.13.0, because nothing
+passed `--clrkernel`: `ClrKernelLocator.Find(null)` walks PATH and the tools folder.
+Every browser check that ran a cell had been exercising the release, and no
+kernel-side change could have failed one. `studio_harness.py` now builds
+`src/ClrKernel` and passes the tree's apphost; the skill says so. The same shape as
+the stale-bundle trap, one layer down.
+
 ## Not built
 
 - **Masking in Studio's own logs** (the scheduler's, not the run's). Studio never sees

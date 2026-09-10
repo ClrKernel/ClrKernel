@@ -660,8 +660,10 @@ export const api = {
   secrets: (slug: string, branch: string) =>
     request<{ branch: string; canPersist: boolean; secrets: SecretEntry[] }>(
       `${secretsIn(slug, branch)}/`),
+  /** `restarted` is how many open notebooks on that branch lost their kernel to
+   *  get the new value — their next run starts one that has it. */
   setSecret: (slug: string, branch: string, name: string, value: string) =>
-    request<{ name: string }>(
+    request<{ name: string; isSet: boolean; restarted: number }>(
       `${secretsIn(slug, branch)}/${encodeURIComponent(name)}`,
       { method: 'PUT', body: JSON.stringify({ value }) }),
   deleteSecret: (slug: string, branch: string, name: string) =>

@@ -185,6 +185,16 @@ page.wait_for_url(lambda u: not u.endswith('/setup'), timeout=15000)
   `str(uuid.uuid4())` lists fine in `/api/runs` and 404s on every route that fetches
   it by id. It looks exactly like a broken route.
 
+## Studio runs the *installed* kernel unless you say otherwise
+
+Without `--clrkernel`, Studio finds `clrkernel` on PATH or in `~/.dotnet/tools`
+— the published tool, not this tree. So a kernel-side change (the engine, a
+language, secret masking) is invisible to every cell a browser check runs,
+and the check passes against the release. `studio_harness.py` builds
+`src/ClrKernel` and passes `--clrkernel <tree build>` for that reason; do the
+same on the dev loop (`CLRKERNEL_STUDIO_CLRKERNEL=…/src/ClrKernel/bin/Debug/net8.0/ClrKernel`)
+whenever the thing under test is in the kernel.
+
 ## Never `pkill -f "ClrKernel.Studio"`
 
 That pattern matches `ClrKernel.Studio.UnitTest.dll` too, so a reset script kills

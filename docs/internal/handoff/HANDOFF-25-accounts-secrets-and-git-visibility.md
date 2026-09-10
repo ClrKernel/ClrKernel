@@ -81,6 +81,27 @@ produced a store that reported success and persisted nothing. The explicit chain
 no in-memory provider for that reason; reading through is also what a server wants, so
 a password changed by the web app is not served stale to a kernel.
 
+### Since: a secret set while a kernel runs (2026-09-10)
+
+Reported as a bug, and it read as one: two secrets on a personal branch, the older
+resolved, the newer "not found — looked in memory, keychain, env". The kernel had been
+handed the branch's secrets as `CLRKERNEL_SECRET_*` when it started, and a process
+cannot be handed another variable later; its own keychain provider uses the kernel's
+namespace, not `clrkernel-studio:secret:…`, so it could not see the new one either.
+The docs said "restart the kernel". Nobody reads that at the moment it matters.
+
+The secrets routes now `DropUnder` the branch's worktree on set and on delete: every
+open notebook on that branch loses its kernel, and its next cell run starts one that
+has the value. The reply carries `restarted`, and the Secrets page says how many —
+because what it costs is the kernel's variables, and the person will otherwise meet
+that as their state being gone. Delete drops too: a kernel that still has the old
+value still has the secret.
+
+The browser check that proves it found something else on the way: Studio had been
+spawning the *installed* `clrkernel` in every browser check, because nothing passed
+`--clrkernel` and `serving()` in the harness had its own `Popen` that `studio()`'s
+arguments never reached. See HANDOFF-28.
+
 ## Refusals belong on a form, not in a ceremony
 
 An invite now carries the display name **and** the handle, chosen by the admin. Both

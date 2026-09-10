@@ -389,6 +389,49 @@ def secrets_project(page, base, root):
     assert "sk-from-" not in body, body[-900:]
 
 
+@check("secret-reaches-running-kernel")
+def secret_reaches_running_kernel(page, base, _root):
+    """A secret set while a notebook's kernel is running is there on the next run.
+
+    Reported as a bug: two secrets on a branch, the older one resolved and the
+    newer said "not found". A kernel is handed its secrets when it starts and
+    cannot be handed one later, so the server now restarts the branch's open
+    notebooks when a secret changes — and says so in the reply.
+    """
+    cell = 'Environment.GetEnvironmentVariable("CLRKERNEL_SECRET_LATE_ARRIVAL") ?? "unset"'
+    page.goto(f"{base}/files/default/mine/edit/etl.nb.md", wait_until="networkidle")
+    page.wait_for_timeout(3500)
+    page.locator(".monaco-editor").first.click()
+    page.keyboard.press("Meta+A")
+    page.keyboard.type(cell)
+
+    def run_and_read():
+        page.locator('button[title="Run this cell"]').first.click()
+        for _ in range(40):
+            page.wait_for_timeout(500)
+            text = page.locator(".cell-outputs").first.inner_text().replace("\xa0", " ") \
+                if page.locator(".cell-outputs").count() else ""
+            if "unset" in text or "***" in text:
+                return text
+        return page.locator(".cell-outputs").first.inner_text() if page.locator(".cell-outputs").count() else ""
+
+    # The kernel starts on this run, with the branch's secrets as they are now.
+    assert "unset" in run_and_read(), "the first run should not see a secret that does not exist yet"
+
+    # Set it while that kernel is alive. The reply counts the notebook it restarted.
+    reply = page.evaluate("""async () => await (await fetch(
+        '/api/projects/default/branches/mine/secrets/LATE_ARRIVAL',
+        { method: 'PUT', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ value: 'late-arrival-value-1234' }) })).json()""")
+    assert reply.get("restarted") == 1, f"the open notebook was not restarted: {reply}"
+
+    # Same cell, next run: a fresh kernel that has the value — shown masked,
+    # which is the other half of the secrets story doing its job in the editor.
+    text = run_and_read()
+    assert "***" in text and "unset" not in text, (
+        "the secret set after the kernel started is still not there:\n" + text)
+
+
 @check("repo-browser")
 def repo_browser(page, base, _root):
     """The Files route shows the repo, not an empty pane.

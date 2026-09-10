@@ -650,10 +650,13 @@ that when it reads the file — and set `FEED_PAT` on each branch here. The feed
 is declared once in the repo; which token signs in is the branch's business, and
 none of it is in the file.
 
-A kernel is handed its branch's secrets **when it starts**. A notebook already
-open keeps the set it started with, so after adding one, restart that notebook's
-kernel — the cell would otherwise fail saying the secret is missing, which is
-true of the kernel and not of the branch.
+A kernel is handed its branch's secrets **when it starts**, and a running process
+cannot be handed another one. So setting or deleting a secret restarts the branch's
+open notebooks: their next cell run starts a kernel that has the new value, and the
+Secrets page says how many were restarted. What that costs is the kernel's
+variables — re-run the cells that made them. (Before 0.13.1 nothing restarted, and
+a secret set and used in the same minute was "not found": true of the kernel, not
+of the branch, and no help to anybody.)
 
 An environment's secrets belong to the project's admins. A personal branch's
 belong to whoever owns the branch, and to nobody else — a Server Admin can delete

@@ -2589,26 +2589,40 @@ public static class JobsApi {
                     }),
                 }))).RequiresProject(ProjectRole.ProjectMember);
 
+        // A kernel is handed its branch's secrets as environment variables when it
+        // starts, and a process cannot be handed another one later. So a change
+        // here drops the branch's live sessions: the next cell run starts a kernel
+        // that has the new value. The cost is the kernel's variables, and the reply
+        // says how many notebooks paid it, so the page can say so too. Before this,
+        // a secret set and then used in the same minute was "not found" — reported
+        // as a bug, and it read as one.
         api.MapPut("/{name}", async (
             HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
-            string project, string branch, string name, SecretBody body) =>
+            NotebookSessionManager sessions, string project, string branch, string name, SecretBody body) =>
             await Resolve(context, projects, secrets, project, branch, async (scope, resolved) => {
                 var user = context.CurrentUser();
                 var refusal = await secrets.SetAsync(
                     scope.Project.Slug, resolved, name, body?.Value, user?.Id, user?.DisplayName);
-                return refusal == null
-                    ? Results.Ok(new { name, isSet = true })
-                    : Results.BadRequest(new { error = refusal });
+                if (refusal != null) {
+                    return Results.BadRequest(new { error = refusal });
+                }
+                var restarted = sessions.DropUnder(RootOf(scope, resolved));
+                return Results.Ok(new { name, isSet = true, restarted });
             })).RequiresProject(ProjectRole.ProjectMember);
 
         api.MapDelete("/{name}", async (
             HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
-            string project, string branch, string name) =>
-            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) =>
-                await secrets.DeleteAsync(
-                    scope.Project.Slug, resolved, name, context.CurrentUser()?.DisplayName)
-                    ? Results.NoContent()
-                    : Results.NotFound(new { error = $"No secret called '{name}' on {resolved}." })));
+            NotebookSessionManager sessions, string project, string branch, string name) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) => {
+                if (!await secrets.DeleteAsync(
+                        scope.Project.Slug, resolved, name, context.CurrentUser()?.DisplayName)) {
+                    return Results.NotFound(new { error = $"No secret called '{name}' on {resolved}." });
+                }
+                // A kernel that still has the old value is a kernel that still has
+                // the secret; dropping it is what "deleted" means.
+                sessions.DropUnder(RootOf(scope, resolved));
+                return Results.NoContent();
+            })).RequiresProject(ProjectRole.ProjectMember);
     }
 
     /// <summary>

@@ -62,13 +62,20 @@ export function SecretsSection() {
   // because the server refuses it — theirs to manage, whatever role you hold.
   const choices = (branches?.branches ?? []).filter((b) => b.mine || b.owner == null);
 
-  async function run(action: () => Promise<unknown>, done: string) {
+  async function run(action: () => Promise<{ restarted?: number } | void>, done: string) {
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
-      await action();
-      setNotice(done);
+      const result = await action();
+      // A kernel is handed its secrets when it starts, so the server restarted
+      // the branch's open notebooks to hand over this one. Said here, because
+      // the person will otherwise meet it as their variables being gone.
+      const restarted = result?.restarted ?? 0;
+      setNotice(restarted > 0
+        ? `${done} ${restarted} open notebook${restarted === 1 ? '' : 's'} on ${label} will `
+          + 'start a fresh kernel on the next run — with this secret, and without its variables.'
+        : done);
       reload();
     } catch (e) {
       setError((e as Error).message);
