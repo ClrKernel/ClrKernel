@@ -151,6 +151,26 @@ public class FabricReloadRequestTest {
     }
 }
 
+/// <summary>The spelling a migrated <c>.dib</c> uses, unchanged: nested names, named arguments, collection expression.</summary>
+[TestClass]
+public class FabricDibSpellingTest {
+    [TestMethod]
+    public void The_dib_reload_spelling_builds_the_same_requests() {
+        var batch = Fabric.ReloadBatch.Create([
+            new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Forecast", SourceQuery: """select * from [database].[Mart].[COMPANY.Dimension.Forecast];"""),
+            new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Instrument"),
+        ]);
+        Assert.AreEqual(2, batch.Requests.Count);
+        Assert.AreEqual("[Mart].[COMPANY.Dimension.Forecast]", batch.Requests[0].Target);
+        Assert.AreEqual("select * from [database].[Mart].[COMPANY.Dimension.Forecast];", batch.Requests[0].EffectiveSource);
+        Assert.AreEqual("select * from [Mart].[COMPANY.Dimension.Instrument]", batch.Requests[1].EffectiveSource);
+
+        FabricReloadOptions options = new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true };
+        Assert.AreEqual(1, options.MaxDegreeOfParallelism);
+        Assert.ThrowsExactly<ArgumentNullException>(() => batch.Run(new DataSource("src", () => null), null, options));
+    }
+}
+
 [TestClass]
 public class FabricEngineWiringTest {
     [TestMethod]

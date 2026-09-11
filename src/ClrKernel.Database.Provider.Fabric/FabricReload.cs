@@ -16,7 +16,7 @@ namespace ClrKernel.Database.Provider.Fabric;
 /// </code>
 /// A table name is a single identifier here — dots inside it are part of the name.
 /// </summary>
-public sealed class FabricReloadRequest {
+public class FabricReloadRequest {
     public FabricReloadRequest() { }
 
     public FabricReloadRequest(string schema, string table, string sourceQuery = null, string segmentFilter = null) {

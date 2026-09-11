@@ -456,6 +456,17 @@ var results = wh.ReloadBatch([
 results   // one row per table: rows deleted / inserted, or the error — a failure does not stop the rest
 ```
 
+The same batch under the spelling a `.dib` reload library used — nested names,
+named arguments — so those cells paste in unchanged:
+
+```csharp
+var batch = Fabric.ReloadBatch.Create([
+    new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Forecast", SourceQuery: """select * from [database].[Mart].[COMPANY.Dimension.Forecast];"""),
+    new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Instrument"),
+]);
+await batch.Run(dw, wh, new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true });
+```
+
 `wh.ReloadBatch(requests, req => IDataReader, maxParallelism)` is the reader-factory
 form for rows a `DataSource` does not reach.
 
