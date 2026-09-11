@@ -166,3 +166,24 @@ public class FabricFactoryTest {
             "no chain: the browser must always be the one asked");
     }
 }
+
+/// <summary>
+/// The staging file is addressed by id, and the id form of a OneLake path has no
+/// ".Lakehouse" suffix — that belongs to the friendly-name form. With the suffix on
+/// a Guid, OneLake refused the upload with FriendlyNameSupportDisabled (400) on a
+/// real workspace.
+/// </summary>
+[TestClass]
+public class FabricLakehousePathTest {
+    [TestMethod]
+    public void Staging_paths_use_ids_without_the_Lakehouse_suffix() {
+        var workspaceId = Guid.NewGuid();
+        var lakehouseId = Guid.NewGuid();
+        var lakehouse = new FabricLakehouse(new FabricWorkspace(null, workspaceId, "Analytics"), lakehouseId, "Lakehouse_Staging");
+
+        Assert.AreEqual($"{lakehouseId}/Files/Staging-BulkInsert/x.parquet", lakehouse.FilesPath("/Staging-BulkInsert\\x.parquet"));
+        Assert.AreEqual(
+            $"https://onelake.dfs.fabric.microsoft.com/{workspaceId}/{lakehouseId}/Files/Staging-BulkInsert/x.parquet",
+            lakehouse.OneLakeUrl("Staging-BulkInsert/x.parquet"));
+    }
+}
