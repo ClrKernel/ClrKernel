@@ -433,31 +433,31 @@ var wh = Fabric.Connect()                       // interactive / default Entra s
     .Warehouse("SalesDW")
     .WithStaging("Lakehouse_Staging");          // a lakehouse in the same workspace
 
-// Bulk-insert any IDataReader (e.g. a SQL Server query via ClrKernel.Language.Sql):
-using var conn = SqlServer.OpenConnection("analytics");
-using var cmd = new SqlCommand("SELECT * FROM dbo.Orders", conn);
-using var reader = cmd.ExecuteReader();
-wh.BulkInsert(reader, "dbo.Orders", createIfMissing: true);
+var dw = SqlServer.Connection("sql.example.com", "Warehouse");
+
+// Copy a whole table (same name on both sides), a query, or any IDataReader:
+wh.BulkInsert(dw, "dbo.Orders", createIfMissing: true);
+wh.BulkInsert(dw.Query("select * from dbo.Orders where Year = 2026"), "dbo.Orders2026", createIfMissing: true);
+wh.BulkInsert(reader, "dbo.Orders");
 ```
 
-The **reload-batch** wrapper deletes a segment and reloads it for a set of tables
-in parallel — each table gets a fresh source reader from your factory:
+**Reload a set of tables** — each target is truncated (or a segment deleted) and
+loaded again from the source, `MaxDegreeOfParallelism` at a time. A table name is
+one identifier, so dots inside it are fine; bracket it in a hand-written query.
 
 ```csharp
-var requests = new[] {
-    new FabricReloadRequest { TableName = "FactSales", SegmentFilter = "Year = 2026" },
-    new FabricReloadRequest { TableName = "FactReturns", SegmentFilter = "Year = 2026" },
-};
-var results = wh.ReloadBatch(
-    requests,
-    req => {
-        var c = SqlServer.OpenConnection("analytics");
-        var q = new SqlCommand($"SELECT * FROM {req.TableName} WHERE {req.SegmentFilter}", c);
-        return q.ExecuteReader(CommandBehavior.CloseConnection); // reader owns/closes the connection
-    },
-    maxParallelism: 4);
-results.DisplayTable();
+var results = wh.ReloadBatch([
+    new FabricReloadRequest("Mart", "COMPANY.Dimension.Forecast"),                   // select * from [Mart].[COMPANY.Dimension.Forecast] on dw
+    new FabricReloadRequest("Mart", "COMPANY.Dimension.Instrument",
+        sourceQuery: "select * from [Other].[Mart].[COMPANY.Dimension.Instrument]"),  // a different source
+    new FabricReloadRequest("Mart", "FactSales", segmentFilter: "Year = 2026",
+        sourceQuery: "select * from Mart.FactSales where Year = 2026"),              // delete the segment, then reload it
+], dw, new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true });
+results   // one row per table: rows deleted / inserted, or the error — a failure does not stop the rest
 ```
+
+`wh.ReloadBatch(requests, req => IDataReader, maxParallelism)` is the reader-factory
+form for rows a `DataSource` does not reach.
 
 For a service principal, use `Fabric.ClientSecret(tenantId, clientId, secret)`.
 `Fabric.Interactive()` always opens a browser sign-in so you pick the account,

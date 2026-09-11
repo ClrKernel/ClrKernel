@@ -106,6 +106,35 @@ public sealed partial class FabricWarehouse {
     public BulkInsertResult BulkInsert(IDataReader reader, string table, bool createIfMissing = false, string stagingLakehouse = null) =>
         BulkInsertAsync(reader, table, createIfMissing, stagingLakehouse).GetAwaiter().GetResult();
 
+    /// <summary>Bulk-inserts a query's rows: <c>wh.BulkInsert(dw.Query("select …"), "dbo.Orders")</c>.</summary>
+    public BulkInsertResult BulkInsert(DataSourceQuery source, string table, bool createIfMissing = false, string stagingLakehouse = null) =>
+        BulkInsertAsync(source, table, createIfMissing, stagingLakehouse).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Copies a whole table from a source database into the warehouse table of the same
+    /// name: <c>wh.BulkInsert(dw, "[Mart].[COMPANY.Dimension.Forecast]", createIfMissing: true)</c>.
+    /// </summary>
+    public BulkInsertResult BulkInsert(DataSource source, string table, bool createIfMissing = false, string stagingLakehouse = null) =>
+        BulkInsert(SelectAll(source, table), table, createIfMissing, stagingLakehouse);
+
+    /// <inheritdoc cref="BulkInsert(DataSourceQuery, string, bool, string)"/>
+    public async Task<BulkInsertResult> BulkInsertAsync(
+        DataSourceQuery source, string table, bool createIfMissing = false,
+        string stagingLakehouse = null, CancellationToken cancellationToken = default) {
+        if (source is null) {
+            throw new ArgumentNullException(nameof(source));
+        }
+        using var reader = source.OpenReader();
+        return await BulkInsertAsync(reader, table, createIfMissing, stagingLakehouse, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static DataSourceQuery SelectAll(DataSource source, string table) {
+        if (source is null) {
+            throw new ArgumentNullException(nameof(source));
+        }
+        return source.Query($"select * from {TableName.Quote(table)}");
+    }
+
     /// <inheritdoc cref="BulkInsert(IDataReader, string, bool, string)"/>
     public async Task<BulkInsertResult> BulkInsertAsync(
         IDataReader reader, string table, bool createIfMissing = false,
@@ -164,10 +193,7 @@ public sealed partial class FabricWarehouse {
         return cmd.ExecuteScalar() != null;
     }
 
-    private static (string Schema, string Name) SplitTable(string table) {
-        var parts = table.Replace("[", "").Replace("]", "").Split('.');
-        return parts.Length >= 2 ? (parts[^2], parts[^1]) : (null, parts[^1]);
-    }
+    private static (string Schema, string Name) SplitTable(string table) => TableName.SchemaAndName(table);
 
     private static void TryDeleteStaged(FabricLakehouse staging, string relativePath) {
         try { staging.FileClient(relativePath).DeleteIfExists(); } catch { /* best effort */ }

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using ClrKernel.Core.Scripting;
+using ClrKernel.Database;
 using ClrKernel.Database.Provider.Fabric;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -104,28 +105,49 @@ public class FabricReloadRequestTest {
     [TestMethod]
     public void Target_and_label_default_sensibly() {
         var r = new FabricReloadRequest { TableName = "FactSales" };
-        Assert.AreEqual("dbo.FactSales", r.Target);
-        Assert.AreEqual("dbo.FactSales", r.Label);
+        Assert.AreEqual("[dbo].[FactSales]", r.Target);
+        Assert.AreEqual("[dbo].[FactSales]", r.Label);
 
         var named = new FabricReloadRequest { TableSchema = "stg", TableName = "T", SegmentName = "2024-Q1" };
-        Assert.AreEqual("stg.T", named.Target);
+        Assert.AreEqual("[stg].[T]", named.Target);
         Assert.AreEqual("2024-Q1", named.Label);
     }
 
+    /// <summary>A table name is one identifier: the dots in it stay inside its brackets.</summary>
     [TestMethod]
-    public void EffectiveDelete_prefers_command_then_filter_then_null() {
+    public void A_dotted_table_name_is_one_identifier() {
+        var r = new FabricReloadRequest("Mart", "COMPANY.Dimension.Forecast");
+        Assert.AreEqual("[Mart].[COMPANY.Dimension.Forecast]", r.Target);
+        Assert.AreEqual("select * from [Mart].[COMPANY.Dimension.Forecast]", r.EffectiveSource);
+        Assert.AreEqual("TRUNCATE TABLE [Mart].[COMPANY.Dimension.Forecast]", r.EffectiveDelete());
+
+        var explicitSource = new FabricReloadRequest("Mart", "T", sourceQuery: "select * from [db].[Mart].[T]", segmentFilter: "Year = 2026");
+        Assert.AreEqual("select * from [db].[Mart].[T]", explicitSource.EffectiveSource);
+        Assert.AreEqual("DELETE FROM [Mart].[T] WHERE Year = 2026", explicitSource.EffectiveDelete());
+    }
+
+    [TestMethod]
+    public void EffectiveDelete_prefers_command_then_filter_then_truncate() {
         Assert.AreEqual("DELETE FROM x",
             new FabricReloadRequest { TableName = "T", DeleteCommand = "DELETE FROM x", SegmentFilter = "Year=2024" }.EffectiveDelete());
 
         var byFilter = new FabricReloadRequest { TableName = "T", SegmentFilter = "Year = 2024" }.EffectiveDelete();
-        StringAssert.Contains(byFilter, "DELETE FROM [dbo].[T] WHERE Year = 2024");
+        Assert.AreEqual("DELETE FROM [dbo].[T] WHERE Year = 2024", byFilter);
 
-        Assert.IsNull(new FabricReloadRequest { TableName = "T" }.EffectiveDelete());
+        // A reload with nothing to say about the segment is a full reload, not an append.
+        Assert.AreEqual("TRUNCATE TABLE [dbo].[T]", new FabricReloadRequest { TableName = "T" }.EffectiveDelete());
     }
 
     [TestMethod]
     public void Validate_requires_table_name() {
         Assert.ThrowsExactly<InvalidOperationException>(() => new FabricReloadRequest().Validate());
+    }
+
+    [TestMethod]
+    public void A_whole_table_copy_selects_from_the_quoted_name() {
+        var source = new DataSource("src", () => throw new InvalidOperationException("never opened"));
+        Assert.AreEqual("select * from [Mart].[COMPANY.Dimension.Forecast]",
+            FabricWarehouse.SelectAll(source, "Mart.[COMPANY.Dimension.Forecast]").Sql);
     }
 }
 
