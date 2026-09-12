@@ -42,6 +42,14 @@ public class NotebookCellsApiTest {
 
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
+    private const string _ipynb = "old.ipynb";
+    private const string _ipynbSource = """
+        {"cells":[
+          {"cell_type":"markdown","metadata":{},"source":["# Old"]},
+          {"cell_type":"code","execution_count":3,"metadata":{},"outputs":[{"output_type":"stream","name":"stdout","text":["1\n"]}],"source":["var x = 1;"]},
+          {"cell_type":"code","execution_count":null,"metadata":{},"outputs":[],"source":["#!sql\n","SELECT 1"]}
+        ],"metadata":{},"nbformat":4,"nbformat_minor":5}
+        """;
     private const string _dib = "legacy.dib";
     private const string _dibSource =
         "#!meta\n\n{\"kernelInfo\":{\"defaultKernelName\":\"csharp\",\"items\":[]}}\n\n"
@@ -72,6 +80,7 @@ public class NotebookCellsApiTest {
         Directory.CreateDirectory(Path.GetDirectoryName(devFile));
         File.WriteAllText(devFile, _source);
         File.WriteAllText(Path.Combine(_git.TestPath, _dib), _dibSource);
+        File.WriteAllText(Path.Combine(_git.TestPath, _ipynb), _ipynbSource);
         _git.WithLock(() => _git.Commit("test", "add notebook"));
 
         var options = gitOptions;
@@ -177,6 +186,36 @@ public class NotebookCellsApiTest {
         var onTest = await _client.PostAsync(
             $"/api/projects/default/branches/test/notebooks/convert?path={_dib}", null);
         Assert.AreNotEqual(HttpStatusCode.OK, onTest.StatusCode, "test is not writable, by anybody");
+    }
+
+    [TestMethod]
+    public async Task An_ipynb_opens_as_cells_saves_without_outputs_and_converts_beside_itself() {
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/projects/default/branches/test/notebooks/cells?path={_ipynb}");
+        var cells = body.GetProperty("cells").EnumerateArray().ToList();
+        Assert.AreEqual(3, cells.Count);
+        Assert.AreEqual("sql", cells[2].GetProperty("tag").GetString(), "the selector line is the tag");
+        Assert.AreEqual("SELECT 1", cells[2].GetProperty("source").GetString(), "and is not in the body");
+
+        var edited = cells.Select(c => new {
+            id = c.GetProperty("id").GetString(),
+            kind = c.GetProperty("kind").GetString(),
+            tag = c.TryGetProperty("tag", out var t) ? t.GetString() : null,
+            source = c.GetProperty("source").GetString(),
+        }).ToList();
+        var saved = await _client.PutAsJsonAsync(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_ipynb}", new { cells = edited });
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode, await saved.Content.ReadAsStringAsync());
+        var written = JsonDocument.Parse(File.ReadAllText(Path.Combine(MinePath, _ipynb))).RootElement;
+        Assert.AreEqual(4, written.GetProperty("nbformat").GetInt32(), "still an .ipynb");
+        Assert.AreEqual(0, written.GetProperty("cells")[1].GetProperty("outputs").GetArrayLength(),
+            "stored outputs are not carried through an edit — a notebook edited here is source");
+
+        var converted = await _client.PostAsync(
+            $"/api/projects/default/branches/mine/notebooks/convert?path={_ipynb}", null);
+        Assert.AreEqual(HttpStatusCode.OK, converted.StatusCode, await converted.Content.ReadAsStringAsync());
+        var markdown = File.ReadAllText(Path.Combine(MinePath, "old.nb.md"));
+        StringAssert.Contains(markdown, "# Old\n\n```csharp\nvar x = 1;\n```\n\n```sql\nSELECT 1\n```\n");
     }
 
     [TestMethod]

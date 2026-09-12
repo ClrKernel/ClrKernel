@@ -238,6 +238,11 @@
         "category": "ClrKernel"
       },
       {
+        "command": "clrkernel.convertToMarkdown",
+        "title": "Convert Notebook to .nb.md",
+        "category": "ClrKernel"
+      },
+      {
         "command": "clrkernel.sql.selectConnection",
         "title": "SQL: Select Connection for Cell",
         "category": "ClrKernel"

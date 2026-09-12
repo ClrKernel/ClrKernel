@@ -64,7 +64,7 @@ import {
   mergeStatus,
   moveCell,
   opensAsCells,
-  isDib,
+  convertibleFormat,
   convertedPath,
   isWorkbook,
   previewKind,
@@ -687,10 +687,10 @@ export function Editor() {
    * has somewhere to go.
    */
   /**
-   * The .dib as a .nb.md beside it, on your branch — the same conversion as
-   * `clrkernel convert`. The original stays: deleting is a separate decision.
+   * The .dib or .ipynb as a .nb.md beside it, on your branch — the same conversion
+   * as `clrkernel convert`. The original stays: deleting is a separate decision.
    */
-  async function convertDib() {
+  async function convertNotebook() {
     setError(null);
     setBusy(true);
     try {
@@ -1211,16 +1211,18 @@ export function Editor() {
             <AlertDescription className="text-status-success">{notice}</AlertDescription>
           </Alert>
         )}
-        {isDib(path) && (
+        {convertibleFormat(path) && (
           <Alert className="mb-3">
             <AlertDescription className="flex flex-wrap items-center gap-3">
               <span>
-                A Polyglot <code>.dib</code> notebook. It runs and saves here as it is;
-                converting writes <code>{convertedPath(path)}</code> beside it, as source that diffs.
+                {convertibleFormat(path) === 'dib'
+                  ? <>A Polyglot <code>.dib</code> notebook. It runs and saves here as it is;</>
+                  : <>A Jupyter <code>.ipynb</code>. It runs here as it is, and a save keeps the cells but not their stored outputs;</>}
+                {' '}converting writes <code>{convertedPath(path)}</code> beside it, as source that diffs.
                 {!canWrite && ' Copy it onto your branch to convert it.'}
               </span>
               {canWrite && (
-                <Button size="sm" variant="outline" disabled={busy} onClick={convertDib}>
+                <Button size="sm" variant="outline" disabled={busy} onClick={convertNotebook}>
                   Convert to .nb.md
                 </Button>
               )}

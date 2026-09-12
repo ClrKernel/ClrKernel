@@ -32,7 +32,7 @@ import {
   toRunCells,
   toSyncCells,
   withIds,
-  isDib,
+  convertibleFormat,
   convertedPath,
 } from './notebook';
 
@@ -594,10 +594,12 @@ describe('opensAsCells', () => {
     expect(isScript('reports/daily.nb.md')).toBe(false);
     // These are notebooks the runner reads, but not ones the cells route parses:
     // they open as source, which is why the two predicates are not one.
-    expect(opensAsCells('old.ipynb')).toBe(false);
-    // A .dib does open as cells — the server parses and writes it — and converts beside itself.
+    // A .dib or .ipynb does open as cells — the server parses and writes it — and converts beside itself.
+    expect(opensAsCells('old.ipynb')).toBe(true);
     expect(opensAsCells('legacy.dib')).toBe(true);
-    expect(isDib('legacy.DIB')).toBe(true);
+    expect(convertibleFormat('legacy.DIB')).toBe('dib');
+    expect(convertibleFormat('old.ipynb')).toBe('ipynb');
+    expect(convertibleFormat('notes.nb.md')).toBe(null);
     expect(convertedPath('etl/legacy.dib')).toBe('etl/legacy.nb.md');
     expect(opensAsCells('etl.jobs.yaml')).toBe(false);
     expect(opensAsCells('notes.md')).toBe(false);

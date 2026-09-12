@@ -2372,12 +2372,17 @@ public static class JobsApi {
     /// </summary>
     private static bool OpensAsCells(string path, IReadOnlyList<LanguageDescriptor> languages) =>
         path.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase)
-        || IsDib(path)
+        || ConvertibleExtension(path) != null
         || SingleCellTag(path, languages) != null;
 
-    // A Polyglot notebook opens as cells and saves back as a .dib, so it runs and
-    // edits here without being converted first; /notebooks/convert is the other choice.
-    private static bool IsDib(string path) => path.EndsWith(".dib", StringComparison.OrdinalIgnoreCase);
+    // A .dib or .ipynb opens as cells and saves back as what it was, so it runs and
+    // edits here without being converted first; /notebooks/convert is the other
+    // choice. An .ipynb's stored outputs do not survive a save — a notebook edited
+    // here is source, and the cells API has no outputs to carry.
+    private static string ConvertibleExtension(string path) =>
+        path.EndsWith(".dib", StringComparison.OrdinalIgnoreCase) ? ".dib"
+        : path.EndsWith(".ipynb", StringComparison.OrdinalIgnoreCase) ? ".ipynb"
+        : null;
 
     private static IReadOnlyList<MarkdownCell> ParseCells(
         string path, string text, IReadOnlyList<LanguageDescriptor> languages) =>
@@ -2386,7 +2391,7 @@ public static class JobsApi {
             // that comes back one newline shorter than it went in is a commit
             // nobody made — which is what invalidates a notebook's promotion evidence.
             ? new[] { new MarkdownCell { Kind = CellKind.Code, Tag = tag, Source = text } }
-            : IsDib(path) ? NotebookConverter.Cells(text, ".dib", languages)
+            : ConvertibleExtension(path) is { } extension ? NotebookConverter.Cells(text, extension, languages)
             : NotebookMarkdown.Parse(text, languages);
 
     private static string SerializeCells(
@@ -2398,9 +2403,10 @@ public static class JobsApi {
             var newline = File.Exists(path)
                 ? NotebookMarkdown.NewlineOf(File.ReadAllText(path))
                 : "\n";
-            if (IsDib(path)) {
-                var dib = NotebookDib.Serialize(cells.Select(c => c.ToCell(languages)));
-                return newline == "\n" ? dib : dib.Replace("\n", newline);
+            if (ConvertibleExtension(path) is { } extension) {
+                var parsed = cells.Select(c => c.ToCell(languages));
+                var text = extension == ".dib" ? NotebookDib.Serialize(parsed) : NotebookIpynb.Serialize(parsed);
+                return newline == "\n" ? text : text.Replace("\n", newline);
             }
             return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)), newline);
         }

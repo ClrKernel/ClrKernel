@@ -364,15 +364,18 @@ const SINGLE_CELL_EXTENSIONS = [
  * Mirrors `OpensAsCells` on the server, which refuses the save either way.
  */
 export function opensAsCells(path: string): boolean {
-  return /\.nb\.md$/i.test(path ?? '') || isDib(path) || isScript(path);
+  return /\.nb\.md$/i.test(path ?? '') || convertibleFormat(path) != null || isScript(path);
 }
 
 /**
- * A Polyglot notebook. It opens as cells and saves back as a `.dib`, so it runs
- * here as it is; the editor offers to convert it to the `.nb.md` beside it.
+ * A notebook in another format — Polyglot's `.dib`, Jupyter's `.ipynb`. It opens
+ * as cells and saves back as what it was, so it runs here as it is; the editor
+ * offers to convert it to the `.nb.md` beside it. An `.ipynb`'s stored outputs do
+ * not survive a save: a notebook edited here is source.
  */
-export function isDib(path: string): boolean {
-  return /\.dib$/i.test(path ?? '');
+export function convertibleFormat(path: string): 'dib' | 'ipynb' | null {
+  const name = (path ?? '').toLowerCase();
+  return name.endsWith('.dib') ? 'dib' : name.endsWith('.ipynb') ? 'ipynb' : null;
 }
 
 /** Where a conversion writes: the same name, `.nb.md` — what `clrkernel convert` does. */
@@ -391,8 +394,8 @@ export function isScript(path: string): boolean {
 
 /**
  * The Monaco language for a whole file — the Source tab and the production diff,
- * where there are no cells to ask. An `.ipynb` opens as source, and a `.dib`
- * has a Source tab, so those need an answer too.
+ * where there are no cells to ask. A `.dib` or `.ipynb` has a Source tab, so
+ * those need an answer too.
  */
 const FILE_LANGUAGES: [string, string][] = [
   ['.jobs.yaml', 'yaml'],

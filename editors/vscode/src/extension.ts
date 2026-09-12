@@ -12,7 +12,15 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new MarkdownNotebookSerializer()),
         // A .dib opens as this notebook type and runs as it is; the offer to
         // convert is made once per open, and "keep" is remembered for the session.
-        vscode.workspace.onDidOpenNotebookDocument((notebook) => void offerDibConversion(notebook)),
+        vscode.workspace.onDidOpenNotebookDocument((notebook) => void offerConversion(notebook)),
+        vscode.commands.registerCommand('clrkernel.convertToMarkdown', async () => {
+            const notebook = vscode.window.activeNotebookEditor?.notebook;
+            if (!notebook) {
+                void vscode.window.showInformationMessage('Open a notebook first — this writes its .nb.md beside it.');
+                return;
+            }
+            await convertToMarkdown(notebook);
+        }),
         // Read-only virtual documents for Go to Definition on metadata symbols:
         // the server decompiles the type; the .cs path gives C# highlighting.
         vscode.workspace.registerTextDocumentContentProvider('clrkernel-metadata', {
@@ -71,29 +79,66 @@ async function createNewNotebook(): Promise<void> {
     await vscode.window.showNotebookDocument(notebook);
 }
 
-const keptAsDib = new Set<string>();
+const keptAsIs = new Set<string>();
 
 /**
- * The .dib as the .nb.md beside it — the same conversion as `clrkernel convert`,
- * offered where the file is opened. Outputs are not carried over (there are none
- * in a .dib), the original is left in place, and an existing target is never
- * overwritten.
+ * Which notebooks the offer is made for: a .dib opened as this type, and an
+ * .ipynb whose kernelspec is ClrKernel's — the Jupyter extension owns .ipynb, so
+ * that one runs there already, and a notebook written for some other kernel is
+ * not asked about at all.
  */
-async function offerDibConversion(notebook: vscode.NotebookDocument): Promise<void> {
-    if (notebook.notebookType !== NOTEBOOK_TYPE || !/\.dib$/i.test(notebook.uri.path)
-        || notebook.uri.scheme !== 'file' || keptAsDib.has(notebook.uri.toString())) {
+function conversionOffer(notebook: vscode.NotebookDocument): { format: string; keep: string } | null {
+    if (notebook.uri.scheme !== 'file') {
+        return null;
+    }
+    if (notebook.notebookType === NOTEBOOK_TYPE && /\.dib$/i.test(notebook.uri.path)) {
+        return { format: 'a Polyglot notebook', keep: 'Keep as .dib' };
+    }
+    if (/\.ipynb$/i.test(notebook.uri.path)) {
+        const metadata = notebook.metadata as { metadata?: { kernelspec?: { name?: string } }; custom?: { metadata?: { kernelspec?: { name?: string } } } };
+        const kernel = metadata?.metadata?.kernelspec?.name ?? metadata?.custom?.metadata?.kernelspec?.name ?? '';
+        if (/clrkernel/i.test(kernel)) {
+            return { format: 'a Jupyter notebook on ClrKernel', keep: 'Keep as .ipynb' };
+        }
+    }
+    return null;
+}
+
+/**
+ * The notebook as the .nb.md beside it — the same conversion as `clrkernel
+ * convert`, offered once where the file is opened. Outputs are not carried over,
+ * the original is left in place, and an existing target is never overwritten.
+ */
+async function offerConversion(notebook: vscode.NotebookDocument): Promise<void> {
+    const offer = conversionOffer(notebook);
+    if (!offer || keptAsIs.has(notebook.uri.toString())) {
         return;
     }
     const name = notebook.uri.path.split('/').pop() ?? notebook.uri.path;
-    const target = notebook.uri.with({ path: notebook.uri.path.replace(/\.dib$/i, '.nb.md') });
-    const targetName = target.path.split('/').pop() ?? target.path;
+    const targetName = markdownTarget(notebook).path.split('/').pop() ?? '';
     const choice = await vscode.window.showInformationMessage(
-        `${name} is a Polyglot notebook. It runs here as it is; convert it to ${targetName}, which reviews like source?`,
-        'Convert', 'Keep as .dib');
+        `${name} is ${offer.format}. It runs here as it is; convert it to ${targetName}, which reviews like source?`,
+        'Convert', offer.keep);
     if (choice !== 'Convert') {
-        keptAsDib.add(notebook.uri.toString());
+        keptAsIs.add(notebook.uri.toString());
         return;
     }
+    await convertToMarkdown(notebook);
+}
+
+function markdownTarget(notebook: vscode.NotebookDocument): vscode.Uri {
+    return notebook.uri.with({ path: notebook.uri.path.replace(/\.[^./]+$/, '') + '.nb.md' });
+}
+
+/** Writes the open notebook's cells as the .nb.md beside it and opens that. */
+async function convertToMarkdown(notebook: vscode.NotebookDocument): Promise<void> {
+    if (notebook.uri.scheme !== 'file' || /\.nb\.md$/i.test(notebook.uri.path)) {
+        void vscode.window.showInformationMessage('That is already executable markdown — there is nothing to convert.');
+        return;
+    }
+    const name = notebook.uri.path.split('/').pop() ?? notebook.uri.path;
+    const target = markdownTarget(notebook);
+    const targetName = target.path.split('/').pop() ?? target.path;
     try {
         await vscode.workspace.fs.stat(target);
         void vscode.window.showWarningMessage(`${targetName} already exists; nothing was written.`);
