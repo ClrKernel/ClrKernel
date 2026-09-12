@@ -32,6 +32,8 @@ import {
   toRunCells,
   toSyncCells,
   withIds,
+  isDib,
+  convertedPath,
 } from './notebook';
 
 const languages: ApiLanguage[] = [
@@ -593,7 +595,10 @@ describe('opensAsCells', () => {
     // These are notebooks the runner reads, but not ones the cells route parses:
     // they open as source, which is why the two predicates are not one.
     expect(opensAsCells('old.ipynb')).toBe(false);
-    expect(opensAsCells('legacy.dib')).toBe(false);
+    // A .dib does open as cells — the server parses and writes it — and converts beside itself.
+    expect(opensAsCells('legacy.dib')).toBe(true);
+    expect(isDib('legacy.DIB')).toBe(true);
+    expect(convertedPath('etl/legacy.dib')).toBe('etl/legacy.nb.md');
     expect(opensAsCells('etl.jobs.yaml')).toBe(false);
     expect(opensAsCells('notes.md')).toBe(false);
   });

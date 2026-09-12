@@ -59,6 +59,8 @@ public static class NotebookConverter {
     private static IReadOnlyList<MarkdownCell> FromDib(
         string content, IReadOnlyList<LanguageDescriptor> languages) =>
         NotebookDocument.DibSections(content, languages)
+            // Polyglot's kernelInfo header: about the kernel the file came from, not the notebook.
+            .Where(s => !string.Equals(s.Tag, "meta", StringComparison.OrdinalIgnoreCase))
             .Select(s => s.Kind == CellKind.Markdown
                 ? MarkdownCell.Markdown(s.Text)
                 // The section's own marker is the tag, so `#!zsh` stays zsh rather

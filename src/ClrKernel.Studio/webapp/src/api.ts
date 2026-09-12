@@ -783,6 +783,12 @@ export const api = {
       `${scope('mine')}/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' }, keepalive },
     ),
+  /** A .dib or .ipynb as the .nb.md beside it, on your branch. 409 when that file exists. */
+  convertNotebook: (path: string) =>
+    request<{ converted: boolean; path: string; branch: string }>(
+      `${scope('mine')}/notebooks/convert?path=${encodeURIComponent(path)}`,
+      { method: 'POST' },
+    ),
   /** Renames it, or moves it out of the scratch folder — the same operation. */
   moveNotebook: (path: string, to: string) =>
     request<{ moved: boolean; path: string; branch: string }>(

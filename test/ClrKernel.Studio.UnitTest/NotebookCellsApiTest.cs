@@ -42,6 +42,11 @@ public class NotebookCellsApiTest {
 
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
+    private const string _dib = "legacy.dib";
+    private const string _dibSource =
+        "#!meta\n\n{\"kernelInfo\":{\"defaultKernelName\":\"csharp\",\"items\":[]}}\n\n"
+        + "#!markdown\n\n# Legacy\n\n#!csharp\n\nvar x = 1;\n\n#!sql\n\nSELECT 1\n";
+
     [TestInitialize]
     public async Task Setup() {
         _root = Path.Combine(Path.GetTempPath(), "clrkernel-cells-test-" + Guid.NewGuid().ToString("N"));
@@ -66,6 +71,7 @@ public class NotebookCellsApiTest {
         var devFile = Path.Combine(_git.TestPath, _notebook);
         Directory.CreateDirectory(Path.GetDirectoryName(devFile));
         File.WriteAllText(devFile, _source);
+        File.WriteAllText(Path.Combine(_git.TestPath, _dib), _dibSource);
         _git.WithLock(() => _git.Commit("test", "add notebook"));
 
         var options = gitOptions;
@@ -125,6 +131,52 @@ public class NotebookCellsApiTest {
             "the body is as written — no selector injected into the editing view");
         Assert.AreEqual("c1", cells[1].GetProperty("id").GetString());
         Assert.AreEqual("csharp", cells[2].GetProperty("tag").GetString());
+    }
+
+    /// <summary>
+    /// A .dib opens as cells and saves back as a .dib — it runs here without being
+    /// converted — and converting writes the .nb.md beside it, once.
+    /// </summary>
+    [TestMethod]
+    public async Task A_dib_opens_as_cells_saves_as_a_dib_and_converts_beside_itself() {
+        var body = await _client.GetFromJsonAsync<JsonElement>(
+            $"/api/projects/default/branches/test/notebooks/cells?path={_dib}");
+        var cells = body.GetProperty("cells").EnumerateArray().ToList();
+        Assert.AreEqual(3, cells.Count, "the #!meta header is not a cell");
+        Assert.AreEqual("markdown", cells[0].GetProperty("kind").GetString());
+        Assert.AreEqual("csharp", cells[1].GetProperty("tag").GetString());
+        Assert.AreEqual("sql", cells[2].GetProperty("tag").GetString());
+
+        var edited = cells.Select(c => new {
+            id = c.GetProperty("id").GetString(),
+            kind = c.GetProperty("kind").GetString(),
+            tag = c.TryGetProperty("tag", out var t) ? t.GetString() : null,
+            source = c.GetProperty("source").GetString() == "var x = 1;" ? "var x = 2;" : c.GetProperty("source").GetString(),
+        }).ToList();
+        var saved = await _client.PutAsJsonAsync(
+            $"/api/projects/default/branches/mine/notebooks/cells?path={_dib}", new { cells = edited });
+        Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode, await saved.Content.ReadAsStringAsync());
+        var written = File.ReadAllText(Path.Combine(MinePath, _dib));
+        StringAssert.StartsWith(written, "#!meta\n", "still a .dib, not markdown in a .dib's clothing");
+        StringAssert.Contains(written, "#!csharp\n\nvar x = 2;\n\n#!sql\n\nSELECT 1\n");
+
+        var converted = await _client.PostAsync(
+            $"/api/projects/default/branches/mine/notebooks/convert?path={_dib}", null);
+        Assert.AreEqual(HttpStatusCode.OK, converted.StatusCode, await converted.Content.ReadAsStringAsync());
+        Assert.AreEqual("legacy.nb.md",
+            (await converted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("path").GetString());
+        var markdown = File.ReadAllText(Path.Combine(MinePath, "legacy.nb.md"));
+        StringAssert.Contains(markdown, "# Legacy\n\n```csharp\nvar x = 2;\n```\n\n```sql\nSELECT 1\n```\n");
+        Assert.IsFalse(markdown.Contains("kernelInfo"), markdown);
+        Assert.IsTrue(File.Exists(Path.Combine(MinePath, _dib)), "the original is left where it was");
+
+        var again = await _client.PostAsync(
+            $"/api/projects/default/branches/mine/notebooks/convert?path={_dib}", null);
+        Assert.AreEqual(HttpStatusCode.Conflict, again.StatusCode, "never overwrites");
+
+        var onTest = await _client.PostAsync(
+            $"/api/projects/default/branches/test/notebooks/convert?path={_dib}", null);
+        Assert.AreNotEqual(HttpStatusCode.OK, onTest.StatusCode, "test is not writable, by anybody");
     }
 
     [TestMethod]

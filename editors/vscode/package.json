@@ -25,6 +25,9 @@
         "selector": [
           {
             "filenamePattern": "*.nb.md"
+          },
+          {
+            "filenamePattern": "*.dib"
           }
         ]
       }

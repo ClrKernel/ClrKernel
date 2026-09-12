@@ -64,6 +64,8 @@ import {
   mergeStatus,
   moveCell,
   opensAsCells,
+  isDib,
+  convertedPath,
   isWorkbook,
   previewKind,
   pushUndo,
@@ -684,6 +686,24 @@ export function Editor() {
    * that test and prod are never edited only holds if the instinct to edit them
    * has somewhere to go.
    */
+  /**
+   * The .dib as a .nb.md beside it, on your branch — the same conversion as
+   * `clrkernel convert`. The original stays: deleting is a separate decision.
+   */
+  async function convertDib() {
+    setError(null);
+    setBusy(true);
+    try {
+      const { path: to } = await api.convertNotebook(path);
+      navigate(editPath(projectSlug(), 'mine', to));
+      setNotice(`Converted to ${to}. ${path} is still there — delete it when you are done with it.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyToMine() {
     setError(null);
     setBusy(true);
@@ -1189,6 +1209,22 @@ export function Editor() {
         {notice && (
           <Alert variant="success" className="mb-3">
             <AlertDescription className="text-status-success">{notice}</AlertDescription>
+          </Alert>
+        )}
+        {isDib(path) && (
+          <Alert className="mb-3">
+            <AlertDescription className="flex flex-wrap items-center gap-3">
+              <span>
+                A Polyglot <code>.dib</code> notebook. It runs and saves here as it is;
+                converting writes <code>{convertedPath(path)}</code> beside it, as source that diffs.
+                {!canWrite && ' Copy it onto your branch to convert it.'}
+              </span>
+              {canWrite && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={convertDib}>
+                  Convert to .nb.md
+                </Button>
+              )}
+            </AlertDescription>
           </Alert>
         )}
 

@@ -1069,7 +1069,9 @@ from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
 one. A file that does not parse into cells — an `.ipynb`, a `.csv` — has no Notebook
-view and opens at Source. A `*.jobs.yaml` opens at its **Overview** — the
+view and opens at Source. A Polyglot `.dib` does parse: it opens as cells, runs as it
+is, saves back as a `.dib`, and on your own branch offers **Convert to .nb.md**,
+which writes the `.nb.md` beside it and leaves the original for you to delete. A `*.jobs.yaml` opens at its **Overview** — the
 form is what the file is for, and the YAML tab is the escape hatch beside it — and
 a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
 read.

@@ -511,6 +511,12 @@ gives them back.
 
 It refuses to overwrite an existing file; pass `-o` to put it somewhere else.
 
+The same choice is offered where a `.dib` is opened. In **VS Code** a `.dib` opens as a
+ClrKernel notebook — it runs as it is, and saves back as a `.dib` — and the editor
+asks once whether to write the `.nb.md` beside it. In **Studio** a `.dib` opens as
+cells with a *Convert to .nb.md* button on your own branch. Both leave the original
+where it was; delete it when you are done with it.
+
 If you already run notebooks through Jupyter's tooling, that works too:
 
 ```bash

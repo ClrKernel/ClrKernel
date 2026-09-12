@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+- **`.dib` notebooks open here.** A Polyglot `.dib` is this notebook type now:
+  it opens as cells, runs on ClrKernel as it is, and saves back as a `.dib`.
+  Opening one offers to convert it to the `.nb.md` beside it — the same
+  conversion as `clrkernel convert`; the original is left in place and an
+  existing target is never overwritten. A section in a kernel ClrKernel does
+  not have (`#!fsharp`, `#!kql`) stays a cell under its own tag rather than
+  vanishing. If Polyglot Notebooks is installed too, VS Code asks which to open
+  with; *Open With… → Configure default* settles it.
+
 ## [0.10.0] - 2026-09-09
 
 **Needs kernel 0.13.x.** Nothing in the extension changes — the pairing moves
