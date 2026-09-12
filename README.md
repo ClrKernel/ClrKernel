@@ -14,8 +14,8 @@ when you want it to start diffing like the rest of your repo.
 
 C# cells are evaluated with Roslyn's scripting engine
 ([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
-and a cell can also be **SQL, DAX, Python, PowerShell, shell (bash/zsh/sh), HTTP,
-or Mermaid** in the same session — one kernel, one set of variables. Cell languages
+and a cell can also be **SQL, DAX, KQL, F#, Python, PowerShell, shell (bash/zsh/sh),
+HTTP, or Mermaid** in the same session — one kernel, one set of variables. Cell languages
 are registered rather than built in, so a package can add one
 ([below](#extending-the-kernel-your-own-cell-language)).
 

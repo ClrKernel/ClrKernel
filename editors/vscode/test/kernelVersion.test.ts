@@ -14,16 +14,16 @@ import {
 describe('compareKernelVersion', () => {
     it('accepts the supported line, however many parts the version has', () => {
         // The server reports an assembly version (four parts) though the package has three.
-        expect(compareKernelVersion('0.13.0.0')).toBe('ok');
-        expect(compareKernelVersion('0.13.0')).toBe('ok');
+        expect(compareKernelVersion('0.14.0.0')).toBe('ok');
+        expect(compareKernelVersion('0.14.0')).toBe('ok');
     });
 
     it('treats a patch release of the same line as compatible', () => {
-        expect(compareKernelVersion('0.13.7.0')).toBe('ok');
+        expect(compareKernelVersion('0.14.7.0')).toBe('ok');
     });
 
     it('flags a newer kernel — the case this guard exists for', () => {
-        expect(compareKernelVersion('0.14.0.0')).toBe('newer');
+        expect(compareKernelVersion('0.15.0.0')).toBe('newer');
         expect(compareKernelVersion('1.0.0.0')).toBe('newer');
     });
 

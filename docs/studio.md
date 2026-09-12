@@ -12,7 +12,7 @@ can open in VS Code or Jupyter.
 running, what failed, and what the crons will fire next](images/studio/dashboard.png)
 
 > Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.13.x as "try it on real notebooks and tell us
+> production soak time yet — treat 0.14.x as "try it on real notebooks and tell us
 > what breaks".
 
 ## Install
@@ -654,7 +654,7 @@ A kernel is handed its branch's secrets **when it starts**, and a running proces
 cannot be handed another one. So setting or deleting a secret restarts the branch's
 open notebooks: their next cell run starts a kernel that has the new value, and the
 Secrets page says how many were restarted. What that costs is the kernel's
-variables — re-run the cells that made them. (Before 0.13.1 nothing restarted, and
+variables — re-run the cells that made them. (Before 0.14.0 nothing restarted, and
 a secret set and used in the same minute was "not found": true of the kernel, not
 of the branch, and no help to anybody.)
 
@@ -1073,7 +1073,9 @@ view and opens at Source. A Polyglot `.dib` or a Jupyter `.ipynb` does parse: it
 opens as cells, runs as it is, saves back as what it was (an `.ipynb` keeps its
 cells and not its stored outputs — a notebook edited here is source), and on your
 own branch offers **Convert to .nb.md**, which writes the `.nb.md` beside it and
-leaves the original for you to delete. A `*.jobs.yaml` opens at its **Overview** — the
+leaves the original for you to delete.
+
+![A Jupyter notebook open as cells, with the banner offering to convert it to the .nb.md beside it](images/studio/editor-convert.png) A `*.jobs.yaml` opens at its **Overview** — the
 form is what the file is for, and the YAML tab is the escape hatch beside it — and
 a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
 read.
