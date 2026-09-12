@@ -13,6 +13,9 @@
   <Project Path="src/ClrKernel.DataEngineering/ClrKernel.DataEngineering.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.AnalysisServices/ClrKernel.Database.Provider.AnalysisServices.csproj" />
   <Project Path="src/ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
+  <Project Path="src/ClrKernel.Language.FSharp/ClrKernel.Language.FSharp.csproj" />
+  <Project Path="src/ClrKernel.Language.Kql/ClrKernel.Language.Kql.csproj" />
+  <Project Path="src/ClrKernel.Database.Provider.Kusto/ClrKernel.Database.Provider.Kusto.csproj" />
   <Project Path="src/ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />
   <Project Path="src/ClrKernel.Core.ExtensionServer/ClrKernel.Core.ExtensionServer.csproj" />
   <Project Path="src/ClrKernel.Database/ClrKernel.Database.csproj" />

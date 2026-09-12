@@ -10,6 +10,11 @@
   not have (`#!fsharp`, `#!kql`) stays a cell under its own tag rather than
   vanishing. If Polyglot Notebooks is installed too, VS Code asks which to open
   with; *Open With… → Configure default* settles it.
+- **F# and KQL cells**, from kernel 0.14: `#!fsharp` runs in an F# Interactive
+  session per notebook; `#!kql-connect` / `#!kql` query Kusto (Azure Data
+  Explorer, Fabric Eventhouse, Log Analytics) with Entra sign-in and the
+  connection button. A `.dib`'s `#!fsharp` and `#!kql` sections become those cells
+  rather than staying inert.
 - **`.ipynb` too.** Jupyter's extension keeps `.ipynb`; when the one it opens has
   ClrKernel's kernelspec, the same offer appears, and *ClrKernel: Convert Notebook
   to .nb.md* converts any open notebook on request.

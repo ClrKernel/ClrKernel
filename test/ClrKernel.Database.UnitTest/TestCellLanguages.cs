@@ -37,6 +37,7 @@ public static class TestCellLanguages {
                 };
             },
             () => new[] { new DaxCellLanguage() },
+            () => new[] { new ClrKernel.Language.Kql.KqlCellLanguage() },
         });
         // Fabric owns no #! selector but is still reachable from C# cells.
         CellLanguageRegistry.DefaultContributions = new[] {
@@ -48,6 +49,7 @@ public static class TestCellLanguages {
             ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
             ClrKernel.Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
             ClrKernel.Database.Provider.Fabric.FabricConnectionProvider.Descriptor,
+            ClrKernel.Database.Provider.Kusto.KustoConnectionProvider.Descriptor,
         };
     }
 }

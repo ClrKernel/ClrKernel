@@ -72,8 +72,9 @@ public class PluginRegistrationTest {
         Assert.AreEqual(1, changes);
 
         // Longest selector first still holds for a language added at run time.
-        Assert.AreEqual("#!toy-connect:x", await engineA.ExecuteAsync("#!toy-connect\nx"));
-        Assert.AreEqual("#!toy:hello", await engineA.ExecuteAsync("#!toy\nhello"));
+        // A raw value from a language is bundled like a C# trailing value; the text is what a front shows.
+        Assert.AreEqual("#!toy-connect:x", Text(await engineA.ExecuteAsync("#!toy-connect\nx")));
+        Assert.AreEqual("#!toy:hello", Text(await engineA.ExecuteAsync("#!toy\nhello")));
 
         // The other session is untouched — the registry-of-factories rule.
         Assert.IsNull(engineB.Languages.ById("toy"));
@@ -116,6 +117,8 @@ public class PluginRegistrationTest {
         await engine.ExecuteAsync($"#r \"{typeof(ToyCellLanguage).Assembly.Location}\"");
 
         Assert.IsNotNull(engine.Languages.ById("toy"), "the #r hook scans new assemblies for exports");
-        Assert.AreEqual("#!toy:via-r", await engine.ExecuteAsync("#!toy\nvia-r"));
+        Assert.AreEqual("#!toy:via-r", Text(await engine.ExecuteAsync("#!toy\nvia-r")));
     }
+
+    private static string Text(object result) => ((string)((DisplayData)result).Data["text/plain"]).Trim();
 }

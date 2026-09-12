@@ -47,12 +47,15 @@ public static class TestCellLanguages {
             },
             () => new[] { new DaxCellLanguage() },
             () => new[] { new ClrKernel.Language.Python.PythonCellLanguage() },
+            () => new[] { new ClrKernel.Language.FSharp.FSharpCellLanguage() },
+            () => new[] { new ClrKernel.Language.Kql.KqlCellLanguage() },
         });
         ConnectionProviderRegistry.Default = new[] {
             ClrKernel.Database.Provider.SqlServer.SqlServerConnectionProvider.Descriptor,
             ClrKernel.Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
             ClrKernel.Language.Shell.SshConnectionProvider.Descriptor,
             ClrKernel.Language.PowerShell.PwshConnectionProvider.Descriptor,
+            ClrKernel.Database.Provider.Kusto.KustoConnectionProvider.Descriptor,
         };
     }
 }

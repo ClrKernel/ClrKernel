@@ -188,7 +188,9 @@ describe('.dib notebooks', () => {
             [NotebookCellKind.Code, 'shellscript', '#!zsh\necho hi'],
             [NotebookCellKind.Code, 'kql', 'T | take 1'],
         ]);
-        expect(nb.cells[4].metadata).toEqual({ dibTag: 'kql' });
+        // kql is a language now; a section in one the kernel still lacks keeps its tag in metadata.
+        expect(nb.cells[4].metadata).toBeUndefined();
+        expect(read('#!javascript\n\nconsole.log(1)\n').cells[0].metadata).toEqual({ dibTag: 'javascript' });
     });
 
     it('writes a .dib back as a .dib, and converts to markdown on request', () => {

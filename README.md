@@ -210,6 +210,32 @@ Completion, hover and signature help come from the live interpreter, so they kno
 the objects a cell actually made rather than what a static analyser guessed. See
 [samples/Python.nb.md](samples/Python.nb.md).
 
+### F# cells
+
+`#!fsharp` (or `#!fs`) cells run in one F# Interactive session per notebook, so a
+`let` in one cell is there in the next. A trailing expression is displayed the way
+a C# cell's is — a list of records renders as a grid — and `printfn` streams as
+console output. A cell that does not compile reports fsi's own diagnostic with its
+line and column, and the session carries on.
+
+F# and C# are two compilers over two sessions: nothing flows between them. See
+[samples/FSharp.nb.md](samples/FSharp.nb.md).
+
+### KQL cells
+
+`#!kql-connect --name help --cluster https://help.kusto.windows.net --database Samples`
+registers a Kusto database — Azure Data Explorer, a Fabric Eventhouse / KQL
+database, or Log Analytics — and `#!kql` cells query it; the result is the
+interactive grid. A cell names its database with a leading `// connections <name>`
+comment, and one starting with a dot runs as a management command (`.show tables`).
+
+Sign-in is Microsoft Entra: the default chain then a browser, `--auth interactive`
+for a browser every time, or a service principal with `--tenant`, `--client-id`
+and `--secret <reference>` — the secret comes from the secret store or
+`CLRKERNEL_SECRET_<reference>`, never the notebook. From C#,
+`KustoDb.Connect(cluster, database).Query("…")` reaches the same databases. See
+[samples/Kql.nb.md](samples/Kql.nb.md).
+
 ### SQL cells
 
 Set a cell's language to **T-SQL** (or start it with `#!sql`) to run T-SQL against

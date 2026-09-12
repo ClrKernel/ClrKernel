@@ -223,7 +223,14 @@ public class InteractiveScriptEngine : ICellExecutionContext {
             var languageResult = await match.Language.ExecuteAsync(match.Cell, this).ConfigureAwait(false);
             // Languages and providers return display concepts; the wire bundle is
             // built here so they never touch a MIME type.
-            return languageResult is IDisplayValue concept ? MimeBundler.Bundle(concept) : languageResult;
+            // A raw value — an F# cell's trailing expression, a KQL DataTable — takes
+            // the same road a C# trailing value does; the fronts only render bundles.
+            return languageResult switch {
+                null => null,
+                DisplayData ready => ready,
+                IDisplayValue concept => MimeBundler.Bundle(concept),
+                _ => MimeBundler.Bundle(new DisplayObject(languageResult)),
+            };
         }
 
         if (!statement.Split('\n').Any(IsImporterDirective)) {

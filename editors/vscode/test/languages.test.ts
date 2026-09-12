@@ -34,7 +34,7 @@ describe('language registry', () => {
             (manifest.contributes.languages as { id: string }[]).map((l) => l.id));
 
         // The ones VS Code ships itself, which is why they were never declared.
-        const builtIn = new Set(['sql', 'powershell', 'shellscript', 'markdown', 'json', 'yaml']);
+        const builtIn = new Set(['sql', 'powershell', 'shellscript', 'markdown', 'json', 'yaml', 'fsharp']);
 
         for (const language of bundledLanguages) {
             const editorId = editorLanguageFor(language);
