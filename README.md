@@ -98,7 +98,10 @@ and can `#!import` further files.
 folder, or any folder above it — with the same semantics `dotnet restore` has in
 a repo: the file **adds** to your user-level configuration, so nuget.org is still
 there for a private package's dependencies, and it says `<clear/>` when it means
-"only these". Put one at the root and every notebook under it sees the feed:
+"only these" — in which case the feed has to serve the SDK's runtime packs too
+(`Microsoft.NETCore.App.Runtime.*`), as an Azure Artifacts feed with a nuget.org
+upstream does; a restore is RID-specific and wants them the first time on a
+machine. Put one at the root and every notebook under it sees the feed:
 
 ```xml
 <configuration>

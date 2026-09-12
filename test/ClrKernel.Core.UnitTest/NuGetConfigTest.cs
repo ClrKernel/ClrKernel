@@ -109,6 +109,16 @@ public class NuGetConfigTest {
         Environment.SetEnvironmentVariable("NUGET_PACKAGES", cache);
         try {
             var notebooks = NotebookFolderWithFeed();
+            // A RID-specific restore also wants the SDK's runtime packs
+            // (Microsoft.NETCore.App.Runtime.<rid> and friends). An SDK that bundles
+            // the packs for the framework the script targets never downloads them; a
+            // CI runner whose test host runs on an older installed runtime targets
+            // that framework and must fetch its packs from nuget.org — which is what
+            // <clear/> is about to forbid, exactly as it would for any `dotnet
+            // restore -r`. So the cache is warmed through the additive config first;
+            // what <clear/> then refuses is the package, which is the point.
+            await new InteractiveScriptEngine(notebooks, NullLogger.Instance)
+                .ExecuteAsync("#r \"nuget: Private.Greeter, 1.2.3\"");
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(notebooks), "NuGet.Config"), Config(clear: true));
             var engine = new InteractiveScriptEngine(notebooks, NullLogger.Instance);
             // The private one still resolves; the nuget.org one is refused, and the

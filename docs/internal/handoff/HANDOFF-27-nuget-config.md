@@ -54,6 +54,15 @@ temp. As a side effect two notebooks no longer share one scratch project.
 > credentials into temp, and `AddItem.Value` in NuGet.Configuration expands `%ENV%` on
 > read, so a faithful copy is not available through the public API.
 
+> **CI found the runtime packs.** `Clear_means_only_these_sources` restores into
+> an empty cache; a RID-specific restore also wants `Microsoft.NETCore.App.Runtime.<rid>`,
+> `.Host.<rid>` and the AspNetCore runtime pack. An SDK bundles the packs for its
+> own framework, so a test host that rolled forward to the SDK's runtime never
+> downloads them — and a runner with the 8.0 runtime installed targets net8.0 and
+> must, from nuget.org, which `<clear/>` forbids. Correct behaviour (it is what any
+> `dotnet restore -r` does under `<clear/>`); the test warms the cache through the
+> additive config first, and the README says a `<clear/>` feed has to carry them.
+
 `%NAME%` expansion in values is NuGet's own and was verified with a folder feed
 addressed as `%CLRKERNEL_TEST_FEED%`. That is the whole credentials story: the repo
 file says `%CLRKERNEL_SECRET_FEED_PAT%`, Studio sets `CLRKERNEL_SECRET_*` per branch
