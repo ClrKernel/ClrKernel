@@ -100,11 +100,11 @@ export const bundledLanguages: LanguageDescriptor[] = [
         languageTags: ['dax'], hasEditorServices: true, hasConnections: true, configBacked: true,
     },
     // `fsharp` is a VS Code built-in language id, so cells get its grammar for free.
-    { id: 'fsharp', displayName: 'F#', defaultSelector: '#!fsharp', selectors: ['#!fsharp', '#!fs'], languageTags: ['fsharp', 'fs', 'f#'] },
+    { id: 'fsharp', displayName: 'F#', defaultSelector: '#!fsharp', selectors: ['#!fsharp', '#!fs'], languageTags: ['fsharp', 'fs', 'f#'], hasEditorServices: true },
     {
         id: 'kql', displayName: 'KQL', defaultSelector: '#!kql',
         selectors: ['#!kql', '#!kql-connect'],
-        languageTags: ['kql', 'kusto'], hasConnections: true,
+        languageTags: ['kql', 'kusto'], hasEditorServices: true, hasConnections: true, configBacked: true,
         supportedProviders: ['Kusto'],
     },
 ];

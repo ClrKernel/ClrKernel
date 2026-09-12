@@ -218,7 +218,11 @@ a C# cell's is — a list of records renders as a grid — and `printfn` streams
 console output. A cell that does not compile reports fsi's own diagnostic with its
 line and column, and the session carries on.
 
-F# and C# are two compilers over two sessions: nothing flows between them. See
+F# and C# are two compilers over two sessions, so a value crosses by name:
+`#!share --from csharp total` at the top of an F# cell binds C#'s `total` there,
+and `#!share --from fsharp squares --as xs` in a C# cell does the reverse, with
+the runtime type kept so members complete. Completion, hover and diagnostics
+come from the same session, so they know earlier cells' bindings. See
 [samples/FSharp.nb.md](samples/FSharp.nb.md).
 
 ### KQL cells
@@ -232,9 +236,11 @@ comment, and one starting with a dot runs as a management command (`.show tables
 Sign-in is Microsoft Entra: the default chain then a browser, `--auth interactive`
 for a browser every time, or a service principal with `--tenant`, `--client-id`
 and `--secret <reference>` — the secret comes from the secret store or
-`CLRKERNEL_SECRET_<reference>`, never the notebook. From C#,
-`KustoDb.Connect(cluster, database).Query("…")` reaches the same databases. See
-[samples/Kql.nb.md](samples/Kql.nb.md).
+`CLRKERNEL_SECRET_<reference>`, never the notebook. Connections save to and load
+from `connections.json` under `"$type": "Kusto"`; completion offers the
+directives, the connection names, the operators after a `|`, and the database's
+tables and columns. From C#, `KustoDb.Connect(cluster, database).Query("…")`
+reaches the same databases. See [samples/Kql.nb.md](samples/Kql.nb.md).
 
 ### SQL cells
 

@@ -49,6 +49,35 @@ public class FSharpTest {
         Assert.AreEqual(3, session.Execute("1 + 2"), "the session survives a failed cell");
     }
 
+    /// <summary>Editor features come from the same session, so they know earlier cells' bindings.</summary>
+    [TestMethod]
+    public async Task Completion_hover_and_diagnostics_see_the_session() {
+        var language = new FSharpCellLanguage();
+        language.Session.Execute("let square x = x * x");
+        var services = language.Services;
+
+        var completion = await services.CompleteAsync("[1; 2] |> List.ma", 17, new LanguageServiceContext());
+        Assert.IsTrue(completion.Items.Exists(i => i.InsertText == "map"), "List.map is offered");
+        Assert.AreEqual(15, completion.ReplaceStart, "replaces the partial identifier");
+
+        var own = await services.CompleteAsync("squ", 3, new LanguageServiceContext());
+        Assert.IsTrue(own.Items.Exists(i => i.InsertText == "square"), "a binding from an earlier cell is offered");
+
+        var hover = await services.HoverAsync("square 3", 2);
+        StringAssert.Contains(hover.Markdown, "int -> int");
+        Assert.AreEqual(0, hover.Start);
+        Assert.AreEqual(6, hover.Length);
+
+        var diagnostics = services.Diagnose("let y: int = \"x\"\nlet z = square 2");
+        Assert.AreEqual(1, diagnostics.Count);
+        Assert.AreEqual(1, diagnostics[0].Line);
+        Assert.AreEqual(1, diagnostics[0].Code);
+        Assert.AreEqual(1, diagnostics[0].Severity);
+
+        var magic = await services.CompleteAsync("#!share --", 10, new LanguageServiceContext());
+        Assert.IsTrue(magic.Items.Exists(i => i.Label == "--from"), "the share directive completes in an F# cell");
+    }
+
     [TestMethod]
     public async Task Engine_routes_fsharp_cells_to_the_session() {
         var engine = new InteractiveScriptEngine(Directory.GetCurrentDirectory(), NullLogger.Instance);

@@ -12,7 +12,7 @@ namespace ClrKernel.Language.Kql;
 /// <c>#!kql</c> cells: a cell's KQL executes against the chosen (or default)
 /// database and the result renders as the interactive grid.
 /// </summary>
-public sealed class KqlSession : IDisposable {
+public sealed partial class KqlSession : IDisposable {
     private readonly Dictionary<string, KustoConnectionSpec> _specs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, KustoDatabase> _open = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _order = new();
@@ -72,6 +72,9 @@ public sealed class KqlSession : IDisposable {
 
     /// <summary>The database a cell names, or the default.</summary>
     public KustoDatabase Resolve(string requestedName) {
+        if (_specs.Count == 0) {
+            LoadFromConfig(); // a headless or Jupyter run may not have loaded the config yet
+        }
         var name = string.IsNullOrWhiteSpace(requestedName) ? DefaultName : requestedName;
         if (name == null) {
             throw new InvalidOperationException("No Kusto connection is configured. Add one with a #!kql-connect cell.");
@@ -111,6 +114,50 @@ public sealed class KqlSession : IDisposable {
             kept.Add(line);
         }
         return string.Join("\n", kept).Trim();
+    }
+
+    private readonly Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> _schemas = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The tables and their columns of a database a cell has already used, for
+    /// completion — one <c>.show database schema</c>, cached for the session.
+    /// Only for an open connection: a completion request must never be the
+    /// thing that starts a sign-in, and a browser opening on a keystroke is
+    /// exactly that. Empty, never an error, when the cluster cannot be reached.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> Schema(string requestedName) {
+        var name = string.IsNullOrWhiteSpace(requestedName) ? DefaultName : requestedName;
+        if (name == null || !_open.TryGetValue(name, out var db)) {
+            return new Dictionary<string, IReadOnlyList<string>>();
+        }
+        if (_schemas.TryGetValue(name, out var cached)) {
+            return cached;
+        }
+        var schema = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        try {
+            var table = db.Execute(".show database schema");
+            var byTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (System.Data.DataRow row in table.Rows) {
+                var tableName = row["TableName"]?.ToString();
+                if (string.IsNullOrEmpty(tableName)) {
+                    continue;
+                }
+                if (!byTable.TryGetValue(tableName, out var columns)) {
+                    byTable[tableName] = columns = new List<string>();
+                }
+                var column = row["ColumnName"]?.ToString();
+                if (!string.IsNullOrEmpty(column)) {
+                    columns.Add(column);
+                }
+            }
+            foreach (var (t, cols) in byTable) {
+                schema[t] = cols;
+            }
+            _schemas[name] = schema;
+        } catch {
+            // ponytail: no schema is a quieter completion list, not a broken editor.
+        }
+        return schema;
     }
 
     public void Dispose() {

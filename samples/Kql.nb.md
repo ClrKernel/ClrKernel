@@ -21,6 +21,11 @@ where the secret comes from the secret store or `CLRKERNEL_SECRET_<ref>` — nev
 the notebook. A Fabric Eventhouse's query URI (from its KQL database's settings)
 goes in `--cluster` unchanged.
 
+Connections can also live in a `connections.json` beside the notebook, under
+`"$type": "Kusto"`, next to the SQL Server and Analysis Services entries — the
+editor's connection button saves one there, and a `#!kql` cell with nothing
+registered loads them. The client secret is stored as a reference only.
+
 ## Query the default database
 
 ```kql

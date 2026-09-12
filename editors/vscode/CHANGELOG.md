@@ -13,8 +13,10 @@
 - **F# and KQL cells**, from kernel 0.14: `#!fsharp` runs in an F# Interactive
   session per notebook; `#!kql-connect` / `#!kql` query Kusto (Azure Data
   Explorer, Fabric Eventhouse, Log Analytics) with Entra sign-in and the
-  connection button. A `.dib`'s `#!fsharp` and `#!kql` sections become those cells
-  rather than staying inert.
+  connection button, `connections.json` and schema completion. Both have
+  completion, hover and diagnostics, and `#!share --from csharp x` moves a value
+  between the F# and C# sessions the way a `.dib` already spells it. A `.dib`'s
+  `#!fsharp` and `#!kql` sections become those cells rather than staying inert.
 - **`.ipynb` too.** Jupyter's extension keeps `.ipynb`; when the one it opens has
   ClrKernel's kernelspec, the same offer appears, and *ClrKernel: Convert Notebook
   to .nb.md* converts any open notebook on request.

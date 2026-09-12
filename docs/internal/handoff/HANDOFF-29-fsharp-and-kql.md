@@ -30,9 +30,28 @@ whatever it was then, not the kernel's proxy during a later cell. The writers
 forward to the *current* `Console.Out` on every write; the test swaps the console
 and checks `printfn` lands in it.
 
-Not built: F# editor services (completion/hover), `#r "nuget:"` inside F# cells
-(needs the dependency-manager dll beside the compiler), and `--gui` off means no
-WinForms event loop, which nobody wanted.
+**Editor services come from the session.** `ParseAndCheckInteraction` type-checks
+a cell against the fsi state without running it, so completion knows a binding
+made three cells ago; `GetDeclarationListInfo`, `GetToolTip`, `GetMethods` and the
+check's own diagnostics are the four features. Fsi is not thread-safe and the
+LSP asks while cells may be running, so the session serializes both behind one
+lock. The union cases are reached the C# way: `ToolTipElement.Group.elements`,
+`FSharpXmlDoc.FromXmlText.Item`.
+
+**`#!share`.** "The point of a multi-language notebook is sharing" — and two
+compilers still cannot share a symbol table, so it is Polyglot's answer:
+`#!share --from csharp x [--as y]` copies the reference. The engine owns it, in
+`ShareDirective` and `ICellVariables`: the leading `#!share` lines are blanked
+out of the cell, the value is fetched from the source (`csharp` is the engine's
+own script state, anything else a language implementing `ICellVariables` —
+F# via `TryFindBoundValue` / `AddBoundValue`), and bound on the target. Into C#
+the only way in is a submission: the value goes on the `SharedValues` shelf and
+`T x = (T)SharedValues.Take(key)` takes it, `T` being the runtime type spelled
+in C# (`ShareDirective.CSharpTypeName` — generics, nested, arrays; `object` when
+the script could not name it), which is what makes members complete afterwards.
+
+Not built: `#r "nuget:"` inside F# cells (needs the dependency-manager dll beside
+the compiler), and `--gui` off means no WinForms event loop, which nobody wanted.
 
 ## KQL
 
@@ -50,11 +69,15 @@ the client library, and a C# cell that references the assembly resolves the bare
 name to the namespace before any `using`-imported type. `Fabric` gets away with
 it because the Fabric SDK lives under `Microsoft.Fabric`.
 
-Not built: `connections.json` backing (`IConfigBackedConnections`) — the catalog
-lists, adds, removes and sets a default, which is what the editors need; saving a
-Kusto connection to the file is the next step and follows `SsasSession.Config.cs`
-line for line. Also no editor services. The live test wants
-`CLRKERNEL_TEST_KUSTO=https://help.kusto.windows.net` and an Entra sign-in.
+`connections.json` follows `SsasSession.Config.cs` line for line
+(`KustoConnectionConfig`, `KqlSession.Config`, the catalog's
+`IConfigBackedConnections`), and a cell with nothing registered loads the file,
+as SQL does. Editor services: magic lines and the `// connections` comment from
+the directive tables and the session; operators after a `|`; tables and columns
+from one `.show database schema` per connection, cached, and silently empty when
+the cluster is out of reach — completion must never throw; functions and
+keywords with one line of help each, which is also the hover. The live test
+wants `CLRKERNEL_TEST_KUSTO=https://help.kusto.windows.net` and an Entra sign-in.
 
 ## The seam that had to move
 

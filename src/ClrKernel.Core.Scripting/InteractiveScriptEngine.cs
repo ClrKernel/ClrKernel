@@ -23,7 +23,7 @@ using ScriptLogLevel = Dotnet.Script.DependencyModel.Logging.LogLevel;
 
 namespace ClrKernel.Core.Scripting;
 
-public class InteractiveScriptEngine : ICellExecutionContext {
+public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
     private ScriptState<object> _scriptState;
 
     private ScriptOptions _scriptOptions;
@@ -215,6 +215,14 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         NotebookImporter.TryParseDirective(line, out _, out _);
 
     public async Task<object> ExecuteAsync(string statement) {
+        // #!share lines come out first: they hand a value from one language's
+        // session to this cell's, and the cell then runs as if it had been there.
+        var (shared, shares) = ShareDirective.Extract(statement);
+        if (shares.Count > 0) {
+            statement = shared;
+            await ApplySharesAsync(statement, shares).ConfigureAwait(false);
+        }
+
         // A #! selector routes the cell to a registered language. The registry
         // matches longest-selector-first, so #!sql-connect can never be swallowed
         // by #!sql (see CellSelectorOrderingTest).
@@ -282,6 +290,94 @@ public class InteractiveScriptEngine : ICellExecutionContext {
         await EnsureScriptStateAsync().ConfigureAwait(false);
         _scriptState = await _scriptState.ContinueWithAsync(code, _scriptOptions).ConfigureAwait(false);
         _submissions.Add(code);
+    }
+
+    // --- #!share ---------------------------------------------------------------
+
+    private async Task ApplySharesAsync(string statement, IReadOnlyList<ShareDirective> shares) {
+        var match = _languages.Match(statement);
+        var target = match == null ? this : match.Language as ICellVariables
+            ?? throw new InvalidOperationException(
+                $"#!share: {match.Language.DisplayName} cells cannot receive variables.");
+        foreach (var share in shares) {
+            var value = FetchShared(share);
+            if (target == this) {
+                await SetVariableAsync(share.As, value).ConfigureAwait(false);
+            } else {
+                target.SetVariable(share.As, value);
+            }
+        }
+    }
+
+    private object FetchShared(ShareDirective share) {
+        ICellVariables source;
+        string sourceName;
+        if (ShareDirective.IsCSharp(share.From)) {
+            source = this;
+            sourceName = "C#";
+        } else {
+            var language = _languages.ById(share.From)
+                ?? _languages.Languages.FirstOrDefault(l => l.LanguageTags.Contains(share.From, StringComparer.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException($"#!share: no language '{share.From}' in this session.");
+            source = language as ICellVariables
+                ?? throw new InvalidOperationException($"#!share: {language.DisplayName} cells have no variables to share.");
+            sourceName = language.DisplayName;
+        }
+        if (!source.TryGetVariable(share.Name, out var value)) {
+            throw new InvalidOperationException($"#!share: {sourceName} has no variable '{share.Name}'.");
+        }
+        return value;
+    }
+
+    /// <summary>The C# script state's variable of that name (the latest binding), if any (ICellVariables).</summary>
+    public bool TryGetVariable(string name, out object value) {
+        var variable = _scriptState?.Variables.LastOrDefault(v => v.Name == name);
+        value = variable?.Value;
+        return variable != null;
+    }
+
+    /// <summary>Binds a value in the C# script state; a submission, so it needs the async form.</summary>
+    void ICellVariables.SetVariable(string name, object value) =>
+        SetVariableAsync(name, value).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Gives <paramref name="value"/> a name in the C# script state: put on the
+    /// shelf, taken back by a <c>var name = (T)…</c> submission — the one way a
+    /// live object enters a Roslyn script. The static type is the value's runtime
+    /// type where the script can spell it, so members complete afterwards.
+    /// </summary>
+    public async Task SetVariableAsync(string name, object value) {
+        if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name)) {
+            throw new ArgumentException($"'{name}' is not a valid C# identifier.", nameof(name));
+        }
+        var key = SharedValues.Put(value);
+        if (value != null) {
+            EnsureReferenced(value.GetType());
+        }
+        var type = ShareDirective.CSharpTypeName(value?.GetType());
+        await RunScriptAsync(
+            $"{type} {name} = ({type})global::ClrKernel.Core.Primitives.SharedValues.Take(\"{key}\");").ConfigureAwait(false);
+    }
+
+    // The assemblies a shared value's type is made of — FSharp.Core for an F# list
+    // — must be references before the script can spell the type.
+    private void EnsureReferenced(Type type) {
+        if (type == null) {
+            return;
+        }
+        if (type.IsArray) {
+            EnsureReferenced(type.GetElementType());
+            return;
+        }
+        foreach (var argument in type.IsGenericType ? type.GetGenericArguments() : Type.EmptyTypes) {
+            EnsureReferenced(argument);
+        }
+        var location = type.Assembly.IsDynamic ? null : type.Assembly.Location;
+        if (string.IsNullOrEmpty(location)
+            || _scriptOptions.MetadataReferences.Any(r => string.Equals(r.Display, location, StringComparison.OrdinalIgnoreCase))) {
+            return;
+        }
+        _scriptOptions = _scriptOptions.AddReferences(MetadataReference.CreateFromFile(location));
     }
 
     private async Task<object> ExecuteCoreAsync(string statement) {

@@ -25,7 +25,9 @@ public sealed class KqlCellLanguage : ICellLanguage {
 
     public IReadOnlyList<DirectiveDefinition> Directives => KqlDirectives.AllDefinitions;
 
-    public ICellLanguageServices Services => null;
+    public ICellLanguageServices Services => _services ??= new KqlCellLanguageServices(_session);
+
+    private ICellLanguageServices _services;
 
     public IConnectionCatalog Connections => _connections ??= new KqlConnectionCatalog(_session);
 

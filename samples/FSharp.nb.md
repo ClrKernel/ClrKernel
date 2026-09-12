@@ -33,12 +33,34 @@ type Sale = { Region: string; Quarter: int; Revenue: decimal }
   { Region = "APAC"; Quarter = 1; Revenue = 98_250m } ]
 ```
 
-## What it is not
+## Sharing with C#
 
-F# and C# cells are two compilers over two sessions: a `let` here is not visible
-to a `var` there, and vice versa. Hand data across through a file or a database
-if a notebook needs both. `#r "nuget: …"` inside an F# cell is not wired up yet;
-put a package's assembly on disk and `#r` its path.
+F# and C# are two compilers over two sessions, so a `let` is not automatically a
+`var`. `#!share` hands a value across — the same directive a Polyglot notebook
+uses, so a migrated `.dib` keeps working. In an F# cell, pull from C#:
+
+```csharp
+var threshold = 4;
+var names = new List<string> { "ada", "bo" };
+```
+
+```fsharp
+#!share --from csharp threshold
+#!share --from csharp names --as people
+people |> Seq.map (fun s -> s.ToUpper()) |> String.concat ", "
+```
+
+And in a C# cell, pull from F#. The value keeps its runtime type — an F# list is
+an `IEnumerable<int>` to C# — so members complete:
+
+```csharp
+#!share --from fsharp numbers --as xs
+xs.Where(x => x > threshold).Sum()
+```
+
+It is a copy of the reference, not a live link: rebinding on one side does not
+move the other. `#r "nuget: …"` inside an F# cell is not wired up yet; put a
+package's assembly on disk and `#r` its path.
 
 ## Errors
 

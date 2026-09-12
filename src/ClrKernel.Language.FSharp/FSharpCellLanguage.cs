@@ -9,7 +9,7 @@ namespace ClrKernel.Language.FSharp;
 /// trailing expression is displayed the way a C# cell's is; <c>printfn</c> output
 /// streams as console text.
 /// </summary>
-public sealed class FSharpCellLanguage : ICellLanguage {
+public sealed class FSharpCellLanguage : ICellLanguage, ICellVariables {
     private readonly FSharpSession _session = new FSharpSession();
 
     public FSharpSession Session => _session;
@@ -27,7 +27,13 @@ public sealed class FSharpCellLanguage : ICellLanguage {
 
     public IReadOnlyList<string> LanguageTags { get; } = new[] { "fsharp", "fs", "f#" };
 
-    public ICellLanguageServices Services => null;
+    public ICellLanguageServices Services => _services ??= new FSharpCellLanguageServices(_session);
+
+    private ICellLanguageServices _services;
+
+    public bool TryGetVariable(string name, out object value) => _session.TryGetValue(name, out value);
+
+    public void SetVariable(string name, object value) => _session.SetValue(name, value);
 
     public IConnectionCatalog Connections => null;
 

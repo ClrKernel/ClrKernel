@@ -49,6 +49,12 @@ public class ConnectionProviderDescriptorTest {
             "auth", "connectionString", "password");
 
     [TestMethod]
+    public void Kusto_descriptor_covers_its_reader() =>
+        // KustoConnectionConfig.FromNode
+        AssertCovers(ClrKernel.Database.Provider.Kusto.KustoConnectionProvider.Descriptor,
+            "cluster", "server", "url", "database", "auth", "tenant", "tenantId", "clientId", "appId", "secret");
+
+    [TestMethod]
     public void Oracle_descriptor_covers_its_reader() =>
         // Oracle.FromConfig
         AssertCovers(OracleConnectionProvider.Descriptor,

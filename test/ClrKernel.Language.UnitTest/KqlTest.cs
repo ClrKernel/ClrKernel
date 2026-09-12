@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using ClrKernel.Core.Scripting;
 using ClrKernel.Database.Provider.Kusto;
 using ClrKernel.Language.Kql;
@@ -63,6 +65,66 @@ public class KqlTest {
         StringAssert.Contains(missing.Message, "Known: a, b");
         Assert.IsTrue(session.Remove("b"));
         Assert.AreEqual("a", session.DefaultName, "the default moves when its connection goes");
+    }
+
+    [TestMethod]
+    public async Task Completion_and_hover_know_the_directives_connections_and_operators() {
+        var language = new KqlCellLanguage();
+        language.Session.Connect("#!kql-connect --name help --cluster https://help.kusto.windows.net --database Samples");
+        var services = language.Services;
+        var context = new LanguageServiceContext();
+
+        var flags = await services.CompleteAsync("#!kql-connect --", 16, context);
+        Assert.IsTrue(flags.Items.Exists(i => i.Label == "--cluster"), "flags come from the directive table");
+
+        var named = await services.CompleteAsync("#!kql --connections ", 20, context);
+        Assert.IsTrue(named.Items.Exists(i => i.Label == "help"), "connection names fill the role");
+
+        var comment = await services.CompleteAsync("// connections h", 16, context);
+        Assert.IsTrue(comment.Items.Exists(i => i.Label == "help" && i.Kind == "connection"));
+
+        var afterPipe = await services.CompleteAsync("StormEvents\n| summ", 18, context);
+        Assert.IsTrue(afterPipe.Items.Exists(i => i.Label == "summarize"));
+        Assert.IsFalse(afterPipe.Items.Exists(i => i.Label == "where"), "filtered to the word typed");
+        Assert.AreEqual(14, afterPipe.ReplaceStart);
+
+        var function = await services.CompleteAsync("T | where isnot", 15, context);
+        Assert.IsTrue(function.Items.Exists(i => i.InsertText == "isnotempty("));
+
+        var hover = await services.HoverAsync("T | summarize count()", 6);
+        StringAssert.Contains(hover.Markdown, "Aggregates");
+
+        Assert.AreEqual(1, services.Diagnose("#!kql-connect --name x --cluster https://c --database d --client-secret s").Count,
+            "a secret on the line is an editor diagnostic before it is a run-time refusal");
+    }
+
+    [TestMethod]
+    public void A_connection_round_trips_through_connections_json_without_its_secret() {
+        var dir = Path.Combine(Path.GetTempPath(), "clrkernel-kql-config-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try {
+            var file = Path.Combine(dir, "connections.json");
+            using (var session = new KqlSession()) {
+                session.Connect("#!kql-connect --name svc --cluster https://x.kusto.windows.net --database db --tenant t --client-id c --secret KUSTO_SECRET");
+                session.SaveConnectionToConfig("svc", file);
+            }
+            var json = File.ReadAllText(file);
+            StringAssert.Contains(json, "\"Kusto\"");
+            StringAssert.Contains(json, "KUSTO_SECRET");
+            Assert.IsFalse(json.Contains("hunter2"), "no value was ever near the file");
+
+            using var again = new KqlSession();
+            CollectionAssert.AreEqual(new[] { "svc" }, (System.Collections.ICollection)again.LoadFromConfig(dir));
+            var spec = again.All.Single().Spec;
+            Assert.AreEqual("https://x.kusto.windows.net", spec.Cluster);
+            Assert.AreEqual(KustoAuthMode.ClientSecret, spec.Auth);
+            Assert.AreEqual("KUSTO_SECRET", spec.SecretRef);
+            Assert.IsTrue(language_is_config_backed());
+        } finally {
+            Directory.Delete(dir, true);
+        }
+
+        static bool language_is_config_backed() => new KqlCellLanguage().Connections is IConfigBackedConnections;
     }
 
     [TestMethod]

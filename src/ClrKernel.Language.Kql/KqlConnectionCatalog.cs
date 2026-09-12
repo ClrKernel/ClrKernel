@@ -5,7 +5,7 @@ using ClrKernel.Core.Scripting;
 namespace ClrKernel.Language.Kql;
 
 /// <summary>The KQL session's databases, through the provider-neutral catalog contract the editors use.</summary>
-public sealed class KqlConnectionCatalog : IConnectionCatalog {
+public sealed class KqlConnectionCatalog : IConnectionCatalog, IConfigBackedConnections {
     private readonly KqlSession _session;
 
     internal KqlConnectionCatalog(KqlSession session) {
@@ -43,4 +43,20 @@ public sealed class KqlConnectionCatalog : IConnectionCatalog {
     public bool Remove(string name) => _session.Remove(name ?? string.Empty);
 
     public void SetDefault(string name) => _session.SetDefault(name ?? string.Empty);
+
+    public ConnectionConfigStatus Status(string directory) {
+        var path = _session.FindConfigFile(Blank(directory));
+        return new ConnectionConfigStatus {
+            Found = path != null,
+            Path = path,
+            Names = path != null ? _session.ConfigConnectionNames(path) : Array.Empty<string>(),
+        };
+    }
+
+    public IReadOnlyList<string> LoadFromConfig(string directory) => _session.LoadFromConfig(Blank(directory));
+
+    public string SaveToConfig(string name, string filePath) =>
+        _session.SaveConnectionToConfig(name ?? string.Empty, filePath ?? string.Empty);
+
+    private static string Blank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 }

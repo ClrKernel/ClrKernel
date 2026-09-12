@@ -30,8 +30,69 @@ public sealed class FSharpCellException : Exception {
 public sealed class FSharpSession : IDisposable {
     private readonly Lazy<FsiEvaluationSession> _fsi;
 
+    private readonly object _gate = new object();
+
     public FSharpSession() {
         _fsi = new Lazy<FsiEvaluationSession>(Create);
+    }
+
+    /// <summary>A bound value by name, from any earlier cell.</summary>
+    public bool TryGetValue(string name, out object value) {
+        lock (_gate) {
+            var found = _fsi.Value.TryFindBoundValue(name);
+            if (found == null || OptionModule.IsNone(found)) {
+                value = null;
+                return false;
+            }
+            value = found.Value.Value.ReflectionValue;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Binds a value under a name, as if a cell had declared it — how <c>#!share</c>
+    /// lands. Not through <c>AddBoundValue(name, value)</c> directly: fsi
+    /// reconstructs the F# type from the boxed value's runtime type, and in this
+    /// host that type is not the one fsi's own references know — its <c>int</c>
+    /// refuses <c>System.Int32</c>, and a <c>List&lt;string&gt;</c> will not unify with
+    /// <c>seq</c>. So the value rides in an <c>obj[]</c> under a hidden name and a
+    /// <c>let</c> unboxes it with the type spelled in source, which resolves through
+    /// fsi's references and is a runtime cast on the way out.
+    /// </summary>
+    public void SetValue(string name, object value) {
+        lock (_gate) {
+            var carrier = "__clrkernel_share_" + name;
+            _fsi.Value.AddBoundValue(carrier, new object[] { value });
+            ExecuteCore($"let {name} : {FSharpTypeName(value?.GetType())} = unbox {carrier}.[0]");
+        }
+    }
+
+    /// <summary>The F# spelling of a runtime type for a <c>let</c> annotation; <c>obj</c> when it has none a cell could write.</summary>
+    public static string FSharpTypeName(Type type) {
+        if (type == null) {
+            return "obj";
+        }
+        if (type.IsArray) {
+            return FSharpTypeName(type.GetElementType()) + "[" + new string(',', type.GetArrayRank() - 1) + "]";
+        }
+        if (!type.IsVisible || type.IsGenericParameter || type.FullName == null) {
+            return "obj";
+        }
+        if (type.IsGenericType) {
+            var definition = type.GetGenericTypeDefinition();
+            var name = definition.FullName.Replace('+', '.');
+            name = name.Substring(0, name.IndexOf('`'));
+            return name + "<" + string.Join(", ", type.GetGenericArguments().Select(FSharpTypeName)) + ">";
+        }
+        return type.FullName.Replace('+', '.');
+    }
+
+    /// <summary>Parses and type-checks a cell against the session without running it — completion, hover, diagnostics.</summary>
+    public (global::FSharp.Compiler.CodeAnalysis.FSharpParseFileResults Parse, global::FSharp.Compiler.CodeAnalysis.FSharpCheckFileResults Check) Check(string code) {
+        lock (_gate) {
+            var (parse, check, _) = _fsi.Value.ParseAndCheckInteraction(code ?? string.Empty, null);
+            return (parse, check);
+        }
     }
 
     private static FsiEvaluationSession Create() {
@@ -52,6 +113,12 @@ public sealed class FSharpSession : IDisposable {
     /// own diagnostics when it does not compile or raises.
     /// </summary>
     public object Execute(string code) {
+        lock (_gate) {
+            return ExecuteCore(code);
+        }
+    }
+
+    private object ExecuteCore(string code) {
         var (result, diagnostics) = _fsi.Value.EvalInteractionNonThrowing(code ?? string.Empty, null);
         var errors = diagnostics.Where(d => d.Severity == FSharpDiagnosticSeverity.Error).ToList();
         if (errors.Count > 0 || result.IsChoice2Of2) {
