@@ -513,6 +513,47 @@ public static class JobsApi {
                     context, scope, branch, target, path, SerializeCells(target, write.Cells, languages));
             }).RequiresProject(ProjectRole.ProjectMember);
 
+        // A .dib or .ipynb as the .nb.md beside it, on your own branch: the same
+        // conversion as `clrkernel convert`, offered where the file is opened.
+        // Refuses to overwrite — the one thing worse than not converting.
+        scoped.MapPost("/notebooks/convert", async (
+            ProjectRegistry projects, KernelLanguages kernelLanguages,
+            string project, string branch, string path, HttpContext context) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                if (EditableTarget(context, scope, branch, path) is not { } source) {
+                    return TestWriteError(context, scope, branch, path);
+                }
+                if (!File.Exists(source)) {
+                    return Results.NotFound(new { error = $"No such file: {path}" });
+                }
+                var extension = Path.GetExtension(path);
+                if (!NotebookConverter.Convertible.Contains(extension, StringComparer.OrdinalIgnoreCase)) {
+                    return Results.BadRequest(new {
+                        error = $"Only {string.Join(", ", NotebookConverter.Convertible)} convert to .nb.md.",
+                    });
+                }
+                var to = NotebookConverter.DefaultOutput(path).Replace('\\', '/');
+                var target = NotebookTree.SafeResolve(scope.Git.PathFor(branch), to);
+                if (target == null) {
+                    return Results.BadRequest(new { error = "Path is outside the notebooks root." });
+                }
+                if (File.Exists(target)) {
+                    return Results.Conflict(new { error = $"{to} already exists; it was not overwritten.", path = to });
+                }
+                string markdown;
+                try {
+                    markdown = NotebookConverter.ToMarkdown(
+                        File.ReadAllText(source), extension, await kernelLanguages.GetAsync());
+                } catch (Exception e) when (e is NotSupportedException || e is System.Text.Json.JsonException) {
+                    return Results.BadRequest(new { error = e.Message });
+                }
+                SaveToBranch(context, scope, branch, target, to, markdown);
+                return Results.Ok(new { converted = true, path = to, branch });
+            }).RequiresProject(ProjectRole.ProjectMember);
+
         // Renaming, and moving out of the scratch folder — one operation, because
         // they are one operation: a notebook's path is its name.
         scoped.MapPost("/notebooks/move", async (
@@ -2331,7 +2372,17 @@ public static class JobsApi {
     /// </summary>
     private static bool OpensAsCells(string path, IReadOnlyList<LanguageDescriptor> languages) =>
         path.EndsWith(".nb.md", StringComparison.OrdinalIgnoreCase)
+        || ConvertibleExtension(path) != null
         || SingleCellTag(path, languages) != null;
+
+    // A .dib or .ipynb opens as cells and saves back as what it was, so it runs and
+    // edits here without being converted first; /notebooks/convert is the other
+    // choice. An .ipynb's stored outputs do not survive a save — a notebook edited
+    // here is source, and the cells API has no outputs to carry.
+    private static string ConvertibleExtension(string path) =>
+        path.EndsWith(".dib", StringComparison.OrdinalIgnoreCase) ? ".dib"
+        : path.EndsWith(".ipynb", StringComparison.OrdinalIgnoreCase) ? ".ipynb"
+        : null;
 
     private static IReadOnlyList<MarkdownCell> ParseCells(
         string path, string text, IReadOnlyList<LanguageDescriptor> languages) =>
@@ -2340,6 +2391,7 @@ public static class JobsApi {
             // that comes back one newline shorter than it went in is a commit
             // nobody made — which is what invalidates a notebook's promotion evidence.
             ? new[] { new MarkdownCell { Kind = CellKind.Code, Tag = tag, Source = text } }
+            : ConvertibleExtension(path) is { } extension ? NotebookConverter.Cells(text, extension, languages)
             : NotebookMarkdown.Parse(text, languages);
 
     private static string SerializeCells(
@@ -2351,6 +2403,11 @@ public static class JobsApi {
             var newline = File.Exists(path)
                 ? NotebookMarkdown.NewlineOf(File.ReadAllText(path))
                 : "\n";
+            if (ConvertibleExtension(path) is { } extension) {
+                var parsed = cells.Select(c => c.ToCell(languages));
+                var text = extension == ".dib" ? NotebookDib.Serialize(parsed) : NotebookIpynb.Serialize(parsed);
+                return newline == "\n" ? text : text.Replace("\n", newline);
+            }
             return NotebookMarkdown.Serialize(cells.Select(c => c.ToCell(languages)), newline);
         }
         // The one cell, byte for byte. More than one can only come from a client
@@ -2589,26 +2646,40 @@ public static class JobsApi {
                     }),
                 }))).RequiresProject(ProjectRole.ProjectMember);
 
+        // A kernel is handed its branch's secrets as environment variables when it
+        // starts, and a process cannot be handed another one later. So a change
+        // here drops the branch's live sessions: the next cell run starts a kernel
+        // that has the new value. The cost is the kernel's variables, and the reply
+        // says how many notebooks paid it, so the page can say so too. Before this,
+        // a secret set and then used in the same minute was "not found" — reported
+        // as a bug, and it read as one.
         api.MapPut("/{name}", async (
             HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
-            string project, string branch, string name, SecretBody body) =>
+            NotebookSessionManager sessions, string project, string branch, string name, SecretBody body) =>
             await Resolve(context, projects, secrets, project, branch, async (scope, resolved) => {
                 var user = context.CurrentUser();
                 var refusal = await secrets.SetAsync(
                     scope.Project.Slug, resolved, name, body?.Value, user?.Id, user?.DisplayName);
-                return refusal == null
-                    ? Results.Ok(new { name, isSet = true })
-                    : Results.BadRequest(new { error = refusal });
+                if (refusal != null) {
+                    return Results.BadRequest(new { error = refusal });
+                }
+                var restarted = sessions.DropUnder(RootOf(scope, resolved));
+                return Results.Ok(new { name, isSet = true, restarted });
             })).RequiresProject(ProjectRole.ProjectMember);
 
         api.MapDelete("/{name}", async (
             HttpContext context, ProjectRegistry projects, BranchSecrets secrets,
-            string project, string branch, string name) =>
-            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) =>
-                await secrets.DeleteAsync(
-                    scope.Project.Slug, resolved, name, context.CurrentUser()?.DisplayName)
-                    ? Results.NoContent()
-                    : Results.NotFound(new { error = $"No secret called '{name}' on {resolved}." })));
+            NotebookSessionManager sessions, string project, string branch, string name) =>
+            await Resolve(context, projects, secrets, project, branch, async (scope, resolved) => {
+                if (!await secrets.DeleteAsync(
+                        scope.Project.Slug, resolved, name, context.CurrentUser()?.DisplayName)) {
+                    return Results.NotFound(new { error = $"No secret called '{name}' on {resolved}." });
+                }
+                // A kernel that still has the old value is a kernel that still has
+                // the secret; dropping it is what "deleted" means.
+                sessions.DropUnder(RootOf(scope, resolved));
+                return Results.NoContent();
+            })).RequiresProject(ProjectRole.ProjectMember);
     }
 
     /// <summary>

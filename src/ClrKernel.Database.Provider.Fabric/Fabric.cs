@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Identity;
 using Azure.Storage.Files.DataLake;
@@ -44,6 +46,45 @@ public static class Fabric {
     public static FabricConnection WithCredential(TokenCredential credential) {
         ArgumentNullException.ThrowIfNull(credential);
         return new FabricConnection(credential);
+    }
+
+    /// <summary>
+    /// <see cref="FabricReloadRequest"/> under the spelling a <c>.dib</c> notebook's
+    /// reload library used, so those cells paste in unchanged:
+    /// <code>new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Forecast", SourceQuery: "select …")</code>
+    /// The parameter names are the property names on purpose — they are named arguments in that code.
+    /// </summary>
+    public sealed class ReloadRequest : FabricReloadRequest {
+        public ReloadRequest(string schema, string table, string SourceQuery = null, string SegmentFilter = null)
+            : base(schema, table, SourceQuery, SegmentFilter) { }
+    }
+
+    /// <summary>
+    /// A set of <see cref="FabricReloadRequest"/>s to run against a warehouse — the same
+    /// operation as <see cref="FabricWarehouse.ReloadBatch(IEnumerable{FabricReloadRequest}, DataSource, FabricReloadOptions)"/>,
+    /// spelled the way a <c>.dib</c> notebook's reload library spelled it:
+    /// <code>
+    /// var batch = Fabric.ReloadBatch.Create([ new Fabric.ReloadRequest("Mart", "T"), … ]);
+    /// await batch.Run(source, warehouse, new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true });
+    /// </code>
+    /// </summary>
+    public sealed class ReloadBatch {
+        private ReloadBatch(IReadOnlyList<FabricReloadRequest> requests) => Requests = requests;
+
+        public IReadOnlyList<FabricReloadRequest> Requests { get; }
+
+        public static ReloadBatch Create(IEnumerable<FabricReloadRequest> requests) {
+            ArgumentNullException.ThrowIfNull(requests);
+            return new ReloadBatch(requests.ToList());
+        }
+
+        /// <summary>Runs every request: one row per table, a failure does not stop the rest.</summary>
+        public Task<IReadOnlyList<FabricReloadResult>> Run(
+            DataSource source, FabricWarehouse warehouse, FabricReloadOptions options = null,
+            CancellationToken cancellationToken = default) {
+            ArgumentNullException.ThrowIfNull(warehouse);
+            return warehouse.ReloadBatchAsync(Requests, source, options, cancellationToken);
+        }
     }
 }
 

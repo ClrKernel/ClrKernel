@@ -32,10 +32,36 @@ temp. As a side effect two notebooks no longer share one scratch project.
 > configuration.** Verified with `dotnet restore --configfile` on a throwaway project:
 > a repo config *without* `<clear/>` still searched `library-packs, private` — the
 > user-level `nuget.org` was gone, where the hierarchical restore from the same folder
-> listed all three. So a repo `NuGet.Config` replaces the user's rather than adding to
-> it, and has to name `nuget.org` itself. That is Dotnet.Script's choice, not NuGet's
-> default, and it is documented rather than worked around: the alternative is writing
-> a merged config into temp, which would put expanded credentials on disk.
+> listed all three. 0.13.0 shipped that as "list nuget.org yourself", and the first
+> real notebook hit it within the hour: a private package whose dependencies live on
+> nuget.org. A repo `NuGet.Config` adds to the user's everywhere else in .NET, and says
+> `<clear/>` when it means "only these" — the exclusive reading was ours to fix.
+>
+> **How it is fixed, since there is no hook.** `ScriptProjectProvider`'s methods are
+> not virtual and the restorer is internal, so what Dotnet.Script passes cannot be
+> changed. It can be made moot. When a repo config is in reach, the engine generates
+> the same project Dotnet.Script is about to (same path — `CreateProjectForRepl` under
+> the `REPL` folder `GetDependenciesForCode` adds; verified equal) and restores it
+> itself with `-p:RestoreRootConfigDirectory=<notebook dir>`, which is NuGet's own
+> hierarchical discovery from that folder: repo chain, then user, then machine, with
+> `<clear/>` honoured and relative paths resolved against the files they are in. Every
+> package lands in the global packages folder. NuGet consults that folder before any
+> source, so Dotnet.Script's exclusive restore that follows finds all of it and asks
+> no feed for anything. Removing the pre-restore fails both NuGet.Config tests. Cost:
+> one incremental restore per `#r "nuget:"` cell, only when a repo config exists.
+>
+> The merged-file alternative was rejected twice over — it would write expanded
+> credentials into temp, and `AddItem.Value` in NuGet.Configuration expands `%ENV%` on
+> read, so a faithful copy is not available through the public API.
+
+> **CI found the runtime packs.** `Clear_means_only_these_sources` restores into
+> an empty cache; a RID-specific restore also wants `Microsoft.NETCore.App.Runtime.<rid>`,
+> `.Host.<rid>` and the AspNetCore runtime pack. An SDK bundles the packs for its
+> own framework, so a test host that rolled forward to the SDK's runtime never
+> downloads them — and a runner with the 8.0 runtime installed targets net8.0 and
+> must, from nuget.org, which `<clear/>` forbids. Correct behaviour (it is what any
+> `dotnet restore -r` does under `<clear/>`); the test warms the cache through the
+> additive config first, and the README says a `<clear/>` feed has to carry them.
 
 `%NAME%` expansion in values is NuGet's own and was verified with a folder feed
 addressed as `%CLRKERNEL_TEST_FEED%`. That is the whole credentials story: the repo
@@ -77,7 +103,8 @@ handoff and its own tests.
 
 ## Not built
 
-- **Merging the repo config with the user's.** See above; the cost is a secret on disk.
+- **Skipping the pre-restore when the cell's packages are already in the cache.** It
+  is incremental and quick; the check would cost about what it saves.
 - **A `NuGet.Config` at the workspace root** (beside `.repo.git`, above the worktrees).
   It would be found by the walk from every branch, but it is unversioned and not
   promotable, and nothing stops somebody putting one there. Left as is.

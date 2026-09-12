@@ -434,16 +434,34 @@ public sealed class GitService {
             var oldBranch = BranchForUser(from);
             var newBranch = BranchForUser(to);
 
-            if (Directory.Exists(newPath) || HasBranch(newBranch)) {
+            // A collision is both sides existing: somebody else's branch or folder
+            // under the new name while this person's is still under the old one.
+            // One side already moved is not a collision — it is this rename, half
+            // done by an earlier attempt that failed between its two steps, and
+            // the right answer is to finish it. Refusing it as "already exists"
+            // is what left a Windows server with a worktree on a branch the
+            // account was no longer named for.
+            var oldWorktree = Directory.Exists(oldPath);
+            var oldBranchExists = HasBranch(oldBranch);
+            if ((Directory.Exists(newPath) && oldWorktree) || (HasBranch(newBranch) && oldBranchExists)) {
                 return $"This project already has a branch or worktree called '{to}'.";
             }
-            if (HasBranch(oldBranch)) {
+            // The worktree first, because it is the step that can be refused: on
+            // Windows a directory with a running kernel in it — a notebook open in
+            // VS Code on this branch — cannot be moved. Refused, the branch has not
+            // been touched and there is nothing to undo; the other order left the
+            // branch renamed and the folder not.
+            if (oldWorktree) {
+                var move = TryRun(BareRepoPath, "worktree", "move", oldPath, newPath);
+                if (move.Code != 0) {
+                    return $"Could not move the worktree for '{from}': {Truncate(move.Stderr.Trim(), 300)} "
+                        + "If a notebook on this branch is open — in VS Code, or here — close it and try again.";
+                }
+            }
+            if (oldBranchExists) {
                 // Renames the branch even where a worktree has it checked out — git
                 // rewrites that worktree's HEAD as part of the rename.
                 Run(BareRepoPath, "branch", "-m", oldBranch, newBranch);
-            }
-            if (Directory.Exists(oldPath)) {
-                Run(BareRepoPath, "worktree", "move", oldPath, newPath);
             }
             _logger.LogInformation(
                 "Renamed {Old} to {New} in {Workspace}.", oldBranch, newBranch, _workspace);
@@ -814,8 +832,11 @@ public sealed class GitService {
         if (!Directory.Exists(worktree)) {
             return new BranchStanding(false, 0, 0, Array.Empty<string>(), Array.Empty<string>());
         }
+        // HEAD, not the branch the handle implies: they are the same thing by
+        // construction, and when a half-done rename has made them differ, HEAD is
+        // the one that is actually there. The other spelling threw on every poll.
         var counts = Run(worktree, "rev-list", "--left-right", "--count",
-            $"{BranchForUser(handle)}...{TestBranch}").Trim().Split('\t', ' ');
+            $"HEAD...{TestBranch}").Trim().Split('\t', ' ');
         var behindCount = counts.Length > 1 && int.TryParse(counts[^1], out var b) ? b : 0;
         return new BranchStanding(
             Dirty: Run(worktree, "status", "--porcelain").Trim().Length > 0,
@@ -827,7 +848,7 @@ public sealed class GitService {
             // and call it something test had moved on.
             BehindFiles: behindCount == 0
                 ? Array.Empty<string>()
-                : Run(worktree, "diff", "--name-only", $"{BranchForUser(handle)}...{TestBranch}")
+                : Run(worktree, "diff", "--name-only", $"HEAD...{TestBranch}")
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                     .Select(f => f.Trim())
                     .Where(f => f.Length > 0)

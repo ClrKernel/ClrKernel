@@ -64,6 +64,61 @@ public class NotebookConverterTest {
         Assert.IsFalse(markdown.Contains("#!sql"), markdown);
     }
 
+    /// <summary>A real .dib starts with Polyglot's kernelInfo header; it is not a cell.</summary>
+    [TestMethod]
+    public void The_meta_header_is_dropped_and_a_dib_round_trips_through_its_writer() {
+        const string dib = """
+            #!meta
+
+            {"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
+
+            #!markdown
+
+            # Title
+
+            #!csharp
+
+            var x = 1;
+
+            #!sql
+
+            SELECT 1
+
+            """;
+        var cells = NotebookConverter.Cells(dib, ".dib", Languages());
+        Assert.AreEqual(3, cells.Count, "meta is not a cell");
+        Assert.AreEqual(CellKind.Markdown, cells[0].Kind);
+        Assert.AreEqual("sql", cells[2].Tag);
+
+        var written = NotebookDib.Serialize(cells);
+        StringAssert.StartsWith(written, "#!meta\n");
+        StringAssert.Contains(written, "#!markdown\n\n# Title\n\n#!csharp\n\nvar x = 1;\n\n#!sql\n\nSELECT 1\n");
+        var again = NotebookConverter.Cells(written, ".dib", Languages());
+        CollectionAssert.AreEqual(
+            cells.Select(c => (c.Kind, c.Tag, c.Source)).ToList(),
+            again.Select(c => (c.Kind, c.Tag, c.Source)).ToList());
+    }
+
+    [TestMethod]
+    public void An_ipynb_round_trips_through_its_writer_with_the_selector_as_the_tag() {
+        var cells = new[] {
+            MarkdownCell.Markdown("# Title"),
+            MarkdownCell.Code("csharp", "var x = 1;\nx"),
+            MarkdownCell.Code("zsh", "echo hi"),
+        };
+        var written = NotebookIpynb.Serialize(cells);
+        var json = System.Text.Json.Nodes.JsonNode.Parse(written);
+        Assert.AreEqual("clrkernel", json["metadata"]["kernelspec"]["name"].GetValue<string>());
+        Assert.AreEqual("markdown", json["cells"][0]["cell_type"].GetValue<string>());
+        Assert.AreEqual(0, json["cells"][1]["outputs"].AsArray().Count, "the editing form has no outputs");
+        Assert.AreEqual("#!zsh\n", json["cells"][2]["source"][0].GetValue<string>(), "a non-C# cell leads with its selector");
+
+        var again = NotebookConverter.Cells(written, ".ipynb", Languages());
+        CollectionAssert.AreEqual(
+            cells.Select(c => (c.Kind, c.Tag, c.Source)).ToList(),
+            again.Select(c => (c.Kind, c.Tag, c.Source)).ToList());
+    }
+
     /// <summary>
     /// The one that pays for the whole "tag as written" rule: `zsh` and `bash` are
     /// the same language and different shells, so a converter that normalised them

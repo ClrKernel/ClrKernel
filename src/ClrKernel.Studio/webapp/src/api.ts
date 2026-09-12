@@ -660,8 +660,10 @@ export const api = {
   secrets: (slug: string, branch: string) =>
     request<{ branch: string; canPersist: boolean; secrets: SecretEntry[] }>(
       `${secretsIn(slug, branch)}/`),
+  /** `restarted` is how many open notebooks on that branch lost their kernel to
+   *  get the new value — their next run starts one that has it. */
   setSecret: (slug: string, branch: string, name: string, value: string) =>
-    request<{ name: string }>(
+    request<{ name: string; isSet: boolean; restarted: number }>(
       `${secretsIn(slug, branch)}/${encodeURIComponent(name)}`,
       { method: 'PUT', body: JSON.stringify({ value }) }),
   deleteSecret: (slug: string, branch: string, name: string) =>
@@ -780,6 +782,12 @@ export const api = {
     request<{ saved: boolean; branch: string; problems: ApiJobsProblem[] | null }>(
       `${scope('mine')}/notebooks/content?path=${encodeURIComponent(path)}`,
       { method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' }, keepalive },
+    ),
+  /** A .dib or .ipynb as the .nb.md beside it, on your branch. 409 when that file exists. */
+  convertNotebook: (path: string) =>
+    request<{ converted: boolean; path: string; branch: string }>(
+      `${scope('mine')}/notebooks/convert?path=${encodeURIComponent(path)}`,
+      { method: 'POST' },
     ),
   /** Renames it, or moves it out of the scratch folder — the same operation. */
   moveNotebook: (path: string, to: string) =>

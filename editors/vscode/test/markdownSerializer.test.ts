@@ -166,3 +166,41 @@ describe('shell cells', () => {
         expect(write(second.cells as NotebookCellData[])).toBe(md);
     });
 });
+
+describe('.dib notebooks', () => {
+    const dib = '#!meta\n\n{"kernelInfo":{"defaultKernelName":"csharp","items":[]}}\n\n'
+        + '#!markdown\n\n# Title\n\n#!csharp\n\nvar x = 1;\n\n#!sql\n\nSELECT 1\n\n#!zsh\n\necho hi\n\n#!kql\n\nT | take 1\n';
+
+    it('is told apart from markdown by its first line', () => {
+        expect(MarkdownNotebookSerializer.isDib(dib)).toBe(true);
+        expect(MarkdownNotebookSerializer.isDib('\n\n#!csharp\n\nvar x = 1;\n')).toBe(true);
+        expect(MarkdownNotebookSerializer.isDib('# Title\n\n```csharp\nvar x = 1;\n```\n')).toBe(false);
+        expect(MarkdownNotebookSerializer.isDib('#!sql --connections x\nselect 1')).toBe(false);
+    });
+
+    it('reads sections as cells, drops the meta header, and keeps unknown kernels under their tag', () => {
+        const nb = read(dib);
+        expect(nb.metadata).toEqual({ format: 'dib' });
+        expect(nb.cells.map((c) => [c.kind, c.languageId, c.value])).toEqual([
+            [NotebookCellKind.Markup, 'markdown', '# Title'],
+            [NotebookCellKind.Code, 'csharp-script', 'var x = 1;'],
+            [NotebookCellKind.Code, 'clr-sql', 'SELECT 1'],
+            [NotebookCellKind.Code, 'shellscript', '#!zsh\necho hi'],
+            [NotebookCellKind.Code, 'kql', 'T | take 1'],
+        ]);
+        // kql is a language now; a section in one the kernel still lacks keeps its tag in metadata.
+        expect(nb.cells[4].metadata).toBeUndefined();
+        expect(read('#!javascript\n\nconsole.log(1)\n').cells[0].metadata).toEqual({ dibTag: 'javascript' });
+    });
+
+    it('writes a .dib back as a .dib, and converts to markdown on request', () => {
+        const nb = read(dib);
+        const back = new TextDecoder().decode(serializer.serializeNotebook(nb as never));
+        expect(back).toBe('#!meta\n\n{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}\n\n'
+            + '#!markdown\n\n# Title\n\n#!csharp\n\nvar x = 1;\n\n#!sql\n\nSELECT 1\n\n#!zsh\n\necho hi\n\n#!kql\n\nT | take 1\n');
+        // A kernel this one does not have keeps its tag on the fence: the block is
+        // prose to ClrKernel rather than C# that fails to compile.
+        expect(MarkdownNotebookSerializer.toMarkdown(nb as never)).toBe(
+            '# Title\n\n```csharp\nvar x = 1;\n```\n\n```sql\nSELECT 1\n```\n\n```zsh\n#!zsh\necho hi\n```\n\n```kql\nT | take 1\n```\n');
+    });
+});

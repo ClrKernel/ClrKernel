@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using ClrKernel.Core.Primitives;
 
@@ -23,10 +24,15 @@ public static class HtmlFormatters {
             _registered = new[] {
                 // Arbitrary objects: the rich render (property tables, sequences,
                 // type badge) that trailing cell values have always had.
+                // A DataTable is not IEnumerable and overrides ToString (its name,
+                // usually blank), so the rich render showed an empty span for it —
+                // it is a table, so it takes the grid.
                 DisplayFormatters.Register<DisplayObject, DisplayText>(o =>
-                    new DisplayText(ResultFormatter.Render(o.Value).Text)),
+                    o.Value is DataTable ? TableExtractor.Extract(o).ToText()
+                    : new DisplayText(ResultFormatter.Render(o.Value).Text)),
                 DisplayFormatters.Register<DisplayObject, DisplayHtml>(o =>
-                    new DisplayHtml(ResultFormatter.Render(o.Value).Html)),
+                    o.Value is DataTable ? TableExtractor.Extract(o).ToHtml()
+                    : new DisplayHtml(ResultFormatter.Render(o.Value).Html)),
                 DisplayFormatters.Register<DisplayObject, DisplayTable>(TableExtractor.Extract),
 
                 DisplayFormatters.Register<DisplayConsoleText, DisplayText>(c =>

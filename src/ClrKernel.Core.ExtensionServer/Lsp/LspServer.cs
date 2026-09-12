@@ -941,7 +941,12 @@ public sealed class LspServer {
             return new {
                 cellId,
                 status = "error",
-                error = new { name = e.GetType().Name, message = e.Message, stack = e.StackTrace },
+                // Redacted like the display path: this message reaches a notification.
+                error = new {
+                    name = e.GetType().Name,
+                    message = SecretRedaction.Redact(e.Message),
+                    stack = SecretRedaction.Redact(e.StackTrace),
+                },
             };
         } finally {
             _currentCellId = null;

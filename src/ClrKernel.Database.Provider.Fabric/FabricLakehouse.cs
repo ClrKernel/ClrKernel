@@ -20,7 +20,10 @@ public sealed class FabricLakehouse {
     }
 
     // OneLake file path inside the lakehouse's Files area, e.g. "Staging-BulkInsert/x.parquet".
-    internal string FilesPath(string relativePath) => $"{Id}.Lakehouse/Files/{Trim(relativePath)}";
+    // Addressed by id: "<itemId>/Files/...". The ".Lakehouse" suffix belongs to the
+    // friendly-name form only ("<name>.Lakehouse/Files"); on an id OneLake tries to read
+    // it as a name and fails with FriendlyNameSupportDisabled (400).
+    internal string FilesPath(string relativePath) => $"{Id}/Files/{Trim(relativePath)}";
 
     /// <summary>A DataLake file client for a path under this lakehouse's Files area.</summary>
     internal DataLakeFileClient FileClient(string relativePath) {

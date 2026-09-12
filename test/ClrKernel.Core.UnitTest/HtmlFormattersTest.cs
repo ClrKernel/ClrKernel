@@ -96,6 +96,20 @@ public class HtmlFormattersTest {
         StringAssert.Contains(success, "#1a7f37", "success tone is green");
     }
 
+    /// <summary>
+    /// A trailing <c>DataTable</c> — what a provider's <c>Query</c> hands back — used to
+    /// render as an empty span: not IEnumerable, and ToString is its (blank) name.
+    /// </summary>
+    [TestMethod]
+    public void ATrailingDataTableRendersAsTheGrid() {
+        var source = new System.Data.DataTable();
+        source.Columns.Add("Name", typeof(string));
+        source.Rows.Add("Ada");
+        var value = new DisplayObject(source);
+        StringAssert.Contains(value.ToHtml().Html, "Ada");
+        StringAssert.Contains(value.ToText().Text, "Ada");
+    }
+
     [TestMethod]
     public void RegisterDefaultsIsIdempotent() {
         var first = HtmlFormatters.RegisterDefaults();

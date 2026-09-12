@@ -123,13 +123,7 @@ public static class WarehouseTableDefinition {
         }
     }
 
-    internal static string Quote(string name) => "[" + name.Replace("]", "]]") + "]";
+    internal static string Quote(string name) => TableName.QuotePart(name);
 
-    internal static string QuoteTable(string name) {
-        var parts = name.Replace("[", "").Replace("]", "").Split('.');
-        for (var i = 0; i < parts.Length; i++) {
-            parts[i] = Quote(parts[i]);
-        }
-        return string.Join(".", parts);
-    }
+    internal static string QuoteTable(string name) => TableName.Quote(name);
 }

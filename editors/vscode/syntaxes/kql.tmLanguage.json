@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "KQL",
+  "scopeName": "source.kql",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#directives" },
+    { "include": "#commands" },
+    { "include": "#operators" },
+    { "include": "#keywords" },
+    { "include": "#functions" },
+    { "include": "#pipe" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [{ "name": "comment.line.double-slash.kql", "match": "//.*$" }]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.kql", "begin": "@?\"", "end": "\"", "patterns": [{ "name": "constant.character.escape.kql", "match": "\\\\." }] },
+        { "name": "string.quoted.single.kql", "begin": "@?'", "end": "'", "patterns": [{ "name": "constant.character.escape.kql", "match": "\\\\." }] },
+        { "name": "string.quoted.triple.kql", "begin": "```", "end": "```" }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.kql",
+      "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?(d|h|m|s|ms|microsecond|tick)?\\b"
+    },
+    "directives": {
+      "name": "keyword.control.directive.kql",
+      "match": "^\\s*#!\\S+"
+    },
+    "commands": {
+      "name": "keyword.control.command.kql",
+      "match": "^\\s*\\.(show|create|alter|drop|ingest|set|append|rename|clear|execute|delete|undo)\\b[^\\n]*"
+    },
+    "operators": {
+      "name": "keyword.operator.tabular.kql",
+      "match": "(?<=\\|\\s*)\\b(where|filter|summarize|project|project-away|project-keep|project-rename|project-reorder|extend|take|limit|top|top-nested|sort|order|distinct|count|join|union|lookup|mv-expand|mv-apply|parse|parse-where|render|serialize|make-series|evaluate|invoke|as|range|print|search|find|getschema|sample|sample-distinct|scan|fork|facet|partition|reduce|consume|externaldata|materialize)\\b"
+    },
+    "keywords": {
+      "name": "keyword.control.kql",
+      "match": "\\b(let|set|by|on|kind|asc|desc|nulls|first|last|between|in|!in|has|!has|has_any|has_all|contains|!contains|startswith|!startswith|endswith|!endswith|matches|regex|and|or|not|true|false|null|inner|outer|leftouter|rightouter|fullouter|leftanti|rightanti|leftsemi|rightsemi|innerunique|step|from|to|default|with|datatable|toscalar|typeof|bool|int|long|real|decimal|string|datetime|timespan|dynamic|guid)\\b"
+    },
+    "functions": {
+      "name": "support.function.kql",
+      "match": "\\b(count|countif|dcount|dcountif|sum|sumif|avg|avgif|min|minif|max|maxif|percentile|percentiles|stdev|variance|make_list|make_set|make_bag|arg_max|arg_min|any|take_any|bin|floor|round|ago|now|datetime_add|datetime_diff|startofday|startofweek|startofmonth|startofyear|endofday|endofmonth|format_datetime|format_timespan|tostring|toint|tolong|todouble|todecimal|todatetime|totimespan|tobool|todynamic|parse_json|strcat|strlen|substring|split|replace_string|replace_regex|extract|extract_all|tolower|toupper|trim|trim_start|trim_end|indexof|isempty|isnotempty|isnull|isnotnull|iff|iif|case|coalesce|array_length|bag_keys|pack|pack_array|series_stats|hash|rand|geo_distance_2points)\\b(?=\\s*\\()"
+    },
+    "pipe": {
+      "name": "keyword.operator.pipe.kql",
+      "match": "\\|"
+    }
+  }
+}

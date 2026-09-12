@@ -39,6 +39,8 @@
     <ProjectReference Include="../ClrKernel.Language.Sql/ClrKernel.Language.Sql.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Dax/ClrKernel.Language.Dax.csproj" />
     <ProjectReference Include="../ClrKernel.Language.Python/ClrKernel.Language.Python.csproj" />
+    <ProjectReference Include="../ClrKernel.Language.FSharp/ClrKernel.Language.FSharp.csproj" />
+    <ProjectReference Include="../ClrKernel.Language.Kql/ClrKernel.Language.Kql.csproj" />
     <ProjectReference Include="../ClrKernel.Database.Provider.Fabric/ClrKernel.Database.Provider.Fabric.csproj" />
     <!-- PostgreSQL ships in the kernel rather than being #r'd per notebook: it is a
          first-party provider, and a `#!ansisql` cell pointed at a Postgres

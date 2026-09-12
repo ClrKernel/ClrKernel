@@ -12,7 +12,7 @@ can open in VS Code or Jupyter.
 running, what failed, and what the crons will fire next](images/studio/dashboard.png)
 
 > Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.13.x as "try it on real notebooks and tell us
+> production soak time yet — treat 0.14.x as "try it on real notebooks and tell us
 > what breaks".
 
 ## Install
@@ -650,10 +650,13 @@ that when it reads the file — and set `FEED_PAT` on each branch here. The feed
 is declared once in the repo; which token signs in is the branch's business, and
 none of it is in the file.
 
-A kernel is handed its branch's secrets **when it starts**. A notebook already
-open keeps the set it started with, so after adding one, restart that notebook's
-kernel — the cell would otherwise fail saying the secret is missing, which is
-true of the kernel and not of the branch.
+A kernel is handed its branch's secrets **when it starts**, and a running process
+cannot be handed another one. So setting or deleting a secret restarts the branch's
+open notebooks: their next cell run starts a kernel that has the new value, and the
+Secrets page says how many were restarted. What that costs is the kernel's
+variables — re-run the cells that made them. (Before 0.14.0 nothing restarted, and
+a secret set and used in the same minute was "not found": true of the kernel, not
+of the branch, and no help to anybody.)
 
 An environment's secrets belong to the project's admins. A personal branch's
 belong to whoever owns the branch, and to nobody else — a Server Admin can delete
@@ -882,6 +885,9 @@ everything keeps working. `gitEnabled: true` is written to settings.json.
 
 > **Upgrading from 0.9**, where the editable branch was called `dev`: the first start
 > renames the branch and the worktree in place and rewrites the run history to match.
+> Renaming an account moves that person's worktree the same way, and on Windows a
+> folder with a running kernel in it will not move: close their notebooks — in VS
+> Code too — first. A refusal says so and changes nothing.
 > Nothing is copied and no commits move. A configured remote keeps its old `dev`
 > branch — delete it there yourself when you are ready; a shared remote is not this
 > process's to prune.
@@ -1062,8 +1068,14 @@ back from. They are readings of one file, not permissions: read-only comes
 from the branch, and every one of them is read-only on a branch that is not
 yours. Switching writes what you were editing first and then re-reads the file,
 because the cells and the text go stale the moment you edit through the other
-one. A file that does not parse into cells — an `.ipynb`, a `.csv` — has no Notebook
-view and opens at Source. A `*.jobs.yaml` opens at its **Overview** — the
+one. A file that does not parse into cells — a `.csv`, a `.json` — has no Notebook
+view and opens at Source. A Polyglot `.dib` or a Jupyter `.ipynb` does parse: it
+opens as cells, runs as it is, saves back as what it was (an `.ipynb` keeps its
+cells and not its stored outputs — a notebook edited here is source), and on your
+own branch offers **Convert to .nb.md**, which writes the `.nb.md` beside it and
+leaves the original for you to delete.
+
+![A Jupyter notebook open as cells, with the banner offering to convert it to the .nb.md beside it](images/studio/editor-convert.png) A `*.jobs.yaml` opens at its **Overview** — the
 form is what the file is for, and the YAML tab is the escape hatch beside it — and
 a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
 read.

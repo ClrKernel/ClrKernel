@@ -31,17 +31,31 @@ def sh(args, **kw):
     subprocess.run(args, check=True, cwd=REPO, **kw)
 
 
+# The kernel Studio spawns for every cell and every run. Built from this tree
+# and passed explicitly, because without `--clrkernel` Studio finds the one on
+# PATH — the *installed* tool, which is whatever was last published. Every
+# browser check that ran a cell was running the release kernel, and a change
+# to the kernel (a masked secret, say) could not fail a check here at all.
+KERNEL = os.path.join(REPO, "src", "ClrKernel", "bin", "Debug", "net8.0",
+                      "ClrKernel.exe" if os.name == "nt" else "ClrKernel")
+
+
 def build():
     """The web app first: wwwroot is copied into the output at *build* time, so
     building the C# before the bundle packages the previous one."""
     sh(["./build.sh", "Web"])
+    sh(["dotnet", "build", os.path.join(REPO, "src", "ClrKernel", "ClrKernel.csproj"),
+        "-f", "net8.0", "--nologo", "-v", "q"])
     sh(["dotnet", "build", os.path.join(STUDIO, "ClrKernel.Studio.csproj"),
         "-c", "Debug", "-f", "net8.0"])
 
 
 def studio(*args, data, notebooks):
+    if not os.path.exists(KERNEL):
+        raise SystemExit(f"no kernel built at {KERNEL} — run without --no-build once")
     sh(["dotnet", "run", "--project", STUDIO, "-f", "net8.0", "--no-build", "--",
-        *args, "--notebooks", notebooks, "--data-dir", data, "--store", "sqlite"])
+        *args, "--notebooks", notebooks, "--data-dir", data, "--store", "sqlite",
+        "--clrkernel", KERNEL])
 
 
 def wait_for(url, timeout=90):
@@ -118,10 +132,12 @@ def serving(nb, data, port, env=None, allow_stale=False):
     assert_fresh_bundle(allow_stale)
     base = f"http://localhost:{port}"
     log = open(os.path.join(data, "serve.log"), "w")
+    if not os.path.exists(KERNEL):
+        raise SystemExit(f"no kernel built at {KERNEL} — run without --no-build once")
     server = subprocess.Popen(
         ["dotnet", "run", "--project", STUDIO, "-f", "net8.0", "--no-build", "--",
          "serve", "--notebooks", nb, "--data-dir", data, "--store", "sqlite",
-         "--urls", base],
+         "--urls", base, "--clrkernel", KERNEL],
         cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
         env={**os.environ, **(env or {})}, start_new_session=True)
     try:

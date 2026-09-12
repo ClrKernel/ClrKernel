@@ -147,6 +147,52 @@ public class GitServiceTest {
             "and it can still push");
     }
 
+    /// <summary>
+    /// What a Windows server did: the branch renamed, then the worktree refused
+    /// to move because a notebook on it was open in VS Code — a 500, and a branch
+    /// the account was no longer named for. The move goes first now, and a
+    /// refusal leaves nothing to undo.
+    /// </summary>
+    [TestMethod]
+    public void A_worktree_that_will_not_move_is_a_refusal_and_the_branch_stays() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        // Something in the way of the new path that is not a worktree — what a
+        // locked directory looks like to `worktree move`: a target it cannot take.
+        File.WriteAllText(_git.UserPath("ada-lovelace"), "in the way");
+
+        var refusal = _git.RenameUser(_ada, "ada-lovelace");
+        Assert.IsNotNull(refusal, "a move that fails is a refusal, not an exception");
+        StringAssert.Contains(refusal, "close it and try again");
+        StringAssert.Contains(_git.RunForTests("branch", "--list", GitService.BranchForUser(_ada)), _ada,
+            "the branch was not renamed ahead of the move");
+        Assert.IsTrue(Directory.Exists(_git.UserPath(_ada)), "and the worktree is where it was");
+    }
+
+    /// <summary>
+    /// The half state the old order left behind: branch renamed, folder not. A
+    /// second attempt used to be refused as "already exists"; it is the same
+    /// rename, and it finishes.
+    /// </summary>
+    [TestMethod]
+    public void A_half_done_rename_is_finished_rather_than_refused() {
+        _git.Init();
+        _git.EnsureUserWorktree(_ada);
+        WriteUser(_ada, "wip.nb.md", "mine\n");
+        _git.RunForTests("branch", "-m", GitService.BranchForUser(_ada), GitService.BranchForUser("ada-lovelace"));
+
+        // Meanwhile the standing poll must not take the server down: the worktree
+        // is on a branch the handle no longer names, and HEAD is what is there.
+        var standing = _git.StandingOf(_ada);
+        Assert.IsTrue(standing.Dirty, "standing reads the worktree's HEAD, whatever it is called");
+
+        Assert.IsNull(_git.RenameUser(_ada, "ada-lovelace"), "finished, not refused");
+        Assert.IsTrue(Directory.Exists(_git.UserPath("ada-lovelace")));
+        Assert.IsFalse(Directory.Exists(_git.UserPath(_ada)));
+        StringAssert.Contains(_git.RunForTests("branch", "--list", GitService.BranchForUser("ada-lovelace")), "ada-lovelace");
+        Assert.AreEqual("mine\n", File.ReadAllText(Path.Combine(_git.UserPath("ada-lovelace"), "wip.nb.md")));
+    }
+
     [TestMethod]
     public void Renaming_is_idempotent_and_refuses_to_land_on_somebody_else() {
         _git.Init();

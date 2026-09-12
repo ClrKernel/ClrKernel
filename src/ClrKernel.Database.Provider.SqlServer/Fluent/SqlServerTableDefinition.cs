@@ -98,13 +98,7 @@ internal static class SqlServerTableDefinition {
         }
     }
 
-    private static string Quote(string name) => "[" + name.Replace("]", "]]") + "]";
+    private static string Quote(string name) => TableName.QuotePart(name);
 
-    private static string QuoteTable(string name) {
-        var parts = name.Replace("[", "").Replace("]", "").Split('.');
-        for (var i = 0; i < parts.Length; i++) {
-            parts[i] = Quote(parts[i]);
-        }
-        return string.Join(".", parts);
-    }
+    private static string QuoteTable(string name) => TableName.Quote(name);
 }

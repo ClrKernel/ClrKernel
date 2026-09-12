@@ -43,6 +43,8 @@ public static class CellLanguages {
             },
             () => new[] { new DaxCellLanguage() },
             () => new[] { new Language.Python.PythonCellLanguage() },
+            () => new[] { new Language.FSharp.FSharpCellLanguage() },
+            () => new[] { new Language.Kql.KqlCellLanguage() },
         });
         CellLanguageRegistry.DefaultContributions = new[] {
             // Fabric is reachable from C# cells (Fabric.Connect() -> warehouse
@@ -66,6 +68,7 @@ public static class CellLanguages {
             Database.Provider.AnalysisServices.SsasConnectionProvider.Descriptor,
             Database.Provider.Fabric.FabricConnectionProvider.Descriptor,
             Database.Provider.Postgres.PostgresConnectionProvider.Descriptor,
+            Database.Provider.Kusto.KustoConnectionProvider.Descriptor,
             Language.Shell.SshConnectionProvider.Descriptor,
             Language.PowerShell.PwshConnectionProvider.Descriptor,
         };

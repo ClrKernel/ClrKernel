@@ -14,8 +14,8 @@ when you want it to start diffing like the rest of your repo.
 
 C# cells are evaluated with Roslyn's scripting engine
 ([Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting)),
-and a cell can also be **SQL, DAX, Python, PowerShell, shell (bash/zsh/sh), HTTP,
-or Mermaid** in the same session — one kernel, one set of variables. Cell languages
+and a cell can also be **SQL, DAX, KQL, F#, Python, PowerShell, shell (bash/zsh/sh),
+HTTP, or Mermaid** in the same session — one kernel, one set of variables. Cell languages
 are registered rather than built in, so a package can add one
 ([below](#extending-the-kernel-your-own-cell-language)).
 
@@ -95,14 +95,17 @@ and can `#!import` further files.
 ### Private feeds: a `NuGet.Config` beside the notebooks
 
 `#r "nuget:"` restores through the nearest `NuGet.Config` — the notebook's own
-folder, or any folder above it — the same search `dotnet restore` makes in a
-repo. Put one at the root and every notebook under it sees the feed:
+folder, or any folder above it — with the same semantics `dotnet restore` has in
+a repo: the file **adds** to your user-level configuration, so nuget.org is still
+there for a private package's dependencies, and it says `<clear/>` when it means
+"only these" — in which case the feed has to serve the SDK's runtime packs too
+(`Microsoft.NETCore.App.Runtime.*`), as an Azure Artifacts feed with a nuget.org
+upstream does; a restore is RID-specific and wants them the first time on a
+machine. Put one at the root and every notebook under it sees the feed:
 
 ```xml
 <configuration>
   <packageSources>
-    <clear />
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
     <add key="internal" value="https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json" />
   </packageSources>
   <packageSourceCredentials>
@@ -114,10 +117,11 @@ repo. Put one at the root and every notebook under it sees the feed:
 </configuration>
 ```
 
-Two things about it. **The file is the whole configuration** when it is there —
-it replaces the user-level `NuGet.Config` rather than adding to it, so list
-`nuget.org` yourself if you still want it. And **credentials are environment
-references**, never values: NuGet expands `%NAME%` when it reads the file, so
+Two things about it. **A folder feed's path is relative to the file**, so a
+feed committed in the repo (`value="packages"`) works on every machine and in
+Studio's containers, where an absolute path from your Mac does not. And
+**credentials are environment references**, never values: NuGet expands
+`%NAME%` when it reads the file, so
 `CLRKERNEL_SECRET_FEED_PAT` in the environment is what signs in — which is the
 same variable the kernel's own [secret chain](docs/secrets.md) reads, and the one
 Studio sets per branch. Nothing secret is in the repo.
@@ -208,6 +212,38 @@ the interpreter and forgets everything in it.
 Completion, hover and signature help come from the live interpreter, so they know
 the objects a cell actually made rather than what a static analyser guessed. See
 [samples/Python.nb.md](samples/Python.nb.md).
+
+### F# cells
+
+`#!fsharp` (or `#!fs`) cells run in one F# Interactive session per notebook, so a
+`let` in one cell is there in the next. A trailing expression is displayed the way
+a C# cell's is — a list of records renders as a grid — and `printfn` streams as
+console output. A cell that does not compile reports fsi's own diagnostic with its
+line and column, and the session carries on.
+
+F# and C# are two compilers over two sessions, so a value crosses by name:
+`#!share --from csharp total` at the top of an F# cell binds C#'s `total` there,
+and `#!share --from fsharp squares --as xs` in a C# cell does the reverse, with
+the runtime type kept so members complete. Completion, hover and diagnostics
+come from the same session, so they know earlier cells' bindings. See
+[samples/FSharp.nb.md](samples/FSharp.nb.md).
+
+### KQL cells
+
+`#!kql-connect --name help --cluster https://help.kusto.windows.net --database Samples`
+registers a Kusto database — Azure Data Explorer, a Fabric Eventhouse / KQL
+database, or Log Analytics — and `#!kql` cells query it; the result is the
+interactive grid. A cell names its database with a leading `// connections <name>`
+comment, and one starting with a dot runs as a management command (`.show tables`).
+
+Sign-in is Microsoft Entra: the default chain then a browser, `--auth interactive`
+for a browser every time, or a service principal with `--tenant`, `--client-id`
+and `--secret <reference>` — the secret comes from the secret store or
+`CLRKERNEL_SECRET_<reference>`, never the notebook. Connections save to and load
+from `connections.json` under `"$type": "Kusto"`; completion offers the
+directives, the connection names, the operators after a `|`, and the database's
+tables and columns. From C#, `KustoDb.Connect(cluster, database).Query("…")`
+reaches the same databases. See [samples/Kql.nb.md](samples/Kql.nb.md).
 
 ### SQL cells
 
@@ -432,31 +468,42 @@ var wh = Fabric.Connect()                       // interactive / default Entra s
     .Warehouse("SalesDW")
     .WithStaging("Lakehouse_Staging");          // a lakehouse in the same workspace
 
-// Bulk-insert any IDataReader (e.g. a SQL Server query via ClrKernel.Language.Sql):
-using var conn = SqlServer.OpenConnection("analytics");
-using var cmd = new SqlCommand("SELECT * FROM dbo.Orders", conn);
-using var reader = cmd.ExecuteReader();
-wh.BulkInsert(reader, "dbo.Orders", createIfMissing: true);
+var dw = SqlServer.Connection("sql.example.com", "Warehouse");
+
+// Copy a whole table (same name on both sides), a query, or any IDataReader:
+wh.BulkInsert(dw, "dbo.Orders", createIfMissing: true);
+wh.BulkInsert(dw.Query("select * from dbo.Orders where Year = 2026"), "dbo.Orders2026", createIfMissing: true);
+wh.BulkInsert(reader, "dbo.Orders");
 ```
 
-The **reload-batch** wrapper deletes a segment and reloads it for a set of tables
-in parallel — each table gets a fresh source reader from your factory:
+**Reload a set of tables** — each target is truncated (or a segment deleted) and
+loaded again from the source, `MaxDegreeOfParallelism` at a time. A table name is
+one identifier, so dots inside it are fine; bracket it in a hand-written query.
 
 ```csharp
-var requests = new[] {
-    new FabricReloadRequest { TableName = "FactSales", SegmentFilter = "Year = 2026" },
-    new FabricReloadRequest { TableName = "FactReturns", SegmentFilter = "Year = 2026" },
-};
-var results = wh.ReloadBatch(
-    requests,
-    req => {
-        var c = SqlServer.OpenConnection("analytics");
-        var q = new SqlCommand($"SELECT * FROM {req.TableName} WHERE {req.SegmentFilter}", c);
-        return q.ExecuteReader(CommandBehavior.CloseConnection); // reader owns/closes the connection
-    },
-    maxParallelism: 4);
-results.DisplayTable();
+var results = wh.ReloadBatch([
+    new FabricReloadRequest("Mart", "COMPANY.Dimension.Forecast"),                   // select * from [Mart].[COMPANY.Dimension.Forecast] on dw
+    new FabricReloadRequest("Mart", "COMPANY.Dimension.Instrument",
+        sourceQuery: "select * from [Other].[Mart].[COMPANY.Dimension.Instrument]"),  // a different source
+    new FabricReloadRequest("Mart", "FactSales", segmentFilter: "Year = 2026",
+        sourceQuery: "select * from Mart.FactSales where Year = 2026"),              // delete the segment, then reload it
+], dw, new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true });
+results   // one row per table: rows deleted / inserted, or the error — a failure does not stop the rest
 ```
+
+The same batch under the spelling a `.dib` reload library used — nested names,
+named arguments — so those cells paste in unchanged:
+
+```csharp
+var batch = Fabric.ReloadBatch.Create([
+    new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Forecast", SourceQuery: """select * from [database].[Mart].[COMPANY.Dimension.Forecast];"""),
+    new Fabric.ReloadRequest("Mart", "COMPANY.Dimension.Instrument"),
+]);
+await batch.Run(dw, wh, new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true });
+```
+
+`wh.ReloadBatch(requests, req => IDataReader, maxParallelism)` is the reader-factory
+form for rows a `DataSource` does not reach.
 
 For a service principal, use `Fabric.ClientSecret(tenantId, clientId, secret)`.
 `Fabric.Interactive()` always opens a browser sign-in so you pick the account,
@@ -498,6 +545,16 @@ results committed alongside code are what stops a notebook diffing, and re-runni
 gives them back.
 
 It refuses to overwrite an existing file; pass `-o` to put it somewhere else.
+
+The same choice is offered where the notebook is opened. In **VS Code** a `.dib`
+opens as a ClrKernel notebook — it runs as it is, and saves back as a `.dib` — and
+the editor asks once whether to write the `.nb.md` beside it; an `.ipynb` whose
+kernelspec is ClrKernel's gets the same question when the Jupyter extension opens
+it, and *ClrKernel: Convert Notebook to .nb.md* does it for any open notebook. In
+**Studio** a `.dib` or `.ipynb` opens as cells with a *Convert to .nb.md* button on
+your own branch; an `.ipynb` saved there keeps its cells and not its stored
+outputs. All of these leave the original where it was; delete it when you are done
+with it.
 
 If you already run notebooks through Jupyter's tooling, that works too:
 

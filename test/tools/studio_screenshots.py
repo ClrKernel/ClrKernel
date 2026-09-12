@@ -52,6 +52,8 @@ NOTEBOOKS = {
     "Shell.nb.md": "checks/Shell.nb.md",
     "Sql.nb.md": "ingest/Sql.nb.md",
     "SqlEtl.nb.md": "ingest/SqlEtl.nb.md",
+    # A Jupyter notebook: it opens as cells with the offer to convert it.
+    "HelloWorld.ipynb": "legacy/HelloWorld.ipynb",
 }
 
 # A jobs file is named for the notebook it schedules — `hello.jobs.yaml` schedules
@@ -319,6 +321,13 @@ def focus_mode(s):
     s.page.frame_locator(".focus-output-pane iframe").locator(
         "svg").first.wait_for(timeout=60000)
     return ".focus-output-pane"
+
+
+@shot("editor-convert", height=560)
+def editor_convert(s):
+    # Your own branch: that is where the Convert button is offered.
+    s.edit("edit", "mine", "legacy/HelloWorld.ipynb")
+    return "text=Convert to .nb.md"
 
 
 @shot("editor-source")

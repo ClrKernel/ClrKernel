@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.11.0] - 2026-09-11
+
+**Needs kernel 0.14.x.** Two new cell languages, `.dib` and `.ipynb` handled where
+they are opened, and a way to move values between languages.
+
+- **F# cells.** `#!fsharp` (or a ` ```fsharp ` block) runs in one F# Interactive
+  session per notebook: bindings persist, a trailing expression is the result, a
+  list of records renders as the grid, `printfn` streams. Completion, hover,
+  signature help and diagnostics come from the session, so they know earlier
+  cells' bindings. `fsharp` is a VS Code built-in language, so highlighting is
+  already there.
+- **KQL cells.** `#!kql-connect --name … --cluster … --database …` registers a
+  Kusto database — Azure Data Explorer, a Fabric Eventhouse / KQL database, Log
+  Analytics — with Entra sign-in, and `#!kql` queries it. The connection button,
+  `connections.json` (`"$type": "Kusto"`), and completion for the directives,
+  connection names, operators after a `|`, the open database's tables and
+  columns, and functions with a line of help each. A `.kql` grammar ships with
+  the extension.
+- **`#!share`.** `#!share --from csharp x [--as y]` at the top of an F# cell
+  binds a C# value there; `#!share --from fsharp y` in a C# cell does the
+  reverse, with the runtime type kept so members complete. The same directive a
+  Polyglot notebook uses, so a migrated `.dib` keeps working.
+- **`.dib` notebooks open here.** A Polyglot `.dib` is this notebook type now:
+  it opens as cells, runs on ClrKernel as it is, and saves back as a `.dib`.
+  Opening one offers to convert it to the `.nb.md` beside it — the same
+  conversion as `clrkernel convert`; the original is left in place and an
+  existing target is never overwritten. A section in a kernel ClrKernel does
+  not have (`#!javascript`, `#!value`) stays a cell under its own tag rather than
+  vanishing. If Polyglot Notebooks is installed too, VS Code asks which to open
+  with; *Open With… → Configure default* settles it.
+- **`.ipynb` too.** Jupyter's extension keeps `.ipynb`; when the one it opens has
+  ClrKernel's kernelspec, the same offer appears, and *ClrKernel: Convert Notebook
+  to .nb.md* converts any open notebook on request.
+
+Kernel-side in 0.14, visible here without an extension change:
+
+- **A printed secret is masked.** A value resolved from the secret store or seeded
+  from `CLRKERNEL_SECRET_*` is replaced by `***` in console output, displayed
+  values and error messages before they leave the kernel. A safety net, not a
+  boundary — a base64'd or split value walks past it.
+- **A trailing `DataTable` renders as the grid** rather than an empty span.
+- **Fabric warehouse:** `wh.BulkInsert(source, "dbo.Table")` copies a whole
+  table from a `DataSource`; `ReloadBatch` takes the requests, the source and
+  options, truncates or deletes each target and reloads it; `Fabric.ReloadBatch
+  .Create([...])` is the `.dib` spelling. A dotted table name is one name
+  (`[Mart].[COMPANY.Dimension.Forecast]`), and the OneLake staging path is
+  addressed by id, which is what a real workspace accepted.
+- **A `NuGet.Config` beside the notebooks adds to your user-level sources** rather
+  than replacing them — a private package whose dependencies live on nuget.org
+  restores without listing nuget.org yourself. `<clear/>` still means "only these".
+
 ## [0.10.0] - 2026-09-09
 
 **Needs kernel 0.13.x.** Nothing in the extension changes — the pairing moves

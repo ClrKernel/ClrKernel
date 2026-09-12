@@ -1,8 +1,8 @@
 {
   "name": "clrkernel-notebooks",
   "displayName": "ClrKernel Notebooks",
-  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, and DAX notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
-  "version": "0.10.0",
+  "description": "Run C#, HTTP, Mermaid, PowerShell, SQL, DAX, F#, and KQL notebooks \u2014 including executable markdown \u2014 on ClrKernel. No Python, no Jupyter.",
+  "version": "0.11.0",
   "publisher": "clrkernel",
   "license": "Apache-2.0",
   "repository": {
@@ -25,6 +25,9 @@
         "selector": [
           {
             "filenamePattern": "*.nb.md"
+          },
+          {
+            "filenamePattern": "*.dib"
           }
         ]
       }
@@ -150,6 +153,19 @@
           "clr-python"
         ],
         "configuration": "./language-configuration.python.json"
+      },
+      {
+        "id": "kql",
+        "aliases": [
+          "KQL",
+          "Kusto",
+          "kql"
+        ],
+        "extensions": [
+          ".kql",
+          ".csl"
+        ],
+        "configuration": "./language-configuration.kql.json"
       }
     ],
     "grammars": [
@@ -195,6 +211,11 @@
         "language": "clr-python",
         "scopeName": "source.clr-python",
         "path": "./syntaxes/clr-python.tmLanguage.json"
+      },
+      {
+        "language": "kql",
+        "scopeName": "source.kql",
+        "path": "./syntaxes/kql.tmLanguage.json"
       }
     ],
     "configuration": {
@@ -232,6 +253,11 @@
         "command": "clrkernel.newNotebook",
         "title": "New Markdown Notebook",
         "shortTitle": "Markdown Notebook",
+        "category": "ClrKernel"
+      },
+      {
+        "command": "clrkernel.convertToMarkdown",
+        "title": "Convert Notebook to .nb.md",
         "category": "ClrKernel"
       },
       {
@@ -304,7 +330,7 @@
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.28.2",
     "typescript": "^5.5.0",
-    "vitest": "^2.1.0",
+    "vitest": "^4.1.11",
     "vscode-languageclient": "^9.0.1"
   },
   "icon": "images/icon.png",

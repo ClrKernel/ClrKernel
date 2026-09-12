@@ -81,6 +81,47 @@ produced a store that reported success and persisted nothing. The explicit chain
 no in-memory provider for that reason; reading through is also what a server wants, so
 a password changed by the web app is not served stale to a kernel.
 
+### Since: a rename that failed half way, on Windows (2026-09-10)
+
+`RenameUser` did `branch -m` and then `worktree move`. On Windows the move is refused
+while a kernel has the folder open — a notebook on that branch in VS Code — and the
+refusal was a thrown `GitException`, so the endpoint's rollback (which only runs for
+a *returned* refusal) never ran: a 500, the branch renamed, the folder not. The next
+attempt was refused as "already has a branch called that", because the branch did
+exist; a third attempt under a new name moved the folder and renamed the account,
+and every standing poll then threw on `user/<new>...test` — a branch that did not
+exist, since the worktree's HEAD was still the first attempt's name.
+
+Three changes, each with a test that fails without it. The move goes first, and a
+failed move is a returned refusal naming the likely cause, so the branch is untouched
+and there is nothing to undo. A rename with one side already done is finished rather
+than refused — a collision is *both* sides existing under the new name while both
+still exist under the old, and nothing less. And `StandingOf` reads the worktree's
+`HEAD` rather than the branch the handle implies: the same thing by construction, and
+when they differ, HEAD is what is actually there. Recovery on the server that hit it
+was one `git branch -m` in `.repo.git`.
+
+### Since: a secret set while a kernel runs (2026-09-10)
+
+Reported as a bug, and it read as one: two secrets on a personal branch, the older
+resolved, the newer "not found — looked in memory, keychain, env". The kernel had been
+handed the branch's secrets as `CLRKERNEL_SECRET_*` when it started, and a process
+cannot be handed another variable later; its own keychain provider uses the kernel's
+namespace, not `clrkernel-studio:secret:…`, so it could not see the new one either.
+The docs said "restart the kernel". Nobody reads that at the moment it matters.
+
+The secrets routes now `DropUnder` the branch's worktree on set and on delete: every
+open notebook on that branch loses its kernel, and its next cell run starts one that
+has the value. The reply carries `restarted`, and the Secrets page says how many —
+because what it costs is the kernel's variables, and the person will otherwise meet
+that as their state being gone. Delete drops too: a kernel that still has the old
+value still has the secret.
+
+The browser check that proves it found something else on the way: Studio had been
+spawning the *installed* `clrkernel` in every browser check, because nothing passed
+`--clrkernel` and `serving()` in the harness had its own `Popen` that `studio()`'s
+arguments never reached. See HANDOFF-28.
+
 ## Refusals belong on a form, not in a ceremony
 
 An invite now carries the display name **and** the handle, chosen by the admin. Both

@@ -20,6 +20,14 @@ public static class MimeBundler {
     }
 
     public static DisplayData Bundle(IDisplayValue value) {
+        var data = Build(value);
+        // Display(), a trailing value, HTML, markdown, a shell cell's output: all
+        // of it is a string in this bundle, and none of it may carry a secret out.
+        SecretRedaction.RedactAll(data.Data);
+        return data;
+    }
+
+    private static DisplayData Build(IDisplayValue value) {
         var data = new DisplayData();
         value = DisplayFormatters.Resolve(value);
 

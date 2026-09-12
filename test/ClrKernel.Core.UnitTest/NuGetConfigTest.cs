@@ -47,17 +47,20 @@ public class NuGetConfigTest {
         // Above the notebook's own folder, not in it: the nearest config wins and
         // the search walks up, the same as `dotnet restore` in a repo.
         Environment.SetEnvironmentVariable("CLRKERNEL_TEST_FEED", feed);
-        File.WriteAllText(Path.Combine(root, "notebooks", "NuGet.Config"), """
-            <?xml version="1.0" encoding="utf-8"?>
-            <configuration>
-              <packageSources>
-                <clear />
-                <add key="private" value="%CLRKERNEL_TEST_FEED%" />
-              </packageSources>
-            </configuration>
-            """);
+        File.WriteAllText(Path.Combine(root, "notebooks", "NuGet.Config"), Config(clear: false));
         return notebooks;
     }
+
+    /// <summary>A repo config naming only the folder feed — with or without "only these".</summary>
+    private static string Config(bool clear) => $"""
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            {(clear ? "<clear />" : "")}
+            <add key="private" value="%CLRKERNEL_TEST_FEED%" />
+          </packageSources>
+        </configuration>
+        """;
 
     [TestMethod]
     public async Task A_NuGet_Config_above_the_notebook_is_where_packages_come_from() {
@@ -82,11 +85,49 @@ public class NuGetConfigTest {
                 () => blind.ExecuteAsync("#r \"nuget: Private.Greeter, 1.2.3\""),
                 "resolved with no NuGet.Config in reach — the feed came from somewhere else");
 
+            // The repo config adds to the user's, the way `dotnet restore` reads
+            // them: the private package comes from the folder feed, and one that
+            // is only on nuget.org still comes from nuget.org — in the same cell,
+            // which is how a private package's own dependencies get restored.
             File.WriteAllText(configPath, config);
             var engine = new InteractiveScriptEngine(notebooks, NullLogger.Instance);
-            await engine.ExecuteAsync("#r \"nuget: Private.Greeter, 1.2.3\"");
+            await engine.ExecuteAsync("#r \"nuget: Private.Greeter, 1.2.3\"\n#r \"nuget: Humanizer.Core, 2.14.1\"");
             var result = (DisplayData)await engine.ExecuteAsync("PrivateGreeter.Hello.Say(\"feed\")");
             Assert.AreEqual("Hello, feed!", result.Data["text/plain"]?.ToString());
+            var humanized = (DisplayData)await engine.ExecuteAsync("Humanizer.StringHumanizeExtensions.Humanize(\"some_thing\")");
+            Assert.AreEqual("some thing", humanized.Data["text/plain"]?.ToString());
+        } finally {
+            Environment.SetEnvironmentVariable("NUGET_PACKAGES", previous);
+        }
+    }
+
+    [TestMethod]
+    public async Task Clear_means_only_these_sources() {
+        InteractiveScriptEngine.RefsFilePath = null;
+        var previous = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+        var cache = Path.Combine(Path.GetTempPath(), "clrkernel-nugetconfig-test", "cache-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("NUGET_PACKAGES", cache);
+        try {
+            var notebooks = NotebookFolderWithFeed();
+            // A RID-specific restore also wants the SDK's runtime packs
+            // (Microsoft.NETCore.App.Runtime.<rid> and friends). An SDK that bundles
+            // the packs for the framework the script targets never downloads them; a
+            // CI runner whose test host runs on an older installed runtime targets
+            // that framework and must fetch its packs from nuget.org — which is what
+            // <clear/> is about to forbid, exactly as it would for any `dotnet
+            // restore -r`. So the cache is warmed through the additive config first;
+            // what <clear/> then refuses is the package, which is the point.
+            await new InteractiveScriptEngine(notebooks, NullLogger.Instance)
+                .ExecuteAsync("#r \"nuget: Private.Greeter, 1.2.3\"");
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(notebooks), "NuGet.Config"), Config(clear: true));
+            var engine = new InteractiveScriptEngine(notebooks, NullLogger.Instance);
+            // The private one still resolves; the nuget.org one is refused, and the
+            // refusal names the file that said so.
+            await engine.ExecuteAsync("#r \"nuget: Private.Greeter, 1.2.3\"");
+            var e = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => engine.ExecuteAsync("#r \"nuget: Humanizer.Core, 2.14.1\""));
+            StringAssert.Contains(e.Message, "NuGet.Config");
+            StringAssert.Contains(e.Message, "NU1101");
         } finally {
             Environment.SetEnvironmentVariable("NUGET_PACKAGES", previous);
         }

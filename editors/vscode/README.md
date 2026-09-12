@@ -1,8 +1,8 @@
 # ClrKernel Notebooks
 
 Run **C# notebooks in VS Code** on [ClrKernel](https://github.com/ClrKernel/ClrKernel) —
-no Python, no Jupyter. C# is the core, and cells can also be **SQL, DAX,
-PowerShell, shell, HTTP, or Mermaid** in the same notebook, sharing one session.
+no Python, no Jupyter. C# is the core, and cells can also be **SQL, DAX, KQL,
+F#, Python, PowerShell, shell, HTTP, or Mermaid** in the same notebook.
 Each notebook gets its **own session** — variables and connections never leak
 between notebooks open in the same window.
 
@@ -10,7 +10,8 @@ Files matching `*.nb.md` open as notebooks: ` ```csharp `-tagged blocks are code
 cells (` ```sql `, ` ```dax `, ` ```powershell `, etc. select the other
 languages), everything else is markdown. The same file is a readable document on
 GitHub and runs headlessly in any ClrKernel session via `#!import` — one file,
-three lives.
+three lives. A Polyglot `.dib` opens here too, runs as it is, and offers to
+become the `.nb.md` beside it.
 
 ## Features
 
@@ -64,6 +65,15 @@ three lives.
   query SSAS / Azure AS / Fabric semantic models, with a cube **connection button**
   (add / edit cube). From C# the `AnalysisServices` and `Fabric` helpers query with DAX, read
   model metadata, process partitions, and bulk-load Fabric Warehouse tables.
+- **F# cells** — set a cell to **F#** (or a ` ```fsharp ` tag) for one F#
+  Interactive session per notebook: bindings persist, a trailing expression is
+  the result, and completion, hover and diagnostics come from the session.
+  `#!share --from csharp x` at the top of a cell brings a C# value across, and
+  `#!share --from fsharp y` in a C# cell does the reverse.
+- **KQL cells** — set a cell to **KQL** (or a ` ```kql ` tag) to query Kusto:
+  Azure Data Explorer, a Fabric Eventhouse / KQL database, or Log Analytics,
+  with Entra sign-in, a connection button, `connections.json`, and completion
+  for operators, functions and the database's tables and columns.
 - **Shared libraries** — `#!import "lib.dib"` / `#!lib` with `--register`
   prefixes and run-once semantics; imports `.dib`, `.ipynb`, `.md`, and `.csx`
   files.
@@ -96,9 +106,9 @@ three lives.
 2. Install this extension.
 3. Run a cell. The first time, if `ClrKernel` isn't found the extension
    offers to install it for you
-   (`dotnet tool install --global ClrKernel --version 0.13.*`).
+   (`dotnet tool install --global ClrKernel --version 0.14.*`).
    Prefer to do it yourself? Run that command in a terminal ahead of time —
-   include the `--version`, because this build talks to **kernel 0.13.x** and
+   include the `--version`, because this build talks to **kernel 0.14.x** and
    says so if it finds another.
 4. Create a notebook — either run **ClrKernel: New Markdown Notebook** from the
    Command Palette (or File → New File… → *Markdown Notebook*), or make a file
@@ -194,7 +204,7 @@ session.
 ## Requirements
 
 - .NET runtime 8.0+ (newer majors work)
-- **ClrKernel 0.13.x** — on PATH as a dotnet tool, or configured via settings.
+- **ClrKernel 0.14.x** — on PATH as a dotnet tool, or configured via settings.
   The extension installs and updates it within that range for you.
 
 The extension and the kernel ship separately and talk over a private

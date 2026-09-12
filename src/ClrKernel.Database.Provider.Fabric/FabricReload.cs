@@ -8,39 +8,67 @@ using System.Threading.Tasks;
 namespace ClrKernel.Database.Provider.Fabric;
 
 /// <summary>
-/// One table/segment to reload: delete a segment of a warehouse table, then reload
-/// it from a source query. Used with <see cref="FabricWarehouse.ReloadBatch"/>.
+/// One table (or a segment of it) to reload. Used with <see cref="FabricWarehouse.ReloadBatch(IEnumerable{FabricReloadRequest}, DataSource, FabricReloadOptions)"/>:
+/// <code>
+/// new FabricReloadRequest("Mart", "COMPANY.Dimension.Forecast")                       // truncate, then select * from the same table on the source
+/// new FabricReloadRequest("Mart", "FactSales", segmentFilter: "Year = 2026",
+///     sourceQuery: "select * from Mart.FactSales where Year = 2026")                  // delete the segment, then reload it
+/// </code>
+/// A table name is a single identifier here — dots inside it are part of the name.
 /// </summary>
-public sealed class FabricReloadRequest {
+public class FabricReloadRequest {
+    public FabricReloadRequest() { }
+
+    public FabricReloadRequest(string schema, string table, string sourceQuery = null, string segmentFilter = null) {
+        TableSchema = schema;
+        TableName = table;
+        SourceQuery = sourceQuery;
+        SegmentFilter = segmentFilter;
+    }
+
     /// <summary>Target schema (default <c>dbo</c>).</summary>
     public string TableSchema { get; set; } = "dbo";
-    /// <summary>Target table name (unqualified).</summary>
+    /// <summary>Target table name (unqualified; may contain dots).</summary>
     public string TableName { get; set; }
     /// <summary>A friendly label for the segment (for progress/errors); defaults to the table name.</summary>
     public string SegmentName { get; set; }
-    /// <summary>An explicit DELETE statement to clear the segment. Takes precedence over <see cref="SegmentFilter"/>.</summary>
+    /// <summary>An explicit statement to clear the target. Takes precedence over <see cref="SegmentFilter"/>.</summary>
     public string DeleteCommand { get; set; }
     /// <summary>A WHERE predicate used to build <c>DELETE FROM target WHERE ...</c> when no <see cref="DeleteCommand"/> is set.</summary>
     public string SegmentFilter { get; set; }
-    /// <summary>The source query text (informational; the source reader is produced by the caller's factory).</summary>
+    /// <summary>
+    /// The query run on the source. Null means <c>select * from</c> the target's own name on
+    /// the source (when the batch is given a <see cref="DataSource"/>); with a reader
+    /// factory it is informational.
+    /// </summary>
     public string SourceQuery { get; set; }
     /// <summary>Create the target table from the source schema if it doesn't exist.</summary>
     public bool CreateIfMissing { get; set; }
 
+    /// <summary>The bracket-quoted target, e.g. <c>[Mart].[COMPANY.Dimension.Forecast]</c>.</summary>
     internal string Target =>
-        string.IsNullOrWhiteSpace(TableSchema) ? TableName : $"{TableSchema}.{TableName}";
+        string.IsNullOrWhiteSpace(TableSchema)
+            ? Database.TableName.QuotePart(TableName)
+            : Database.TableName.QuotePart(TableSchema) + "." + Database.TableName.QuotePart(TableName);
 
     internal string Label => string.IsNullOrWhiteSpace(SegmentName) ? Target : SegmentName;
 
+    internal string EffectiveSource => string.IsNullOrWhiteSpace(SourceQuery) ? $"select * from {Target}" : SourceQuery;
+
+    /// <summary>
+    /// What clears the target before the load: the command, the filtered delete, or —
+    /// for a request with neither — a truncate, because a "reload" that appends is a
+    /// duplicate-row bug waiting for its second run.
+    /// </summary>
     internal string EffectiveDelete() {
         if (!string.IsNullOrWhiteSpace(DeleteCommand)) {
             return DeleteCommand;
         }
 
         if (!string.IsNullOrWhiteSpace(SegmentFilter)) {
-            return $"DELETE FROM {WarehouseTableDefinition.QuoteTable(Target)} WHERE {SegmentFilter}";
+            return $"DELETE FROM {Target} WHERE {SegmentFilter}";
         }
-        return null; // full reload with no delete
+        return $"TRUNCATE TABLE {Target}";
     }
 
     internal void Validate() {
@@ -48,6 +76,16 @@ public sealed class FabricReloadRequest {
             throw new InvalidOperationException("FabricReloadRequest.TableName is required.");
         }
     }
+}
+
+/// <summary>How a batch runs; every field has a default.</summary>
+public sealed class FabricReloadOptions {
+    /// <summary>Tables reloaded concurrently (default 4). Each runs on its own connections.</summary>
+    public int MaxDegreeOfParallelism { get; set; } = 4;
+    /// <summary>Create any missing target table from its source's schema — the batch-wide form of <see cref="FabricReloadRequest.CreateIfMissing"/>.</summary>
+    public bool CreateTableIfMissing { get; set; }
+    /// <summary>Staging lakehouse override; defaults to the one set by <see cref="FabricWarehouse.WithStaging(string)"/>.</summary>
+    public string StagingLakehouse { get; set; }
 }
 
 /// <summary>Outcome of reloading one segment.</summary>
@@ -67,10 +105,38 @@ public sealed class FabricReloadResult {
 
 public sealed partial class FabricWarehouse {
     /// <summary>
-    /// Reloads a batch of table segments in parallel: for each request, deletes the
-    /// segment (via <c>DeleteCommand</c> or <c>SegmentFilter</c>) and reloads it from
-    /// the reader returned by <paramref name="source"/>. Each request runs on its own
-    /// connection, so up to <paramref name="maxParallelism"/> run concurrently.
+    /// Reloads a set of tables from a source database, up to
+    /// <see cref="FabricReloadOptions.MaxDegreeOfParallelism"/> at a time: each target is
+    /// cleared (truncated, or the segment deleted), then loaded from its
+    /// <see cref="FabricReloadRequest.SourceQuery"/> — by default <c>select *</c> from the
+    /// same-named table on <paramref name="source"/>.
+    /// <code>
+    /// wh.ReloadBatch([
+    ///     new FabricReloadRequest("Mart", "COMPANY.Dimension.Forecast"),
+    ///     new FabricReloadRequest("Mart", "COMPANY.Dimension.Instrument", "select * from Mart.[COMPANY.Dimension.Instrument]"),
+    /// ], dw, new() { MaxDegreeOfParallelism = 1, CreateTableIfMissing = true });
+    /// </code>
+    /// One row per table comes back; a failing table reports its error and does not stop the rest.
+    /// </summary>
+    public IReadOnlyList<FabricReloadResult> ReloadBatch(
+        IEnumerable<FabricReloadRequest> requests, DataSource source, FabricReloadOptions options = null) =>
+        ReloadBatchAsync(requests, source, options).GetAwaiter().GetResult();
+
+    /// <inheritdoc cref="ReloadBatch(IEnumerable{FabricReloadRequest}, DataSource, FabricReloadOptions)"/>
+    public Task<IReadOnlyList<FabricReloadResult>> ReloadBatchAsync(
+        IEnumerable<FabricReloadRequest> requests, DataSource source, FabricReloadOptions options = null,
+        CancellationToken cancellationToken = default) {
+        if (source is null) {
+            throw new ArgumentNullException(nameof(source));
+        }
+        options ??= new FabricReloadOptions();
+        return RunAsync(requests, req => source.Query(req.EffectiveSource).OpenReader(),
+            options.MaxDegreeOfParallelism, options.StagingLakehouse, options.CreateTableIfMissing, cancellationToken);
+    }
+
+    /// <summary>
+    /// The reader-factory form: <paramref name="source"/> returns a fresh <see cref="IDataReader"/>
+    /// for each request. Use it when the rows come from somewhere a <see cref="DataSource"/> does not reach.
     /// </summary>
     /// <param name="requests">Segments to reload.</param>
     /// <param name="source">Factory producing a fresh <see cref="IDataReader"/> for a request's source query.</param>
@@ -81,16 +147,21 @@ public sealed partial class FabricWarehouse {
         int maxParallelism = 4, string stagingLakehouse = null) =>
         ReloadBatchAsync(requests, source, maxParallelism, stagingLakehouse).GetAwaiter().GetResult();
 
-    /// <inheritdoc cref="ReloadBatch"/>
-    public async Task<IReadOnlyList<FabricReloadResult>> ReloadBatchAsync(
+    /// <inheritdoc cref="ReloadBatch(IEnumerable{FabricReloadRequest}, Func{FabricReloadRequest, IDataReader}, int, string)"/>
+    public Task<IReadOnlyList<FabricReloadResult>> ReloadBatchAsync(
         IEnumerable<FabricReloadRequest> requests, Func<FabricReloadRequest, IDataReader> source,
         int maxParallelism = 4, string stagingLakehouse = null, CancellationToken cancellationToken = default) {
-        if (requests is null) {
-            throw new ArgumentNullException(nameof(requests));
-        }
-
         if (source is null) {
             throw new ArgumentNullException(nameof(source));
+        }
+        return RunAsync(requests, source, maxParallelism, stagingLakehouse, false, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<FabricReloadResult>> RunAsync(
+        IEnumerable<FabricReloadRequest> requests, Func<FabricReloadRequest, IDataReader> source,
+        int maxParallelism, string stagingLakehouse, bool createAll, CancellationToken cancellationToken) {
+        if (requests is null) {
+            throw new ArgumentNullException(nameof(requests));
         }
 
         if (maxParallelism < 1) {
@@ -112,14 +183,14 @@ public sealed partial class FabricWarehouse {
             var req = list[i];
             var result = new FabricReloadResult { Segment = req.Label, Table = req.Target };
             try {
-                var delete = req.EffectiveDelete();
-                if (delete != null) {
-                    result.RowsDeleted = Execute(delete);
+                // A target that is about to be created has nothing to clear.
+                if (TableExists(req.Target)) {
+                    result.RowsDeleted = Math.Max(0, Execute(req.EffectiveDelete()));
                 }
                 using var reader = source(req)
                     ?? throw new InvalidOperationException($"Source reader for segment '{req.Label}' was null.");
                 var inserted = await BulkInsertAsync(
-                    reader, req.Target, req.CreateIfMissing, stagingLakehouse, ct).ConfigureAwait(false);
+                    reader, req.Target, createAll || req.CreateIfMissing, stagingLakehouse, ct).ConfigureAwait(false);
                 result.RowsInserted = inserted.RowCount;
                 result.TableCreated = inserted.TableCreated;
                 result.Succeeded = true;
