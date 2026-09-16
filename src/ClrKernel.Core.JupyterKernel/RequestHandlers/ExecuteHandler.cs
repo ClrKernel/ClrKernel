@@ -94,7 +94,8 @@ public class ExecuteHandler<T> where T : ExecuteRequest {
                 Traceback = SecretRedaction.Redact(e.StackTrace ?? string.Empty).Split(Environment.NewLine).ToList()
             };
 
-            _logger.LogError(e, "Failed to run the code: " + message.Content.Code);
+            _logger.LogError("Failed to run the code: {Code}\n{Error}",
+                message.Content.Code, SecretRedaction.Redact(e.ToString()));
 
             var error = SecretRedaction.Redact(e.Message + Environment.NewLine + e.StackTrace);
             var errorDisplay = new DisplayData();
