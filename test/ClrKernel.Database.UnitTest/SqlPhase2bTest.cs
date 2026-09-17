@@ -162,6 +162,22 @@ public class DeployRunnerTest {
     }
 
     [TestMethod]
+    public void A_dry_run_counts_the_files_it_planned() {
+        // The board listed both files as Planned and the line under it said "0 definition
+        // file(s) planned." A dry run opens no connection, so none needs to exist here.
+        var dir = Path.Combine(Path.GetTempPath(), "clrdeploy_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try {
+            File.WriteAllText(Path.Combine(dir, "01_view.sql"), "CREATE VIEW dbo.V AS SELECT 1");
+            File.WriteAllText(Path.Combine(dir, "02_proc.sql"), "CREATE PROCEDURE dbo.P AS SELECT 1");
+            var result = new SqlSession().ExecuteDeploy($"#!sql-deploy --connection nowhere --path \"{dir}\" --dry-run");
+            Assert.AreEqual("2 definition file(s) planned.", result.Data["text/plain"]?.ToString());
+        } finally {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [TestMethod]
     public void Multi_pass_resolves_cross_file_dependencies() {
         // 01_a references B (fails until B exists); 02_b creates B.
         var files = new List<DeployFile> {

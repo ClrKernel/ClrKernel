@@ -163,8 +163,10 @@ export class MarkdownNotebookSerializer implements vscode.NotebookSerializer {
         for (const cell of data.cells) {
             const tag = cell.kind !== vscode.NotebookCellKind.Code ? 'markdown' : MarkdownNotebookSerializer.tagOf(cell);
             // The section marker already says #!zsh; a selector line repeating it
-            // would read as an empty section on the way back in.
-            const value = cell.value.replace(/\s+$/, '').replace(new RegExp('^\\s*#!' + tag + '[ \\t]*\\n?', 'i'), '');
+            // would read as an empty section on the way back in. Only the whole line:
+            // #!sql is not the start of #!sql-connect.
+            const selector = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const value = cell.value.replace(/\s+$/, '').replace(new RegExp('^\\s*#!' + selector + '[ \\t]*(\\n|$)', 'i'), '');
             parts.push('#!' + tag + '\n\n' + value);
         }
         return MarkdownNotebookSerializer.dibMeta + parts.join('\n\n') + '\n';

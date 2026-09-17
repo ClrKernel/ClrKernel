@@ -203,4 +203,13 @@ describe('.dib notebooks', () => {
         expect(MarkdownNotebookSerializer.toMarkdown(nb as never)).toBe(
             '# Title\n\n```csharp\nvar x = 1;\n```\n\n```sql\nSELECT 1\n```\n\n```zsh\n#!zsh\necho hi\n```\n\n```kql\nT | take 1\n```\n');
     });
+
+    it('saves a directive that begins with its own section name whole', () => {
+        // Saved as `-connect --name dw …` and `--name raw`: the selector a cell repeats was
+        // stripped by prefix, so #!sql took the front off #!sql-connect.
+        const source = '#!sql\n\n#!sql-connect --name dw --server s --database d\n\n#!value\n\n#!value --name raw\nline\n';
+        const back = new TextDecoder().decode(serializer.serializeNotebook(read(source) as never));
+        expect(back).toContain('#!sql\n\n#!sql-connect --name dw --server s --database d\n\n');
+        expect(back).toContain('#!value\n\n#!value --name raw\nline\n');
+    });
 });
