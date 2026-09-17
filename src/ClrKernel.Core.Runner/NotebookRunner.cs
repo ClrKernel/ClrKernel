@@ -80,7 +80,7 @@ public static class NotebookRunner {
             await InjectIfDue(blocks.Count);
             return 0;
         } catch (Exception e) {
-            logger.LogError(e, "Notebook execution failed.");
+            logger.LogError("Notebook execution failed.\n{Error}", SecretRedaction.Redact(e.ToString()));
             return 1;
         } finally {
             DisplayValues.OnCellDisplayed -= OnCell;
@@ -185,7 +185,9 @@ public static class NotebookRunner {
                     cell.Source, execCount, outputs, isInjected ? new[] { "injected-parameters" } : null));
 
                 if (error != null) {
-                    logger.LogError(error, "Cell {Index} failed; stopping.", execCount);
+                    // Not LogError(error, …): the logger prints the exception as it is,
+                    // and stderr is a CI job's log and Studio's run.log.
+                    logger.LogError("Cell {Index} failed; stopping.\n{Error}", execCount, SecretRedaction.Redact(error.ToString()));
                     exitCode = 1;
                     index++;
                     break;

@@ -937,7 +937,8 @@ public sealed class LspServer {
                 },
             };
         } catch (Exception e) {
-            _logger.LogError(e, "execute failed for cell {CellId}", cellId);
+            // Redacted here too: this stderr is the extension's output channel.
+            _logger.LogError("execute failed for cell {CellId}\n{Error}", cellId, SecretRedaction.Redact(e.ToString()));
             return new {
                 cellId,
                 status = "error",
