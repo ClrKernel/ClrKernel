@@ -148,7 +148,8 @@ public sealed partial class SqlSession {
             var firstError = result.Files.FirstOrDefault(f => f.State == DeployState.Failed)?.Error ?? "unknown";
             throw new SqlCellException($"Deploy failed: {result.Failed} file(s) could not be applied. First error: {firstError}");
         }
-        var verb = d.Options.DryRun ? "planned" : "deployed";
-        return new DisplayData($"{result.Deployed} definition file(s) {verb}.");
+        // A dry run deploys nothing, so counting Deployed there always said 0 under a board of planned files.
+        var (count, verb) = d.Options.DryRun ? (result.Files.Count, "planned") : (result.Deployed, "deployed");
+        return new DisplayData($"{count} definition file(s) {verb}.");
     }
 }
