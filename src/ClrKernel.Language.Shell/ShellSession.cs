@@ -270,7 +270,9 @@ public sealed class ShellSession {
                 "exec 2>&1\n" +
                 (script ?? string.Empty) + "\n" +
                 "__ck_rc=$?\n" +
-                $"pwd > '{cwdFile}'\n" +
+                // Git Bash's pwd says /c/Users/…, which Directory.Exists rejects, so a cd to
+                // anywhere on Windows was dropped; cygpath gives C:\Users\…, and is absent elsewhere.
+                $"{{ cygpath -w \"$PWD\" 2>/dev/null || pwd; }} > '{cwdFile}'\n" +
                 // NUL-separated survives newlines in values; plain env is the fallback.
                 $"env -0 > '{envFile}' 2>/dev/null || env > '{envFile}'\n" +
                 "exit $__ck_rc\n";
