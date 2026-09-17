@@ -71,16 +71,16 @@ accept integrated (Kerberos/NTLM) login from the VM's account. Confirm before
 anything else:
 
 **SQL and SSAS servers**
-- SQL => sql.badmonkeysoftware.com
-- SSAS => sql.badmonkeysoftware.com
+- SQL => <sql-host>
+- SSAS => <sql-host>
 - tabular model => AdventureWorksTabular
 
 ```powershell
-sqlcmd -S sql.badmonkeysoftware.com -E -Q "SELECT @@VERSION"      # sqlcmd ships with the ODBC driver's tools, or: winget install Microsoft.Sqlcmd
-Test-NetConnection ssas.badmonkeysoftware.com -Port 2383           # SSAS default instance
+sqlcmd -S <sql-host> -E -Q "SELECT @@VERSION"      # sqlcmd ships with the ODBC driver's tools, or: winget install Microsoft.Sqlcmd
+Test-NetConnection <ssas-host> -Port 2383           # SSAS default instance
 ```
 
-Record `sql.badmonkeysoftware.com`, the SQL instance name, the SSAS instance, and one database +
+Record `<sql-host>`, the SQL instance name, the SSAS instance, and one database +
 one tabular model you will use throughout. Create a scratch database
 `ClrKernelVerify` on the SQL Server and use it for every write.
 
@@ -90,10 +90,10 @@ Set for the **user** (so VS Code and Studio inherit them), then restart any VS
 Code / terminal you had open. `Machine`-scope is not needed.
 
 ```powershell
-[Environment]::SetEnvironmentVariable("CLRKERNEL_TEST_SQL", "Server=sql.badmonkeysoftware.com;Database=ClrKernelVerify;Integrated Security=true;TrustServerCertificate=true", "User")
+[Environment]::SetEnvironmentVariable("CLRKERNEL_TEST_SQL", "Server=<sql-host>;Database=ClrKernelVerify;Integrated Security=true;TrustServerCertificate=true", "User")
 [Environment]::SetEnvironmentVariable("CLRKERNEL_STUDIO_TEST_SQL", "<same connection string>", "User")
 [Environment]::SetEnvironmentVariable("CLRKERNEL_STUDIO_TEST_SQLSERVER", "<same connection string>", "User")     # the run store on SQL Server
-[Environment]::SetEnvironmentVariable("CLRKERNEL_STUDIO_TEST_ODBC", "Driver={ODBC Driver 18 for SQL Server};Server=sql.badmonkeysoftware.com;Database=ClrKernelVerify;Trusted_Connection=yes;TrustServerCertificate=yes", "User")
+[Environment]::SetEnvironmentVariable("CLRKERNEL_STUDIO_TEST_ODBC", "Driver={ODBC Driver 18 for SQL Server};Server=<sql-host>;Database=ClrKernelVerify;Trusted_Connection=yes;TrustServerCertificate=yes", "User")
 # Leave unset: CLRKERNEL_TEST_ENTRA, CLRKERNEL_TEST_KUSTO, CLRKERNEL_TEST_ORACLE, CLRKERNEL_STUDIO_TEST_POSTGRES (unless Docker), CLRKERNEL_TEST_SSH, CLRKERNEL_TEST_PSREMOTE (see §L).
 ```
 
@@ -177,13 +177,13 @@ Use `samples\Sql.nb.md`, `SqlQuery.nb.md`, `SqlEtl.nb.md`, `SqlPipeline.nb.md` w
 the connect line changed to your server and **integrated** auth:
 
 ```sql
-#!sql-connect --name verify --server sql.badmonkeysoftware.com --database ClrKernelVerify --auth integrated --default
+#!sql-connect --name verify --server <sql-host> --database ClrKernelVerify --auth integrated --default
 ```
 
 - [ ] `#!sql` cell returns the grid; two SELECTs give two result tabs; `PRINT` and errors appear as messages; a 1001-row query is capped and says so.
 - [ ] The connection button: Add connection wizard writes the same directive; Edit; Set default. Save to `connections.json` (no password in the file — integrated has none; also try a SQL login with `--secret <ref>` stored in Credential Manager and confirm the file holds only the reference).
 - [ ] Completion: table and column names from the live schema; `-- connections` names; `#!sql-connect --` flags.
-- [ ] Fluent: `SqlServer.Connection("sql.badmonkeysoftware.com", "ClrKernelVerify")` + `.Query(...).Results()`, `.Results<T>()`, `.Table("x").BulkCopyFrom(...)` with `createIfMissing`, `.Truncate()`, transactions roll back on dispose.
+- [ ] Fluent: `SqlServer.Connection("<sql-host>", "ClrKernelVerify")` + `.Query(...).Results()`, `.Results<T>()`, `.Table("x").BulkCopyFrom(...)` with `createIfMissing`, `.Truncate()`, transactions roll back on dispose.
 - [ ] ETL magics: `#!sql-bulk`, `#!sql-merge` (with delete), `#!sql-run` pipeline order, `#!sql-deploy` idempotent — the samples, against `ClrKernelVerify`.
 - [ ] **Dotted table names (0.14):** create `[dbo].[A.B.C]` and bulk-copy into it by that name with `createIfMissing`; `TableName.Quote` behaviour is what the SQL Server `CREATE TABLE` path now uses.
 - [ ] `#!ansisql` on the same connection runs; `#!oraclesql` on it is refused with the editor flagging it first.
@@ -194,11 +194,11 @@ the connect line changed to your server and **integrated** auth:
 `samples\AnalysisServices.nb.md` and `samples\Dax.nb.md`, connect line:
 
 ```dax
-#!dax-connect --name cube --server ssas.badmonkeysoftware.com --database <tabular model> --integrated --default
+#!dax-connect --name cube --server <ssas-host> --database <tabular model> --integrated --default
 ```
 
 - [ ] `#!dax` `EVALUATE` returns the grid; `-- connections cube` selects; DAX keyword/function completion and hover; the cube connection button (Add / Edit cube).
-- [ ] C# API: `AnalysisServices.Connect("ssas.badmonkeysoftware.com", "<model>")` → `.Query(...)`, model metadata (tables, measures), `ProcessPartitions` on a small table (it is not production).
+- [ ] C# API: `AnalysisServices.Connect("<ssas-host>", "<model>")` → `.Query(...)`, model metadata (tables, measures), `ProcessPartitions` on a small table (it is not production).
 - [ ] `connections.json` round trip under `"$type": "AnalysisServices"` with `auth: integrated`.
 - [ ] Studio (§O) connection wizard for AnalysisServices.
 
@@ -368,6 +368,6 @@ Full record, in the §R format: **`docs/internal/windows-0.14-results.md`**, com
 14. `build.ps1 Test` intermittently fails with MSB3713 (file lock); passed on the third run. Reported.
 Plus low/cosmetic items and spec-vs-product mismatches (`-p name=value`, `#!ansisql` on SqlServer, filter names, Git Bash not on PATH after winget), listed in the results file.
 
-**WinRM:** ClrKernel `--winrm` remoting is verified against `BMS-MS-SQL01` (current identity; state persists across cells). Localhost fails from a non-elevated process for plain `Invoke-Command` too (it works elevated), and the `--user`/`--secret` path is unverified because the stored password is rejected. `CLRKERNEL_SECRET_PWSH_LOCALWINRM` is still set.
+**WinRM:** ClrKernel `--winrm` remoting is verified against `<SQL-SERVER>` (current identity; state persists across cells). Localhost fails from a non-elevated process for plain `Invoke-Command` too (it works elevated), which is the VM's configuration, not ClrKernel.
 
 **Not verified:** JDBC (no Java), Postgres/Oracle (no Docker), and every VS Code UI interaction.
