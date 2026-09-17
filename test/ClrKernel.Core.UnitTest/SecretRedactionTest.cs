@@ -1,12 +1,13 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Runner;
 using ClrKernel.Core.Scripting;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace ClrKernel.UnitTest;
@@ -86,9 +87,15 @@ public class SecretRedactionTest {
                 + "```csharp\nthrow new Exception(\"thrown: \" + Environment.GetEnvironmentVariable(\"CLRKERNEL_SECRET_ARTIFACT_TEST\"));\n```\n");
 
             InteractiveScriptEngine.RefsFilePath = null;
+            var log = new CapturedLog();
             var code = await NotebookRunner.RunAsync(
-                RunnerOptions.Parse(new[] { input, "-o", output }), NullLoggerFactory.Instance);
+                RunnerOptions.Parse(new[] { input, "-o", output }), log);
             Assert.AreNotEqual(0, code, "the third cell throws");
+
+            // The log is stderr, which a CI job prints and Studio copies into run.log.
+            var logged = log.ToString();
+            Assert.IsFalse(logged.Contains(secret), "the secret is in the log:\n" + logged);
+            StringAssert.Contains(logged, "thrown: ***", "the failing cell was not logged at all");
 
             var json = File.ReadAllText(output);
             Assert.IsFalse(json.Contains(secret), "the secret is in the artifact:\n" + json);
@@ -100,6 +107,30 @@ public class SecretRedactionTest {
             Assert.IsTrue(outputs.Any(o => o.Contains("thrown: ***")), "exception message not masked:\n" + json);
         } finally {
             Environment.SetEnvironmentVariable("CLRKERNEL_SECRET_ARTIFACT_TEST", null);
+        }
+    }
+
+    /// <summary>Every logger writes here, the exception included, as a console logger would.</summary>
+    private sealed class CapturedLog : ILoggerFactory, ILogger {
+        private readonly StringBuilder _text = new();
+
+        public ILogger CreateLogger(string categoryName) => this;
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception,
+            Func<TState, Exception, string> formatter) {
+            lock (_text) {
+                _text.AppendLine(formatter(state, exception)).AppendLine(exception?.ToString());
+            }
+        }
+
+        public override string ToString() {
+            lock (_text) {
+                return _text.ToString();
+            }
         }
     }
 }
