@@ -28,7 +28,7 @@ Nothing was installed with winget in this session: the session is not elevated, 
 - [x] VS Code 1.137.0 with `clrkernel.clrkernel-notebooks@0.11.0`. **Jupyter extension (`ms-toolsai.jupyter`) not installed**, which matters for §K `.ipynb` and §Q `.ipynb` save.
 - [ ] Polyglot Notebooks: **not installed** (so §K's "Polyglot not installed" branch is the machine state)
 - [x] ODBC Driver 18 for SQL Server, `msodbcsql18.dll` FileVersion 2018.186.2.1 (= 18.6.2.1); ODBC 17 and Native Client 11 also present
-- [ ] SKIPPED `sqlcmd`: not installed. `SELECT @@VERSION` was run through `System.Data.SqlClient` from PowerShell with integrated auth instead (same check).
+- [x] `sqlcmd` (go-sqlcmd **1.10.0**, `C:\Program Files\sqlcmd\sqlcmd.exe`) — installed partway through the run, then the spec's own command was used: `sqlcmd -S sql.badmonkeysoftware.com -E -Q "SELECT @@VERSION"` → exit 0, `Microsoft SQL Server 2025 (RTM) - 17.0.1000.7 (X64) … Enterprise Edition (64-bit) on Windows Server 2022 Datacenter`. Also `-d ClrKernelVerify -Q "SELECT DB_NAME(), SUSER_SNAME(), (SELECT COUNT(*) FROM sys.tables)"` → `ClrKernelVerify | BADMONKEY\jeremy.adams | 29`, exit 0. Integrated auth over `sqlcmd` reaches the scratch database. (Everything earlier in this file that needed T-SQL from the shell used `System.Data.SqlClient` from PowerShell, which is the same check.)
 - [ ] SKIPPED Docker Desktop: not installed, so Postgres and Oracle are skipped (§H)
 - [ ] SKIPPED Java: not installed, so JDBC is skipped (§H)
 - [ ] SKIPPED GitHub CLI: not installed (not needed)
