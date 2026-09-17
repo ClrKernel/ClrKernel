@@ -113,7 +113,7 @@ def branch_switch(page, base, _root):
     page.goto(f"{base}/files/default/edit/mine/etl.nb.md", wait_until="networkidle")
     page.wait_for_timeout(3000)
     page.locator(".monaco-editor").first.click()
-    page.keyboard.press("Meta+A")
+    page.keyboard.press("ControlOrMeta+A")
     page.keyboard.type("var survived = 99;")
     # Straight into the switch, with the autosave debounce still pending.
     explorer(page).get_by_role("combobox", name="Branch").click()
@@ -144,12 +144,17 @@ def completions(page, base, _root):
     page.goto(f"{base}/files/default/edit/mine/etl.nb.md", wait_until="networkidle")
     page.wait_for_timeout(4000)
     page.locator(".monaco-editor").first.click()
-    page.keyboard.press("Meta+A")
+    page.keyboard.press("ControlOrMeta+A")
     # Narrowed, because the widget virtualises: the whole member list is there
     # but only the first screenful is in the DOM.
     page.keyboard.type("Console.Wri", delay=90)
-    page.wait_for_timeout(4000)
     rows = page.locator(".suggest-widget .monaco-list-row")
+    # The first answer starts the notebook's kernel: 5.2s on a 6-vCPU Windows VM,
+    # where a fixed 4s wait failed every time with the list on its way.
+    try:
+        rows.first.wait_for(timeout=20000)
+    except Exception:
+        pass
     assert rows.count() > 0, "no completions at all"
     labels = " ".join(rows.all_inner_texts())
     assert "WriteLine" in labels, labels[:400]
@@ -160,7 +165,7 @@ def completions(page, base, _root):
         page.wait_for_timeout(3500)
         page.errors.clear()
         page.locator(".monaco-editor").first.click()
-        page.keyboard.press("Meta+A")
+        page.keyboard.press("ControlOrMeta+A")
         # A trigger character, so a request is certainly in flight as we leave.
         page.keyboard.type("Console.")
         if how == "link":
@@ -402,7 +407,7 @@ def secret_reaches_running_kernel(page, base, _root):
     page.goto(f"{base}/files/default/mine/edit/etl.nb.md", wait_until="networkidle")
     page.wait_for_timeout(3500)
     page.locator(".monaco-editor").first.click()
-    page.keyboard.press("Meta+A")
+    page.keyboard.press("ControlOrMeta+A")
     page.keyboard.type(cell)
 
     def run_and_read():

@@ -43,7 +43,8 @@ KERNEL = os.path.join(REPO, "src", "ClrKernel", "bin", "Debug", "net8.0",
 def build():
     """The web app first: wwwroot is copied into the output at *build* time, so
     building the C# before the bundle packages the previous one."""
-    sh(["./build.sh", "Web"])
+    # A .sh is not something Windows can start; build.cmd is the same Nuke target.
+    sh([os.path.join(REPO, "build.cmd") if os.name == "nt" else "./build.sh", "Web"])
     sh(["dotnet", "build", os.path.join(REPO, "src", "ClrKernel", "ClrKernel.csproj"),
         "-f", "net8.0", "--nologo", "-v", "q"])
     sh(["dotnet", "build", os.path.join(STUDIO, "ClrKernel.Studio.csproj"),
@@ -147,7 +148,12 @@ def serving(nb, data, port, env=None, allow_stale=False):
         print(f"studio {health['version']} on {base}", flush=True)
         yield base
     finally:
-        os.killpg(os.getpgid(server.pid), signal.SIGTERM)
+        if os.name == "nt":
+            # No process groups on Windows: /T stops dotnet run and the app it started.
+            subprocess.run(["taskkill", "/PID", str(server.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            os.killpg(os.getpgid(server.pid), signal.SIGTERM)
         server.wait(timeout=30)
         log.close()
 
