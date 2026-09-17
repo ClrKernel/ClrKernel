@@ -368,6 +368,6 @@ Full record, in the §R format: **`docs/internal/windows-0.14-results.md`**, com
 14. `build.ps1 Test` intermittently fails with MSB3713 (file lock); passed on the third run. Reported.
 Plus low/cosmetic items and spec-vs-product mismatches (`-p name=value`, `#!ansisql` on SqlServer, filter names, Git Bash not on PATH after winget), listed in the results file.
 
-**WinRM:** ClrKernel `--winrm` remoting is verified against `<SQL-SERVER>` (current identity; state persists across cells). Localhost fails from a non-elevated process for plain `Invoke-Command` too (it works elevated), and the `--user`/`--secret` path is unverified because the stored password is rejected.
+**WinRM:** ClrKernel `--winrm` remoting is verified against `<SQL-SERVER>` (current identity; state persists across cells). Localhost fails from a non-elevated process for plain `Invoke-Command` too (it works elevated), which is the VM's configuration, not ClrKernel.
 
 **Not verified:** JDBC (no Java), Postgres/Oracle (no Docker), and every VS Code UI interaction.
