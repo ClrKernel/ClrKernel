@@ -96,7 +96,8 @@ public class NotebookServer {
                 },
             };
         } catch (Exception e) {
-            _logger.LogError(e, "execute failed for cell {CellId}", cellId);
+            // Redacted here too: Studio copies this process's stderr into run.log.
+            _logger.LogError("execute failed for cell {CellId}\n{Error}", cellId, SecretRedaction.Redact(e.ToString()));
             return new {
                 cellId,
                 status = "error",

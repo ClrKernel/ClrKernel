@@ -91,6 +91,29 @@ public class SsasFactoryTest {
 }
 
 [TestClass]
+public class SsasTomConnectTest {
+    /// <summary>
+    /// TOM resolves the caller's identity before it opens a socket, so an unreachable server
+    /// is enough to reach the code that broke. With the retail TOM package (19.84.1) beside
+    /// ADOMD 19.114.8, Runtime.Windows came from the newer family, which no longer has
+    /// <c>WindowsDesktopAssemblyResolver</c>: every processing call on Windows threw
+    /// TypeLoadException before it got as far as the server.
+    /// </summary>
+    [TestMethod]
+    public void Processing_gets_as_far_as_the_network() {
+        var cube = AnalysisServices.Connect("localhost:1", "Nowhere");
+        System.Exception thrown = null;
+        try {
+            cube.ProcessTables("Nothing");
+        } catch (System.Exception e) {
+            thrown = e;
+        }
+        Assert.IsNotNull(thrown, "nothing listens on localhost:1; the connect has to fail");
+        Assert.IsNotInstanceOfType(thrown, typeof(System.TypeLoadException), thrown.ToString());
+    }
+}
+
+[TestClass]
 public class SsasPartitionDefinitionTest {
     [TestMethod]
     public void Tuple_converts_to_partition_definition() {
