@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -39,7 +39,8 @@ describe('colour lives only in the token layer', () => {
     const offenders: string[] = [];
     for (const file of files(SRC)) {
       if (!/\.(ts|tsx|css)$/.test(file) || /\.test\.tsx?$/.test(file)) continue;
-      const rel = file.slice(SRC.length);
+      // `ALLOWED` is spelled with `/`; `join` gives `\` on Windows, where nothing matched it.
+      const rel = file.slice(SRC.length).split(sep).join('/');
       if (ALLOWED.some((allowed) => rel.startsWith(allowed))) continue;
 
       code(readFileSync(file, 'utf8'))
