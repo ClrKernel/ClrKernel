@@ -32,10 +32,10 @@ dotnet tool update --global ClrKernel
 clrkernel --version
 ```
 
-- [ ] Reports **0.14.0**.
-- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.11.0**; its
-      Changelog tab shows the 0.11.0 entry at the top.
-- [ ] The two agree: 0.11.0 pins kernel `0.14.*`
+- [ ] Reports **0.14.1**.
+- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.11.1**; its
+      Changelog tab shows the 0.11.1 entry at the top.
+- [ ] The two agree: 0.11.1 pins kernel `0.14.*`
       (`editors/vscode/src/kernelVersion.ts`), so a notebook opens with **no**
       version warning. A warning here means the tool update above did not take —
       a running notebook window keeps `clrkernel` locked, so close them and

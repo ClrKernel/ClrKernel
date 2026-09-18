@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.11.1] - 2026-09-18
+
+**Needs kernel 0.14.x.** One fix, found in the Windows verification run.
+
+- **Saving a `.dib` no longer cuts the front off a directive line.** A `#!sql`
+  section whose first line is `#!sql-connect --name …`, or a `#!value` section
+  starting `#!value --name …`, was saved as `-connect --name …` and
+  `--name …`: the writer stripped a repeated selector by prefix, without an
+  end-of-line anchor. Only a selector line that is *exactly* the section's tag
+  is dropped now. A `.dib` saved by 0.11.0 has to have those lines repaired by
+  hand; the kernel's `clrkernel convert` and Studio never had the bug.
+
+Pairs with kernel 0.14.1, which carries the rest of that run's fixes: Analysis
+Services processing on Windows, the ODBC opt-in provider loading from its
+package, a `cd` in a Git Bash cell reaching the next cell, `#!sql-deploy
+--dry-run`'s file count, and a thrown secret no longer reaching the kernel's
+own log.
+
 ## [0.11.0] - 2026-09-11
 
 **Needs kernel 0.14.x.** Two new cell languages, `.dib` and `.ipynb` handled where
