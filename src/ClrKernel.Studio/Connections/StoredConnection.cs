@@ -56,6 +56,23 @@ public sealed class StoredConnection {
     /// <summary>The credential-store key holding the password, or null.</summary>
     public string SecretRef { get; set; }
 
+    /// <summary>
+    /// The reference a provider should open with: <see cref="SecretRef"/> when the
+    /// connection names a user or a password is stored, otherwise null.
+    /// <para>
+    /// Every saved connection carries a default reference so a password can be added
+    /// later. Handing that reference to a provider for a connection that has no
+    /// password at all — an ODBC string with <c>Trusted_Connection=yes</c>, a DSN,
+    /// integrated auth — failed with "No secret found" before the driver ever saw the
+    /// connection string. A user with no stored password keeps the reference, so the
+    /// error stays "no secret" rather than a login failure for user ''.
+    /// </para>
+    /// </summary>
+    public string SecretRefToOpenWith(Func<string, bool> hasSecret) =>
+        SecretRef != null && (!string.IsNullOrWhiteSpace(Settings.GetValueOrDefault("user")) || hasSecret(SecretRef))
+            ? SecretRef
+            : null;
+
     /// <summary>Do not persist a password at all — ask for one each session. The
     /// connection is unusable until someone supplies it, which is the point.</summary>
     public bool PromptForPassword { get; set; }
