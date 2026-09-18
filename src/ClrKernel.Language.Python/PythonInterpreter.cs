@@ -125,7 +125,11 @@ public static class PythonInterpreter {
                 } catch (ArgumentException) {
                     continue; // a PATH entry with invalid characters in it
                 }
-                if (File.Exists(candidate)) {
+                // Windows 11 ships `%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`
+                // enabled: a zero-byte App Execution Alias that opens the Store and
+                // exits. `File.Exists` is true for it, and taking it means the kernel
+                // never provisions on a stock machine. No real interpreter is empty.
+                if (File.Exists(candidate) && new FileInfo(candidate).Length > 0) {
                     return candidate;
                 }
             }

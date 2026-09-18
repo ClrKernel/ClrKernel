@@ -173,6 +173,34 @@ public class PythonTest {
         StringAssert.Contains(asset, arm ? "aarch64" : "x86_64");
     }
 
+    /// <summary>
+    /// Windows 11's App Execution Alias: a zero-byte `python.exe` on PATH that opens
+    /// the Store. Found on a stock VM, where the kernel took it and never provisioned.
+    /// </summary>
+    [TestMethod]
+    public void A_zero_byte_python_on_PATH_is_not_an_interpreter() {
+        var savedPath = Environment.GetEnvironmentVariable(PythonInterpreter.PathVariable);
+        var savedHome = Environment.GetEnvironmentVariable(PythonInterpreter.HomeVariable);
+        var savedSearch = Environment.GetEnvironmentVariable("PATH");
+        var dir = Path.Combine(Path.GetTempPath(), "clrkernel-alias-" + Guid.NewGuid().ToString("N"));
+        try {
+            Directory.CreateDirectory(dir);
+            foreach (var name in new[] { "python.exe", "python3.exe", "python3", "python" }) {
+                File.WriteAllBytes(Path.Combine(dir, name), Array.Empty<byte>());
+            }
+            Environment.SetEnvironmentVariable(PythonInterpreter.PathVariable, null);
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, dir);
+            Environment.SetEnvironmentVariable("PATH", dir);
+
+            Assert.IsNull(PythonInterpreter.Resolve(), "an empty file is the Store alias, not Python");
+        } finally {
+            Environment.SetEnvironmentVariable(PythonInterpreter.PathVariable, savedPath);
+            Environment.SetEnvironmentVariable(PythonInterpreter.HomeVariable, savedHome);
+            Environment.SetEnvironmentVariable("PATH", savedSearch);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>Turning it off has to mean off — the air-gapped promise.</summary>
     [TestMethod]
     public async Task With_installation_off_and_no_interpreter_it_refuses_rather_than_fetching() {
