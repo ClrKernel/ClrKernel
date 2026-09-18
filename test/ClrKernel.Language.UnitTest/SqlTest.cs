@@ -23,6 +23,18 @@ public class SqlDirectivesTest {
         Assert.IsTrue(d.IsDefault);
     }
 
+    /// <summary>Found on Windows: `--provider Odbc` said Connected, then the first
+    /// query failed inside SqlClient. The flag was stored and never read.</summary>
+    [TestMethod]
+    public void ParseConnect_refuses_a_provider_it_cannot_honour() {
+        var e = Assert.ThrowsExactly<FormatException>(() => SqlDirectives.ParseConnect(
+            "#!sql-connect --name viaodbc --provider Odbc --connection-string \"Driver={ODBC Driver 18 for SQL Server}\""));
+        StringAssert.Contains(e.Message, "--provider 'Odbc'");
+        StringAssert.Contains(e.Message, "connections.json");
+        Assert.AreEqual("sqlserver",
+            SqlDirectives.ParseConnect("#!sql-connect --name x --server s --provider SqlServer").Spec.Provider);
+    }
+
     [TestMethod]
     public void ParseConnect_defaults_to_integrated_without_user() {
         var d = SqlDirectives.ParseConnect("#!sql-connect --name warehouse --server dw");

@@ -28,7 +28,7 @@ public static class SqlDirectives {
             new() { Name = "--user", Aliases = new[] { "--username", "-u" }, Description = "Login user name." },
             new() { Name = "--secret", Aliases = new[] { "--secret-ref" }, Description = "Secret reference for the password (credential store / CLRKERNEL_SECRET_*)." },
             new() { Name = "--connection-string", Aliases = new[] { "--cs" }, Description = "Raw connection string (carries its own auth)." },
-            new() { Name = "--provider", Description = "ADO.NET provider override." },
+            new() { Name = "--provider", EnumValues = new[] { "sqlserver" }, Description = "Only sqlserver. ODBC, PostgreSQL, Oracle and JDBC connections are \"$type\" entries in connections.json." },
             new() { Name = "--encrypt", EnumValues = new[] { "true", "false" }, Description = "Encrypt the connection (default true)." },
             new() { Name = "--trust-cert", Aliases = new[] { "--trust-server-certificate" }, Kind = DirectiveParameterKind.Flag, Description = "Trust the server certificate." },
             new() { Name = "--default", Kind = DirectiveParameterKind.Flag, Description = "Make this the default connection." },
@@ -85,7 +85,15 @@ public static class SqlDirectives {
             spec.RawConnectionString = args.Get("--connection-string");
         }
         if (args.Has("--provider")) {
-            spec.Provider = args.Get("--provider");
+            // Accepted and ignored until 0.14.1: `--provider Odbc` reported Connected,
+            // then the first query failed inside SqlClient on the ODBC keywords.
+            var provider = args.Get("--provider");
+            if (!string.Equals(provider, "sqlserver", StringComparison.OrdinalIgnoreCase)) {
+                throw new FormatException(
+                    $"#!sql-connect only opens SQL Server, so --provider '{provider}' cannot be honoured. "
+                    + "Put an ODBC, PostgreSQL, Oracle or JDBC connection in connections.json as a \"$type\" entry "
+                    + "and use it by name.");
+            }
         }
         if (args.Has("--encrypt")) {
             spec.Encrypt = ParseBool(args.Get("--encrypt"));
