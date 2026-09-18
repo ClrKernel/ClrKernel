@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Core.Secrets;
 
 namespace ClrKernel.Database;
@@ -93,10 +94,10 @@ public sealed class ConnectionConfig {
         }
         secrets ??= new SecretStore();
         var files = CandidateFiles(
-            env, startDirectory ?? Directory.GetCurrentDirectory(), maxParents, includeLocal: true).ToList();
+            env, startDirectory ?? NotebookDirectory.OrCurrentDirectory, maxParents, includeLocal: true).ToList();
         if (files.Count == 0) {
             throw new ConnectionConfigException(
-                $"No connection config file found (looked for {string.Join(" / ", FileNames(env))} up to {maxParents} parents of '{startDirectory ?? Directory.GetCurrentDirectory()}').");
+                $"No connection config file found (looked for {string.Join(" / ", FileNames(env))} up to {maxParents} parents of '{startDirectory ?? NotebookDirectory.OrCurrentDirectory}').");
         }
 
         foreach (var file in files) {
@@ -162,7 +163,7 @@ public sealed class ConnectionConfig {
     /// <summary>The nearest config file at or above <paramref name="startDirectory"/>, or null
     /// if none exists. Used to tell the UI whether a <c>connections.json</c> was found.</summary>
     public static string FindFile(string startDirectory = null, string env = null, int maxParents = 10) =>
-        CandidateFiles(env, startDirectory ?? Directory.GetCurrentDirectory(), maxParents).FirstOrDefault();
+        CandidateFiles(env, startDirectory ?? NotebookDirectory.OrCurrentDirectory, maxParents).FirstOrDefault();
 
     /// <summary>
     /// The config files to load, in load order. The first directory (walking up from
@@ -172,7 +173,7 @@ public sealed class ConnectionConfig {
     /// entries override the shared ones. Either may exist alone.
     /// </summary>
     public static IReadOnlyList<string> FindFiles(string startDirectory = null, string env = null, int maxParents = 10) {
-        var dir = new DirectoryInfo(startDirectory ?? Directory.GetCurrentDirectory());
+        var dir = new DirectoryInfo(startDirectory ?? NotebookDirectory.OrCurrentDirectory);
         var depth = 0;
         while (dir != null && depth++ <= maxParents) {
             var found = new List<string>();

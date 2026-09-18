@@ -215,6 +215,7 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
         NotebookImporter.TryParseDirective(line, out _, out _);
 
     public async Task<object> ExecuteAsync(string statement) {
+        NotebookDirectory.Current = _currentDirectory;
         // #!share lines come out first: they hand a value from one language's
         // session to this cell's, and the cell then runs as if it had been there.
         var (shared, shares) = ShareDirective.Extract(statement);
