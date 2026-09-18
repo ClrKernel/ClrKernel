@@ -151,6 +151,22 @@ public class SqlIntegrationTest {
         }
     }
 
+    /// <summary>Found on Windows: `PRINT 'x'` gave the badge and nothing else.</summary>
+    [TestMethod]
+    public void Print_and_an_informational_raiserror_reach_the_cell_output() {
+        var session = NewSession();
+        var before = Console.Out;
+        var captured = new StringWriter();
+        Console.SetOut(captured);
+        try {
+            session.Execute("PRINT 'hello from PRINT'; RAISERROR('info level 10', 10, 1); SELECT 1 AS x;");
+        } finally {
+            Console.SetOut(before);
+        }
+        StringAssert.Contains(captured.ToString(), "hello from PRINT");
+        StringAssert.Contains(captured.ToString(), "info level 10");
+    }
+
     [TestMethod]
     public void Sql_bulk_magic_copies_between_connections() {
         var session = NewSession();

@@ -524,7 +524,9 @@ public class ConnectionsApiTest {
         var secrets = new InMemorySecretProvider();
         var runner = new QueryRunner(SecretStore.ForProviders(secrets), NullLogger<QueryRunner>.Instance);
         var trusted = new StoredConnection {
-            Id = "c2", Name = "viaodbc", Type = "Odbc",
+            Id = "c2",
+            Name = "viaodbc",
+            Type = "Odbc",
             Settings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
                 ["connectionString"] = "Driver={ODBC Driver 18 for SQL Server};Server=s;Trusted_Connection=yes",
             },

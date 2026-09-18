@@ -115,6 +115,10 @@ public sealed partial class SqlSession {
         int recordsAffected;
         try {
             using var connection = new SqlConnection(connectionString);
+            // PRINT and RAISERROR below severity 11 arrive here, not as rows or as an
+            // exception. They go to the cell's console output, which is where SSMS's
+            // Messages tab puts them; nothing showed them before 0.14.1.
+            connection.InfoMessage += (_, e) => Console.Out.WriteLine(e.Message);
             connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = request.Sql;
