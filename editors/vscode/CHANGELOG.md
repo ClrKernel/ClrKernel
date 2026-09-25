@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.1] - 2026-09-25
+
+**Needs kernel 0.14.x.** No extension code changed; this release pairs with kernel
+0.14.1, whose fixes show up here:
+
+- **`PRINT` reaches the cell.** A SQL cell's `PRINT` and informational messages
+  (row counts, `RAISERROR` with a low severity) are written to the cell output
+  instead of being dropped.
+- **A second notebook in another folder sees its own `connections.json`.** The
+  language server keeps one session per notebook, but file lookups beside a
+  notebook started from the process's directory, so the second notebook opened
+  found the first one's connections.
+- **`#!sql-connect --provider`** now refuses anything but `sqlserver` with a
+  message pointing at `connections.json`. It used to accept `--provider Odbc`,
+  report *Connected*, and fail on the first query. ODBC, PostgreSQL, Oracle and
+  JDBC connections are `"$type"` entries in `connections.json`, used by name.
+- **Python provisions on a stock Windows 11 machine.** The Store's zero-byte
+  `python.exe` App Execution Alias in `WindowsApps` was taken for an interpreter,
+  so the kernel never installed one.
+
 ## [0.11.0] - 2026-09-11
 
 **Needs kernel 0.14.x.** Two new cell languages, `.dib` and `.ipynb` handled where
