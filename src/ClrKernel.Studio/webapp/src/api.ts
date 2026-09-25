@@ -216,6 +216,17 @@ export interface Job {
   parameters: Record<string, unknown>;
   dependsOn: string[];
   notify: { onFailure: string[]; onSuccess: string[] } | null;
+  /** The switch on this job's file, kept in the store — off is paused indefinitely. */
+  active: boolean;
+  /** The file's snooze; null once it has passed. */
+  pausedUntil: string | null;
+}
+
+export interface JobsFileState {
+  path: string;
+  active: boolean;
+  pausedUntil: string | null;
+  lastModified: string | null;
 }
 
 export interface Run {
@@ -699,6 +710,15 @@ export const api = {
       ...(parameters && Object.keys(parameters).length > 0
         ? { body: JSON.stringify({ parameters }) }
         : {}),
+    }),
+  /** The switch on a jobs file — every job in it. Absent means active, not paused. */
+  jobsFileState: (env: string, path: string) =>
+    request<JobsFileState>(`${scope(env)}/jobs-file/state?path=${encodeURIComponent(path)}`),
+  /** Activate, deactivate, or snooze the whole file — in the store, not the YAML. */
+  setJobsFileState: (env: string, path: string, state: { active: boolean; pausedUntil: string | null }) =>
+    request<JobsFileState>(`${scope(env)}/jobs-file/state?path=${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      body: JSON.stringify(state),
     }),
   cancelJob: (env: string, name: string) =>
     request<{ cancelled: boolean }>(`${scope(env)}/jobs/${encodeURIComponent(name)}/cancel`, {

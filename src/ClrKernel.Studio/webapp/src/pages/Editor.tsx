@@ -956,7 +956,7 @@ export function Editor() {
   /**
    * Create-or-open the jobs file paired with this notebook, and go to its form.
    *
-   * The same act as `+ job` in the Files list, which is where it lived alone —
+   * The same act as New job in the explorer, which is where it lived alone —
    * so the answer to "a notebook with no job cannot prove itself" was a page you
    * had to know to go back to. Always on your own branch: nothing schedules from
    * one, so it starts running when you push it.
@@ -1392,7 +1392,11 @@ export function Editor() {
           <JobsOverview
             text={source}
             onChange={setSource}
-            readOnly={!canWrite}
+            // The branch as well as the role: test and prod are read-only to
+            // everybody, and a form that took edits there kept them until the
+            // next refresh threw them away.
+            readOnly={!canWrite || !allows.write}
+            path={path}
             notebooks={branchNotebooks}
             project={params.project ?? 'default'}
             branch={branch}
