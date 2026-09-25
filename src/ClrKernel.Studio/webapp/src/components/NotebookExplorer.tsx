@@ -1,5 +1,6 @@
 import {
   ArrowDownToLine,
+  CalendarPlus,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -17,9 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { api, projectSlug, type BranchStanding, type TreeNode } from '../api';
-import { createNotebook, promptForNotebook } from '../newNotebook';
+import { createNotebook, jobSeed, promptForJob, promptForNotebook } from '../newNotebook';
 import { saveBranch } from '../prefs';
-import { editPath, filesPath } from '../routes';
+import { editPath, filesPath, jobsFilePath } from '../routes';
 import { useIsProjectMember } from '../sessionContext';
 import { BranchOptions, CollapsedRail, usePolling } from './common';
 import { FileBadge } from './FileBadge';
@@ -153,6 +154,19 @@ export function NotebookExplorer({
     }
   }
 
+  /** The jobs file beside a notebook — made if it is not there, opened either way. */
+  async function createJob() {
+    try {
+      const jobsFile = await promptForJob(jobSeed(path));
+      if (jobsFile != null) {
+        reload();
+        navigate(jobsFilePath(projectSlug(), 'mine', jobsFile));
+      }
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
+
   if (collapsed) {
     return <CollapsedRail label="Show explorer" onExpand={() => onCollapse(false)} />;
   }
@@ -245,6 +259,17 @@ export function NotebookExplorer({
             className="shrink-0 rounded-sm border border-input p-1 text-muted-subtle outline-none hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
           >
             <FilePlus2 className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+        {mayCreate && (
+          <button
+            type="button"
+            onClick={createJob}
+            title="New job"
+            aria-label="New job"
+            className="shrink-0 rounded-sm border border-input p-1 text-muted-subtle outline-none hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <CalendarPlus className="size-3.5" aria-hidden="true" />
           </button>
         )}
       </div>

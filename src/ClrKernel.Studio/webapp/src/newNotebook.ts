@@ -184,3 +184,40 @@ export async function ensureJobsFile(notebook: string): Promise<string> {
   }
   return path;
 }
+
+/**
+ * What "New job" offers as the notebook: the one that is open, or the one the
+ * open jobs file already schedules. Anything else is not a notebook, and a seed
+ * that has to be deleted before typing is worse than an empty box.
+ */
+export function jobSeed(open: string | null): string {
+  const path = open ?? '';
+  if (/\.jobs\.yaml$/i.test(path)) {
+    return path.replace(/\.jobs\.yaml$/i, '.nb.md');
+  }
+  return EXTENSIONS.some((e) => path.toLowerCase().endsWith(e)) ? path : '';
+}
+
+const JOB_PROMPT =
+  'New job — the notebook it runs, as a path on your branch.\n\n'
+  + 'Its jobs file is made beside it if it is not there, and opens either way.';
+
+/**
+ * Asks which notebook, and creates-or-opens the jobs file paired with it. The
+ * path of that file, or null when the person cancelled.
+ *
+ * ponytail: a typed path, the same box "New notebook" uses. A picker over the
+ * tree if people turn out not to know their notebooks' paths.
+ */
+export async function promptForJob(seed = ''): Promise<string | null> {
+  const notebook = promptForNotebook('', seed, JOB_PROMPT);
+  if (notebook == null) {
+    return null;
+  }
+  // A jobs file with no notebook beside it is refused at publish, with the file
+  // already made — so the refusal belongs here, before there is one.
+  if (await api.notebookContent('mine', notebook).catch(() => null) == null) {
+    throw new Error(`${notebook} is not on your branch — a job needs a notebook to run.`);
+  }
+  return ensureJobsFile(notebook);
+}
