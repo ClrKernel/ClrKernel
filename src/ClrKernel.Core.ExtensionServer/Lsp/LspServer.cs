@@ -120,8 +120,8 @@ public sealed class LspServer {
         return trimmed;
     }
 
-    private NotebookSession SessionFor(string uri) =>
-        _sessions.GetOrAdd(NotebookKeyFor(uri), key => {
+    private NotebookSession SessionFor(string uri) {
+        var session = _sessions.GetOrAdd(NotebookKeyFor(uri), key => {
             var engine = new InteractiveScriptEngine(
                 DirectoryFor(key), _loggerFactory.CreateLogger(nameof(InteractiveScriptEngine)));
             // A #r-loaded plugin changed this session's languages/providers: tell
@@ -134,6 +134,12 @@ public sealed class LspServer {
                 });
             return new NotebookSession { Engine = engine, Language = new ScriptLanguageService() };
         });
+        // Every request that names a notebook comes through here first, and the
+        // ambient set here reaches the rest of the caller's request — completion and
+        // the connection RPCs included, which never go through the engine.
+        NotebookDirectory.Current = session.Engine.WorkingDirectory;
+        return session;
+    }
 
     // The notebook's own folder, so #load and relative paths resolve beside it.
     private static string DirectoryFor(string notebookKey) {

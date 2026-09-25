@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { notebookPath } from './newNotebook';
+import { jobSeed, notebookPath } from './newNotebook';
 
 describe('notebookPath', () => {
   it('adds the extension when there is none', () => {
@@ -43,5 +43,17 @@ describe('notebookPath', () => {
     // idea of what they typed.
     expect(notebookPath('notes.md')).toBe('notes.nb.md');
     expect(notebookPath('reports/notes.MD')).toBe('reports/notes.nb.md');
+  });
+});
+
+describe('jobSeed', () => {
+  it('offers the open notebook, or the one an open jobs file schedules', () => {
+    expect(jobSeed('etl/nightly.nb.md')).toBe('etl/nightly.nb.md');
+    expect(jobSeed('etl/nightly.jobs.yaml')).toBe('etl/nightly.nb.md');
+  });
+
+  it('offers nothing for a file that is not a notebook, or for no file', () => {
+    expect(jobSeed('connections.json')).toBe('');
+    expect(jobSeed(null)).toBe('');
   });
 });

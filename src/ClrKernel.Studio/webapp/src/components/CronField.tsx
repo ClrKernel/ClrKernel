@@ -136,6 +136,7 @@ export function CronField({
       <Input
         id="cron"
         value={value}
+        disabled={disabled}
         placeholder="0 2 * * *"
         aria-describedby="cron-help"
         onChange={(e) => {

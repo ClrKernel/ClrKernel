@@ -1,14 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { History, Play, Plus, Square, Trash2 } from 'lucide-react';
+import { History, Pause, Play, Plus, Square, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { CheckboxField, Field, FieldRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { api, isActive } from '../api';
+import { api, isActive, type JobsFileState } from '../api';
 import { timeAgo } from '../ipynb';
 import { StatusBadge, usePolling } from './common';
-import { addJob, readJobsFile, removeJob, setJobField, type JobView } from '../jobsFile';
+import {
+  addJob, readJobsFile, removeJob, setJobField, setJobParameter, type JobView,
+} from '../jobsFile';
+import { notebookParameters, type NotebookParameter } from '../parameters';
 import { CronField } from './CronField';
 
 /**
@@ -20,18 +26,20 @@ import { CronField } from './CronField';
  * views of one file rather than two models that have to be kept in step — and
  * the reason a comment you wrote survives a checkbox.
  *
- * The form shows the settings that are one value each. `parameters:` is a
- * free-form map and `notify:` is a pair of lists; both are named on the card and
- * left to the YAML tab, which is honest about where they live rather than
- * offering a half-editor for them.
+ * The form shows the settings that are one value each, and `parameters:` as a
+ * row per parameter the notebook declares. `notify:` and `dependsOn:` are named
+ * on the card and left to the YAML tab, which is honest about where they live
+ * rather than offering a half-editor for them.
  */
 export function JobsOverview({
-  text, onChange, readOnly, notebooks, project, branch,
+  text, onChange, readOnly, path, notebooks, project, branch,
 }: {
   text: string;
   onChange: (next: string) => void;
   readOnly: boolean;
-  /** Notebooks on this branch, for the "not here yet" warning. */
+  /** This jobs file's path, so the paired notebook can be found beside it. */
+  path: string;
+  /** Notebooks on this branch, to find the paired one. */
   notebooks: string[];
   project: string;
   /** Which branch this file is open on — jobs only run on test and prod. */
@@ -41,6 +49,25 @@ export function JobsOverview({
   // Jobs run where they are scheduled. On your own branch there is no job to run
   // yet, only a file describing one, so the card offers no button to press.
   const runnable = branch === 'test' || branch === 'prod' || branch === 'default';
+
+  // The parameters the paired notebook declares, read once per file. Null until
+  // the notebook has answered, so "none" is not shown while it is still loading.
+  const notebook = pairedNotebook(path, notebooks);
+  const [declared, setDeclared] = useState<NotebookParameter[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setDeclared(null);
+    if (notebook == null) {
+      setDeclared([]);
+      return;
+    }
+    api.notebookCells(branch, notebook)
+      .then((reply) => live && setDeclared(notebookParameters(reply.cells)))
+      .catch(() => live && setDeclared([]));
+    return () => {
+      live = false;
+    };
+  }, [branch, notebook]);
 
   if (view.error) {
     return (
@@ -72,6 +99,21 @@ export function JobsOverview({
             <strong>YAML</strong> tab shows what.
           </AlertDescription>
         </Alert>
+      )}
+
+      {readOnly && runnable && (
+        <p className="max-w-[720px] text-sm text-muted-subtle">
+          {branch} is read-only — edit on your own branch (<strong>Copy to my branch</strong>, top
+          right) and push. Running and the schedule switch work here.
+        </p>
+      )}
+
+      {runnable && view.jobs.length > 0 && (
+        <FileSwitch
+          branch={branch}
+          path={path}
+          anyEnabled={view.jobs.some((job) => job.enabled)}
+        />
       )}
 
       {view.jobs.length === 0 && (
@@ -112,43 +154,18 @@ export function JobsOverview({
             )}
           </div>
 
-          <Field
-            label="Notebook"
-            hint={
-              job.notebook === '' && view.notebook !== '' ? (
-                <>Empty, so it runs the file's <code className="font-mono">{view.notebook}</code>.</>
-              ) : job.notebook !== '' && notebooks.length > 0
-                  && !notebooks.includes(resolve(job.notebook)) ? (
-                <span className="text-status-warning">
-                  Not on this branch yet — a job can only name a notebook that is here.
-                </span>
-              ) : null
-            }
-          >
-            <Input
-              value={job.notebook}
-              disabled={readOnly}
-              placeholder={view.notebook || './daily.nb.md'}
-              onChange={(e) => set(index, 'notebook', e.target.value)}
-            />
-          </Field>
-
           <CronField
             value={job.cron}
             disabled={readOnly}
             onChange={(cron) => set(index, 'cron', cron)}
           />
 
-          <Field
-            label="Depends on"
-            hint="Job names, comma-separated — this one runs after they succeed."
-          >
-            <Input
-              value={job.dependsOn}
-              disabled={readOnly}
-              onChange={(e) => set(index, 'dependsOn', e.target.value)}
-            />
-          </Field>
+          <Parameters
+            declared={declared}
+            values={job.parameters}
+            readOnly={readOnly}
+            onChange={(name, value) => onChange(setJobParameter(text, index, name, value))}
+          />
 
           <FieldRow>
             <Field label="Timeout (seconds)" className="w-40">
@@ -178,8 +195,8 @@ export function JobsOverview({
             <p className="mt-2 text-base text-muted-foreground">
               Also sets <code className="font-mono text-code">{job.extras.join(', ')}</code>
               {' '}— edit on the <strong>YAML</strong> tab. That is where{' '}
-              <code className="font-mono text-code">parameters</code> and{' '}
-              <code className="font-mono text-code">notify</code> live too.
+              <code className="font-mono text-code">dependsOn</code> and{' '}
+              <code className="font-mono text-code">notify</code> live.
             </p>
           )}
 
@@ -286,7 +303,193 @@ function JobActions({ project, branch, name }: { project: string; branch: string
   );
 }
 
-/** `./daily.nb.md` and `daily.nb.md` name the same file to the tree. */
-function resolve(notebook: string): string {
-  return notebook.replace(/^\.\//, '');
+/** Snooze lengths, in hours. */
+const PAUSES: [string, number][] = [
+  ['2 hours', 2], ['8 hours', 8], ['1 day', 24], ['4 days', 96], ['1 week', 168],
+];
+
+/**
+ * The switch on the whole file — every job in it — kept apart from `enabled:`
+ * on each job on purpose.
+ *
+ * `enabled:` says whether a job is defined to run; a file whose jobs are all
+ * disabled cannot be activated, because that takes an edit, a push and a
+ * promotion. Active is the operator's switch; off is paused indefinitely. A
+ * pause is a snooze that ends by itself. None of them stops "Run now".
+ *
+ * Read from the server, not the text beside it, and polled: somebody else can
+ * pause the file while you are looking at it.
+ */
+function FileSwitch({ branch, path, anyEnabled }: { branch: string; path: string; anyEnabled: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const { data: state, reload } = usePolling(() => api.jobsFileState(branch, path), 10000, [branch, path]);
+
+  async function switchTo(next: { active: boolean; pausedUntil: string | null }) {
+    setNote(null);
+    setBusy(true);
+    try {
+      await api.setJobsFileState(branch, path, next);
+      reload();
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (state == null) {
+    return null;
+  }
+  return (
+    <div className="flex max-w-[720px] flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3">
+      <span className="mr-1 text-sm font-semibold">Schedule</span>
+      <Switch state={state} anyEnabled={anyEnabled} busy={busy} onSwitch={switchTo} />
+      {note && <span className="text-base text-status-danger">{note}</span>}
+    </div>
+  );
+}
+
+function Switch({
+  state, anyEnabled, busy, onSwitch,
+}: {
+  state: JobsFileState;
+  anyEnabled: boolean;
+  busy: boolean;
+  onSwitch: (state: { active: boolean; pausedUntil: string | null }) => void;
+}) {
+  if (!anyEnabled) {
+    return (
+      <span className="text-xs text-muted-subtle" title="Enable a job on its card, push, and the file can be activated.">
+        Every job here is disabled in the file — nothing is scheduled
+      </span>
+    );
+  }
+  if (!state.active) {
+    return (
+      <>
+        <span className="text-xs text-status-warning">Inactive — paused indefinitely</span>
+        <Button variant="outline" size="sm" disabled={busy}
+          onClick={() => onSwitch({ active: true, pausedUntil: null })}>
+          Activate
+        </Button>
+      </>
+    );
+  }
+  return (
+    <>
+      {state.pausedUntil != null ? (
+        <>
+          <span className="text-xs text-status-warning">
+            Paused until {new Date(state.pausedUntil).toLocaleString()}
+          </span>
+          <Button variant="outline" size="sm" disabled={busy}
+            onClick={() => onSwitch({ active: true, pausedUntil: null })}>
+            Resume
+          </Button>
+        </>
+      ) : (
+        <>
+        <span className="text-xs text-muted-subtle">Active — runs as scheduled</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={busy}>
+              <Pause className="size-3.5" aria-hidden="true" />
+              Pause
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-auto whitespace-nowrap">
+            {PAUSES.map(([label, hours]) => (
+              <DropdownMenuItem key={label} onSelect={() =>
+                onSwitch({ active: true, pausedUntil: new Date(Date.now() + hours * 3600_000).toISOString() })}>
+                {label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onSelect={() => {
+              // ponytail: a typed time. A date picker if people keep mistyping it.
+              const typed = prompt('Pause until (local time, e.g. 2026-09-25 08:00)');
+              const at = typed ? new Date(typed) : null;
+              if (at != null && !Number.isNaN(at.getTime())) {
+                onSwitch({ active: true, pausedUntil: at.toISOString() });
+              } else if (typed) {
+                alert(`Could not read "${typed}" as a time.`);
+              }
+            }}>
+              Until…
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSwitch({ active: false, pausedUntil: null })}>
+              Indefinitely
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        </>
+      )}
+      <Button variant="ghost" size="sm" disabled={busy}
+        onClick={() => onSwitch({ active: false, pausedUntil: null })}>
+        Deactivate
+      </Button>
+    </>
+  );
+}
+
+/**
+ * One row per parameter the notebook declares, plus any the job sets that the
+ * notebook does not — those are shown too, flagged, rather than silently kept.
+ */
+function Parameters({
+  declared, values, readOnly, onChange,
+}: {
+  declared: NotebookParameter[] | null;
+  values: Record<string, string>;
+  readOnly: boolean;
+  onChange: (name: string, value: string) => void;
+}) {
+  if (declared == null) {
+    return null;
+  }
+  const names = declared.map((p) => p.name);
+  const orphans = Object.keys(values).filter((name) => !names.includes(name));
+  if (names.length === 0 && orphans.length === 0) {
+    return (
+      <p className="text-sm text-muted-subtle">
+        No parameters — the notebook has no <code className="font-mono">// parameters</code> cell.
+      </p>
+    );
+  }
+  return (
+    <Field label="Parameters" hint="Empty means the notebook's own default.">
+      <div className="flex flex-col gap-1.5">
+        {declared.map((p) => (
+          <div key={p.name} className="flex items-center gap-2">
+            <code className="w-40 shrink-0 truncate font-mono text-code" title={p.name}>{p.name}</code>
+            <Input
+              value={values[p.name] ?? ''}
+              disabled={readOnly}
+              placeholder={p.defaultValue}
+              aria-label={`Parameter ${p.name}`}
+              onChange={(e) => onChange(p.name, e.target.value)}
+            />
+          </div>
+        ))}
+        {orphans.map((name) => (
+          <div key={name} className="flex items-center gap-2">
+            <code className="w-40 shrink-0 truncate font-mono text-code text-status-warning"
+              title="The notebook does not declare this parameter">{name}</code>
+            <Input
+              value={values[name]}
+              disabled={readOnly}
+              aria-label={`Parameter ${name}`}
+              onChange={(e) => onChange(name, e.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+/** The notebook this jobs file schedules: the one beside it with the same stem. */
+function pairedNotebook(path: string, notebooks: string[]): string | null {
+  const stem = path.replace(/\.jobs\.yaml$/i, '').toLowerCase();
+  return notebooks.find((n) => n.replace(/\.(nb\.md|ipynb|dib|csx)$/i, '').toLowerCase() === stem) ?? null;
 }

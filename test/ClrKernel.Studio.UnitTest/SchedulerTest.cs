@@ -224,6 +224,39 @@ public class SchedulerTest {
     }
 
     [TestMethod]
+    public async Task A_deactivated_or_snoozed_job_holds_until_the_snooze_passes() {
+        WriteJobs(
+            """
+            jobs:
+              - name: minutely
+                cron: "* * * * *"
+            """);
+
+        // Deactivated: paused indefinitely, however many windows go by.
+        await _store.SetJobStateAsync(new JobState {
+            Project = "default",
+            Environment = "default",
+            Path = "nb.jobs.yaml",
+            Active = false,
+        });
+        await TickAsync(_t0, _t0.AddMinutes(1));
+        Assert.AreEqual(0, _launched.Count, "inactive never fires");
+
+        // Snoozed for two minutes: held through the first window, fires in the third.
+        await _store.SetJobStateAsync(new JobState {
+            Project = "default",
+            Environment = "default",
+            Path = "nb.jobs.yaml",
+            Active = true,
+            PausedUntil = _t0.AddMinutes(2),
+        });
+        await TickAsync(_t0, _t0.AddMinutes(1));
+        Assert.AreEqual(0, _launched.Count, "still snoozed");
+        await TickAsync(_t0.AddMinutes(2), _t0.AddMinutes(3));
+        Assert.AreEqual(1, _launched.Count, "the snooze passed and the schedule resumed by itself");
+    }
+
+    [TestMethod]
     public async Task A_manual_trigger_returns_the_run_id_it_will_use() {
         WriteJobs("notebook: ./nb.nb.md\njobs: [{name: manual}]");
         var job = new JobCatalog(_root).Load().Find("default", "default", "manual");

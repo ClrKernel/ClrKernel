@@ -1,4 +1,4 @@
-import { FilePlus2, FolderGit2 } from 'lucide-react';
+import { CalendarPlus, FilePlus2, FolderGit2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,12 +10,12 @@ import { MergePreview } from '../components/MergePreview';
 import { NotebookExplorer } from '../components/NotebookExplorer';
 import { RepoBrowser } from '../components/RepoBrowser';
 import { Splitter } from '../components/Splitter';
-import { createNotebook, promptForNotebook } from '../newNotebook';
+import { createNotebook, promptForJob, promptForNotebook } from '../newNotebook';
 import {
   DEFAULT_LAYOUT, loadLayout, MAX_EXPLORER, MIN_EXPLORER, saveLayout,
   type LayoutPrefs,
 } from '../prefs';
-import { editPath } from '../routes';
+import { editPath, jobsFilePath } from '../routes';
 import { useIsProjectAdmin, useIsProjectMember } from '../sessionContext';
 
 function clamp(value: number, low: number, high: number): number {
@@ -103,6 +103,20 @@ export function Files() {
     }
   }
 
+  /** The jobs file beside a notebook — made if it is not there, opened either way. */
+  async function createJob() {
+    setNotice(null);
+    try {
+      const jobsFile = await promptForJob();
+      if (jobsFile != null) {
+        reload();
+        navigate(jobsFilePath(projectSlug(), 'mine', jobsFile));
+      }
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  }
+
   const environments = (tree?.environments ?? []).filter((e) => e.tree != null);
   const mayWrite = (health?.gitEnabled ?? false) && mayEdit;
 
@@ -183,6 +197,12 @@ export function Files() {
                 <Button variant="outline" size="sm" onClick={create}>
                   <FilePlus2 className="size-3.5" aria-hidden="true" />
                   New notebook
+                </Button>
+              )}
+              {mayWrite && (
+                <Button variant="outline" size="sm" onClick={createJob}>
+                  <CalendarPlus className="size-3.5" aria-hidden="true" />
+                  New job
                 </Button>
               )}
             </div>

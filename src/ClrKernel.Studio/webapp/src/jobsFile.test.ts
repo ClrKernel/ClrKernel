@@ -30,9 +30,11 @@ describe('readJobsFile', () => {
 
   it('names what a job carries that the form does not show', () => {
     // So the UI can point at the YAML tab instead of pretending the job is
-    // only what is on screen.
-    expect(readJobsFile(file).jobs[0].extras).toEqual(['parameters']);
-    expect(readJobsFile(file).jobs[1].extras).toEqual([]);
+    // only what is on screen. Parameters are on the form now; notify is not.
+    const text = file.replace('    parameters:\n      region: eu\n', '    notify: {onFailure: [ops]}\n');
+    expect(readJobsFile(text).jobs[0].extras).toEqual(['notify']);
+    expect(readJobsFile(file).jobs[0].extras).toEqual([]);
+    expect(readJobsFile(file).jobs[0].parameters).toEqual({ region: 'eu' });
   });
 
   it('reports a file it cannot read rather than showing an empty form', () => {
@@ -137,10 +139,10 @@ describe('dependsOn', () => {
     expect(setJobField(text, 0, 'dependsOn', '')).not.toMatch(/dependsOn/);
   });
 
-  // It used to land in `extras`, which told the reader to go to the YAML tab for
-  // something the form now shows.
-  it('is no longer something the form hides', () => {
+  // Read, so the value survives a round trip, but not shown: the form points at
+  // the YAML tab for it, the way it does for `notify`.
+  it('is something the form leaves to the YAML tab', () => {
     const text = 'jobs:\n  - name: nightly\n    dependsOn: [a]\n';
-    expect(readJobsFile(text).jobs[0].extras).toEqual([]);
+    expect(readJobsFile(text).jobs[0].extras).toEqual(['dependsOn']);
   });
 });

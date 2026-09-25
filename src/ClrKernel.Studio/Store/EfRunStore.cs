@@ -358,6 +358,32 @@ public sealed class EfRunStore : IRunStore {
         await db.SaveChangesAsync();
     }
 
+    public async Task<IReadOnlyList<JobState>> GetJobStatesAsync() {
+        using var db = _contextFactory();
+        return await db.JobStates.AsNoTracking().ToListAsync();
+    }
+
+    public async Task<JobState> GetJobStateAsync(string project, string environment, string path) {
+        using var db = _contextFactory();
+        return await db.JobStates.AsNoTracking().FirstOrDefaultAsync(s =>
+            s.Project == project && s.Environment == environment && s.Path == path);
+    }
+
+    public async Task SetJobStateAsync(JobState state) {
+        using var db = _contextFactory();
+        var existing = await db.JobStates.FirstOrDefaultAsync(s =>
+            s.Project == state.Project && s.Environment == state.Environment && s.Path == state.Path);
+        state.LastModified = DateTime.UtcNow;
+        if (existing == null) {
+            db.JobStates.Add(state);
+        } else {
+            existing.Active = state.Active;
+            existing.PausedUntil = state.PausedUntil;
+            existing.LastModified = state.LastModified;
+        }
+        await db.SaveChangesAsync();
+    }
+
     public async Task<IReadOnlyList<string>> PurgeRunsAsync(DateTime before) {
         using var db = _contextFactory();
         // The newest run of each job, whatever its age. Read as ids rather than

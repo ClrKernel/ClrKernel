@@ -300,6 +300,33 @@ public sealed class JobTriggerState {
 }
 
 /// <summary>
+/// The scheduler's switch for one jobs file — every job in it — kept beside the
+/// run history rather than in the file: pausing a prod job for the weekend is an
+/// operation, not an edit, and it must not need a commit and a promotion to take
+/// effect. Keyed by the file's path so it joins to runs by the notebook beside it.
+/// <para>
+/// Three things are separate here on purpose. <c>enabled:</c> in the YAML says
+/// whether a job is *defined* to run, and a file with no enabled job cannot be
+/// activated. <see cref="Active"/> is the operator's switch — off means paused
+/// indefinitely. <see cref="PausedUntil"/> is a snooze: the schedule resumes by
+/// itself when the time passes. None of them stops a manual run.
+/// </para>
+/// </summary>
+public sealed class JobState {
+    public string Project { get; set; } = "default";
+    public string Environment { get; set; } = "default";
+    /// <summary>The jobs file, relative to the notebooks root: <c>etl/nightly.jobs.yaml</c>.</summary>
+    public string Path { get; set; }
+    public bool Active { get; set; } = true;
+    public DateTime? PausedUntil { get; set; }
+    public DateTime LastModified { get; set; }
+
+    /// <summary>True when nothing here is holding the job back at <paramref name="nowUtc"/>.</summary>
+    public bool Schedulable(DateTime nowUtc) =>
+        Active && (PausedUntil == null || PausedUntil <= nowUtc);
+}
+
+/// <summary>
 /// What the monitoring grid may sort on. A whitelist rather than a column name off
 /// the wire, because this reaches an ORDER BY.
 /// <para>

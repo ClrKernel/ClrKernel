@@ -1,6 +1,6 @@
 import {
   Copy,
-  FileOutput,
+  EllipsisVertical,
   Info,
   MoreHorizontal,
   Play,
@@ -636,7 +636,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="xs" aria-label="File" title="Save a copy, or move this notebook">
-            <FileOutput className="size-3.5" aria-hidden="true" />
+            <EllipsisVertical className="size-3.5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         {/* w-auto: the default is the *trigger's* width, and the trigger is one
@@ -649,7 +649,7 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
               your machine. */}
           <DropdownMenuItem onSelect={props.onDownload}>Download file</DropdownMenuItem>
           <DropdownMenuItem onSelect={props.onMove}>Move or rename…</DropdownMenuItem>
-          {/* The same act as `+ job` in the Files list, offered where promotion
+          {/* The same act as New job in the explorer, offered where promotion
               says a notebook with no job cannot prove itself — which is here,
               and not on a page you would have to know to go back to. */}
           {props.onSchedule && (

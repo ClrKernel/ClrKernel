@@ -29,6 +29,8 @@ export interface JobView {
   retryCount: string;
   /** Comma-separated on the form, a YAML list in the file. */
   dependsOn: string;
+  /** `parameters:` as strings, the way the boxes hold them. Only scalar values. */
+  parameters: Record<string, string>;
   /** Set when this job carries something the form does not show. */
   extras: string[];
 }
@@ -43,10 +45,12 @@ export interface JobsFileView {
   hasDefaults: boolean;
 }
 
-/** Fields the Overview form knows how to show and write. */
-const SHOWN = [
-  'name', 'notebook', 'cron', 'enabled', 'timeoutSeconds', 'retryCount', 'dependsOn',
-];
+/**
+ * Fields the Overview form knows how to show and write. `notebook` and
+ * `dependsOn` are read but not shown: the file schedules the notebook beside it,
+ * and a chain is rare enough that the YAML tab is the honest place for it.
+ */
+const SHOWN = ['name', 'cron', 'enabled', 'timeoutSeconds', 'retryCount', 'parameters'];
 
 /** `dependsOn` is a list in the file and one comma-separated box on the form. */
 function joinList(node: unknown): string {
@@ -57,6 +61,34 @@ function joinList(node: unknown): string {
 
 function splitList(value: string): string[] {
   return value.split(',').map((part) => part.trim()).filter(Boolean);
+}
+
+function readParameters(node: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      if (isScalar(pair.key) && isScalar(pair.value)) {
+        out[String(pair.key.value ?? '')] = scalar(pair.value.value);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * What a typed value means in the file: `5` is a number, `true` a bool, the
+ * rest a string — the same inference the runner applies to the injected cell,
+ * so what the box shows is what the notebook gets.
+ */
+export function parameterValue(text: string): string | number | boolean {
+  const trimmed = text.trim();
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+  if (trimmed === 'true' || trimmed === 'false') {
+    return trimmed === 'true';
+  }
+  return text;
 }
 
 function scalar(node: unknown): string {
@@ -99,6 +131,7 @@ export function readJobsFile(text: string): JobsFileView {
       timeoutSeconds: scalar(document.getIn(['jobs', index, 'timeoutSeconds'])),
       retryCount: scalar(document.getIn(['jobs', index, 'retryCount'])),
       dependsOn: joinList(document.getIn(['jobs', index, 'dependsOn'], true)),
+      parameters: readParameters(document.getIn(['jobs', index, 'parameters'], true)),
       // What this job has that the form does not show, so the UI can say the
       // YAML tab is where the rest of it lives rather than pretending there is
       // nothing else.
@@ -140,6 +173,28 @@ export function setJobField(
     document.setIn(path, splitList(value));
   } else {
     document.setIn(path, value);
+  }
+  return String(document);
+}
+
+/**
+ * One parameter of one job. An empty value removes the key, and the last key
+ * removed takes `parameters:` with it, so clearing every box leaves the file as
+ * it was before any were filled.
+ */
+export function setJobParameter(text: string, index: number, name: string, value: string): string {
+  const document = parseDocument(text ?? '');
+  if (document.errors.length > 0) {
+    return text;
+  }
+  if (value.trim() === '') {
+    document.deleteIn(['jobs', index, 'parameters', name]);
+    const rest = document.getIn(['jobs', index, 'parameters'], true);
+    if (isMap(rest) && rest.items.length === 0) {
+      document.deleteIn(['jobs', index, 'parameters']);
+    }
+  } else {
+    document.setIn(['jobs', index, 'parameters', name], parameterValue(value));
   }
   return String(document);
 }

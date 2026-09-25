@@ -217,8 +217,8 @@ public sealed class ConnectionMaterializer {
         }
         // The secret *reference*, never a secret. Which key it goes under is the
         // provider's business: it is whichever of its settings is a credential.
-        if (!string.IsNullOrEmpty(connection.SecretRef)) {
-            yield return ConfigProperty.Secret(SecretKeyFor(connection.Type), connection.SecretRef);
+        if (connection.SecretRefToOpenWith(_store.HasSecret) is { } secretRef) {
+            yield return ConfigProperty.Secret(SecretKeyFor(connection.Type), secretRef);
         }
     }
 

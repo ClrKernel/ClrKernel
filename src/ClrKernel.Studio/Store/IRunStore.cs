@@ -33,6 +33,11 @@ public interface IRunStore {
     Task<bool> HasActiveRunAsync(string project, string environment, string jobName);
     Task<DateTime?> GetLastTriggerAsync(string project, string environment, string jobName);
     Task SetLastTriggerAsync(string project, string environment, string jobName, DateTime triggeredAt);
+    /// <summary>Every jobs file the operator has switched, across all projects. A file with no row is active and not paused.</summary>
+    Task<IReadOnlyList<JobState>> GetJobStatesAsync();
+    Task<JobState> GetJobStateAsync(string project, string environment, string path);
+    /// <summary>Upsert, keyed on project + environment + jobs file path. Stamps <see cref="JobState.LastModified"/>.</summary>
+    Task SetJobStateAsync(JobState state);
 
     // --- driving a notebook by hand in test or prod -------------------------
     //

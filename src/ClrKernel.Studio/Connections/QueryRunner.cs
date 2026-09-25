@@ -88,11 +88,12 @@ public sealed class QueryRunner {
     public RawConnectionNode NodeFor(StoredConnection connection, bool leastPrivilege) {
         // Through the provider's own mapping rather than field by field, so aliases,
         // defaults and the raw-connection-string inference stay in one place.
+        var secretRef = connection.SecretRefToOpenWith(r => _secrets.TryResolve(r, out _));
         var node = RawConnectionNode.FromValues(
             connection.Name, connection.Type, connection.Settings,
-            connection.SecretRef == null
+            secretRef == null
                 ? null
-                : new Dictionary<string, string> { ["password"] = connection.SecretRef });
+                : new Dictionary<string, string> { ["password"] = secretRef });
         if (!leastPrivilege) {
             return node;
         }

@@ -16,6 +16,7 @@ public abstract class RunsDbContext : DbContext {
     public DbSet<Run> Runs => Set<Run>();
     public DbSet<RunCell> RunCells => Set<RunCell>();
     public DbSet<JobTriggerState> JobTriggerStates => Set<JobTriggerState>();
+    public DbSet<JobState> JobStates => Set<JobState>();
     public DbSet<ManualRun> ManualRuns => Set<ManualRun>();
     public DbSet<QueryAudit> QueryAudits => Set<QueryAudit>();
     public DbSet<PromotionAudit> PromotionAudits => Set<PromotionAudit>();
@@ -184,6 +185,19 @@ public abstract class RunsDbContext : DbContext {
             state.Property(s => s.Environment).HasColumnName("environment").HasMaxLength(16);
             state.Property(s => s.JobName).HasColumnName("job_name");
             state.Property(s => s.LastTriggerAt).HasColumnName("last_trigger_at");
+        });
+
+        modelBuilder.Entity<JobState>(state => {
+            state.ToTable("jobs");
+            // The jobs file, not the job: the switch is for everything in it, and
+            // the path is what joins to runs (the notebook beside it).
+            state.HasKey(s => new { s.Project, s.Environment, s.Path });
+            state.Property(s => s.Project).HasColumnName("project").HasMaxLength(64);
+            state.Property(s => s.Environment).HasColumnName("environment").HasMaxLength(16);
+            state.Property(s => s.Path).HasColumnName("path").HasMaxLength(450);
+            state.Property(s => s.Active).HasColumnName("active");
+            state.Property(s => s.PausedUntil).HasColumnName("paused_until");
+            state.Property(s => s.LastModified).HasColumnName("last_modified");
         });
 
         modelBuilder.Entity<User>(user => {

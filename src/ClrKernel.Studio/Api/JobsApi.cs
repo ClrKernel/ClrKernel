@@ -1275,11 +1275,12 @@ public static class JobsApi {
 
         // Every project's jobs: the dashboard is a view of the whole server, and a
         // job carries the project it belongs to.
-        api.MapGet("/jobs", async (HttpContext context, ProjectRegistry projects) => {
+        api.MapGet("/jobs", async (HttpContext context, ProjectRegistry projects, IRunStore store) => {
             var visible = await context.VisibleProjectsAsync(projects);
             var result = projects.LoadAll();
+            var states = await store.GetJobStatesAsync();
             var jobs = result.Jobs.Where(j => visible.ContainsKey(j.Project))
-                .Select(JobView.From).ToList();
+                .Select(j => JobView.From(j, states)).ToList();
 
             // Jobs you have written but not pushed yet.
             //
@@ -1312,14 +1313,14 @@ public static class JobsApi {
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
                     jobs.AddRange(projects.CatalogFor(project, mine).Load().Jobs
                         .Where(j => !inTest.Contains(j.Name))
-                        .Select(JobView.From));
+                        .Select(j => JobView.From(j)));
                 }
             }
             return Results.Ok(new { jobs, errors = result.Errors });
         });
 
-        scoped.MapGet("/jobs/{name}", (
-            HttpContext context, ProjectRegistry projects,
+        scoped.MapGet("/jobs/{name}", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store,
             string project, string branch, string name) => {
                 if (Scope.Of(projects, project) is not { } scope) {
                     return NoProject(project);
@@ -1327,9 +1328,60 @@ public static class JobsApi {
                 branch = scope.BranchFor(context, branch);
                 var job = scope.CatalogFor(branch).Load()
                     .Find(scope.Project.Slug, scope.EnvironmentOf(branch), name);
-                return job == null ? Results.NotFound(new { error = $"No job named '{name}' in {branch}." })
-                    : Results.Ok(JobView.From(job));
+                if (job == null) {
+                    return Results.NotFound(new { error = $"No job named '{name}' in {branch}." });
+                }
+                var state = await store.GetJobStateAsync(job.Project, job.Environment, job.SourceFileRelative);
+                return Results.Ok(JobView.From(job, state));
             }).RequiresProject(ProjectRole.ProjectViewer);
+
+        // The operator's switch for a jobs file — every job in it — separate from
+        // `enabled:` on each job. Pausing a prod schedule is an operation; it must
+        // not need an edit, a push and a promotion to take effect, so it lives in
+        // the store, keyed by the file's path, not in the YAML.
+        scoped.MapGet("/jobs-file/state", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store,
+            string project, string branch, string path) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                var state = await store.GetJobStateAsync(scope.Project.Slug, scope.EnvironmentOf(branch), path);
+                return Results.Ok(JobsFileState.From(path, state));
+            }).RequiresProject(ProjectRole.ProjectViewer);
+
+        scoped.MapPut("/jobs-file/state", async (
+            HttpContext context, ProjectRegistry projects, IRunStore store,
+            string project, string branch, string path, JobStateWrite write) => {
+                if (Scope.Of(projects, project) is not { } scope) {
+                    return NoProject(project);
+                }
+                branch = scope.BranchFor(context, branch);
+                var environment = scope.EnvironmentOf(branch);
+                if (!SchedulerService.Schedules(environment)) {
+                    return Results.BadRequest(new { error = "Nothing is scheduled on a personal branch, so there is nothing to switch." });
+                }
+                var jobs = scope.CatalogFor(branch).Load().Jobs
+                    .Where(j => string.Equals(j.SourceFileRelative, path, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (jobs.Count == 0) {
+                    return Results.NotFound(new { error = $"No jobs file at '{path}' in {branch}." });
+                }
+                if (write.Active && jobs.All(j => !j.Enabled)) {
+                    return Results.BadRequest(new {
+                        error = "Every job in this file is disabled. Enable one there, push, and the file can be activated.",
+                    });
+                }
+                var state = new JobState {
+                    Project = scope.Project.Slug,
+                    Environment = environment,
+                    Path = jobs[0].SourceFileRelative,
+                    Active = write.Active,
+                    PausedUntil = write.PausedUntil?.ToUniversalTime(),
+                };
+                await store.SetJobStateAsync(state);
+                return Results.Ok(JobsFileState.From(state.Path, state));
+            }).RequiresProject(ProjectRole.ProjectMember);
 
         scoped.MapPost("/jobs", (
             HttpContext context, ProjectRegistry projects,
@@ -1541,13 +1593,18 @@ public static class JobsApi {
         // one expression is how the dashboard ends up promising an hour the
         // scheduler does not agree with.
         api.MapGet("/schedule/upcoming", async (
-            HttpContext context, ProjectRegistry projects, int? limit) => {
+            HttpContext context, ProjectRegistry projects, IRunStore store, int? limit) => {
                 var visible = await context.VisibleProjectsAsync(projects);
                 var now = DateTime.UtcNow;
+                var states = await store.GetJobStatesAsync();
                 var upcoming = new List<UpcomingRun>();
                 foreach (var job in projects.LoadAll().Jobs) {
                     if (!job.Enabled
                         || job.Cron == null
+                        // Paused or deactivated: the next occurrence is not going
+                        // to happen, so it is not upcoming. (A snooze that ends
+                        // before the next fire time holds nothing back.)
+                        || !(SchedulerService.StateOf(states, job)?.Schedulable(now) ?? true)
                         || !visible.ContainsKey(job.Project ?? ProjectRegistry.DefaultSlug)
                         // A job in a branch nothing schedules has no next run, and
                         // saying otherwise is the dashboard promising something that
@@ -2960,8 +3017,15 @@ public sealed class JobView {
     public IReadOnlyDictionary<string, object> Parameters { get; set; }
     public IReadOnlyList<string> DependsOn { get; set; }
     public NotifyRules Notify { get; set; }
+    /// <summary>The switch on this job's file — off is paused indefinitely. True when no row exists.</summary>
+    public bool Active { get; set; }
+    /// <summary>The file's snooze; the schedule resumes on its own once this passes.</summary>
+    public DateTime? PausedUntil { get; set; }
 
-    public static JobView From(JobDefinition job) => job == null ? null : new JobView {
+    public static JobView From(JobDefinition job, IReadOnlyList<JobState> states) =>
+        From(job, SchedulerService.StateOf(states, job));
+
+    public static JobView From(JobDefinition job, JobState state = null) => job == null ? null : new JobView {
         Project = job.Project,
         Environment = job.Environment,
         Name = job.Name,
@@ -2974,6 +3038,34 @@ public sealed class JobView {
         Parameters = job.Parameters,
         DependsOn = job.DependsOn,
         Notify = job.Notify,
+        Active = state?.Active ?? true,
+        // An elapsed snooze is over; saying "paused until yesterday" is noise.
+        // Stamped UTC because SQLite hands it back Unspecified, which serialises
+        // without a zone and lands in the browser as local time — hours out.
+        PausedUntil = state?.PausedUntil is { } until && until > DateTime.UtcNow
+            ? DateTime.SpecifyKind(until, DateTimeKind.Utc) : null,
+    };
+}
+
+/// <summary>The body of a jobs-file switch write: active, and optionally the snooze.</summary>
+public sealed class JobStateWrite {
+    public bool Active { get; set; } = true;
+    public DateTime? PausedUntil { get; set; }
+}
+
+/// <summary>A jobs file's switch as the API returns it. No row means active, not paused.</summary>
+public sealed class JobsFileState {
+    public string Path { get; set; }
+    public bool Active { get; set; }
+    public DateTime? PausedUntil { get; set; }
+    public DateTime? LastModified { get; set; }
+
+    public static JobsFileState From(string path, JobState state) => new() {
+        Path = path,
+        Active = state?.Active ?? true,
+        PausedUntil = state?.PausedUntil is { } until && until > DateTime.UtcNow
+            ? DateTime.SpecifyKind(until, DateTimeKind.Utc) : null,
+        LastModified = state?.LastModified is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : null,
     };
 }
 

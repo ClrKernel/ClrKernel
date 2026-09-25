@@ -313,6 +313,27 @@ public class RunStoreContractTest {
 
         await store.CreateRunAsync(NewRun("a", RunStatus.Running));
         Assert.IsTrue(await store.HasActiveRunAsync("default", "default", "a"));
+
+        // The operator's switch: absent means active; a write is an upsert.
+        Assert.IsNull(await store.GetJobStateAsync("default", "default", "a.jobs.yaml"));
+        await store.SetJobStateAsync(new JobState {
+            Project = "default",
+            Environment = "default",
+            Path = "a.jobs.yaml",
+            Active = false,
+        });
+        await store.SetJobStateAsync(new JobState {
+            Project = "default",
+            Environment = "default",
+            Path = "a.jobs.yaml",
+            Active = true,
+            PausedUntil = at,
+        });
+        var state = await store.GetJobStateAsync("default", "default", "a.jobs.yaml");
+        Assert.IsTrue(state.Active);
+        Assert.AreEqual(at, state.PausedUntil);
+        Assert.AreNotEqual(default, state.LastModified);
+        Assert.AreEqual(1, (await store.GetJobStatesAsync()).Count, "upsert, not insert");
     }
 
     [TestMethod]

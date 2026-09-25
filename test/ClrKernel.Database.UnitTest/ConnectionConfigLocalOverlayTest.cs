@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using ClrKernel.Core.Primitives;
 using ClrKernel.Database;
 using ClrKernel.Language.Sql;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -37,6 +38,26 @@ public class ConnectionConfigLocalOverlayTest {
         Assert.AreEqual(2, files.Count);
         StringAssert.EndsWith(files[0], "connections.json");
         StringAssert.EndsWith(files[1], "connections.local.json");
+    }
+
+    /// <summary>Found on Windows under `lsp`: one process, and a second notebook in
+    /// another folder could not see its own `connections.json`, because every lookup
+    /// that was given no directory started from the process's.</summary>
+    [TestMethod]
+    public void The_ambient_notebook_directory_is_where_a_lookup_with_no_start_directory_begins() {
+        WriteBase("""{ "viaodbc": { "$type": "Odbc", "connectionString": "DSN=x" } }""");
+        var saved = NotebookDirectory.Current;
+        try {
+            // The process's own directory (the test host's) has no config beside it.
+            NotebookDirectory.Current = null;
+            Assert.IsNull(ConnectionConfig.FindFile(), "the test host's folder is not a notebook");
+
+            NotebookDirectory.Current = _dir;
+            Assert.AreEqual(Path.Combine(_dir, "connections.json"), ConnectionConfig.FindFile());
+            Assert.AreEqual("Odbc", SqlTarget.ProviderTypesInConfig()["viaodbc"]);
+        } finally {
+            NotebookDirectory.Current = saved;
+        }
     }
 
     [TestMethod]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -243,8 +244,15 @@ public sealed class SchedulerService : BackgroundService {
         // Automatic triggers fire only where the scheduler owns execution: prod in
         // the git workflow, or the single default environment without it. Test runs
         // are always deliberate (manual / API).
+        var states = await _store.GetJobStatesAsync();
         foreach (var job in catalog.Jobs.Where(j => j.Enabled && Schedules(j.Environment))) {
             if (_activeJobs.ContainsKey(KeyOf(job))) {
+                continue;
+            }
+            // Deactivated or snoozed by an operator. Holds cron and dependency
+            // triggers alike; a manual run goes through Launch directly and is
+            // never gated here.
+            if (StateOf(states, job) is { } state && !state.Schedulable(toUtc)) {
                 continue;
             }
 
@@ -286,6 +294,13 @@ public sealed class SchedulerService : BackgroundService {
     /// </summary>
     internal static bool Schedules(string environment) =>
         environment is "prod" or GitService.TestBranch or "default";
+
+    /// <summary>The stored switch for the file a job is in, or null when nobody has touched it.</summary>
+    internal static JobState StateOf(IReadOnlyList<JobState> states, JobDefinition job) =>
+        states?.FirstOrDefault(s =>
+            string.Equals(s.Project, job.Project, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(s.Environment, job.Environment, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(s.Path, job.SourceFileRelative, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>True when the cron has an occurrence inside (from, to]. Times must be UTC.</summary>
     internal static bool IsDue(string cron, DateTime fromUtc, DateTime toUtc) {

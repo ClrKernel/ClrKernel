@@ -516,6 +516,36 @@ public class ConnectionsApiTest {
             "a least-privilege login signs in with a name and a password whatever the connection's own mode was");
     }
 
+    /// <summary>Found on Windows: an ODBC connection with `Trusted_Connection=yes` and no
+    /// password could not be tested — the default secret reference every saved connection
+    /// carries was handed to the provider, which failed on it before dialling.</summary>
+    [TestMethod]
+    public void AConnectionWithNoUserAndNoStoredPasswordOpensWithoutASecretReference() {
+        var secrets = new InMemorySecretProvider();
+        var runner = new QueryRunner(SecretStore.ForProviders(secrets), NullLogger<QueryRunner>.Instance);
+        var trusted = new StoredConnection {
+            Id = "c2",
+            Name = "viaodbc",
+            Type = "Odbc",
+            Settings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                ["connectionString"] = "Driver={ODBC Driver 18 for SQL Server};Server=s;Trusted_Connection=yes",
+            },
+        };
+        trusted.SecretRef = trusted.DefaultSecretRef;
+
+        Assert.IsNull(runner.NodeFor(trusted, leastPrivilege: false).SecretRef("password"));
+
+        // A user with no stored password keeps the reference: the failure should still
+        // say "no secret", not "login failed for user ''".
+        trusted.Settings["user"] = "svc";
+        Assert.AreEqual(trusted.DefaultSecretRef, runner.NodeFor(trusted, leastPrivilege: false).SecretRef("password"));
+
+        // And a stored password is used even with no user named.
+        trusted.Settings.Remove("user");
+        secrets.Set(trusted.DefaultSecretRef, "pw");
+        Assert.AreEqual(trusted.DefaultSecretRef, runner.NodeFor(trusted, leastPrivilege: false).SecretRef("password"));
+    }
+
     // --- helpers ------------------------------------------------------------
 
     private Task<User> SignInAsync(UserRole role, string displayName = null) =>

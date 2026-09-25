@@ -147,6 +147,19 @@ also get a cell editor that runs cells against a live kernel — see
   terminal.
 - **Cron and manual triggers ignore dependencies.** If you schedule a job, you asked
   for it at that time.
+- **Three switches, kept apart.** `enabled:` on a job says whether it is *defined*
+  to run — a disabled job is never scheduled, and a file whose jobs are all disabled
+  cannot be activated until the file says otherwise, which takes an edit, a push and
+  a promotion. On top of that, each **jobs file** has an operator's switch in the
+  store, not the file, and it applies to every job in it: **Deactivate** pauses the
+  file indefinitely, **Pause** snoozes it for two hours, a day, a week or until a
+  time you type, and the schedule resumes by itself when that passes. It sits above
+  the cards on the file's Overview in test and prod, and a paused or inactive file's
+  jobs drop out of the dashboard's upcoming list. None of the three stops **Run
+  now**. The switch is a row in the `jobs` table (`jobs.json` on the file store):
+  `project, environment, path, active, paused_until, last_modified`, keyed by the
+  file's path — which is what joins it to `runs`, whose `notebook_path` is the
+  notebook beside that file — so it survives a promotion and never needs one.
 - `--max-parallelism` (default 4) caps concurrent runs. On shutdown, in-flight runs
   are cancelled and their kernels killed; runs left behind by a crash are marked
   failed at the next start.
@@ -912,6 +925,11 @@ not track an empty one and the file tree does not show it, so a button for it wo
 produce nothing you could see. It lands on your own branch whichever branch you
 were reading, which is the same rule as everything else here.
 
+**New job** sits beside it in both places. It asks which notebook the job runs —
+already filled in when one is open — makes the paired `*.jobs.yaml` beside it on your
+branch if it is not there, and opens its form either way. A notebook that is not on
+your branch is refused before any file is made.
+
 The loop:
 
 1. **Edit** in the web UI (see [The notebook editor](#the-notebook-editor), where you
@@ -1080,6 +1098,14 @@ form is what the file is for, and the YAML tab is the escape hatch beside it —
 a picture, an SVG or a PDF opens at its **Preview**, because there is nothing to
 read.
 
+The Overview shows a job's name, schedule, timeout, retries and `enabled:`, and its
+**parameters** as one box per `var name = value;` line of the notebook's
+`// parameters` cell, with the notebook's own default as the placeholder — so the
+form offers what the notebook is expecting rather than asking you to remember it.
+An empty box means the default. Which notebook is not a field: the file schedules
+the one beside it. `dependsOn:` and `notify:` are named on the card and edited on
+the YAML tab.
+
 `/files` on its own — what the rail links to, and what you get from a bookmark —
 opens the project you were last in, remembered per browser. Links
 written against the old shape (`/notebooks`, `/edit?project=…&path=…&branch=…`)
@@ -1144,6 +1170,13 @@ the trigger rather than on its own.
 Paging is Previous/Next rather than "1–50 of 1,240": the page asks for one row
 more than it shows and reports whether it got it, where a total would be a
 `COUNT(*)` over the whole history on every poll.
+
+A run opens at `/runs/<id>/cells`, and the tab is in the address, so a refresh on
+**Log** stays on Log. **Cells** is one collapsed row per cell — index, status, first
+line, duration — with that cell's output open underneath it, so a finished run
+reads top to bottom without clicking; the row expands to the full source.
+**Notebook** is the executed artifact, source and output in separate boxes with an
+`Out` gutter on the output, the way a notebook reads. **Log** fills the window.
 
 ### Notifications
 
@@ -1299,8 +1332,9 @@ it and everything after; the toolbar adds **Run All** and **Restart kernel**.
 
 The **File** menu holds *Save a copy as…*, *Move or rename…* and — for a notebook —
 *Schedule (add a job)…*, which creates the paired `*.jobs.yaml` on your branch if it is
-not there and opens its form. The same act as `+ job` in the Files list, offered where
-you are when promotion tells you a notebook with no job cannot prove itself.
+not there and opens its form. The same act as **New job** in the explorer, offered where
+you are when promotion tells you a notebook with no job cannot prove itself. The menu is
+the icon-only button left of the *Saved* chip.
 
 **Focus Mode** gives one cell the window — its editor above, its output below, with the
 notebook's contents as a tree on the left — for when a notebook is long enough that
