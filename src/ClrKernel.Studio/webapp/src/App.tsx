@@ -246,6 +246,7 @@ export function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/:section" element={<Settings />} />
               <Route path="/runs/:id" element={<RunDetail />} />
+              <Route path="/runs/:id/:tab" element={<RunDetail />} />
 
               {/* Links written before the sections had projects in them. A
                   shared editor link is the one people actually paste, so it

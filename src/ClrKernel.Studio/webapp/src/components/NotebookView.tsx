@@ -81,9 +81,13 @@ function Cell({ cell }: { cell: NotebookCell }) {
       <div className="cell-body">
         {injected && <div className="cell-tag">injected parameters</div>}
         <pre className="cell-source">{source}</pre>
-        {(cell.outputs ?? []).map((output, i) => (
-          <Output key={i} output={output} />
-        ))}
+        {(cell.outputs ?? []).length > 0 && (
+          <div className="cell-outputs">
+            {(cell.outputs ?? []).map((output, i) => (
+              <Output key={i} output={output} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,66 +1,84 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api, isActive, type Run, type RunCell } from '../api';
 import { rerunOutcome, rerunQuestion } from '../rerun';
 import { jobRunsPath } from '../routes';
+import { pairCells, type PairedCell } from '../runCells';
 import { EnvBadge, ErrorBanner, StatusBadge, usePolling } from '../components/common';
-import { NotebookView } from '../components/NotebookView';
+import { NotebookView, Output } from '../components/NotebookView';
 import { duration, timeAgo, type Notebook } from '../ipynb';
 
-/** The step-by-step view: one row per code cell, updated live while the run is in flight. */
-function CellProgress({ cells }: { cells: RunCell[] }) {
+/** The tabs are routes, so a reload lands where you were. */
+const TABS = ['cells', 'notebook', 'log'] as const;
+type Tab = (typeof TABS)[number];
+
+/**
+ * One cell: a collapsed header — its first line — with the outputs open beneath
+ * it. The output is what you came to read; the source is one click away.
+ */
+function CellBlock({ paired, total }: { paired: PairedCell; total: number }) {
+  const { cell, source, outputs } = paired;
+  const [open, setOpen] = useState(false);
+  const tone = cell.status === 'Running' ? 'row-active' : cell.status === 'Failed' ? 'row-failed' : '';
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <div className="rounded-md border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className={`flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted ${tone}`}
+      >
+        <Chevron className="size-3.5 shrink-0 text-muted-subtle" aria-hidden="true" />
+        <span className="w-[52px] shrink-0 whitespace-nowrap font-mono text-code text-muted-subtle">
+          {cell.cellIndex + 1}/{total}
+        </span>
+        <span className="w-[110px] shrink-0"><StatusBadge status={cell.status} /></span>
+        <span className="min-w-0 flex-1 truncate font-mono text-code text-code-fg">
+          {cell.sourcePreview}
+        </span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-code text-muted-subtle">
+          {duration(cell.startedAt, cell.finishedAt)}
+        </span>
+      </button>
+      {open && (
+        <pre className="cell-source m-0 border-t border-border bg-muted px-3 py-2 font-mono text-code text-code-fg">
+          {source ?? cell.sourcePreview}
+        </pre>
+      )}
+      {(outputs.length > 0 || cell.errorSummary) && (
+        <div className="cell-outputs border-t border-border">
+          {outputs.map((output, i) => <Output key={i} output={output} />)}
+          {cell.errorSummary && (
+            <div className="mt-1 font-mono text-code text-status-error">{cell.errorSummary}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CellProgress({ cells, artifact }: { cells: RunCell[]; artifact: Notebook | null }) {
   if (cells.length === 0) {
     return <p className="text-base text-muted-foreground">No cells recorded for this run.</p>;
   }
   return (
-    <>
-      <div className="table-box">
-        <table className="table">
-          <tbody>
-            {cells.map((cell) => (
-              <tr
-                key={cell.cellIndex}
-                className={
-                  cell.status === 'Running'
-                    ? 'row-active'
-                    : cell.status === 'Failed'
-                      ? 'row-failed'
-                      : undefined
-                }
-              >
-                <td className="w-[52px] whitespace-nowrap font-mono text-code text-muted-subtle">
-                  {cell.cellIndex + 1}/{cells.length}
-                </td>
-                <td className="w-[110px]">
-                  <StatusBadge status={cell.status} />
-                </td>
-                <td>
-                  <pre className="m-0 whitespace-pre-wrap break-words font-mono text-code text-code-fg">
-                    {cell.sourcePreview}
-                  </pre>
-                  {cell.errorSummary && (
-                    <div className="mt-1 font-mono text-code text-status-error">
-                      {cell.errorSummary}
-                    </div>
-                  )}
-                </td>
-                <td className="w-[70px] whitespace-nowrap text-right font-mono text-code text-muted-subtle">
-                  {duration(cell.startedAt, cell.finishedAt)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+    <div className="flex flex-col gap-2">
+      {pairCells(cells, artifact).map((paired) => (
+        <CellBlock key={paired.cell.cellIndex} paired={paired} total={cells.length} />
+      ))}
+    </div>
   );
 }
 
 export function RunDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id, tab: tabParam } = useParams<{ id: string; tab: string }>();
+  const navigate = useNavigate();
+  const tab: Tab = (TABS as readonly string[]).includes(tabParam ?? '') ? (tabParam as Tab) : 'cells';
   const [artifact, setArtifact] = useState<Notebook | null>(null);
   const [log, setLog] = useState<string>('');
 
@@ -136,7 +154,7 @@ export function RunDetail() {
   }
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="mb-3 flex items-start justify-between gap-4">
         <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold tracking-tight">
           <Link
@@ -219,15 +237,19 @@ export function RunDetail() {
         />
       </div>
 
-      <Tabs defaultValue="progress">
-        <TabsList variant="line" className="mb-3">
-          <TabsTrigger value="progress">Cells</TabsTrigger>
+      <Tabs
+        value={tab}
+        onValueChange={(next) => navigate(`/runs/${id}/${next}`, { replace: true })}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <TabsList variant="line" className="mb-3 shrink-0">
+          <TabsTrigger value="cells">Cells</TabsTrigger>
           <TabsTrigger value="notebook">Notebook</TabsTrigger>
           <TabsTrigger value="log">Log</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="progress">
-          <CellProgress cells={data?.cells ?? []} />
+        <TabsContent value="cells">
+          <CellProgress cells={data?.cells ?? []} artifact={artifact} />
         </TabsContent>
         <TabsContent value="notebook">
           {artifact ? (
@@ -238,9 +260,9 @@ export function RunDetail() {
             </p>
           )}
         </TabsContent>
-        <TabsContent value="log">
+        <TabsContent value="log" className="min-h-0 flex-1">
           {log ? (
-            <pre className="output-text log max-h-[480px] overflow-auto rounded-2xl border border-border bg-muted px-4 py-3.5 font-mono text-code leading-relaxed text-code-fg">
+            <pre className="output-text log h-full overflow-auto rounded-2xl border border-border bg-muted px-4 py-3.5 font-mono text-code leading-relaxed text-code-fg">
               {log}
             </pre>
           ) : (

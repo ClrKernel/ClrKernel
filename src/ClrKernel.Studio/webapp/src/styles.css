@@ -167,7 +167,43 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.5rem;
+    background: var(--card);
+  }
+
+  .cell-code .cell-source {
+    border-radius: 4px;
+    padding: 0.4rem 0.5rem;
     background: var(--muted);
+  }
+
+  /* Outputs read as outputs: an "Out" gutter and a rule, the way Jupyter marks
+     them, so the last line of a cell is never mistaken for its source. */
+  .cell-outputs {
+    position: relative;
+    margin-top: 0.4rem;
+    padding: 0.4rem 0.5rem 0.4rem 2.6rem;
+    border-left: 3px solid var(--primary);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+  }
+
+  .cell-outputs::before {
+    content: 'Out';
+    position: absolute;
+    left: 0.5rem;
+    top: 0.45rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .cell-outputs .output-text,
+  .cell-outputs .output-html,
+  .cell-outputs .output-error {
+    margin-top: 0;
+  }
+
+  .cell-outputs .output-text {
+    color: var(--foreground);
   }
 
   .cell-injected {
@@ -210,7 +246,6 @@
     border-radius: 6px;
     padding: 0.6rem;
     background: var(--muted);
-    max-height: 32rem;
     overflow: auto;
   }
 
