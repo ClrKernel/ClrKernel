@@ -199,6 +199,40 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                     b.ToTable("invites", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.JobState", b =>
+                {
+                    b.Property<string>("Project")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("project");
+
+                    b.Property<string>("Environment")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("environment");
+
+                    b.Property<string>("Path")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("path");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("active");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_modified");
+
+                    b.Property<DateTime?>("PausedUntil")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("paused_until");
+
+                    b.HasKey("Project", "Environment", "Path");
+
+                    b.ToTable("jobs", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.JobTriggerState", b =>
                 {
                     b.Property<string>("Project")

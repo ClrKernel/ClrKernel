@@ -204,6 +204,40 @@ namespace ClrKernel.Studio.Store.Migrations.SqlServer
                     b.ToTable("invites", (string)null);
                 });
 
+            modelBuilder.Entity("ClrKernel.Studio.JobState", b =>
+                {
+                    b.Property<string>("Project")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("project");
+
+                    b.Property<string>("Environment")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("environment");
+
+                    b.Property<string>("Path")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .HasColumnName("path");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("bit")
+                        .HasColumnName("active");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("last_modified");
+
+                    b.Property<DateTime?>("PausedUntil")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("paused_until");
+
+                    b.HasKey("Project", "Environment", "Path");
+
+                    b.ToTable("jobs", (string)null);
+                });
+
             modelBuilder.Entity("ClrKernel.Studio.JobTriggerState", b =>
                 {
                     b.Property<string>("Project")

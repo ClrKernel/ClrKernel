@@ -22,6 +22,7 @@ namespace ClrKernel.Studio;
 public sealed class FileRunStore : IRunStore {
     private readonly string _root;
     private readonly string _triggersPath;
+    private readonly string _jobsPath;
     // Serialises the read-modify-write of the shared trigger file.
     private readonly SemaphoreSlimScope _triggerLock = new();
     private readonly ConcurrentDictionary<Guid, string> _runPaths = new();
@@ -35,6 +36,7 @@ public sealed class FileRunStore : IRunStore {
     public FileRunStore(JobsOptions options) {
         _root = options.ArtifactsDir;
         _triggersPath = Path.Combine(options.DataDir, "triggers.json");
+        _jobsPath = Path.Combine(options.DataDir, "jobs.json");
         Directory.CreateDirectory(_root);
     }
 
@@ -544,6 +546,42 @@ public sealed class FileRunStore : IRunStore {
         var staging = _triggersPath + ".tmp";
         await File.WriteAllTextAsync(staging, JsonSerializer.Serialize(triggers, _json));
         File.Move(staging, _triggersPath, overwrite: true);
+    }
+
+    // --- job switches (one small shared file, same shape as triggers.json) ---
+
+    private List<JobState> ReadJobStates() {
+        if (!File.Exists(_jobsPath)) {
+            return new List<JobState>();
+        }
+        try {
+            return JsonSerializer.Deserialize<List<JobState>>(File.ReadAllText(_jobsPath), _json) ?? new List<JobState>();
+        } catch (Exception) {
+            return new List<JobState>();
+        }
+    }
+
+    private static bool SameFile(JobState s, string project, string environment, string path) =>
+        string.Equals(s.Project, project, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(s.Environment, environment, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(s.Path, path, StringComparison.OrdinalIgnoreCase);
+
+    public Task<IReadOnlyList<JobState>> GetJobStatesAsync() =>
+        Task.FromResult<IReadOnlyList<JobState>>(ReadJobStates());
+
+    public Task<JobState> GetJobStateAsync(string project, string environment, string path) =>
+        Task.FromResult(ReadJobStates().FirstOrDefault(s => SameFile(s, project, environment, path)));
+
+    public async Task SetJobStateAsync(JobState state) {
+        using var _ = await _triggerLock.EnterAsync();
+        var states = ReadJobStates();
+        states.RemoveAll(s => SameFile(s, state.Project, state.Environment, state.Path));
+        state.LastModified = DateTime.UtcNow;
+        states.Add(state);
+        Directory.CreateDirectory(Path.GetDirectoryName(_jobsPath)!);
+        var staging = _jobsPath + ".tmp";
+        await File.WriteAllTextAsync(staging, JsonSerializer.Serialize(states, _json));
+        File.Move(staging, _jobsPath, overwrite: true);
     }
 
     public async Task<int> MarkOrphansFailedAsync() {
