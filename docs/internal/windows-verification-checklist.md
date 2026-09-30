@@ -1,5 +1,11 @@
 # ClrKernel — Windows verification checklist
 
+> **Superseded (2026-09-30).** This is the 0.8 / 0.4-era list and was never signed
+> off as such. The record of what was actually run is `windows-0.14-results.md`
+> (unattended 0.14.0 run, findings and fixes) and the list that gates the 1.0.0 bump
+> is `windows-1.0-verification.md`. Kept for the per-feature *do this → expect this*
+> steps, which the newer documents cite by section.
+
 Fresh-machine acceptance test for the **published** release: VS Code extension
 **0.4.0** (marketplace) + the **ClrKernel 0.8.0** global dotnet tool. Work top to
 bottom; each item is *do this → expect this*. Tags:

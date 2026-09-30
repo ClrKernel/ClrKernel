@@ -32,10 +32,10 @@ dotnet tool update --global ClrKernel
 clrkernel --version
 ```
 
-- [ ] Reports **0.14.0**.
-- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.11.0**; its
-      Changelog tab shows the 0.11.0 entry at the top.
-- [ ] The two agree: 0.11.0 pins kernel `0.14.*`
+- [ ] Reports **0.14.1**.
+- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.11.1**; its
+      Changelog tab shows the 0.11.1 entry at the top.
+- [ ] The two agree: 0.11.1 pins kernel `0.14.*`
       (`editors/vscode/src/kernelVersion.ts`), so a notebook opens with **no**
       version warning. A warning here means the tool update above did not take —
       a running notebook window keeps `clrkernel` locked, so close them and
@@ -430,13 +430,20 @@ clrkernel run "C:\temp\clrkernel test\nb1.nb.md" -o "C:\temp\clrkernel test\out.
 | 13 | Credential Manager + connections.json | Secret invariant on Windows | | |
 | 14 | Headless run | Scheduler story | | |
 
-Still outside this run (decide before 1.0: verify, or label experimental):
-**Fabric / Azure AS live connection** (needs a tenant), **Oracle/ODBC/JDBC
-providers**, and marketplace-install UX on a machine that never had the tool.
+Status, 2026-09-30, against 0.14.1 / 0.11.1 on the Windows box (reported by hand,
+not by this document's blocks): **Fabric / Azure AS live connection — verified,
+works.** **Studio's jobs-file switch (activate / deactivate / pause) — verified.**
+**VS Code UI — exercised, no issues found.** The 0.14.0 unattended run
+(`windows-0.14-results.md`) covers §2, §3, §7, §8–9 (after the TOM fix), §11
+against a real host, §13 (including the `cmdkey` answer: found-and-equal) and
+§14; every finding from it is fixed on main.
 
-**ClrKernel.Studio has no section here at all**, and by 1.0 it needs one — it is
-a second shipped tool with its own Windows surface: git worktrees and
-drive-letter paths, the Credential Manager under a service account, and the web
-app itself. §14 covers `clrkernel run` (headless), which is not the same thing as
-the scheduler. Writing that section is its own task; this note exists so 1.0 is
-not signed off on the assumption it was covered.
+Still outside this run: **Oracle/ODBC/JDBC providers** (ODBC covered in the 0.14
+run §H; Oracle and JDBC not), and marketplace-install UX on a machine that never
+had the tool.
+
+**ClrKernel.Studio** has no section of its own here. What stands in for one:
+`windows-0.14-results.md` §O — git workspace, the SQL Server run store, jobs,
+promotion, the Connections page and the browser suite (18/18 on Windows after
+#33) — and the hand test of the jobs-file switch above. The Credential Manager
+under a service account is the one Studio-on-Windows surface nobody has run.

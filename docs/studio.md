@@ -11,9 +11,10 @@ can open in VS Code or Jupyter.
 ![The Studio dashboard: run counts and success rate for the last seven days, what is
 running, what failed, and what the crons will fire next](images/studio/dashboard.png)
 
-> Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.14.x as "try it on real notebooks and tell us
-> what breaks".
+> Everything below is covered by tests, by the browser checks in `test/tools`, and
+> by a Windows verification run against a real SQL Server, SSAS and Fabric. If
+> something breaks on your notebooks, an issue with the notebook attached is the
+> fastest way to a fix.
 
 ## Install
 
