@@ -4,6 +4,7 @@
   <Project Path="src/ClrKernel.Language.Http/ClrKernel.Language.Http.csproj" />
   <Project Path="src/ClrKernel.Language.Mermaid/ClrKernel.Language.Mermaid.csproj" />
   <Project Path="src/ClrKernel.Language.PowerShell/ClrKernel.Language.PowerShell.csproj" />
+  <Project Path="src/ClrKernel.Language.Python/ClrKernel.Language.Python.csproj" />
   <Project Path="src/ClrKernel.Core.JupyterKernel/ClrKernel.Core.JupyterKernel.csproj" />
   <Project Path="src/ClrKernel.Core.LanguageServices/ClrKernel.Core.LanguageServices.csproj" />
   <Project Path="src/ClrKernel.Core.Primitives/ClrKernel.Core.Primitives.csproj" />

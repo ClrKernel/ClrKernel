@@ -31,6 +31,7 @@ public static class Program {
                           With the git workflow: --env test (default) or prod.
           list            List the jobs found under the notebooks root.
           validate        Parse and validate every *.jobs.yaml; exit 1 on problems.
+          --version       Print the version and exit.
           git init        Turn the notebooks root into a test/prod git workspace
                           (adopts existing notebooks into test and promotes them).
 
@@ -89,6 +90,12 @@ public static class Program {
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help") {
             Console.WriteLine(_usage);
             return args.Length == 0 ? 1 : 0;
+        }
+        // The same spelling `clrkernel --version` answers; this said "Unknown
+        // command" through 0.14, which is the wrong answer to a version check.
+        if (args[0] is "--version" or "version") {
+            Console.WriteLine(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "unknown");
+            return 0;
         }
 
         string command = args[0];
