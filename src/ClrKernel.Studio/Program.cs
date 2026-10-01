@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace ClrKernel.Studio;
@@ -34,6 +35,11 @@ public static class Program {
           --version       Print the version and exit.
           git init        Turn the notebooks root into a test/prod git workspace
                           (adopts existing notebooks into test and promotes them).
+          service install Register `serve` as a Windows service (elevated prompt;
+                          --notebooks and --data-dir required, other serve options
+                          forwarded; --service-name, --account, --password).
+                          Re-run after `dotnet tool update` to point it at the
+                          new version. `service uninstall` removes it.
 
         Options:
           --notebooks <dir>          Notebooks root (default: current directory,
@@ -132,6 +138,9 @@ public static class Program {
         // `git init` etc: the sub-verb arrives as the bare argument.
         if (command == "git") {
             return GitCommand(options, jobName);
+        }
+        if (command == "service") {
+            return WindowsService.Run(jobName, flags);
         }
 
         using var registryLogging = LoggerFactory.Create(b => b.AddConsole());
@@ -363,6 +372,10 @@ public static class Program {
         JobsOptions options, ProjectRegistry projects, IRunStore store, IAuthStore authStore = null,
         Core.Secrets.SecretStore secrets = null) {
         var builder = WebApplication.CreateBuilder();
+        // Answers the Service Control Manager when started as a Windows service
+        // (start/stop, and logging to the Application event log); a no-op
+        // everywhere else, including the integration tests.
+        builder.Host.UseWindowsService(service => service.ServiceName = WindowsService.DefaultName);
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
         builder.Logging.SetMinimumLevel(LogLevel.Information);
