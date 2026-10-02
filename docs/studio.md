@@ -144,8 +144,7 @@ forwarded as given:
 
 ```powershell
 C:\ClrKernel\clrkernel-studio service install `
-  --notebooks C:\ClrKernel
-otebooks --data-dir C:\ClrKernel\data `
+  --notebooks C:\ClrKernel\notebooks --data-dir C:\ClrKernel\data `
   --clrkernel C:\ClrKernel\clrkernel.exe `
   --store sqlserver --connection-string "Server=.;Database=clrkernel_studio;Integrated Security=true;TrustServerCertificate=true" `
   --account "DOMAIN\svc-clrkernel" --password "…"
