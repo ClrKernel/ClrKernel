@@ -9,7 +9,7 @@
     <!-- Microsoft.NET.Sdk.Web disables packaging by default; without this the
          release pack step produces no package at all, only a warning. -->
     <IsPackable>true</IsPackable>
-    <Description>Preview: notebook job scheduler for ClrKernel. Runs .nb.md/.ipynb/.dib notebooks as jobs — scheduled (cron), manual, or DAG-chained — with per-cell progress, run history, and a web dashboard. Each run executes in an isolated `clrkernel serve` process.</Description>
+    <Description>Notebook job scheduler for ClrKernel. Runs .nb.md/.ipynb/.dib notebooks as jobs — scheduled (cron), manual, or DAG-chained — with per-cell progress, run history, and a web dashboard. Each run executes in an isolated `clrkernel serve` process.</Description>
     <Copyright>Copyright © ClrKernel contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ClrKernel/ClrKernel</PackageProjectUrl>
@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />

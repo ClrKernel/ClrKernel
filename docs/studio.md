@@ -11,9 +11,10 @@ can open in VS Code or Jupyter.
 ![The Studio dashboard: run counts and success rate for the last seven days, what is
 running, what failed, and what the crons will fire next](images/studio/dashboard.png)
 
-> Preview. The pieces below work and are covered by tests, but the tool has not had
-> production soak time yet — treat 0.14.x as "try it on real notebooks and tell us
-> what breaks".
+> Everything below is covered by tests, by the browser checks in `test/tools`, and
+> by a Windows verification run against a real SQL Server, SSAS and Fabric. If
+> something breaks on your notebooks, an issue with the notebook attached is the
+> fastest way to a fix.
 
 ## Install
 
@@ -122,6 +123,66 @@ job list and editor, a notebook tree, and a run view showing live cell-by-cell
 progress, the rendered notebook, and the log. With the git workflow on, test notebooks
 also get a cell editor that runs cells against a live kernel — see
 [The notebook editor](#the-notebook-editor).
+
+### As a Windows service, for everyone on a machine
+
+One Studio per machine, started at boot, with every user signing in to it from a
+browser: that is a Windows service, and the tool registers itself as one.
+
+**1. Install both tools somewhere every account can run them.** A global tool lands
+under one user's profile; `--tool-path` puts it in a folder of your choosing:
+
+```powershell
+dotnet tool install --tool-path C:\ClrKernel ClrKernel
+dotnet tool install --tool-path C:\ClrKernel ClrKernel.Studio
+```
+
+**2. Register the service, from an elevated prompt.** `--notebooks` and `--data-dir`
+are required — a service starts in `System32` under its own account, so neither the
+current directory nor `~` means anything useful — and every other `serve` option is
+forwarded as given:
+
+```powershell
+C:\ClrKernel\clrkernel-studio service install `
+  --notebooks C:\ClrKernel
+otebooks --data-dir C:\ClrKernel\data `
+  --clrkernel C:\ClrKernel\clrkernel.exe `
+  --store sqlserver --connection-string "Server=.;Database=clrkernel_studio;Integrated Security=true;TrustServerCertificate=true" `
+  --account "DOMAIN\svc-clrkernel" --password "…"
+sc.exe start ClrKernelStudio
+```
+
+That writes a service named `ClrKernelStudio` whose command is `dotnet.exe
+<ClrKernel.Studio.dll> serve …` — not the `clrkernel-studio.exe` shim, which is a
+launcher and cannot answer the Service Control Manager — set to start
+automatically and to restart itself after a crash. Logs go to the **Application**
+event log. After `dotnet tool update`, run `service install` again: the dll moved to
+a new version folder, and the command rewrites the registration in place.
+`service uninstall` stops and removes it.
+
+**The account matters more than anything else here.** Everything the server does,
+it does as that account:
+
+- **Integrated auth** to SQL Server and SSAS is *that* identity. A domain account or
+  a group-managed service account (`DOMAIN\svc$`, no password) is what you want;
+  `LocalService` works but cannot log in to anything by Windows auth.
+- **Saved passwords** go to *its* Credential Manager, written by the server when
+  somebody saves a connection in the web app — nobody has to touch that store by
+  hand. A `CLRKERNEL_SECRET_*` variable for a service lives in the registry:
+  `HKLM\SYSTEM\CurrentControlSet\Services\ClrKernelStudio\Environment` (a
+  `REG_MULTI_SZ` of `NAME=value` lines), or use the file store (`--secret-store file`).
+- **git** must be on the system PATH, and the pushes in [Git remotes](#git-remotes)
+  use that account's SSH key or credential helper. Give it a `user.name` and
+  `user.email` with `git config --system`.
+- **NuGet** restores into that account's profile; a corporate feed goes in a
+  `NuGet.Config` beside the notebooks.
+
+**Who can reach it.** With the default `--urls http://localhost:5000`, everyone who
+signs in to the machine — a terminal server, say — opens <http://localhost:5000>
+and registers a passkey; the `localhost` relying party covers them all and no TLS
+is needed. For people on *other* machines, passkeys require HTTPS and a real
+hostname: set `--rp-id`, `--origins` and put TLS in front, exactly as in
+[Before anyone else signs in](#before-anyone-else-signs-in-set-the-domain).
 
 ### Scheduling rules
 

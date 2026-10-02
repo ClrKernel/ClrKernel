@@ -9,10 +9,10 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.14.*';
+export const SUPPORTED_KERNEL_RANGE = '0.15.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.14.x';
+export const SUPPORTED_KERNEL_LABEL = '0.15.x';
 
 /** The lowest kernel in the line that carries every RPC this build calls.
  *
@@ -21,10 +21,10 @@ export const SUPPORTED_KERNEL_LABEL = '0.14.x';
  *  that format, and knows the F# and KQL descriptors before the handshake — but
  *  the pairing moves because the check below compares major.minor, and a 0.14
  *  kernel must not be reported as "newer than this extension supports". */
-export const SUPPORTED_KERNEL_MIN = '0.14.0';
+export const SUPPORTED_KERNEL_MIN = '0.15.0';
 
 const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 14;
+const SUPPORTED_MINOR = 15;
 const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';

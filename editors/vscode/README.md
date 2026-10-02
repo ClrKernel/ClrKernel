@@ -106,9 +106,9 @@ become the `.nb.md` beside it.
 2. Install this extension.
 3. Run a cell. The first time, if `ClrKernel` isn't found the extension
    offers to install it for you
-   (`dotnet tool install --global ClrKernel --version 0.14.*`).
+   (`dotnet tool install --global ClrKernel --version 0.15.*`).
    Prefer to do it yourself? Run that command in a terminal ahead of time —
-   include the `--version`, because this build talks to **kernel 0.14.x** and
+   include the `--version`, because this build talks to **kernel 0.15.x** and
    says so if it finds another.
 4. Create a notebook — either run **ClrKernel: New Markdown Notebook** from the
    Command Palette (or File → New File… → *Markdown Notebook*), or make a file

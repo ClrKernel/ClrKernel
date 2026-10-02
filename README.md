@@ -26,7 +26,7 @@ Four ways to run the same notebook:
 | **VS Code** | the [ClrKernel Notebooks](https://marketplace.visualstudio.com/items?itemName=clrkernel.clrkernel-notebooks) extension — `.nb.md` opens as a notebook, with completion, diagnostics and per-cell run. No Jupyter, and no Python install unless a notebook asks for `#!python` cells. [Read the extension docs](editors/vscode/README.md). |
 | **JupyterLab** | a standard Jupyter kernel, for anyone already there |
 | **Headless** | `clrkernel run notebook.nb.md` with papermill-style parameters, for CI and schedulers |
-| **Studio** | a scheduler and web app that runs notebooks as cron jobs — [below](#scheduling-notebooks--clrkernel-studio-preview) |
+| **Studio** | a scheduler and web app that runs notebooks as cron jobs — [below](#scheduling-notebooks--clrkernel-studio) |
 
 ClrKernel is a maintained fork of
 [SciSharp/ICSharpCore](https://github.com/SciSharp/ICSharpCore), created after
@@ -563,7 +563,7 @@ jupyter nbconvert --to notebook --execute --output out.ipynb etl.ipynb
 papermill etl.ipynb runs/etl_out.ipynb -k clrkernel --language .net-csharp -p run_date 2026-08-04
 ```
 
-### Scheduling notebooks — ClrKernel Studio (preview)
+### Scheduling notebooks — ClrKernel Studio
 
 `ClrKernel.Studio` is a companion dotnet tool that runs notebooks as scheduled jobs
 and serves a web app for editing and watching them, so you don't need an external
