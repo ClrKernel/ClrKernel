@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.0] - 2026-10-02
+
+**Needs kernel 0.15.x.** No extension code changed; the kernel line moved with
+ClrKernel.Studio 0.15, and the extension's kernel pin moves with it (0.11.x stays
+on 0.14.x). What 0.15 brings is on the Studio side:
+
+- **Studio runs as a Windows service.** `clrkernel-studio service install` registers
+  `serve` with the Service Control Manager — one Studio per machine, started at
+  boot, every account on the machine signing in from a browser.
+- **A jobs file has an operator's switch**, kept in the store rather than the YAML:
+  deactivate, or pause for a while, without an edit, a push and a promotion.
+- **The jobs form offers a notebook's parameters by name**, read from its
+  `// parameters` cell, and a **New job** button sits beside New notebook.
+- **A run's Cells tab shows each cell's output** under a collapsed header, the
+  Log tab fills the window, and the tab is in the address.
+
 ## [0.11.1] - 2026-09-25
 
 **Needs kernel 0.14.x.** No extension code changed; this release pairs with kernel
