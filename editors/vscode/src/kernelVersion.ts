@@ -9,22 +9,21 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '0.15.*';
+export const SUPPORTED_KERNEL_RANGE = '1.0.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '0.15.x';
+export const SUPPORTED_KERNEL_LABEL = '1.0.x';
 
 /** The lowest kernel in the line that carries every RPC this build calls.
  *
- *  0.14.0 adds no `clrkernel/*` method: the RPC surface has been 0.10.0's for
- *  five releases. This build does change — it claims `.dib`, reads and writes
- *  that format, and knows the F# and KQL descriptors before the handshake — but
- *  the pairing moves because the check below compares major.minor, and a 0.14
- *  kernel must not be reported as "newer than this extension supports". */
-export const SUPPORTED_KERNEL_MIN = '0.15.0';
+ *  1.0.0 adds no `clrkernel/*` method: the RPC surface has been 0.10.0's since
+ *  then. The kernel and the extension carry the same number from 1.0 on — one
+ *  pair, one version to remember — and the pairing moves because the check
+ *  below compares major.minor. */
+export const SUPPORTED_KERNEL_MIN = '1.0.0';
 
-const SUPPORTED_MAJOR = 0;
-const SUPPORTED_MINOR = 15;
+const SUPPORTED_MAJOR = 1;
+const SUPPORTED_MINOR = 0;
 const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
