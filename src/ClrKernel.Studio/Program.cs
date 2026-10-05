@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -63,6 +64,10 @@ public static class Program {
           --origins <url;url>        serve: origins the browser may present
                                      (or CLRKERNEL_STUDIO_ORIGINS). Default: --urls.
           --max-parallelism <n>      serve: concurrent runs (default 4).
+          --windows-sign-in <bool>   serve: offer "Sign in with Windows" (default:
+                                     on when running as a Windows service).
+          --windows-groups <list>    serve: groups whose members get an account on
+                                     first Windows sign-in, "CORP\Group=ServerUser;..."
           --git <true|false>         Enable the test/prod git workflow
                                      (or CLRKERNEL_STUDIO_GIT).
           --env <test|prod>          run: which environment (default test).
@@ -409,6 +414,20 @@ public static class Program {
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<PasskeyProvider>()));
         builder.Services.AddSingleton<IAccountProvider>(
             provider => provider.GetRequiredService<PasskeyProvider>());
+        // Registered whatever the platform, so the routes can ask it whether it is
+        // on; Negotiate itself only when it is. Off Windows, or not wanted, nothing
+        // here touches authentication schemes at all.
+        builder.Services.AddSingleton(provider => new WindowsProvider(
+            provider.GetRequiredService<AuthService>(), options,
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<WindowsProvider>()));
+        builder.Services.AddSingleton<IAccountProvider>(
+            provider => provider.GetRequiredService<WindowsProvider>());
+        var windowsSignIn = WindowsProvider.Enabled(options);
+        if (windowsSignIn) {
+            // No authorization policy names it, so it never challenges by itself:
+            // only the /api/auth/windows route asks.
+            builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme).AddNegotiate();
+        }
 
         var settings = SettingsRegistry.CreateDefault(options);
         settings.Add(new SettingsSection {
@@ -547,6 +566,12 @@ public static class Program {
         var app = builder.Build();
         // Before the routes: every handler downstream can then ask who the caller
         // is without each one repeating the cookie lookup.
+        // Negotiate's handshake runs here (it refuses to be asked from a route
+        // otherwise). It authenticates nothing for the rest of the app: the session
+        // cookie below is still the only thing that does.
+        if (windowsSignIn) {
+            app.UseAuthentication();
+        }
         app.UseMiddleware<AuthenticationMiddleware>();
         app.MapAuthApi();
         app.MapJobsApi();

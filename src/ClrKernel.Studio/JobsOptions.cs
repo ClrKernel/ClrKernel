@@ -119,6 +119,21 @@ public sealed class JobsOptions {
     public int SessionLifetimeDays { get; set; } = 14;
 
     /// <summary>
+    /// Whether "Sign in with Windows" is offered: true, false, or null for the
+    /// default — on when this process is a Windows service, off otherwise. A
+    /// service is the shared-machine case the feature exists for; anywhere else
+    /// it is asked for by name.
+    /// </summary>
+    public bool? WindowsSignIn { get; set; }
+
+    /// <summary>
+    /// Windows groups whose members get an account on their first Windows
+    /// sign-in, as <c>group=Role</c> pairs separated by <c>;</c>. Raw text here;
+    /// <see cref="WindowsProvider"/> resolves each name to a SID once.
+    /// </summary>
+    public string WindowsGroups { get; set; }
+
+    /// <summary>
     /// How long a personal worktree may sit untouched before it is removed. Only
     /// ever applies to one that is clean and fully in test, so what goes is a copy
     /// of something that already exists. 0 turns the sweep off.
@@ -274,6 +289,11 @@ public sealed class JobsOptions {
         options.SessionLifetimeDays = PositiveInt(Pick(
             "sessionLifetimeDays", "session-days", "CLRKERNEL_STUDIO_SESSION_DAYS",
             Setting("sessionLifetimeDays"), null), 14);
+        var windowsSignIn = Pick("windowsSignIn", "windows-sign-in", "CLRKERNEL_STUDIO_WINDOWS_SIGNIN",
+            Setting("windowsSignIn"), null);
+        options.WindowsSignIn = bool.TryParse(windowsSignIn, out var ws) ? ws : null;
+        options.WindowsGroups = Pick("windowsGroups", "windows-groups", "CLRKERNEL_STUDIO_WINDOWS_GROUPS",
+            Setting("windowsGroups"), null);
         var idleDays = Pick("worktreeIdleDays", "worktree-idle-days",
             "CLRKERNEL_STUDIO_WORKTREE_IDLE_DAYS", Setting("worktreeIdleDays"), null);
         if (idleDays != null && int.TryParse(idleDays, out var idle) && idle >= 0) {

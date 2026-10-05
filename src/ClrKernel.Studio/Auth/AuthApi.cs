@@ -5,6 +5,8 @@ using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Fido2NetLib;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -184,23 +186,27 @@ public static class AuthApi {
 
         // Who am I, and what does this server want from me? The SPA asks this
         // first and routes on the answer.
-        api.MapGet("/session", async (HttpContext context, AuthService auth, JobsOptions options) => {
-            var user = context.CurrentUser();
-            return Results.Ok(new {
-                authenticated = user != null,
-                needsSetup = await auth.UserCountAsync() == 0,
-                // Asked here and not only on submit: a container publishes its
-                // port through a bridge, so a browser on the server itself still
-                // arrives from a non-loopback address. The setup screen has to be
-                // able to explain that instead of rendering a form that 403s.
-                canSetUp = SetupAllowed(context),
-                // The browser refuses WebAuthn outside a secure context, and
-                // saying so beats letting the prompt fail with nothing to read.
-                secureContext = IsSecure(context),
-                relyingPartyId = options.RelyingPartyId,
-                user = user == null ? null : Describe(user),
+        api.MapGet("/session", async (
+            HttpContext context, AuthService auth, JobsOptions options, WindowsProvider windows) => {
+                var user = context.CurrentUser();
+                return Results.Ok(new {
+                    authenticated = user != null,
+                    needsSetup = await auth.UserCountAsync() == 0,
+                    // Asked here and not only on submit: a container publishes its
+                    // port through a bridge, so a browser on the server itself still
+                    // arrives from a non-loopback address. The setup screen has to be
+                    // able to explain that instead of rendering a form that 403s.
+                    canSetUp = SetupAllowed(context),
+                    // The browser refuses WebAuthn outside a secure context, and
+                    // saying so beats letting the prompt fail with nothing to read.
+                    secureContext = IsSecure(context),
+                    relyingPartyId = options.RelyingPartyId,
+                    // Whether "Sign in with Windows" is on offer. It needs no secure
+                    // context, which is why the passkey warning is not shown over it.
+                    windowsSignIn = windows.IsConfigured,
+                    user = user == null ? null : Describe(user),
+                });
             });
-        });
 
         // --- bootstrap ------------------------------------------------------
 
@@ -246,6 +252,59 @@ public static class AuthApi {
                 return Results.Ok(new { user = Describe(result.User) });
             });
 
+        // Windows: one route for sign-in, setup, an invite and adding Windows to an
+        // account, because the handshake is the same and only what happens after
+        // it differs. A navigation, not a fetch — the browser has to see the 401 to
+        // answer it. Every outcome redirects to a fixed page; nothing here takes a
+        // return address, so it cannot be made into an open redirect.
+        api.MapGet("/windows", async (
+            HttpContext context, AuthService auth, WindowsProvider windows, string mode, string code) => {
+                if (!windows.IsConfigured) {
+                    return Results.NotFound();
+                }
+                var kind = mode switch {
+                    "setup" => WindowsSignInMode.Setup,
+                    "invite" => WindowsSignInMode.Invite,
+                    "link" => WindowsSignInMode.Link,
+                    _ => WindowsSignInMode.SignIn,
+                };
+                var back = kind switch {
+                    WindowsSignInMode.Setup => "/setup",
+                    WindowsSignInMode.Invite => "/invite/" + Uri.EscapeDataString(code ?? string.Empty),
+                    WindowsSignInMode.Link => "/settings/account",
+                    _ => "/signin",
+                };
+                IResult Back(string error) =>
+                    Results.Redirect(back + "?auth-error=" + Uri.EscapeDataString(error));
+
+                var result = await context.AuthenticateAsync(NegotiateDefaults.AuthenticationScheme);
+                if (!result.Succeeded) {
+                    // The 401 the browser answers. The body is only ever seen when it
+                    // cannot — no Windows credentials, or a prompt somebody cancelled.
+                    await context.ChallengeAsync(NegotiateDefaults.AuthenticationScheme);
+                    return Results.Content(
+                        "<!doctype html><title>Windows sign-in</title><p>Windows sign-in did not complete. "
+                        + "Your browser may need this site in its Local intranet zone. "
+                        + $"<a href=\"{WebUtility.HtmlEncode(back)}\">Go back</a>.</p>",
+                        "text/html", statusCode: StatusCodes.Status401Unauthorized);
+                }
+                if (WindowsProvider.LoginFrom(result.Principal) is not { } login) {
+                    return Back("Windows did not say which account signed in.");
+                }
+                if (kind == WindowsSignInMode.Setup && await BootstrapRefusal(context, auth) is not null) {
+                    return SetupAllowed(context) ? Results.Redirect("/signin") : Back(SetupElsewhere);
+                }
+                var outcome = await windows.CompleteAsync(kind, login, context.CurrentUser(), code);
+                if (!outcome.Ok) {
+                    return Back(outcome.Error);
+                }
+                if (kind == WindowsSignInMode.Link) {
+                    return Results.Redirect("/settings/account");
+                }
+                await SignIn(context, auth, outcome.User);
+                return Results.Redirect("/");
+            });
+
         api.MapPost("/signout", async (HttpContext context, AuthService auth) => {
             await auth.SignOutAsync(context.Request.Cookies[AuthService.CookieName]);
             context.Response.Cookies.Delete(AuthService.CookieName);
@@ -263,7 +322,14 @@ public static class AuthApi {
             // holds the code that an account by that name exists.
             var invite = await auth.Store.FindInviteAsync(code);
             return invite is { } found && found.IsUsable(DateTime.UtcNow)
-                ? Results.Ok(new { valid = true, displayName = found.DisplayName, username = found.Username })
+                ? Results.Ok(new {
+                    valid = true,
+                    displayName = found.DisplayName,
+                    username = found.Username,
+                    // Set, only that account can redeem it — so the page offers
+                    // Windows and not a passkey.
+                    windowsAccount = found.WindowsAccount,
+                })
                 : Results.Ok(new { valid = false });
         });
 
@@ -336,9 +402,35 @@ public static class AuthApi {
             }
             return await auth.Store.RemoveCredentialAsync(user.Id, id)
                 ? Results.Ok(new { removed = true })
-                : Results.BadRequest(new {
-                    error = "That is your only passkey. Add another one before removing this.",
-                });
+                : Results.BadRequest(new { error = _lastSignIn });
+        });
+
+        // The sign-ins that are not passkeys — a Windows account, today. Passkeys
+        // have their own list because they carry a device name and a last-used.
+        api.MapGet("/identities", async (HttpContext context, AuthService auth) => {
+            if (context.CurrentUser() is not { } user) {
+                return Results.Json(new { error = "Sign in first." }, statusCode: 401);
+            }
+            return Results.Ok(new {
+                identities = (await auth.Store.IdentitiesForAsync(user.Id))
+                    .Where(i => i.Provider != IdentityProviders.Passkey)
+                    .Select(i => new {
+                        id = i.Id,
+                        provider = i.Provider,
+                        label = i.Label,
+                        createdAt = i.CreatedAt,
+                        lastUsedAt = i.LastUsedAt,
+                    }),
+            });
+        });
+
+        api.MapDelete("/identities/{id:guid}", async (HttpContext context, AuthService auth, Guid id) => {
+            if (context.CurrentUser() is not { } user) {
+                return Results.Json(new { error = "Sign in first." }, statusCode: 401);
+            }
+            return await auth.Store.RemoveIdentityAsync(user.Id, id)
+                ? Results.Ok(new { removed = true })
+                : Results.BadRequest(new { error = _lastSignIn });
         });
 
         api.MapPut("/profile", async (HttpContext context, AuthService auth, DisplayNameBody body) => {
@@ -370,6 +462,7 @@ public static class AuthApi {
                     createdAt = u.User.CreatedAt,
                     lastSeenAt = u.User.LastSeenAt,
                     credentialCount = u.CredentialCount,
+                    windowsAccount = u.WindowsAccount,
                     isYou = u.User.Id == context.CurrentUser()?.Id,
                 }),
             }));
@@ -480,6 +573,7 @@ public static class AuthApi {
                     label = i.Label,
                     displayName = i.DisplayName,
                     username = i.Username,
+                    windowsAccount = i.WindowsAccount,
                     createdAt = i.CreatedAt,
                     expiresAt = i.ExpiresAt,
                     usedAt = i.UsedAt,
@@ -492,7 +586,8 @@ public static class AuthApi {
             }));
 
         api.MapPost("/invites", async (
-            HttpContext context, AuthService auth, JobsOptions options, InviteBody body) => {
+            HttpContext context, AuthService auth, JobsOptions options, WindowsProvider windows,
+            InviteBody body) => {
                 if (context.RequireAdmin() is { } refusal) {
                     return refusal;
                 }
@@ -516,10 +611,33 @@ public static class AuthApi {
                     return Results.Json(
                         new { error = $"'{username}' is already {holder}." }, statusCode: 409);
                 }
+                // An invite for a named Windows account: resolved here, on the admin's
+                // form, so a typo is refused while somebody can still fix it — and
+                // stored as a SID, which is what the sign-in will present.
+                (string Sid, string Name)? account = null;
+                if (Clean(body?.WindowsAccount) is { } typed) {
+                    if (!windows.IsConfigured) {
+                        return Results.BadRequest(new { error = "Windows sign-in is not on for this server." });
+                    }
+                    account = windows.Resolve(typed);
+                    if (account is not { } found) {
+                        return Results.BadRequest(new { error = $"Windows does not know an account called '{typed}'." });
+                    }
+                    if (await auth.Store.FindIdentityAsync(IdentityProviders.Windows, found.Sid) is { } taken) {
+                        return Results.Json(
+                            new { error = $"{found.Name} already signs in as {taken.User?.Username}." }, statusCode: 409);
+                    }
+                    if ((await auth.Store.ListInvitesAsync()).Any(i => i.IsUsable(DateTime.UtcNow)
+                            && string.Equals(i.WindowsSid, found.Sid, StringComparison.OrdinalIgnoreCase))) {
+                        return Results.Json(
+                            new { error = $"{found.Name} already has an open invite." }, statusCode: 409);
+                    }
+                }
                 var invite = await auth.Store.CreateInviteAsync(
                     AuthService.NewInviteCode(), role, Clean(body?.Label), displayName, username,
                     context.CurrentUser()?.Id,
-                    DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays));
+                    DateTime.UtcNow, TimeSpan.FromDays(options.InviteLifetimeDays),
+                    account?.Sid, account?.Name);
                 return Results.Ok(new { code = invite.Code, expiresAt = invite.ExpiresAt });
             });
 
@@ -558,6 +676,9 @@ public static class AuthApi {
             // path, and leaving it reachable means never noticing it still fires.
             return "This invite was made before invites carried a name. Ask for a new one.";
         }
+        if (invite.WindowsAccount != null) {
+            return $"This invite is for the Windows account {invite.WindowsAccount}. Use Sign in with Windows.";
+        }
         return (await store.UsernamesAsync()).Contains(invite.Username, StringComparer.OrdinalIgnoreCase)
             ? $"The username on this invite ('{invite.Username}') has since been taken. "
                 + "Ask for a new one."
@@ -567,6 +688,9 @@ public static class AuthApi {
     private sealed class UsernameBody {
         public string Username { get; set; }
     }
+
+    private const string _lastSignIn =
+        "That is your only way to sign in. Add another — a passkey or a Windows account — before removing this.";
 
     private const string _lastAdmin =
         "That would leave the server with no Server Admin. Promote someone else first.";
@@ -716,5 +840,6 @@ public static class AuthApi {
     public sealed record AssertBody(string CeremonyId, JsonElement Response);
     public sealed record RoleBody(string Role);
     public sealed record DisabledBody(bool Disabled);
-    public sealed record InviteBody(string Role, string Label, string DisplayName, string Username);
+    public sealed record InviteBody(
+        string Role, string Label, string DisplayName, string Username, string WindowsAccount = null);
 }
