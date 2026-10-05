@@ -194,6 +194,16 @@ namespace ClrKernel.Studio.Store.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("username");
 
+                    b.Property<string>("WindowsAccount")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("windows_account");
+
+                    b.Property<string>("WindowsSid")
+                        .HasMaxLength(184)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("windows_sid");
+
                     b.HasKey("Code");
 
                     b.ToTable("invites", (string)null);

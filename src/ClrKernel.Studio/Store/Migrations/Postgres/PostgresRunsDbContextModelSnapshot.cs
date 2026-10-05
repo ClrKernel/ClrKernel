@@ -199,6 +199,16 @@ namespace ClrKernel.Studio.Store.Migrations.Postgres
                         .HasColumnType("character varying(39)")
                         .HasColumnName("username");
 
+                    b.Property<string>("WindowsAccount")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("windows_account");
+
+                    b.Property<string>("WindowsSid")
+                        .HasMaxLength(184)
+                        .HasColumnType("character varying(184)")
+                        .HasColumnName("windows_sid");
+
                     b.HasKey("Code");
 
                     b.ToTable("invites", (string)null);
