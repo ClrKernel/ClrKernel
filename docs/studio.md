@@ -461,7 +461,11 @@ A Windows login gets into Studio in one of four ways:
 - **A group.** `--windows-groups "CORP\Studio Users=ServerUser;CORP\Studio Admins=ServerAdmin"`
   (`CLRKERNEL_STUDIO_WINDOWS_GROUPS`, `windowsGroups`) creates an account for a member
   of a listed group on their first Windows sign-in. The account gets the highest role
-  among the groups they are in, and a username taken from the user half of their login.
+  among the groups they are in: Server Admin, then Server Viewer, then Server User. A
+  Viewer is a User who can also read every project, and project grants add to either.
+  The username comes from the user half of their login, skipping any name already
+  taken or held by an open invite. Nobody joins this way until the server has been set
+  up.
   A group or role Windows does not recognise is logged and skipped. **Groups are read
   at that first sign-in only.** Removing someone from the group later does not remove
   their account; disable or remove it under **Users**.
@@ -479,8 +483,10 @@ would need impersonation or delegation, which Studio does not do.
 
 Things to check on the machine:
 
-- **A domain service account needs an SPN** (`setspn -S HTTP/<host> DOMAIN\svc-clrkernel`),
-  or Kerberos quietly falls back to NTLM. LocalSystem and gMSAs are already covered.
+- **A domain service account needs an SPN** (`setspn -S HTTP/<host> DOMAIN\svc-clrkernel`,
+  and for a gMSA `DOMAIN\svc-clrkernel$`), or Kerberos quietly falls back to NTLM.
+  LocalSystem is covered already: it is the computer account, whose `HOST` SPN
+  includes HTTP.
 - **The browser sends Windows credentials automatically only to the Local intranet
   zone.** `localhost` usually qualifies. Elsewhere, add the address in Internet
   Options → Security → Local intranet, or by group policy. Firefox needs

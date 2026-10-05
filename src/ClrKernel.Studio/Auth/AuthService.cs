@@ -147,7 +147,14 @@ public sealed class AuthService {
     public async Task<AuthResult> ProvisionFromDirectoryAsync(
         ProvenIdentity proven, IReadOnlyCollection<string> groupSids,
         IReadOnlyDictionary<string, UserRole> groupRoles, DateTime now) {
-        var bound = (await _store.ListInvitesAsync()).FirstOrDefault(i =>
+        // An unclaimed server is set up, from the server itself, and nothing else.
+        // Without this a group member anywhere could become the first account —
+        // a Server User, say, on a server that then has no admin and no /setup.
+        if (await _store.UserCountAsync() == 0) {
+            return AuthResult.Fail("This server hasn't been set up yet. Set it up from the server itself.");
+        }
+        var invites = await _store.ListInvitesAsync();
+        var bound = invites.FirstOrDefault(i =>
             i.IsUsable(now) && string.Equals(i.WindowsSid, proven.Subject, StringComparison.OrdinalIgnoreCase));
         AuthResult provisioned;
         if (bound != null) {
@@ -160,9 +167,13 @@ public sealed class AuthService {
                     $"{proven.Label} has no account here. Ask an admin for an invite.");
             }
             var displayName = UserPart(proven.Label);
+            // An open invite's handle is reserved, as it is on the invite form: a
+            // group member called bob must not take the `bob` an invite is holding.
+            var taken = (await _store.UsernamesAsync())
+                .Concat(invites.Where(i => i.IsUsable(now) && i.Username != null).Select(i => i.Username))
+                .ToList();
             provisioned = AuthResult.Success(await _store.CreateUserAsync(
-                Guid.NewGuid(),
-                UserName.Unique(UserName.Suggest(displayName), await _store.UsernamesAsync()),
+                Guid.NewGuid(), UserName.Unique(UserName.Suggest(displayName), taken),
                 displayName, roles.OrderByDescending(Rank).First()));
         }
         if (provisioned.Ok) {

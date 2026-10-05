@@ -110,6 +110,29 @@ public class WindowsProviderTest {
     }
 
     [TestMethod]
+    public async Task A_group_member_cannot_become_the_first_account_of_an_unclaimed_server() {
+        var provider = Provider(@"CORP\Studio Users=ServerUser");
+
+        var bob = await provider.CompleteAsync(WindowsSignInMode.SignIn, Bob(_usersGroup), null, null);
+
+        Assert.IsFalse(bob.Ok, "setup is the only way into an empty server, and only from the server itself");
+        Assert.AreEqual(0, await _store.UserCountAsync());
+    }
+
+    [TestMethod]
+    public async Task A_group_member_does_not_take_a_handle_an_open_invite_is_holding() {
+        await Existing("Root", UserRole.ServerAdmin);
+        await _store.CreateInviteAsync("for-other-bob", UserRole.ServerUser, null, "Bob Other", "bob", null,
+            DateTime.UtcNow, TimeSpan.FromDays(1));
+
+        var bob = await Provider(@"CORP\Studio Users=ServerUser")
+            .CompleteAsync(WindowsSignInMode.SignIn, Bob(_usersGroup), null, null);
+
+        Assert.IsTrue(bob.Ok, bob.Error);
+        Assert.AreNotEqual("bob", bob.User.Username, "the invite's reservation holds");
+    }
+
+    [TestMethod]
     public void A_group_Windows_does_not_know_is_skipped_rather_than_provisioning_anyone() {
         var roles = Provider(@"CORP\Nobody=ServerAdmin;CORP\Studio Users=Boss;CORP\Studio Users=ServerUser")
             .GroupRoles;

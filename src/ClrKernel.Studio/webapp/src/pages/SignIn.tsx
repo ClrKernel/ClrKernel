@@ -144,7 +144,9 @@ export function SignIn({ session, onSignedIn }: { session: SessionState | null; 
         </Button>
       </div>
       <p className="mt-3 text-sm text-muted-subtle">
-        No account? This server is invite-only — ask an admin for a link.
+        {session?.windowsSignIn
+          ? 'No account? Sign in with Windows — your admin may have set this server up to let you in — or ask them for an invite.'
+          : 'No account? This server is invite-only — ask an admin for a link.'}
       </p>
     </AuthShell>
   );

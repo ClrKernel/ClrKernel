@@ -96,6 +96,12 @@ export function Invite({
             variant="default"
           />
         )}
+        {windowsOnly && !session?.windowsSignIn && (
+          <p className="text-sm text-muted-foreground">
+            Windows sign-in is not turned on for this server, so this invite cannot be used
+            yet. Ask whoever sent it.
+          </p>
+        )}
         {!windowsOnly && (
           <Button
             type="submit"
