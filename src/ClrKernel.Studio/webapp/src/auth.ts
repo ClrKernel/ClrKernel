@@ -29,7 +29,40 @@ export interface SessionState {
    */
   secureContext: boolean;
   relyingPartyId: string;
+  /** "Sign in with Windows" is on offer — on by default when Studio runs as a
+   *  Windows service. It needs no secure context, unlike a passkey. */
+  windowsSignIn?: boolean;
   user: SessionUser | null;
+}
+
+export type WindowsMode = 'signin' | 'setup' | 'invite' | 'link';
+
+/**
+ * Where to send the browser for a Windows sign-in. A navigation, never a fetch:
+ * the browser answers the server's 401 with the Windows logon only for a page it
+ * is loading. The server redirects back to a fixed page either way, with
+ * `?auth-error=` when it refused.
+ */
+export function windowsSignInUrl(mode: WindowsMode, code?: string): string {
+  const query = new URLSearchParams({ mode });
+  if (code) {
+    query.set('code', code);
+  }
+  return `/api/auth/windows?${query}`;
+}
+
+/** The refusal a Windows sign-in redirected back with, if any. */
+export function authErrorFromUrl(search: string = location.search): string | null {
+  return new URLSearchParams(search).get('auth-error');
+}
+
+/** A sign-in that is not a passkey — a Windows account, today. */
+export interface SignInIdentity {
+  id: string;
+  provider: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
@@ -115,6 +148,8 @@ export interface ManagedUser {
   createdAt: string;
   lastSeenAt: string | null;
   credentialCount: number;
+  /** The Windows account they sign in with, when they have one. */
+  windowsAccount: string | null;
   /** You cannot disable or remove yourself, so the UI needs to know which is you. */
   isYou: boolean;
 }
@@ -126,6 +161,8 @@ export interface ManagedInvite {
   /** The account this invite will create — both settled when it was issued. */
   displayName: string | null;
   username: string | null;
+  /** Set, only this Windows account can redeem it — by signing in, no link needed. */
+  windowsAccount: string | null;
   createdAt: string;
   expiresAt: string;
   usedAt: string | null;
@@ -142,6 +179,8 @@ export interface InviteOffer {
   valid: boolean;
   displayName?: string;
   username?: string;
+  /** Set, the invite is for this Windows account and only Windows can redeem it. */
+  windowsAccount?: string | null;
 }
 
 /**
@@ -189,6 +228,9 @@ async function get<T>(path: string): Promise<T> {
 export const accounts = {
   passkeys: () => get<{ passkeys: Passkey[] }>('/api/auth/passkeys').then((r) => r.passkeys),
   removePasskey: (id: string) => send('DELETE', `/api/auth/passkeys/${encodeURIComponent(id)}`),
+  identities: () =>
+    get<{ identities: SignInIdentity[] }>('/api/auth/identities').then((r) => r.identities),
+  removeIdentity: (id: string) => send('DELETE', `/api/auth/identities/${encodeURIComponent(id)}`),
   rename: (displayName: string) => send('PUT', '/api/auth/profile', { displayName }),
 
   users: () => get<{ users: ManagedUser[] }>('/api/users').then((r) => r.users),
@@ -201,9 +243,12 @@ export const accounts = {
   removeUser: (id: string) => send('DELETE', `/api/users/${id}`),
 
   invites: () => get<{ invites: ManagedInvite[] }>('/api/invites').then((r) => r.invites),
-  createInvite: (role: Role, displayName: string, username: string, label: string) =>
+  createInvite: (
+    role: Role, displayName: string, username: string, label: string, windowsAccount?: string,
+  ) =>
     send<{ code: string; expiresAt: string }>(
-      'POST', '/api/invites', { role, displayName, username, label }),
+      'POST', '/api/invites',
+      { role, displayName, username, label, windowsAccount: windowsAccount || undefined }),
   revokeInvite: (code: string) => send('DELETE', `/api/invites/${encodeURIComponent(code)}`),
 };
 
