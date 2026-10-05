@@ -437,6 +437,64 @@ domain — the port is not part of it, and the browser scopes the credential the
 way. Set `--rp-id` to a real hostname and this stops applying; every origin then has
 to be listed.
 
+### Signing in with Windows
+
+On a Windows machine, Studio can let people sign in with their Windows account instead
+of, or as well as, a passkey. Kerberos is used where it is set up, and NTLM otherwise.
+It is **on by default when Studio runs as a Windows service**
+([see above](#as-a-windows-service-for-everyone-on-a-machine)) and off otherwise.
+`--windows-sign-in true|false` (`CLRKERNEL_STUDIO_WINDOWS_SIGNIN`, `windowsSignIn` in
+`settings.json`) overrides it either way. When it is on, the sign-in, setup and invite
+pages offer **Sign in with Windows**. Passkeys keep working beside it.
+
+A Windows login gets into Studio in one of four ways:
+
+- **First-run setup.** On an empty server, *Use my Windows account* makes that account
+  the Server Admin. As with a passkey, this only works from a browser on the server
+  itself.
+- **An invite for a named account.** The invite form takes an optional *Windows
+  account* (`CORP\ada`). Studio checks it against Windows when the invite is created,
+  so a misspelling is refused there, and stores the account's SID. That person needs
+  no link: the first time they sign in with Windows, the invite is redeemed with its
+  role and username. Nobody else can redeem it, including with a passkey. An ordinary
+  invite link can also be redeemed with any Windows account.
+- **A group.** `--windows-groups "CORP\Studio Users=ServerUser;CORP\Studio Admins=ServerAdmin"`
+  (`CLRKERNEL_STUDIO_WINDOWS_GROUPS`, `windowsGroups`) creates an account for a member
+  of a listed group on their first Windows sign-in. The account gets the highest role
+  among the groups they are in, and a username taken from the user half of their login.
+  A group or role Windows does not recognise is logged and skipped. **Groups are read
+  at that first sign-in only.** Removing someone from the group later does not remove
+  their account; disable or remove it under **Users**.
+- **Added to an existing account.** On **Your account**, *Add Windows sign-in* links
+  your Windows login to the account you are signed in with. A passkey can be added to
+  a Windows-only account the same way. A Windows login belongs to one account, and your
+  last way of signing in, passkey or Windows, cannot be removed.
+
+Anyone else is refused with *"CORP\x has no account here"*.
+
+**What it does not change.** Signing in as yourself identifies you *to the web app*.
+Runs, cells, Integrated-auth connections to SQL Server and SSAS, git and NuGet still
+run as the **service account**. Running each person's work under their own identity
+would need impersonation or delegation, which Studio does not do.
+
+Things to check on the machine:
+
+- **A domain service account needs an SPN** (`setspn -S HTTP/<host> DOMAIN\svc-clrkernel`),
+  or Kerberos quietly falls back to NTLM. LocalSystem and gMSAs are already covered.
+- **The browser sends Windows credentials automatically only to the Local intranet
+  zone.** `localhost` usually qualifies. Elsewhere, add the address in Internet
+  Options → Security → Local intranet, or by group policy. Firefox needs
+  `network.negotiate-auth.trusted-uris`. Without this the browser shows a credentials
+  prompt, and cancelling it shows a page explaining why.
+- **On the server itself, use `localhost`.** Opening the machine's own full hostname
+  from the same machine can loop on the credential prompt, because of Windows'
+  loopback check.
+- **Kestrel directly, over HTTP/1.1.** Negotiate does not work over HTTP/2, and it
+  generally does not work through a reverse proxy: NTLM needs the same connection
+  for the whole handshake, and Kerberos needs the proxy's SPN. Windows sign-in is
+  for browsers that reach Studio directly. It also needs no HTTPS, unlike passkeys,
+  so on plain http the session cookie travels unencrypted.
+
 ### Locked out
 
 Self-hosted with no email means a lost device is otherwise permanent. On the box:
@@ -1674,6 +1732,8 @@ Every setting takes a CLI flag, an environment variable, or a key in
 | `--clrkernel <path>` | `CLRKERNEL_STUDIO_CLRKERNEL` | PATH, then `~/.dotnet/tools` |
 | `--urls <urls>` | `CLRKERNEL_STUDIO_URLS` | `http://localhost:5000` |
 | `--rp-id <domain>` | `CLRKERNEL_STUDIO_RPID` | `localhost` |
+| `--windows-sign-in <bool>` | `CLRKERNEL_STUDIO_WINDOWS_SIGNIN` | on as a Windows service, else off |
+| `--windows-groups <list>` | `CLRKERNEL_STUDIO_WINDOWS_GROUPS` | none |
 | `--origins <url;url>` | `CLRKERNEL_STUDIO_ORIGINS` | the value of `--urls` |
 | `--invite-days <n>` | `CLRKERNEL_STUDIO_INVITE_DAYS` | 7 |
 | `--session-days <n>` | `CLRKERNEL_STUDIO_SESSION_DAYS` | 14 |
