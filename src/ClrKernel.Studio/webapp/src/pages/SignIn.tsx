@@ -172,8 +172,10 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
         session={session}
       >
         <p className="text-sm text-muted-foreground">
-          Setup only answers a browser on the server itself, and a container’s published port does
-          not count — the request arrives from the docker bridge. Get in with an invite instead:
+          Setup only answers a browser on the server itself. On that machine, open{' '}
+          <code className="font-mono">http://localhost:5000</code> (or whatever port it listens
+          on). A container’s published port does not count — the request arrives from the docker
+          bridge — so there, get in with an invite instead:
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm">
           docker exec &lt;container&gt; clrkernel-studio new-admin-invite

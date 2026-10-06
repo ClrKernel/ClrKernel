@@ -749,8 +749,16 @@ public static class AuthApi {
     /// The *caller's* address, not the configured bind url: behind a proxy those
     /// are different, and the bind url would happily call the whole internet local.
     /// </summary>
+    /// <para>
+    /// Loopback, or the machine's own address: a browser on the server that opens it
+    /// by its name or IP connects from that address to that address. Nothing new is
+    /// let in by that — a proxy on the same machine already reaches this over
+    /// loopback — while a container's bridge and every other machine still differ.
+    /// </para>
     internal static bool SetupAllowed(HttpContext context) =>
-        context.Connection.RemoteIpAddress is not { } remote || IPAddress.IsLoopback(remote);
+        context.Connection.RemoteIpAddress is not { } remote
+        || IPAddress.IsLoopback(remote)
+        || remote.Equals(context.Connection.LocalIpAddress);
 
     /// <summary>
     /// What to do when the browser cannot be on the server. Names the container

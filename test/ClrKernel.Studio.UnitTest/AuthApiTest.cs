@@ -144,10 +144,11 @@ public class AuthApiTest {
     /// which is how somebody gets walked through a form that then 403s.
     /// </summary>
     [TestMethod]
-    public void Setup_is_allowed_from_loopback_and_nowhere_else() {
-        static Microsoft.AspNetCore.Http.HttpContext From(string address) {
+    public void Setup_is_allowed_from_this_machine_and_nowhere_else() {
+        static Microsoft.AspNetCore.Http.HttpContext From(string address, string arrivedOn = "10.0.0.5") {
             var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
             context.Connection.RemoteIpAddress = address == null ? null : IPAddress.Parse(address);
+            context.Connection.LocalIpAddress = IPAddress.Parse(arrivedOn);
             return context;
         }
 
@@ -155,7 +156,9 @@ public class AuthApiTest {
         Assert.IsTrue(AuthApi.SetupAllowed(From("::1")));
         Assert.IsTrue(AuthApi.SetupAllowed(From(null)), "an in-memory host has no peer address");
         Assert.IsFalse(AuthApi.SetupAllowed(From("172.17.0.1")), "the docker bridge gateway");
-        Assert.IsFalse(AuthApi.SetupAllowed(From("10.0.0.7")));
+        Assert.IsFalse(AuthApi.SetupAllowed(From("10.0.0.7")), "another machine on the network");
+        Assert.IsTrue(AuthApi.SetupAllowed(From("10.0.0.5")),
+            "a browser on the server opening it by its own name: from its address, to its address");
     }
 
     /// <summary>Not a redirect with a helpful message — the route stops existing.</summary>
