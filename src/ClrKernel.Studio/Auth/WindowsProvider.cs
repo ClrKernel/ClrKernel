@@ -147,10 +147,21 @@ public sealed class WindowsProvider : IAccountProvider {
             }
         }
         var name = principal.Identity?.Name;
-        return string.IsNullOrEmpty(sid) || string.IsNullOrEmpty(name)
+        return string.IsNullOrEmpty(sid) || string.IsNullOrEmpty(name) || IsAnonymousOrGuest(sid)
             ? null
             : new WindowsLogin(sid, name, groups.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
     }
+
+    /// <summary>
+    /// A null-session (anonymous) logon, or a machine's or domain's built-in Guest.
+    /// Negotiate will complete a handshake for either, and neither is a person: an
+    /// identity row for one would let anyone who can send an empty NTLM token in.
+    /// </summary>
+    internal static bool IsAnonymousOrGuest(string sid) =>
+        sid is "S-1-5-7"                                   // NT AUTHORITY\ANONYMOUS LOGON
+        || (sid.StartsWith("S-1-5-21-", StringComparison.Ordinal)
+            && (sid.EndsWith("-501", StringComparison.Ordinal)     // Guest
+                || sid.EndsWith("-514", StringComparison.Ordinal)));  // Domain Guests
 
     /// <summary>
     /// <c>CORP\Studio Users=ServerUser;CORP\Studio Admins=ServerAdmin</c>, each name

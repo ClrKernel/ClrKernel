@@ -223,6 +223,20 @@ public class WindowsProviderTest {
     }
 
     [TestMethod]
+    public void An_anonymous_or_guest_logon_is_not_a_login() {
+        Assert.IsTrue(WindowsProvider.IsAnonymousOrGuest("S-1-5-7"));
+        Assert.IsTrue(WindowsProvider.IsAnonymousOrGuest("S-1-5-21-1-2-3-501"));
+        Assert.IsFalse(WindowsProvider.IsAnonymousOrGuest(Ada().Sid));
+
+        var anonymous = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            new[] {
+                new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.PrimarySid, "S-1-5-7"),
+                new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, @"NT AUTHORITY\ANONYMOUS LOGON"),
+            }, "Negotiate"));
+        Assert.IsNull(WindowsProvider.LoginFrom(anonymous), "refused before it can become an identity row");
+    }
+
+    [TestMethod]
     public void The_user_half_of_a_login_is_its_handle_seed() {
         Assert.AreEqual("ada", AuthService.UserPart(@"CORP\ada"));
         Assert.AreEqual("ada", AuthService.UserPart("ada@corp.example"));
