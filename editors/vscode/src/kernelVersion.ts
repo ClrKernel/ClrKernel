@@ -9,21 +9,21 @@
  */
 
 /** NuGet floating range used when the extension installs the tool itself. */
-export const SUPPORTED_KERNEL_RANGE = '1.0.*';
+export const SUPPORTED_KERNEL_RANGE = '1.1.*';
 
 /** How to say it to a human. */
-export const SUPPORTED_KERNEL_LABEL = '1.0.x';
+export const SUPPORTED_KERNEL_LABEL = '1.1.x';
 
 /** The lowest kernel in the line that carries every RPC this build calls.
  *
- *  1.0.0 adds no `clrkernel/*` method: the RPC surface has been 0.10.0's since
+ *  1.1.0 adds no `clrkernel/*` method: the RPC surface has been 0.10.0's since
  *  then. The kernel and the extension carry the same number from 1.0 on — one
  *  pair, one version to remember — and the pairing moves because the check
  *  below compares major.minor. */
-export const SUPPORTED_KERNEL_MIN = '1.0.0';
+export const SUPPORTED_KERNEL_MIN = '1.1.0';
 
 const SUPPORTED_MAJOR = 1;
-const SUPPORTED_MINOR = 0;
+const SUPPORTED_MINOR = 1;
 const SUPPORTED_PATCH_MIN = 0;
 
 export type KernelCompatibility = 'ok' | 'newer' | 'older' | 'unknown';
