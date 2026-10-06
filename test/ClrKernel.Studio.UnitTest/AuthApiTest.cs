@@ -426,6 +426,64 @@ public class AuthApiTest {
         Assert.IsFalse(AuthApi.SecureCookie(false, Array.Empty<string>()));
     }
 
+    /// <summary>
+    /// Plain http is redirected only where it could never have worked: both schemes
+    /// bound and every origin https, so the session cookie is Secure.
+    /// </summary>
+    [TestMethod]
+    public void Plain_http_is_redirected_only_beside_https() {
+        var origins = new[] { "https://jobs.example.internal" };
+        Assert.AreEqual("https://jobs.example.internal",
+            Program.HttpsRedirectTarget("http://0.0.0.0:80;https://0.0.0.0:443", origins));
+        Assert.AreEqual("https://a.example",
+            Program.HttpsRedirectTarget("http://0.0.0.0:80;https://0.0.0.0:443",
+                new[] { "https://a.example", "https://b.example" }),
+            "the first origin is the canonical one");
+
+        Assert.IsNull(Program.HttpsRedirectTarget("http://0.0.0.0:5000", origins),
+            "behind a TLS proxy the process speaks http alone, and the proxy is who it talks to");
+        Assert.IsNull(Program.HttpsRedirectTarget("https://0.0.0.0:443", origins),
+            "nothing to redirect");
+        Assert.IsNull(Program.HttpsRedirectTarget("http://0.0.0.0:80;https://0.0.0.0:443",
+                new[] { "http://localhost:80", "https://localhost:443" }),
+            "an http origin still works over http, so it is served");
+        Assert.IsNull(Program.HttpsRedirectTarget(null, origins));
+    }
+
+    /// <summary>
+    /// The redirect goes to the configured origin with the path and query kept — not
+    /// to whatever host the request named, which the certificate may not cover.
+    /// </summary>
+    [TestMethod]
+    public async Task Plain_http_goes_to_the_configured_origin() {
+        // Its own server: the redirect is decided from the configured urls, so the
+        // http listener is enough to show it without a certificate on the test box.
+        var options = new JobsOptions {
+            DataDir = _options.DataDir,
+            NotebooksRoot = _options.NotebooksRoot,
+            Urls = "http://0.0.0.0:80;https://0.0.0.0:443",
+            Origins = new[] { "https://jobs.example.internal" },
+        };
+        var app = Program.BuildApp(options, new ProjectRegistry(options, NullLoggerFactory.Instance), _store, _auth);
+        app.Urls.Add("http://127.0.0.1:0");
+        await app.StartAsync();
+        try {
+            using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            using var client = new HttpClient(handler) { BaseAddress = new Uri(app.Urls.First()) };
+
+            var response = await client.GetAsync("/files/a%20b.nb.md?env=test");
+            Assert.AreEqual(HttpStatusCode.TemporaryRedirect, response.StatusCode);
+            Assert.AreEqual("https://jobs.example.internal/files/a%20b.nb.md?env=test",
+                response.Headers.Location?.OriginalString);
+
+            response = await client.PostAsync("/api/auth/signout", null);
+            Assert.AreEqual(HttpStatusCode.TemporaryRedirect, response.StatusCode,
+                "the API too: nothing is served over http, and 307 keeps the method");
+        } finally {
+            await app.StopAsync();
+        }
+    }
+
     [TestMethod]
     public async Task Signing_out_ends_the_session() {
         using var admin = await ClientFor(UserRole.ServerAdmin);

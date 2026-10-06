@@ -183,6 +183,33 @@ is needed. For people on *other* machines, passkeys require HTTPS and a real
 hostname: set `--rp-id`, `--origins` and put TLS in front, exactly as in
 [Before anyone else signs in](#before-anyone-else-signs-in-set-the-domain).
 
+**HTTPS without a proxy.** [Windows sign-in](#signing-in-with-windows) does not
+survive a reverse proxy, so on a Windows server TLS usually belongs in Studio
+itself. A domain machine typically already has a certificate for its full name from
+the enterprise CA. ASP.NET Core loads it from the machine store by subject, set in
+the service's `Environment`:
+
+```powershell
+# elevated
+Set-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\ClrKernelStudio -Name Environment -Type MultiString -Value @(
+  'Kestrel__Certificates__Default__Subject=JOBS01',
+  'Kestrel__Certificates__Default__Store=My',
+  'Kestrel__Certificates__Default__Location=LocalMachine')
+
+clrkernel-studio service install … `
+  --urls "http://0.0.0.0:80;https://0.0.0.0:443" `
+  --origins https://JOBS01.corp.example.com --rp-id JOBS01.corp.example.com
+Restart-Service ClrKernelStudio
+```
+
+The newest valid server certificate whose subject contains the name is used, so an
+auto-renewed one is picked up at the next restart. `service install` leaves
+`Environment` alone. When Studio listens on both schemes and every origin is
+https, plain http answers with a 307 to the **first origin**, keeping the path and
+query. It goes there rather than to the requested host, so `http://JOBS01/` also
+lands on the name the certificate covers. Behind a TLS proxy Studio listens on http
+alone and redirects nothing.
+
 ### Scheduling rules
 
 - **Cron jobs** fire when their next occurrence falls inside a tick (every 10s).

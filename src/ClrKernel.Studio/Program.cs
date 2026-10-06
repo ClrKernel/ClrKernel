@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -58,7 +59,9 @@ public static class Program {
                                      one-shot commands default to sqlite.
           --connection-string <cs>   Connection string for sqlserver/postgres.
           --urls <urls>              serve: listen address
-                                     (default http://localhost:5000).
+                                     (default http://localhost:5000). With
+                                     http and https both, and https origins,
+                                     http redirects to the first origin.
           --rp-id <domain>           serve: the domain passkeys are bound to
                                      (or CLRKERNEL_STUDIO_RPID). Default localhost.
           --origins <url;url>        serve: origins the browser may present
@@ -361,6 +364,9 @@ public static class Program {
                 "over HTTPS) before anyone registers one.");
         }
         Console.WriteLine($"API on {urls} (sign-in required; passkeys bound to {options.RelyingPartyId})");
+        if (HttpsRedirectTarget(urls, options.Origins) is { } redirect) {
+            Console.WriteLine($"Plain http redirects to {redirect}");
+        }
         if (await app.Services.GetRequiredService<AuthService>().UserCountAsync() == 0) {
             Console.Error.WriteLine(
                 "  ! No accounts yet. Open /setup in a browser on this machine. In a container that "
@@ -566,6 +572,24 @@ public static class Program {
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 
         var app = builder.Build();
+        // First of all: a plain-http request has nothing to do here once the cookie
+        // is Secure, so it goes to the configured origin before anything else runs.
+        if (HttpsRedirectTarget(options.Urls, options.Origins) is { } secureOrigin) {
+            app.Use((context, next) => {
+                if (context.Request.IsHttps) {
+                    return next(context);
+                }
+                // 307: not permanent, because browsers cache those and a later
+                // change of --origins would be invisible to anybody who had been
+                // here before; and not 302, which lets a POST become a GET.
+                context.Response.StatusCode = StatusCodes.Status307TemporaryRedirect;
+                context.Response.Headers.Location = secureOrigin
+                    + context.Request.PathBase.ToUriComponent()
+                    + context.Request.Path.ToUriComponent()
+                    + context.Request.QueryString.ToUriComponent();
+                return Task.CompletedTask;
+            });
+        }
         // Before the routes: every handler downstream can then ask who the caller
         // is without each one repeating the cookie lookup.
         // Negotiate's handshake runs here (it refuses to be asked from a route
@@ -604,6 +628,26 @@ public static class Program {
             app.MapFallbackToFile("index.html", shell);
         }
         return app;
+    }
+
+    /// <summary>
+    /// Where plain http is sent, or null to serve it. Only when the server listens
+    /// on both schemes and every origin is https — exactly when the session cookie
+    /// is Secure, so http could never sign anybody in. Behind a TLS proxy the
+    /// process listens on http alone and nothing is redirected: the proxy is the
+    /// one talking to it.
+    /// <para>
+    /// The first configured origin, not the request's own host with the scheme
+    /// flipped: a short name the certificate does not cover would only trade a
+    /// dead end for a certificate warning. Configuration, never the request, so
+    /// this cannot be made into an open redirect.
+    /// </para>
+    /// </summary>
+    internal static string HttpsRedirectTarget(string urls, string[] origins) {
+        var binds = JobsOptions.SplitList(urls);
+        var plain = binds.Any(b => b.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
+        var secure = binds.Any(b => b.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+        return plain && secure && AuthApi.SecureCookie(requestIsHttps: false, origins) ? origins[0] : null;
     }
 
     private static int List(ProjectRegistry projects) {
