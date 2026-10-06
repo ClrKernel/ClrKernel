@@ -14,17 +14,17 @@ import {
 describe('compareKernelVersion', () => {
     it('accepts the supported line, however many parts the version has', () => {
         // The server reports an assembly version (four parts) though the package has three.
-        expect(compareKernelVersion('0.15.0.0')).toBe('ok');
-        expect(compareKernelVersion('0.15.0')).toBe('ok');
+        expect(compareKernelVersion('1.0.0.0')).toBe('ok');
+        expect(compareKernelVersion('1.0.0')).toBe('ok');
     });
 
     it('treats a patch release of the same line as compatible', () => {
-        expect(compareKernelVersion('0.15.7.0')).toBe('ok');
+        expect(compareKernelVersion('1.0.7.0')).toBe('ok');
     });
 
     it('flags a newer kernel — the case this guard exists for', () => {
-        expect(compareKernelVersion('0.16.0.0')).toBe('newer');
-        expect(compareKernelVersion('1.0.0.0')).toBe('newer');
+        expect(compareKernelVersion('1.1.0.0')).toBe('newer');
+        expect(compareKernelVersion('2.0.0.0')).toBe('newer');
     });
 
     it('flags an older kernel', () => {
@@ -33,8 +33,8 @@ describe('compareKernelVersion', () => {
     });
 
     it('flags the previous line as older — the pairing is exact on major.minor', () => {
-        expect(compareKernelVersion('0.12.0.0')).toBe('older');
-        expect(compareKernelVersion('0.12.9')).toBe('older');
+        expect(compareKernelVersion('0.15.0.0')).toBe('older');
+        expect(compareKernelVersion('0.15.9')).toBe('older');
     });
 
     it('says nothing useful rather than guessing when the version is missing or junk', () => {

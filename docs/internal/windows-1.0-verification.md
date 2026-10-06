@@ -32,10 +32,10 @@ dotnet tool update --global ClrKernel
 clrkernel --version
 ```
 
-- [ ] Reports **0.15.0**.
-- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **0.12.0**; its
-      Changelog tab shows the 0.12.0 entry at the top.
-- [ ] The two agree: 0.12.0 pins kernel `0.15.*`
+- [ ] Reports **1.0.0**.
+- [ ] VS Code → Extensions → **ClrKernel Notebooks** shows **1.0.0**; its
+      Changelog tab shows the 1.0.0 entry at the top.
+- [ ] The two agree: 1.0.0 pins kernel `1.0.*`
       (`editors/vscode/src/kernelVersion.ts`), so a notebook opens with **no**
       version warning. A warning here means the tool update above did not take —
       a running notebook window keeps `clrkernel` locked, so close them and
@@ -420,15 +420,20 @@ clrkernel run "C:\temp\clrkernel test\nb1.nb.md" -o "C:\temp\clrkernel test\out.
 
 | # | Area | The 1.0 gate it discharges | P/F | Notes |
 | --- | --- | --- | --- | --- |
-| 2 | Source build + tests on Windows | Platform parity | | |
-| 3 | Live SQL, Integrated auth | Windows auth path | | |
-| 5 | Docs/definitions/extension methods | New IntelliSense features on Windows paths | | |
-| 6 | Per-notebook isolation + restart | Windows URI/drive-letter session keys | | |
-| 7 | SQL cells + C# + bulk/merge | Data core against a real database | | |
-| 8–9 | SSAS C# + DAX cells | The unverified live-backend gate (§11a of the old checklist) | | |
-| 11 | WinRM | The never-tested transport | | |
-| 13 | Credential Manager + connections.json | Secret invariant on Windows | | |
-| 14 | Headless run | Scheduler story | | |
+| 2 | Source build + tests on Windows | Platform parity | P | 0.14 run §A, and the `windows` CI job on every push since |
+| 3 | Live SQL, Integrated auth | Windows auth path | P | 0.14 run §B, §F |
+| 5 | Docs/definitions/extension methods | New IntelliSense features on Windows paths | P | 0.14 run §D; VS Code UI by hand 2026-09-30 |
+| 6 | Per-notebook isolation + restart | Windows URI/drive-letter session keys | P | 0.14 run §N (lsp harness 17/17) |
+| 7 | SQL cells + C# + bulk/merge | Data core against a real database | P | 0.14 run §F |
+| 8–9 | SSAS C# + DAX cells | The unverified live-backend gate (§11a of the old checklist) | P | 0.14 run §G after the TOM fix (#28); Fabric / Azure AS by hand 2026-09-30 |
+| 11 | WinRM | The never-tested transport | P | 0.14 run §L against a real host; localhost blocked by the VM, not the product |
+| 13 | Credential Manager + connections.json | Secret invariant on Windows | P | 0.14 run §B (`cmdkey`: found-and-equal); under a service account 2026-10-02 |
+| 14 | Headless run | Scheduler story | P | 0.14 run §P |
+| — | Studio as a Windows service | Studio's own Windows surface | P | `service install` under a domain account, 2026-10-02 |
+
+Signed off 2026-10-02 against 0.15.0 for the 1.0.0 bump. Rows marked "0.14 run"
+are the unattended run in `windows-0.14-results.md`; everything it found is fixed
+on main (#28–#35, #38). Rows marked "by hand" were reported from the Windows box.
 
 Status, 2026-09-30, against 0.14.1 / 0.11.1 on the Windows box (reported by hand,
 not by this document's blocks): **Fabric / Azure AS live connection — verified,
@@ -446,4 +451,5 @@ had the tool.
 `windows-0.14-results.md` §O — git workspace, the SQL Server run store, jobs,
 promotion, the Connections page and the browser suite (18/18 on Windows after
 #33) — and the hand test of the jobs-file switch above. The Credential Manager
-under a service account is the one Studio-on-Windows surface nobody has run.
+under a service account was run on 2026-10-02 with the service registered by
+`clrkernel-studio service install`.

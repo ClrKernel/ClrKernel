@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.0] - 2026-10-02
+
+**Needs kernel 1.0.x.** The kernel and the extension carry the same number from
+here on: one pair, one version. Nothing in the extension changed since 0.12.0;
+kernel 1.0.0 is 0.15.0 plus one fix — a Studio started as a Windows service now
+writes to the Application event log (the logger was registered and then cleared,
+so a start that failed left nothing to read).
+
+What 1.0 means: the Windows trust run (`docs/internal/windows-1.0-verification.md`)
+is signed off — source build and tests on Windows, SQL Server with Integrated auth,
+SSAS processing, DAX against Fabric and Azure AS, WinRM, Credential Manager,
+headless runs, Studio as a service — and every finding from the 0.14 verification
+is fixed. Oracle and JDBC remain opt-in providers; JDBC stays labelled
+experimental.
+
 ## [0.12.0] - 2026-10-02
 
 **Needs kernel 0.15.x.** No extension code changed; the kernel line moved with

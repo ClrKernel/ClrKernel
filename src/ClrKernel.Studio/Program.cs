@@ -377,14 +377,16 @@ public static class Program {
         JobsOptions options, ProjectRegistry projects, IRunStore store, IAuthStore authStore = null,
         Core.Secrets.SecretStore secrets = null) {
         var builder = WebApplication.CreateBuilder();
-        // Answers the Service Control Manager when started as a Windows service
-        // (start/stop, and logging to the Application event log); a no-op
-        // everywhere else, including the integration tests.
-        builder.Host.UseWindowsService(service => service.ServiceName = WindowsService.DefaultName);
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
         builder.Logging.SetMinimumLevel(LogLevel.Information);
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        // Answers the Service Control Manager when started as a Windows service
+        // (start/stop, and logging to the Application event log); a no-op
+        // everywhere else, including the integration tests. After the logging
+        // setup above: it adds the event-log provider, and ClearProviders would
+        // throw that away — which is what left 0.15.0's event log empty.
+        builder.Host.UseWindowsService(service => service.ServiceName = WindowsService.DefaultName);
 
         // Statuses and triggers go over the wire as their names, matching how they
         // are stored and keeping the SPA free of magic numbers.
