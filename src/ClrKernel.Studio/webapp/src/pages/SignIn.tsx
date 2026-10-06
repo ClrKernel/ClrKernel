@@ -1,9 +1,11 @@
-import { BookOpenCheck, KeyRound } from 'lucide-react';
+import { BookOpenCheck, KeyRound, MonitorSmartphone } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { passkeyBlocker, type SessionState } from '../auth';
+import {
+  authErrorFromUrl, passkeyBlocker, windowsSignInUrl, type SessionState, type WindowsMode,
+} from '../auth';
 
 /**
  * The shell every signed-out page shares: a centred card on the app's canvas,
@@ -23,7 +25,12 @@ export function AuthShell({
   error?: string | null;
   children: ReactNode;
 }) {
-  const blocker = passkeyBlocker(session);
+  // With Windows sign-in on offer, a page that cannot do passkeys is still a page
+  // you can sign in from — so the warning moves to the passkey button's tooltip
+  // rather than sitting over a button that works.
+  const blocker = session?.windowsSignIn ? null : passkeyBlocker(session);
+  // A Windows sign-in comes back here by redirect, carrying its refusal.
+  const shown = error ?? authErrorFromUrl();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
       <div className="w-full max-w-[420px]">
@@ -51,9 +58,9 @@ export function AuthShell({
               <AlertDescription>{blocker}</AlertDescription>
             </Alert>
           )}
-          {error && (
+          {shown && (
             <Alert variant="destructive" className="mt-4">
-              <AlertDescription className="text-destructive">{error}</AlertDescription>
+              <AlertDescription className="text-destructive">{shown}</AlertDescription>
             </Alert>
           )}
 
@@ -61,6 +68,33 @@ export function AuthShell({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Sign in with Windows": a link, not a button with a handler, because it has to
+ * be a navigation — the browser only answers the server's Windows challenge for a
+ * page it is loading. Rendered only where the server offers it.
+ */
+export function WindowsButton({
+  session, mode, code, label, variant = 'outline',
+}: {
+  session: SessionState | null;
+  mode: WindowsMode;
+  code?: string;
+  label: string;
+  variant?: 'default' | 'outline';
+}) {
+  if (!session?.windowsSignIn) {
+    return null;
+  }
+  return (
+    <Button className="w-full" variant={variant} asChild>
+      <a href={windowsSignInUrl(mode, code)} className="hover:no-underline">
+        <MonitorSmartphone className="size-4" aria-hidden="true" />
+        {label}
+      </a>
+    </Button>
   );
 }
 
@@ -90,16 +124,29 @@ export function SignIn({ session, onSignedIn }: { session: SessionState | null; 
   return (
     <AuthShell
       title="Sign in"
-      description="Use the passkey you registered on this device."
+      description={session?.windowsSignIn
+        ? 'With your Windows account, or a passkey you registered on this device.'
+        : 'Use the passkey you registered on this device.'}
       session={session}
       error={error}
     >
-      <Button className="w-full" onClick={go} disabled={busy || passkeyBlocker(session) != null}>
-        <KeyRound className="size-4" aria-hidden="true" />
-        {busy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
-      </Button>
+      <div className="flex flex-col gap-2">
+        <WindowsButton session={session} mode="signin" label="Sign in with Windows" variant="default" />
+        <Button
+          className="w-full"
+          variant={session?.windowsSignIn ? 'outline' : 'default'}
+          onClick={go}
+          disabled={busy || passkeyBlocker(session) != null}
+          title={passkeyBlocker(session) ?? undefined}
+        >
+          <KeyRound className="size-4" aria-hidden="true" />
+          {busy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
+        </Button>
+      </div>
       <p className="mt-3 text-sm text-muted-subtle">
-        No account? This server is invite-only — ask an admin for a link.
+        {session?.windowsSignIn
+          ? 'No account? Sign in with Windows — your admin may have set this server up to let you in — or ask them for an invite.'
+          : 'No account? This server is invite-only — ask an admin for a link.'}
       </p>
     </AuthShell>
   );
@@ -125,8 +172,10 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
         session={session}
       >
         <p className="text-sm text-muted-foreground">
-          Setup only answers a browser on the server itself, and a container’s published port does
-          not count — the request arrives from the docker bridge. Get in with an invite instead:
+          Setup only answers a browser on the server itself. On that machine, open{' '}
+          <code className="font-mono">http://localhost:5000</code> (or whatever port it listens
+          on). A container’s published port does not count — the request arrives from the docker
+          bridge — so there, get in with an invite instead:
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm">
           docker exec &lt;container&gt; clrkernel-studio new-admin-invite
@@ -158,10 +207,18 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
   return (
     <AuthShell
       title="Set up this server"
-      description="Nobody has claimed this server yet. Register a passkey and you become its Server Admin."
+      description={session?.windowsSignIn
+        ? 'Nobody has claimed this server yet. Sign in with Windows, or register a passkey, and you become its Server Admin.'
+        : 'Nobody has claimed this server yet. Register a passkey and you become its Server Admin.'}
       session={session}
       error={error}
     >
+      {session?.windowsSignIn && (
+        <div className="mb-4 flex flex-col gap-2">
+          <WindowsButton session={session} mode="setup" label="Use my Windows account" variant="default" />
+          <p className="text-center text-sm text-muted-subtle">or register a passkey</p>
+        </div>
+      )}
       <form className="flex flex-col gap-3" onSubmit={go}>
         <label className="flex flex-col gap-1 text-sm font-medium">
           Your name
@@ -174,7 +231,9 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
         </label>
         <Button
           type="submit"
+          variant={session?.windowsSignIn ? 'outline' : 'default'}
           disabled={busy || name.trim().length === 0 || passkeyBlocker(session) != null}
+          title={passkeyBlocker(session) ?? undefined}
         >
           <KeyRound className="size-4" aria-hidden="true" />
           {busy ? 'Waiting for your passkey…' : 'Create the admin account'}

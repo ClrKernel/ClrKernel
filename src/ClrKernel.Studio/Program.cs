@@ -5,7 +5,9 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -57,12 +59,18 @@ public static class Program {
                                      one-shot commands default to sqlite.
           --connection-string <cs>   Connection string for sqlserver/postgres.
           --urls <urls>              serve: listen address
-                                     (default http://localhost:5000).
+                                     (default http://localhost:5000). With
+                                     http and https both, and https origins,
+                                     http redirects to the first origin.
           --rp-id <domain>           serve: the domain passkeys are bound to
                                      (or CLRKERNEL_STUDIO_RPID). Default localhost.
           --origins <url;url>        serve: origins the browser may present
                                      (or CLRKERNEL_STUDIO_ORIGINS). Default: --urls.
           --max-parallelism <n>      serve: concurrent runs (default 4).
+          --windows-sign-in <bool>   serve: offer "Sign in with Windows" (default:
+                                     on when running as a Windows service).
+          --windows-groups <list>    serve: groups whose members get an account on
+                                     first Windows sign-in, "CORP\Group=ServerUser;..."
           --git <true|false>         Enable the test/prod git workflow
                                      (or CLRKERNEL_STUDIO_GIT).
           --env <test|prod>          run: which environment (default test).
@@ -356,6 +364,9 @@ public static class Program {
                 "over HTTPS) before anyone registers one.");
         }
         Console.WriteLine($"API on {urls} (sign-in required; passkeys bound to {options.RelyingPartyId})");
+        if (HttpsRedirectTarget(urls, options.Origins) is { } redirect) {
+            Console.WriteLine($"Plain http redirects to {redirect}");
+        }
         if (await app.Services.GetRequiredService<AuthService>().UserCountAsync() == 0) {
             Console.Error.WriteLine(
                 "  ! No accounts yet. Open /setup in a browser on this machine. In a container that "
@@ -411,6 +422,20 @@ public static class Program {
             provider.GetRequiredService<ILoggerFactory>().CreateLogger<PasskeyProvider>()));
         builder.Services.AddSingleton<IAccountProvider>(
             provider => provider.GetRequiredService<PasskeyProvider>());
+        // Registered whatever the platform, so the routes can ask it whether it is
+        // on; Negotiate itself only when it is. Off Windows, or not wanted, nothing
+        // here touches authentication schemes at all.
+        builder.Services.AddSingleton(provider => new WindowsProvider(
+            provider.GetRequiredService<AuthService>(), options,
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger<WindowsProvider>()));
+        builder.Services.AddSingleton<IAccountProvider>(
+            provider => provider.GetRequiredService<WindowsProvider>());
+        var windowsSignIn = WindowsProvider.Enabled(options);
+        if (windowsSignIn) {
+            // No authorization policy names it, so it never challenges by itself:
+            // only the /api/auth/windows route asks.
+            builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme).AddNegotiate();
+        }
 
         var settings = SettingsRegistry.CreateDefault(options);
         settings.Add(new SettingsSection {
@@ -547,8 +572,32 @@ public static class Program {
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SchedulerService>());
 
         var app = builder.Build();
+        // First of all: a plain-http request has nothing to do here once the cookie
+        // is Secure, so it goes to the configured origin before anything else runs.
+        if (HttpsRedirectTarget(options.Urls, options.Origins) is { } secureOrigin) {
+            app.Use((context, next) => {
+                if (context.Request.IsHttps) {
+                    return next(context);
+                }
+                // 307: not permanent, because browsers cache those and a later
+                // change of --origins would be invisible to anybody who had been
+                // here before; and not 302, which lets a POST become a GET.
+                context.Response.StatusCode = StatusCodes.Status307TemporaryRedirect;
+                context.Response.Headers.Location = secureOrigin
+                    + context.Request.PathBase.ToUriComponent()
+                    + context.Request.Path.ToUriComponent()
+                    + context.Request.QueryString.ToUriComponent();
+                return Task.CompletedTask;
+            });
+        }
         // Before the routes: every handler downstream can then ask who the caller
         // is without each one repeating the cookie lookup.
+        // Negotiate's handshake runs here (it refuses to be asked from a route
+        // otherwise). It authenticates nothing for the rest of the app: the session
+        // cookie below is still the only thing that does.
+        if (windowsSignIn) {
+            app.UseAuthentication();
+        }
         app.UseMiddleware<AuthenticationMiddleware>();
         app.MapAuthApi();
         app.MapJobsApi();
@@ -579,6 +628,26 @@ public static class Program {
             app.MapFallbackToFile("index.html", shell);
         }
         return app;
+    }
+
+    /// <summary>
+    /// Where plain http is sent, or null to serve it. Only when the server listens
+    /// on both schemes and every origin is https — exactly when the session cookie
+    /// is Secure, so http could never sign anybody in. Behind a TLS proxy the
+    /// process listens on http alone and nothing is redirected: the proxy is the
+    /// one talking to it.
+    /// <para>
+    /// The first configured origin, not the request's own host with the scheme
+    /// flipped: a short name the certificate does not cover would only trade a
+    /// dead end for a certificate warning. Configuration, never the request, so
+    /// this cannot be made into an open redirect.
+    /// </para>
+    /// </summary>
+    internal static string HttpsRedirectTarget(string urls, string[] origins) {
+        var binds = JobsOptions.SplitList(urls);
+        var plain = binds.Any(b => b.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
+        var secure = binds.Any(b => b.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+        return plain && secure && AuthApi.SecureCookie(requestIsHttps: false, origins) ? origins[0] : null;
     }
 
     private static int List(ProjectRegistry projects) {

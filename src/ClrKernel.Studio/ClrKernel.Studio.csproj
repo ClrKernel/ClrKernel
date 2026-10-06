@@ -23,6 +23,14 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="8.0.31" />
+    <!-- Transitive pins, here only to lift known-vulnerable versions (NU1903):
+         Fido2 4.0.0 brings Microsoft.Bcl.Memory 9.0.0 (GHSA-73j8-2gch-69rq, fixed
+         in 9.0.14), and EF Core Sqlite 9.0.9 brings SQLitePCLRaw 2.1.10
+         (GHSA-2m69-gcr7-jv3q, through 2.1.11). Drop each once its parent
+         references a fixed version. -->
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="9.0.20" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />

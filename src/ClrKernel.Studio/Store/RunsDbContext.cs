@@ -290,6 +290,8 @@ public abstract class RunsDbContext : DbContext {
             // invites for the same person, which is a reasonable thing to do.
             invite.Property(i => i.DisplayName).HasColumnName("display_name").HasMaxLength(120);
             invite.Property(i => i.Username).HasColumnName("username").HasMaxLength(39);
+            invite.Property(i => i.WindowsSid).HasColumnName("windows_sid").HasMaxLength(184);
+            invite.Property(i => i.WindowsAccount).HasColumnName("windows_account").HasMaxLength(256);
             invite.Property(i => i.CreatedBy).HasColumnName("created_by");
             invite.Property(i => i.CreatedAt).HasColumnName("created_at");
             invite.Property(i => i.ExpiresAt).HasColumnName("expires_at");

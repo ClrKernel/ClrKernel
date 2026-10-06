@@ -215,6 +215,9 @@ public sealed class SecretName {
 /// <summary>Known values for <see cref="Identity.Provider"/>.</summary>
 public static class IdentityProviders {
     public const string Passkey = "passkey";
+
+    /// <summary>A Windows account; the subject is its SID, the label its <c>DOMAIN\user</c>.</summary>
+    public const string Windows = "windows";
 }
 
 /// <summary>
@@ -242,6 +245,18 @@ public sealed class Invite {
     /// naming path is one nobody would notice firing.
     /// </summary>
     public string Username { get; set; }
+
+    /// <summary>
+    /// The Windows account this invite is for, as a SID — resolved from what the
+    /// admin typed when the invite was issued, so a misspelling is refused on their
+    /// form. Set, the invite can only be redeemed by that account signing in with
+    /// Windows, and it is redeemed simply by that account signing in: no link to
+    /// pass on. Null for an ordinary invite.
+    /// </summary>
+    public string WindowsSid { get; set; }
+
+    /// <summary>The <c>DOMAIN\user</c> the admin typed, for showing; matching uses <see cref="WindowsSid"/>.</summary>
+    public string WindowsAccount { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }

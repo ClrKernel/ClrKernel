@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ClrKernel.Studio;
 
 /// <summary>A user with the counts the management UI shows beside them.</summary>
-public sealed record UserSummary(User User, int CredentialCount);
+public sealed record UserSummary(User User, int CredentialCount, string WindowsAccount = null);
 
 /// <summary>
 /// Accounts, passkeys, invites and sessions.
@@ -59,7 +59,7 @@ public interface IAuthStore {
     Task<Credential> FindCredentialAsync(string credentialId);
     Task<IReadOnlyList<Credential>> CredentialsForAsync(Guid userId);
 
-    /// <summary>False when it is the user's only passkey — that is a lockout.</summary>
+    /// <summary>False when it is the user's last way to sign in — that is a lockout.</summary>
     Task<bool> RemoveCredentialAsync(Guid userId, string credentialId);
 
     Task RecordCredentialUseAsync(string credentialId, long signCount, DateTime at);
@@ -78,13 +78,21 @@ public interface IAuthStore {
     Task RecordIdentityUseAsync(Guid id, DateTime at);
 
     /// <summary>
+    /// Removes a non-passkey identity (a passkey goes with its credential, through
+    /// <see cref="RemoveCredentialAsync"/>). False when it is not theirs, is a
+    /// passkey, or is the last way they have to sign in.
+    /// </summary>
+    Task<bool> RemoveIdentityAsync(Guid userId, Guid identityId);
+
+    /// <summary>
     /// <paramref name="displayName"/> and <paramref name="username"/> are the
     /// account this invite will create. Both are settled here, on a form, rather
     /// than at redemption, where the invitee is holding a security key and a
     /// "that name is taken" has nowhere to go.
     /// </summary>
     Task<Invite> CreateInviteAsync(string code, UserRole role, string label,
-        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime);
+        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime,
+        string windowsSid = null, string windowsAccount = null);
     Task<IReadOnlyList<Invite>> ListInvitesAsync();
     Task<Invite> FindInviteAsync(string code);
 
@@ -144,7 +152,10 @@ public sealed class EfAuthStore : IAuthStore {
             .OrderBy(u => u.CreatedAt)
             .Select(u => new { User = u, Count = u.Credentials.Count })
             .ToListAsync();
-        return rows.Select(r => new UserSummary(r.User, r.Count)).ToList();
+        var windows = await db.Identities.Where(i => i.Provider == IdentityProviders.Windows)
+            .Select(i => new { i.UserId, i.Label }).ToListAsync();
+        return rows.Select(r => new UserSummary(r.User, r.Count,
+            windows.FirstOrDefault(w => w.UserId == r.User.Id)?.Label)).ToList();
     }
 
     public async Task<User> FindUserAsync(Guid id) {
@@ -194,6 +205,28 @@ public sealed class EfAuthStore : IAuthStore {
         db.Identities.Add(identity);
         await db.SaveChangesAsync();
     }
+
+    public async Task<bool> RemoveIdentityAsync(Guid userId, Guid identityId) {
+        await using var db = _contextFactory();
+        var identity = await db.Identities.FirstOrDefaultAsync(
+            i => i.Id == identityId && i.UserId == userId && i.Provider != IdentityProviders.Passkey);
+        if (identity == null || await SignInCountAsync(db, userId) <= 1) {
+            return false;
+        }
+        db.Identities.Remove(identity);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    /// <summary>
+    /// Ways this account can sign in: its passkeys (one credential each) plus every
+    /// identity that is not a passkey's. A passkey has a row in both tables, so
+    /// counting identities alone would count it twice over a healed row and not at
+    /// all over a missing one.
+    /// </summary>
+    private static async Task<int> SignInCountAsync(RunsDbContext db, Guid userId) =>
+        await db.Credentials.CountAsync(c => c.UserId == userId)
+        + await db.Identities.CountAsync(i => i.UserId == userId && i.Provider != IdentityProviders.Passkey);
 
     public async Task<IReadOnlyList<Identity>> IdentitiesForAsync(Guid userId) {
         await using var db = _contextFactory();
@@ -328,7 +361,7 @@ public sealed class EfAuthStore : IAuthStore {
 
     public async Task<bool> RemoveCredentialAsync(Guid userId, string credentialId) {
         await using var db = _contextFactory();
-        if (await db.Credentials.CountAsync(c => c.UserId == userId) <= 1) {
+        if (await SignInCountAsync(db, userId) <= 1) {
             return false;
         }
         if (await db.Credentials
@@ -353,7 +386,8 @@ public sealed class EfAuthStore : IAuthStore {
     }
 
     public async Task<Invite> CreateInviteAsync(string code, UserRole role, string label,
-        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime) {
+        string displayName, string username, Guid? createdBy, DateTime now, TimeSpan lifetime,
+        string windowsSid = null, string windowsAccount = null) {
         await using var db = _contextFactory();
         var invite = new Invite {
             Code = code,
@@ -361,6 +395,8 @@ public sealed class EfAuthStore : IAuthStore {
             Label = label,
             DisplayName = displayName,
             Username = username,
+            WindowsSid = windowsSid,
+            WindowsAccount = windowsAccount,
             CreatedBy = createdBy,
             CreatedAt = now,
             ExpiresAt = now + lifetime,

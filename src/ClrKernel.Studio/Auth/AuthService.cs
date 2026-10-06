@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -71,9 +72,12 @@ public sealed class AuthService {
     /// they say; it has no business knowing what an invite is.
     /// </para>
     /// </summary>
+    /// <param name="windowsSid">The Windows account redeeming, when that is how
+    /// the invitee proved themselves; null for a passkey. An invite bound to a
+    /// Windows account is refused to anything else.</param>
     public async Task<AuthResult> ProvisionAsync(
         RegistrationPurpose purpose, Guid userId, string ceremonyDisplayName, string inviteCode,
-        DateTime now) {
+        DateTime now, string windowsSid = null) {
         if (purpose == RegistrationPurpose.AddPasskey) {
             var existing = await _store.FindUserAsync(userId);
             return existing == null
@@ -88,6 +92,12 @@ public sealed class AuthService {
             var invite = await _store.FindInviteAsync(inviteCode);
             if (invite == null || string.IsNullOrEmpty(invite.Username)) {
                 return AuthResult.Fail("This invite isn't valid.");
+            }
+            if (invite.WindowsSid != null
+                && !string.Equals(invite.WindowsSid, windowsSid, StringComparison.OrdinalIgnoreCase)) {
+                return AuthResult.Fail(
+                    $"This invite is for the Windows account {invite.WindowsAccount}. "
+                    + "Sign in with Windows as that account.");
             }
             // Last check before the row is written. The API checks it when the page
             // loads and again as the ceremony begins; between then and now an admin
@@ -120,6 +130,76 @@ public sealed class AuthService {
         return AuthResult.Success(
             await _store.CreateUserAsync(userId, username, displayName, role));
     }
+
+    /// <summary>
+    /// An account for a directory login nobody has registered yet — or a refusal.
+    ///
+    /// <para>
+    /// An open invite bound to this account comes first: an admin asked for this
+    /// person by name, with a role and a handle. Otherwise the groups decide — the
+    /// highest role among the configured groups the login is in — and the handle is
+    /// derived from the user half of <c>DOMAIN\user</c>, made unique. Groups are
+    /// read here, on the first sign-in only: leaving a group later does not take an
+    /// account away. That is an admin's job (disable or remove it).
+    /// </para>
+    /// </summary>
+    /// <param name="groupRoles">Group SID → the role its members get.</param>
+    public async Task<AuthResult> ProvisionFromDirectoryAsync(
+        ProvenIdentity proven, IReadOnlyCollection<string> groupSids,
+        IReadOnlyDictionary<string, UserRole> groupRoles, DateTime now) {
+        // An unclaimed server is set up, from the server itself, and nothing else.
+        // Without this a group member anywhere could become the first account —
+        // a Server User, say, on a server that then has no admin and no /setup.
+        if (await _store.UserCountAsync() == 0) {
+            return AuthResult.Fail("This server hasn't been set up yet. Set it up from the server itself.");
+        }
+        var invites = await _store.ListInvitesAsync();
+        var bound = invites.FirstOrDefault(i =>
+            i.IsUsable(now) && string.Equals(i.WindowsSid, proven.Subject, StringComparison.OrdinalIgnoreCase));
+        AuthResult provisioned;
+        if (bound != null) {
+            provisioned = await ProvisionAsync(
+                RegistrationPurpose.Invite, Guid.NewGuid(), null, bound.Code, now, proven.Subject);
+        } else {
+            var roles = groupSids.Where(groupRoles.ContainsKey).Select(g => groupRoles[g]).ToList();
+            if (roles.Count == 0) {
+                return AuthResult.Fail(
+                    $"{proven.Label} has no account here. Ask an admin for an invite.");
+            }
+            var displayName = UserPart(proven.Label);
+            // An open invite's handle is reserved, as it is on the invite form: a
+            // group member called bob must not take the `bob` an invite is holding.
+            var taken = (await _store.UsernamesAsync())
+                .Concat(invites.Where(i => i.IsUsable(now) && i.Username != null).Select(i => i.Username))
+                .ToList();
+            provisioned = AuthResult.Success(await _store.CreateUserAsync(
+                Guid.NewGuid(), UserName.Unique(UserName.Suggest(displayName), taken),
+                displayName, roles.OrderByDescending(Rank).First()));
+        }
+        if (provisioned.Ok) {
+            await LinkIdentityAsync(provisioned.User, proven, now);
+        }
+        return provisioned;
+    }
+
+    /// <summary><c>CORP\ada</c> → <c>ada</c>; a UPN keeps its local part.</summary>
+    internal static string UserPart(string login) {
+        var name = login ?? string.Empty;
+        var slash = name.LastIndexOf('\\');
+        name = slash >= 0 ? name[(slash + 1)..] : name;
+        var at = name.IndexOf('@');
+        return at > 0 ? name[..at] : name;
+    }
+
+    /// <summary>
+    /// Privilege, highest last. The enum is declared Admin, Viewer, User, which is
+    /// not this order — a viewer reads every project, a user reads none until granted.
+    /// </summary>
+    internal static int Rank(UserRole role) => role switch {
+        UserRole.ServerAdmin => 2,
+        UserRole.ServerViewer => 1,
+        _ => 0,
+    };
 
     /// <summary>
     /// Records that <paramref name="proven"/> now names this account.

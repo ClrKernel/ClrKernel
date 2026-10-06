@@ -1,4 +1,4 @@
-import { KeyRound, Trash2 } from 'lucide-react';
+import { KeyRound, MonitorSmartphone, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  accounts, auth, passkeyBlocker, suggestUsername, type ManagedUser, type Role,
+  accounts, auth, authErrorFromUrl, passkeyBlocker, suggestUsername, windowsSignInUrl,
+  type ManagedUser, type Role,
 } from '../auth';
 import { ErrorBanner, usePolling } from '../components/common';
 import { useSession } from '../sessionContext';
@@ -40,8 +41,18 @@ export function AccountSection() {
   const [name, setName] = useState(session?.user?.displayName ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const { data: passkeys, error: loadError, reload } = usePolling(() => accounts.passkeys(), null);
+  const { data: passkeys, error: loadError, reload: reloadPasskeys } = usePolling(
+    () => accounts.passkeys(), null);
+  const { data: identities, reload: reloadIdentities } = usePolling(() => accounts.identities(), null);
+  const reload = () => {
+    reloadPasskeys();
+    reloadIdentities();
+  };
   const blocker = passkeyBlocker(session);
+  // Every way in, of either kind: the server refuses to remove the last one, and
+  // so does this page, whichever kind it is.
+  const signIns = (passkeys ?? []).length + (identities ?? []).length;
+  const windows = (identities ?? []).filter((i) => i.provider === 'windows');
 
   async function run(work: () => Promise<unknown>, done: string) {
     setError(null);
@@ -63,7 +74,8 @@ export function AccountSection() {
         You are signed in as <strong>{session?.user?.displayName}</strong> —{' '}
         {roleLabel(session?.user?.role ?? 'ServerUser')}. Roles are set by an admin.
       </p>
-      <ErrorBanner error={error ?? loadError} />
+      {/* Adding Windows comes back here by redirect, with its refusal if any. */}
+      <ErrorBanner error={error ?? loadError ?? authErrorFromUrl()} />
 
       <h2 className="mb-1 text-lg font-semibold">Your name</h2>
       <form
@@ -86,7 +98,8 @@ export function AccountSection() {
       <h2 className="mb-1 text-lg font-semibold">Passkeys</h2>
       <p className="mb-2 max-w-[78ch] text-base text-muted-foreground">
         Add one per device — a laptop and a phone means losing either is an inconvenience rather
-        than a lockout. There is no email in this system, so the last one cannot be removed.
+        than a lockout. There is no email in this system, so your last way to sign in — a passkey
+        or a Windows account — cannot be removed.
       </p>
       <div className="table-box mb-3 max-w-[640px]">
         <table className="table">
@@ -111,10 +124,10 @@ export function AccountSection() {
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`Remove ${passkey.name}`}
-                    disabled={busy || (passkeys ?? []).length <= 1}
+                    disabled={busy || signIns <= 1}
                     title={
-                      (passkeys ?? []).length <= 1
-                        ? 'This is your only passkey — add another first.'
+                      signIns <= 1
+                        ? 'This is your only way to sign in — add another first.'
                         : 'Remove this passkey'
                     }
                     onClick={() => run(() => accounts.removePasskey(passkey.id), 'Passkey removed.')}
@@ -127,6 +140,63 @@ export function AccountSection() {
           </tbody>
         </table>
       </div>
+
+      {(session?.windowsSignIn || windows.length > 0) && (
+        <>
+          <h2 className="mb-1 text-lg font-semibold">Windows account</h2>
+          <p className="mb-2 max-w-[78ch] text-base text-muted-foreground">
+            Sign in as yourself on this machine's network, with no passkey to carry. Adding it
+            signs you in to Windows once to prove which account is yours.
+          </p>
+          {windows.length > 0 ? (
+            <div className="table-box mb-3 max-w-[640px]">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Added</th>
+                    <th>Last used</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {windows.map((identity) => (
+                    <tr key={identity.id}>
+                      <td className="font-mono text-sm">{identity.label}</td>
+                      <td className="text-muted-foreground">{timeAgo(identity.createdAt)}</td>
+                      <td className="text-muted-foreground">
+                        {identity.lastUsedAt ? timeAgo(identity.lastUsedAt) : 'never'}
+                      </td>
+                      <td className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Remove ${identity.label}`}
+                          disabled={busy || signIns <= 1}
+                          title={signIns <= 1
+                            ? 'This is your only way to sign in — add a passkey first.'
+                            : 'Stop signing in with this Windows account'}
+                          onClick={() =>
+                            run(() => accounts.removeIdentity(identity.id), 'Windows sign-in removed.')}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" className="mb-5" asChild>
+              <a href={windowsSignInUrl('link')} className="hover:no-underline">
+                <MonitorSmartphone className="size-3.5" aria-hidden="true" />
+                Add Windows sign-in
+              </a>
+            </Button>
+          )}
+        </>
+      )}
 
       <div className="flex items-center gap-2">
         <Button
@@ -168,6 +238,7 @@ export function UsersSection() {
   // undone by the next keystroke in the box beside it.
   const [handle, setHandle] = useState('');
   const [handleEdited, setHandleEdited] = useState(false);
+  const [windowsAccount, setWindowsAccount] = useState('');
   const { data: users, error: usersError, reload: reloadUsers } = usePolling(
     () => accounts.users(), null);
   const { data: invites, reload: reloadInvites } = usePolling(() => accounts.invites(), null);
@@ -191,12 +262,24 @@ export function UsersSection() {
     setError(null);
     setBusy(true);
     try {
+      const forWindows = windowsAccount.trim();
       const { code } = await accounts.createInvite(
-        role, inviteName.trim(), handle.trim(), '');
+        role, inviteName.trim(), handle.trim(), '', forWindows);
       const url = `${location.origin}/invite/${code}`;
       setInviteName('');
       setHandle('');
       setHandleEdited(false);
+      setWindowsAccount('');
+      if (forWindows) {
+        // Nothing to send: that account is let in the first time it signs in with
+        // Windows. The link still works, for whoever wants to be told.
+        reloadInvites();
+        toast.success(`Invite created for ${forWindows}`, {
+          description: 'They join by signing in with Windows — no link needed.',
+          duration: 12000,
+        });
+        return;
+      }
       reloadInvites();
       // There is no email in this system: the link is the whole delivery
       // mechanism, so it goes on the clipboard rather than into a table cell you
@@ -245,7 +328,7 @@ export function UsersSection() {
               <th>User</th>
               <th>Username</th>
               <th>Role</th>
-              <th>Passkeys</th>
+              <th>Sign-in</th>
               <th>Last seen</th>
               <th />
             </tr>
@@ -288,7 +371,15 @@ export function UsersSection() {
                     </SelectContent>
                   </Select>
                 </td>
-                <td className="text-muted-foreground">{user.credentialCount}</td>
+                <td className="text-muted-foreground">
+                  {/* A Windows-only account has no passkeys and is not broken for it. */}
+                  {[
+                    user.credentialCount > 0
+                      ? `${user.credentialCount} passkey${user.credentialCount === 1 ? '' : 's'}`
+                      : null,
+                    user.windowsAccount,
+                  ].filter(Boolean).join(' · ') || '—'}
+                </td>
                 <td className="text-muted-foreground">
                   {user.lastSeenAt ? timeAgo(user.lastSeenAt) : 'never'}
                 </td>
@@ -311,7 +402,7 @@ export function UsersSection() {
                       className="text-destructive hover:border-destructive hover:text-destructive"
                       disabled={busy || user.isYou}
                       onClick={() => {
-                        if (confirm(`Remove ${user.displayName}? Their passkeys go with them.`)) {
+                        if (confirm(`Remove ${user.displayName}? Their ways of signing in go with them.`)) {
                           run(() => accounts.removeUser(user.id), 'User removed.');
                         }
                       }}
@@ -378,6 +469,20 @@ export function UsersSection() {
             }}
           />
         </label>
+        {/* Optional: an invite for a named Windows account is redeemed by that
+            account signing in, and by nobody else. Checked against Windows when
+            created, so a typo is refused here. */}
+        {session?.windowsSignIn && (
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Windows account (optional)
+            <Input
+              value={windowsAccount}
+              className="w-[200px] font-mono"
+              placeholder="CORP\ada"
+              onChange={(e) => setWindowsAccount(e.target.value)}
+            />
+          </label>
+        )}
         <Button
           size="sm"
           disabled={busy || inviteName.trim().length === 0 || handle.trim().length === 0}
@@ -408,6 +513,11 @@ export function UsersSection() {
                   <td className="text-muted-foreground">{invite.displayName || invite.label || '—'}</td>
                   <td className="font-mono text-xs text-muted-foreground">
                     {invite.username || '—'}
+                    {invite.windowsAccount && (
+                      <span className="ml-2" title="Redeemed by this Windows account signing in">
+                        {invite.windowsAccount}
+                      </span>
+                    )}
                   </td>
                   <td className="text-muted-foreground">{timeAgo(invite.expiresAt)}</td>
                   <td className="text-right">

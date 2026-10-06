@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { auth, passkeyBlocker, type InviteOffer, type SessionState } from '../auth';
-import { AuthShell } from './SignIn';
+import { AuthShell, WindowsButton } from './SignIn';
 
 /**
  * Redeeming an invite. Invalid, expired, revoked and already-used all say the
@@ -54,10 +54,18 @@ export function Invite({
     );
   }
 
+  // An invite for a named Windows account: only that account can redeem it, so a
+  // passkey is not offered at all.
+  const windowsOnly = offer?.valid === true && !!offer.windowsAccount;
+
   return (
     <AuthShell
       title="Join this server"
-      description="Register a passkey. That passkey is how you sign in from now on."
+      description={windowsOnly
+        ? `This invite is for the Windows account ${offer?.windowsAccount}. Sign in with it — that is how you sign in from now on.`
+        : session?.windowsSignIn
+          ? 'Use your Windows account, or register a passkey. That is how you sign in from now on.'
+          : 'Register a passkey. That passkey is how you sign in from now on.'}
       session={session}
       error={error}
     >
@@ -79,13 +87,32 @@ export function Invite({
             . Ask whoever invited you if that isn’t right.
           </div>
         )}
-        <Button
-          type="submit"
-          disabled={busy || !offer?.valid || passkeyBlocker(session) != null}
-        >
-          <KeyRound className="size-4" aria-hidden="true" />
-          {busy ? 'Waiting for your passkey…' : 'Create my account'}
-        </Button>
+        {offer?.valid && (
+          <WindowsButton
+            session={session}
+            mode="invite"
+            code={code}
+            label="Join with my Windows account"
+            variant="default"
+          />
+        )}
+        {windowsOnly && !session?.windowsSignIn && (
+          <p className="text-sm text-muted-foreground">
+            Windows sign-in is not turned on for this server, so this invite cannot be used
+            yet. Ask whoever sent it.
+          </p>
+        )}
+        {!windowsOnly && (
+          <Button
+            type="submit"
+            variant={session?.windowsSignIn ? 'outline' : 'default'}
+            disabled={busy || !offer?.valid || passkeyBlocker(session) != null}
+            title={passkeyBlocker(session) ?? undefined}
+          >
+            <KeyRound className="size-4" aria-hidden="true" />
+            {busy ? 'Waiting for your passkey…' : 'Create my account with a passkey'}
+          </Button>
+        )}
       </form>
     </AuthShell>
   );
