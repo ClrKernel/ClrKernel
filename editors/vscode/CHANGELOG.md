@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0] - 2026-10-06
+
+**Needs kernel 1.1.x.** No extension code changed; the pair moves together.
+Kernel 1.1 is a ClrKernel Studio release:
+
+- **Sign in to Studio with Windows.** When Studio runs as a Windows service
+  (or with `--windows-sign-in true`), the sign-in, setup and invite pages offer
+  *Sign in with Windows* beside passkeys. A Windows account can claim a new
+  server, redeem an invite — including one issued for a named account, which
+  that person redeems just by signing in — or be let in by group membership
+  with `--windows-groups`. Windows and passkeys can each be added to an account
+  that has the other. Signing in as yourself does not change the identity runs
+  execute as; that is still the service account.
+- **Plain http redirects to the https origin** when Studio listens on both and
+  every configured origin is https.
+- **First-run setup accepts the server's own name.** A browser on the server
+  opening `http://<machine-name>:5000` is on the server, as `localhost` always
+  was.
+- **No known-vulnerable packages** in ClrKernel.Studio: Negotiate 8.0.31, and
+  pins lifting Microsoft.Bcl.Memory and SQLitePCLRaw past their advisories.
+
 ## [1.0.0] - 2026-10-02
 
 **Needs kernel 1.0.x.** The kernel and the extension carry the same number from
