@@ -172,18 +172,31 @@ export function Setup({ session, onSignedIn }: { session: SessionState | null; o
         session={session}
       >
         <p className="text-sm text-muted-foreground">
-          Setup only answers a browser on the server itself. On that machine, open{' '}
-          <code className="font-mono">http://localhost:5000</code> (or whatever port it listens
-          on). A container’s published port does not count — the request arrives from the docker
-          bridge — so there, get in with an invite instead:
+          Whoever claims a new server becomes its admin, so setup only answers a browser on the
+          server itself — and this one is somewhere else. Either:
         </p>
-        <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm">
-          docker exec &lt;container&gt; clrkernel-studio new-admin-invite
-        </pre>
+        <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm text-muted-foreground">
+          <li>
+            <strong className="text-foreground">Open this page on the server.</strong> Sign in to
+            that machine and browse to <code className="font-mono">{location.origin}/setup</code>{' '}
+            there — by this same address, or by <code className="font-mono">localhost</code>.
+          </li>
+          <li>
+            <strong className="text-foreground">Or make an admin invite and stay here.</strong> On
+            the server, run this with the same <code className="font-mono">--data-dir</code> and{' '}
+            <code className="font-mono">--store</code> the server uses:
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs text-foreground">
+              clrkernel-studio new-admin-invite --data-dir &lt;dir&gt; --store &lt;store&gt;
+            </pre>
+            It prints a single-use link ending in{' '}
+            <code className="font-mono">/invite/&lt;code&gt;</code>. Open that path here, at{' '}
+            <code className="font-mono">{location.origin}</code>, and join as the admin.
+          </li>
+        </ol>
         <p className="mt-3 text-sm text-muted-subtle">
-          It prints a single-use link. Open the <code className="font-mono">/invite/&lt;code&gt;</code>{' '}
-          path on this address — the printed host and port are the server’s own, which is not
-          where you reached it if the port was published as something else.
+          In a container, a published port arrives from the docker bridge, so it never counts as
+          the server: use the invite, with{' '}
+          <code className="font-mono">docker exec &lt;container&gt; clrkernel-studio new-admin-invite</code>.
         </p>
       </AuthShell>
     );
