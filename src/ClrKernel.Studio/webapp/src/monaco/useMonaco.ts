@@ -42,6 +42,28 @@ const MAX_DIFF_HEIGHT = 720;
  * show one cell at a time and still find the others as you left them. Without
  * one (the Source tab, the diff) it makes and disposes its own.
  */
+/** What a keyboard run does after running: stay, go to the next cell, or add one below. */
+export type RunThen = 'stay' | 'next' | 'insert';
+
+/**
+ * Each mounted cell editor, by cell id, so the keyboard can move into another
+ * cell. Focusing the editor's DOM is not enough: Monaco takes typing through the
+ * browser's EditContext, so a focused textarea answered key bindings while the
+ * text typed went nowhere. `editor.focus()` is the one that works.
+ */
+const cellEditors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
+
+/** Puts the cursor in that cell's editor. False when it has none on screen. */
+export function focusCellEditor(cellId: string): boolean {
+  const editor = cellEditors.get(cellId);
+  if (editor == null) {
+    return false;
+  }
+  editor.focus();
+  editor.getContainerDomNode().scrollIntoView({ block: 'nearest' });
+  return true;
+}
+
 export function useCellEditor(
   language: string,
   value: string,
@@ -51,11 +73,12 @@ export function useCellEditor(
   /** Bump to push <c>value</c> back into the editor — see useFillEditor. */
   resetKey: unknown = 0,
   /**
-   * Run this cell: Ctrl/⌘+Enter with `advance` false, Shift+Enter with it true —
-   * the keys Focus Mode and every notebook already use. Bound only when given at
-   * creation, so the Source tab and the diff keep Shift+Enter as a newline.
+   * Run this cell, then: stay (Ctrl/⌘+Enter), move to the next cell (Shift+Enter)
+   * or add a cell below (Alt/⌥+Enter) — the keys Jupyter and VS Code notebooks
+   * use. Bound only when given at creation, so the Source tab and the diff keep
+   * Shift+Enter as a newline.
    */
-  onRun?: (advance: boolean) => void,
+  onRun?: (then: RunThen, source: string) => void,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -86,6 +109,13 @@ export function useCellEditor(
       readOnly,
     });
     editor.current = created;
+    if (binding != null) {
+      cellEditors.set(binding.cellId, created);
+    }
+    // The editor's own text goes with every keyboard run. The run reads the cells
+    // from the last render, and a key pressed in the same instant as the last
+    // keystroke would otherwise send the text from one keystroke before.
+    //
     // Actions, not addCommand. A standalone editor's addCommand registers its
     // keybinding globally, so with one editor per cell the last cell created
     // answered the key wherever you typed — Ctrl+Enter in cell 1 ran cell 2. An
@@ -96,13 +126,19 @@ export function useCellEditor(
         id: 'clrkernel.runCell',
         label: 'Run cell',
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-        run: () => latestOnRun.current?.(false),
+        run: () => latestOnRun.current?.('stay', created.getValue()),
       }),
       created.addAction({
         id: 'clrkernel.runCellAndAdvance',
         label: 'Run cell and move to the next',
         keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
-        run: () => latestOnRun.current?.(true),
+        run: () => latestOnRun.current?.('next', created.getValue()),
+      }),
+      created.addAction({
+        id: 'clrkernel.runCellAndInsert',
+        label: 'Run cell and add one below',
+        keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.Enter],
+        run: () => latestOnRun.current?.('insert', created.getValue()),
       }),
     ];
 
@@ -139,6 +175,9 @@ export function useCellEditor(
       sizeListener.dispose();
       changeListener.dispose();
       actions.forEach((action) => action.dispose());
+      if (binding != null && cellEditors.get(binding.cellId) === created) {
+        cellEditors.delete(binding.cellId);
+      }
       // The editor first, then the model. The other way round leaves a live
       // editor attached to a disposed model for one turn, and Monaco's own
       // observables read that model's version while they unsubscribe —
@@ -384,8 +423,10 @@ export interface FocusEditorOptions {
   /** The active cell's text, for seeding a model the notebook has not made yet. */
   value: string;
   onChange: (value: string) => void;
-  onRun: () => void;
-  onRunAndAdvance: () => void;
+  /** Each gets the editor's text as it is now — see useCellEditor's onRun. */
+  onRun: (source: string) => void;
+  onRunAndAdvance: (source: string) => void;
+  onRunAndInsert: (source: string) => void;
   onStep: (delta: number) => void;
 }
 
@@ -398,7 +439,7 @@ export interface FocusEditorOptions {
  * before each switch, so a cell comes back exactly as you left it.
  */
 export function useFocusEditor({
-  readOnly = false, binding, language, value, onChange, onRun, onRunAndAdvance, onStep,
+  readOnly = false, binding, language, value, onChange, onRun, onRunAndAdvance, onRunAndInsert, onStep,
 }: FocusEditorOptions) {
   /**
    * The live editor, as state rather than a ref — because its container comes
@@ -424,8 +465,8 @@ export function useFocusEditor({
   // Commands are bound once, at creation, so everything they touch is read
   // through a ref — a handler that closed over the first render's props would
   // run the first cell forever.
-  const latest = useRef({ binding, language, value, onChange, onRun, onRunAndAdvance, onStep });
-  latest.current = { binding, language, value, onChange, onRun, onRunAndAdvance, onStep };
+  const latest = useRef({ binding, language, value, onChange, onRun, onRunAndAdvance, onRunAndInsert, onStep });
+  latest.current = { binding, language, value, onChange, onRun, onRunAndAdvance, onRunAndInsert, onStep };
   const latestReadOnly = useRef(readOnly);
   latestReadOnly.current = readOnly;
 
@@ -441,9 +482,12 @@ export function useFocusEditor({
       latest.current.onChange(created.getValue()),
     );
 
-    created.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => latest.current.onRun());
+    created.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () =>
+      latest.current.onRun(created.getValue()));
     created.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>
-      latest.current.onRunAndAdvance());
+      latest.current.onRunAndAdvance(created.getValue()));
+    created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () =>
+      latest.current.onRunAndInsert(created.getValue()));
     created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.UpArrow, () => latest.current.onStep(-1));
     created.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.DownArrow, () => latest.current.onStep(1));
     setEditor(created);
