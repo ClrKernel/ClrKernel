@@ -92,9 +92,36 @@ export function CellEditor({
   // routes anyway; hiding them is so nobody reaches for something that will fail.
   const canWrite = useCanWrite();
   const mayRun = useCanRun();
+  const root = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * The keyboard's run, from inside the editor. Shift+Enter then moves to the next
+   * cell that has an editor — a rendered markdown cell has none, so it is stepped
+   * over — which is how Run All by hand feels in Jupyter.
+   */
+  // Bound for every code cell and checked on the key, not at binding time: the
+  // editor's commands are made once, and "may run" can still be settling then.
+  const runFromKeyboard = !isMarkdown
+    ? (advance: boolean) => {
+        if (canRun && mayRun && !busy) {
+          onRun('one');
+        }
+        if (advance && root.current != null) {
+          const cells = Array.from(document.querySelectorAll<HTMLElement>('.notebook-cell'));
+          const next = cells.slice(cells.indexOf(root.current) + 1)
+            .map((c) => c.querySelector<HTMLTextAreaElement>('.cell-editor textarea'))
+            .find((t) => t != null);
+          next?.focus();
+          next?.closest('.notebook-cell')?.scrollIntoView({ block: 'nearest' });
+        }
+      }
+    : undefined;
 
   return (
-    <div className={`notebook-cell notebook-cell-${cell.kind}${run ? ` cell-${run.status}` : ''}`}>
+    <div
+      ref={root}
+      className={`notebook-cell notebook-cell-${cell.kind}${run ? ` cell-${run.status}` : ''}`}
+    >
       <div className="cell-main">
         {/* The gutter: run at the top beside the first line, the execution count
             at the bottom, exactly where a notebook puts them. Code cells only —
@@ -107,7 +134,7 @@ export function CellEditor({
                 className="cell-run-button"
                 onClick={() => onRun('one')}
                 disabled={busy}
-                title="Run this cell"
+                title="Run this cell (⌘/Ctrl+Enter; Shift+Enter runs and moves on)"
               >
                 ▶
               </button>
@@ -184,6 +211,7 @@ export function CellEditor({
               connectionId={connectionId}
               onChange={onChange}
               onBlur={() => setEditing(false)}
+              onRun={runFromKeyboard}
             />
           )}
 
@@ -361,7 +389,7 @@ function OutputMenu({ onClear }: { onClear: () => void }) {
 }
 
 function CellBody({
-  cell, isMarkdown, path, languages, diagnostics, connectionId, onChange, onBlur,
+  cell, isMarkdown, path, languages, diagnostics, connectionId, onChange, onBlur, onRun,
 }: {
   cell: EditorCell;
   isMarkdown: boolean;
@@ -371,6 +399,7 @@ function CellBody({
   connectionId?: string | null;
   onChange: (source: string) => void;
   onBlur: () => void;
+  onRun?: (advance: boolean) => void;
 }) {
   const language = isMarkdown ? 'markdown' : monacoLanguage(cell.languageId, cell.tag, languages);
   // Markdown cells get no binding at all, so completion never fires on prose.
@@ -384,7 +413,7 @@ function CellBody({
       enabled: hasEditorServices(cell.languageId, languages),
       diagnostics,
       connectionId,
-    });
+    }, 0, onRun);
   return <div className="cell-editor" ref={container} onBlur={onBlur} />;
 }
 

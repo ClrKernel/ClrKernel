@@ -50,6 +50,12 @@ export function useCellEditor(
   binding?: CellBinding,
   /** Bump to push <c>value</c> back into the editor — see useFillEditor. */
   resetKey: unknown = 0,
+  /**
+   * Run this cell: Ctrl/⌘+Enter with `advance` false, Shift+Enter with it true —
+   * the keys Focus Mode and every notebook already use. Bound only when given at
+   * creation, so the Source tab and the diff keep Shift+Enter as a newline.
+   */
+  onRun?: (advance: boolean) => void,
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -59,6 +65,10 @@ export function useCellEditor(
   // next request rather than needing the model re-registered.
   const latestBinding = useRef(binding);
   latestBinding.current = binding;
+  // Through a ref like onChange: a command closes over the first render, and the
+  // cell's busy state and index move on after that.
+  const latestOnRun = useRef(onRun);
+  latestOnRun.current = onRun;
 
   useEffect(() => {
     if (!container.current) {
@@ -76,6 +86,25 @@ export function useCellEditor(
       readOnly,
     });
     editor.current = created;
+    // Actions, not addCommand. A standalone editor's addCommand registers its
+    // keybinding globally, so with one editor per cell the last cell created
+    // answered the key wherever you typed — Ctrl+Enter in cell 1 ran cell 2. An
+    // action's keybinding is scoped to the editor that has focus. No
+    // contextMenuGroupId, so neither appears in the right-click menu.
+    const actions = latestOnRun.current == null ? [] : [
+      created.addAction({
+        id: 'clrkernel.runCell',
+        label: 'Run cell',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => latestOnRun.current?.(false),
+      }),
+      created.addAction({
+        id: 'clrkernel.runCellAndAdvance',
+        label: 'Run cell and move to the next',
+        keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+        run: () => latestOnRun.current?.(true),
+      }),
+    ];
 
     // Claim this model as a cell. Monaco's providers are global per language, so
     // this is what separates a cell from the Source tab and the diff panes.
@@ -109,6 +138,7 @@ export function useCellEditor(
     return () => {
       sizeListener.dispose();
       changeListener.dispose();
+      actions.forEach((action) => action.dispose());
       // The editor first, then the model. The other way round leaves a live
       // editor attached to a disposed model for one turn, and Monaco's own
       // observables read that model's version while they unsubscribe —
