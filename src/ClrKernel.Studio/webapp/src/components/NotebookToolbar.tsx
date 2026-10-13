@@ -615,7 +615,13 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
       {/* The keys this page answers to. On the cells tab only — Source and Diff
           are plain Monaco — and for viewers too, who can still run cells on
           test and prod. */}
-      {showsExecution(props.tab) && <KeyboardShortcuts />}
+      {showsExecution(props.tab) && (
+        // Wrapped like every other group: the row stretches its children, and
+        // this is what centres them in it.
+        <div className="flex items-center">
+          <KeyboardShortcuts />
+        </div>
+      )}
 
       {/* Document-level, so these stay on every tab and never collapse. */}
       {canWrite && (
