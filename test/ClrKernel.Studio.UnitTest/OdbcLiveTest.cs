@@ -166,6 +166,8 @@ public class OdbcLiveTest {
         var script = await BrowseAsync((live, token) =>
             _dialect.ScriptAsync(live, schema, _table, "table", "select", token));
         StringAssert.Contains(script, _table);
+        Assert.IsTrue(new[] { "FETCH FIRST 1000", "TOP 1000", "LIMIT 1000" }.Any(script.Contains),
+            "Select Top 1000 has to limit, in whatever form this engine runs: " + script);
 
         var result = await RunAsync(script.TrimEnd());
         Assert.IsNull(result.Error, result.Error);
