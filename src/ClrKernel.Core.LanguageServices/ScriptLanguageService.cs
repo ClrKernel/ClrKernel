@@ -42,6 +42,9 @@ public sealed class ScriptLanguageService {
         return MefHostServices.Create(assemblies);
     }
 
+    private static readonly CSharpParseOptions _scriptParse =
+        new(kind: SourceCodeKind.Script, languageVersion: LanguageVersion.Preview);
+
     /// <summary>
     /// Builds a single script document = imports + replayed prior submissions +
     /// the current code, and returns it with the caret mapped into that document.
@@ -58,15 +61,25 @@ public sealed class ScriptLanguageService {
         // Directive lines are dropped from replayed submissions: the resolved
         // references are supplied directly, and Roslyn's default resolver
         // doesn't understand `#r "nuget:"`.
-        foreach (var submission in snapshot.Submissions) {
-            sb.Append(InteractiveScriptEngine.StripDirectives(submission)).Append('\n');
+        var submissions = snapshot.Submissions.Select(InteractiveScriptEngine.StripDirectives).ToList();
+        // Those import lines sit beside the cells' own usings here, where in
+        // execution they are an outer scope; the aliases give a package type
+        // that shares a name with one of ours back to the cell that imported it.
+        var references = BuildReferences(snapshot);
+        var cellUsings = submissions.Append(code).SelectMany(s =>
+            InteractiveScriptEngine.PlainUsings(CSharpSyntaxTree.ParseText(s, _scriptParse).GetCompilationUnitRoot()));
+        foreach (var alias in InteractiveScriptEngine.ShadowingAliases(
+                     CSharpCompilation.Create("probe", references: references), snapshot.Imports, cellUsings)) {
+            sb.Append(alias).Append('\n');
+        }
+        foreach (var submission in submissions) {
+            sb.Append(submission).Append('\n');
         }
         var prefixLength = sb.Length;
         sb.Append(code);
         var fullText = sb.ToString();
 
         var workspace = new AdhocWorkspace(_host);
-        var parseOptions = new CSharpParseOptions(kind: SourceCodeKind.Script, languageVersion: LanguageVersion.Preview);
         var compilationOptions = new CSharpCompilationOptions(
             OutputKind.DynamicallyLinkedLibrary,
             allowUnsafe: true,
@@ -82,8 +95,8 @@ public sealed class ScriptLanguageService {
         var projectInfo = ProjectInfo.Create(
             projectId, VersionStamp.Create(), "ClrKernelScript", "ClrKernelScript", LanguageNames.CSharp,
             compilationOptions: compilationOptions,
-            parseOptions: parseOptions,
-            metadataReferences: BuildReferences(snapshot));
+            parseOptions: _scriptParse,
+            metadataReferences: references);
 
         var project = workspace.AddProject(projectInfo);
         var document = workspace.AddDocument(project.Id, "Script.csx", SourceText.From(fullText));
