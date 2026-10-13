@@ -33,6 +33,7 @@ import {
   type ApiObjectDetail,
 } from '../api';
 import { readCache, without, writeCache } from '../connectionCache';
+import { qualifiedName } from '../connectionNames';
 
 /**
  * Where a node sits, as the four coordinates the metadata route takes. The key
@@ -108,16 +109,16 @@ const GROUPS: { key: string; label: string; kinds: string[] }[] = [
 ];
 
 export function ConnectionTree({
-  connections, selected, filter, onFilter, onSelect, onQuery, onScript, onNew, onEdit,
+  connections, selected, filter, onFilter, onSelect, onScript, onNew, onEdit,
 }: {
   connections: ApiConnection[];
   selected: string | null;
   filter: string;
   onFilter: (value: string) => void;
   onSelect: (connection: ApiConnection) => void;
-  /** SQL for the editor. It is inserted at the cursor rather than replacing the
-   *  buffer — see the page — so choosing one of these never costs you work. */
-  onQuery: (connection: ApiConnection, sql: string) => void;
+  /** A script for an object, written by the server in that database's syntax.
+   *  It is inserted at the cursor rather than replacing the buffer — see the
+   *  page — so choosing one of these never costs you work. */
   onScript: (connection: ApiConnection, node: Node, variant: string) => void;
   onNew: () => void;
   onEdit: (connection: ApiConnection) => void;
@@ -343,8 +344,12 @@ export function ConnectionTree({
                   <span className="connection-tree-actions">
                     <RowMenu label={`Actions for ${node.label}`}>
                       {(node.kind === 'table' || node.kind === 'view') && (
+                        // The server's SELECT script for this object, which each
+                        // database writes in its own syntax — TOP, LIMIT or FETCH
+                        // FIRST, and its own quoting. It used to be built here, in
+                        // T-SQL, for every database.
                         <DropdownMenuItem
-                          onSelect={() => onQuery(node.connection, selectTop(node))}
+                          onSelect={() => onScript(node.connection, node, 'select')}
                         >
                           Select Top 1000 Rows
                         </DropdownMenuItem>
@@ -412,18 +417,9 @@ function RowMenu({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** `[db].[schema].[object]` — what you paste into a query somewhere else. */
-function qualified(node: Node): string {
-  return [node.database, node.schema, node.object]
-    .filter(Boolean).map((part) => `[${part}]`).join('.');
-}
-
-function selectTop(node: Node): string {
-  return `SELECT TOP 1000 *\nFROM ${qualified(node)};`;
-}
-
+/** The name as this connection's database writes it — what you paste into a query. */
 function copyName(node: Node) {
-  void navigator.clipboard.writeText(qualified(node));
+  void navigator.clipboard.writeText(qualifiedName(node.connection.type, node));
 }
 
 /**
