@@ -355,8 +355,14 @@ public static class Program {
             Console.Error.WriteLine($"Could not rename personal branches to usernames: {e.Message}");
         }
 
-        var app = BuildApp(options, projects, store, secrets: secrets);
         var urls = options.Urls ?? "http://localhost:5000";
+        // Before anything is built: a bad address is a typo on the command line, and
+        // it deserves a sentence, not Kestrel's stack trace from inside RunAsync.
+        if (ListenAddresses(urls, out var listenProblem) is not { } addresses) {
+            Console.Error.WriteLine($"Bad --urls: {listenProblem}");
+            return 2;
+        }
+        var app = BuildApp(options, projects, store, secrets: secrets);
         if (!JobsApi.IsLocalOnly(urls) && options.RelyingPartyId == "localhost") {
             Console.Error.WriteLine(
                 "  ! Listening beyond localhost with the relying party id still 'localhost'. " +
@@ -374,8 +380,49 @@ public static class Program {
                 + "localhost — so run `docker exec <container> clrkernel-studio "
                 + "new-admin-invite` and open the /invite/<code> path it prints.");
         }
-        await app.RunAsync(urls);
+        // Each address on its own. RunAsync(url) takes exactly one and does not split
+        // on ';' — so "http://…:80;https://…:443" reached Kestrel as one address whose
+        // "path" was everything after the first port, and it refused to start.
+        app.Urls.Clear();
+        foreach (var address in addresses) {
+            app.Urls.Add(address);
+        }
+        await app.RunAsync();
         return 0;
+    }
+
+    /// <summary>
+    /// <c>--urls</c> as the separate addresses Kestrel binds, or null with the reason.
+    /// Separated by <c>;</c> (or <c>,</c>). Each is a scheme, a host and a port and
+    /// nothing else — Studio is served from the root, and a path here is a mistake
+    /// Kestrel would otherwise report only as an exception about UsePathBase.
+    /// Hosts are not parsed: <c>*</c>, <c>+</c> and <c>0.0.0.0</c> are what Kestrel
+    /// accepts, and <see cref="Uri"/> rejects the first two.
+    /// </summary>
+    internal static string[] ListenAddresses(string urls, out string problem) {
+        problem = null;
+        var addresses = (urls ?? string.Empty).Split(new[] { ';', ',' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (addresses.Length == 0) {
+            problem = "no address given.";
+            return null;
+        }
+        foreach (var address in addresses) {
+            var scheme = address.IndexOf("://", StringComparison.Ordinal);
+            var name = scheme < 0 ? null : address[..scheme];
+            if (name is not ("http" or "https")) {
+                problem = $"'{address}' needs to start with http:// or https://.";
+                return null;
+            }
+            var rest = address[(scheme + 3)..];
+            var slash = rest.IndexOf('/');
+            if (slash >= 0 && rest[slash..].TrimEnd('/').Length > 0) {
+                problem = $"'{address}' has a path ({rest[slash..]}). Give scheme, host and port only, "
+                    + $"e.g. {name}://{rest[..slash]} — Studio is served from the root.";
+                return null;
+            }
+        }
+        return addresses;
     }
 
     /// <summary>The scheduler + API host. Shared with the integration tests.</summary>

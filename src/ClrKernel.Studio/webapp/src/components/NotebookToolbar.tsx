@@ -25,6 +25,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import type { BranchStanding } from '../api';
+import { KeyboardShortcuts } from './KeyboardShortcuts';
 import type { PreviewKind } from '../notebook';
 import { STATUS_LABEL, STATUS_TITLE, type SaveStatus } from '../autosave';
 import {
@@ -608,6 +609,17 @@ export function NotebookToolbar(props: NotebookToolbarProps) {
             <Copy className="size-3.5" aria-hidden="true" />
             Copy to my branch
           </Button>
+        </div>
+      )}
+
+      {/* The keys this page answers to. On the cells tab only — Source and Diff
+          are plain Monaco — and for viewers too, who can still run cells on
+          test and prod. */}
+      {showsExecution(props.tab) && (
+        // Wrapped like every other group: the row stretches its children, and
+        // this is what centres them in it.
+        <div className="flex items-center">
+          <KeyboardShortcuts />
         </div>
       )}
 

@@ -84,7 +84,8 @@ export function FocusMode({
   onActivate: (cellId: string) => void;
   onChange: (cellId: string, source: string) => void;
   onLanguage: (cellId: string, value: string) => void;
-  onRun: (cellId: string) => void;
+  /** `source`, from the keyboard, is the editor's text right now. */
+  onRun: (cellId: string, source?: string) => void;
   onClearOutput: (cellId: string) => void;
   onLayout: (layout: LayoutPrefs) => void;
   onDelete: (cellId: string) => void;
@@ -160,16 +161,25 @@ export function FocusMode({
         onChange(active.id, source);
       }
     },
-    onRun: () => {
+    onRun: (source) => {
       if (active != null && canRun && !busy) {
-        onRun(active.id);
+        onRun(active.id, source);
       }
     },
-    onRunAndAdvance: () => {
+    onRunAndAdvance: (source) => {
       if (active != null && canRun && !busy) {
-        onRun(active.id);
+        onRun(active.id, source);
       }
       step(1);
+    },
+    // Insert makes the new cell active, which is what moves Focus Mode onto it.
+    onRunAndInsert: (source) => {
+      if (active != null && canRun && !busy) {
+        onRun(active.id, source);
+      }
+      if (active != null && canWrite) {
+        onInsert(active.id, 'code');
+      }
     },
     onStep: step,
   });
