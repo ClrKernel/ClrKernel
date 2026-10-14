@@ -1479,7 +1479,11 @@ themselves, so a long file does not push the toolbar off the top.
 Cells run against a **warm kernel** — one per notebook, started on the first run and
 kept alive so variables persist between cells and between runs, exactly as they do in
 VS Code. Per cell: ▶ runs it, **▶ above** runs everything before it, **▶ below** runs
-it and everything after; the toolbar adds **Run All** and **Restart kernel**.
+it and everything after; the toolbar adds **Run All** and **Restart kernel**. From the
+keyboard, in both layouts: **⌘/Ctrl+Enter** runs the cell you are typing in,
+**Shift+Enter** runs it and moves to the next one, and **⌥/Alt+Enter** runs it and adds
+a new cell below — the keys VS Code and Jupyter notebooks use. The keyboard button on
+the toolbar lists every shortcut the editor answers to.
 
 The **File** menu holds *Save a copy as…*, *Move or rename…* and — for a notebook —
 *Schedule (add a job)…*, which creates the paired `*.jobs.yaml` on your branch if it is
