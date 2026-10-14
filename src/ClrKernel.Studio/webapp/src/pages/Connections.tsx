@@ -365,7 +365,6 @@ export function Connections() {
           filter={filter}
           onFilter={setFilter}
           onSelect={(c) => navigate(connectionsPath(c.id))}
-          onQuery={into}
           onScript={async (connection, node, variant) => {
             const reply = await api.connectionMetadata<{ script: string }>(connection.id, {
               level: 'script',

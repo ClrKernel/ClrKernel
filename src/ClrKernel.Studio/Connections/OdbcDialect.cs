@@ -161,8 +161,7 @@ public sealed class OdbcDialect : IConnectionDialect {
                         ? "*"
                         : string.Join("," + Environment.NewLine + "       ",
                             columns.Select(c => Quote(c.Name)));
-                    return Task.FromResult(
-                        $"SELECT {list}{Environment.NewLine}FROM {name}{Environment.NewLine}");
+                    return Task.FromResult(LimitedSelect(list, name, ProductOf(live)));
                 }
         }
     }
@@ -226,9 +225,44 @@ public sealed class OdbcDialect : IConnectionDialect {
     private static string Placeholder(ColumnDetail column) => $"<{column.Name}, {column.Type},>";
 
     /// <summary>
-    /// Double quotes, which is the SQL standard's delimiter and what most drivers
-    /// accept. It is a guess — ODBC cannot tell us — so the identifier is left alone
-    /// when it needs no quoting at all, which is the common case and the safe one.
+    /// A SELECT of the first 1000 rows. ANSI SQL's <c>FETCH FIRST n ROWS ONLY</c> by
+    /// default — PostgreSQL, Oracle, DB2 and most others run it — and the engine's
+    /// own form only where the standard one is known not to run: SQL Server has
+    /// <c>FETCH</c> only after <c>OFFSET</c> and an <c>ORDER BY</c>, and MySQL,
+    /// MariaDB and SQLite have <c>LIMIT</c> alone.
+    /// </summary>
+    /// <param name="product">The driver's DBMS name, or null when it would not say.</param>
+    internal static string LimitedSelect(string list, string name, string product) {
+        var nl = Environment.NewLine;
+        var dbms = product ?? string.Empty;
+        if (dbms.Contains("SQL Server", StringComparison.OrdinalIgnoreCase)) {
+            return $"SELECT TOP 1000 {list}{nl}FROM {name}{nl}";
+        }
+        if (new[] { "MySQL", "MariaDB", "SQLite" }.Any(e => dbms.Contains(e, StringComparison.OrdinalIgnoreCase))) {
+            return $"SELECT {list}{nl}FROM {name}{nl}LIMIT 1000{nl}";
+        }
+        return $"SELECT {list}{nl}FROM {name}{nl}FETCH FIRST 1000 ROWS ONLY{nl}";
+    }
+
+    /// <summary>
+    /// What the driver says the database is (ODBC's SQL_DBMS_NAME), or null. Asked of
+    /// the open connection each time: one DSN can be repointed at another engine.
+    /// </summary>
+    private static string ProductOf(DbConnection live) {
+        try {
+            var info = live.GetSchema(DbMetaDataCollectionNames.DataSourceInformation);
+            return info.Rows.Count > 0
+                ? info.Rows[0][DbMetaDataColumnNames.DataSourceProductName] as string
+                : null;
+        } catch (Exception e) when (e is DbException or NotSupportedException or ArgumentException) {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Double quotes, the SQL standard's delimiter, which the engines ODBC usually
+    /// reaches accept. Left off when the identifier needs no quoting at all — the
+    /// common case, and the one every engine reads the same way.
     /// </summary>
     private static string Quote(string identifier) {
         var text = identifier ?? string.Empty;
