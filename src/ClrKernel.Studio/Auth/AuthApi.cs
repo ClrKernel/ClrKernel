@@ -767,11 +767,10 @@ public static class AuthApi {
     /// docker bridge.
     /// </summary>
     internal const string SetupElsewhere =
-        "First-run setup only answers a browser on the server itself, and a container's "
-        + "published port does not count — the request arrives from the docker bridge, not from "
-        + "localhost. Run `clrkernel-studio new-admin-invite` on the server (in Docker: "
-        + "`docker exec <container> clrkernel-studio new-admin-invite`), then open the "
-        + "/invite/<code> path it prints on whatever address you reach this server at.";
+        "First-run setup only answers a browser on the server itself. Open /setup on that "
+        + "machine, or run `clrkernel-studio new-admin-invite --data-dir <dir> --store <store>` "
+        + "there (in Docker: `docker exec <container> clrkernel-studio new-admin-invite`) and open "
+        + "the /invite/<code> path it prints at whatever address you reach this server by.";
 
     private static AuthenticatorAttestationRawResponse Attestation(RegisterBody body) =>
         body == null ? null

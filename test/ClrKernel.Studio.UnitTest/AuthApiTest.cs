@@ -454,6 +454,26 @@ public class AuthApiTest {
     /// The redirect goes to the configured origin with the path and query kept — not
     /// to whatever host the request named, which the certificate may not cover.
     /// </summary>
+    /// <summary>
+    /// `--urls` with two addresses crashed `serve`: RunAsync(url) takes one, and the
+    /// whole list reached Kestrel as a single address whose path was the rest of it.
+    /// </summary>
+    [TestMethod]
+    public void Listen_addresses_are_split_and_a_path_is_refused_in_words() {
+        CollectionAssert.AreEqual(
+            new[] { "http://0.0.0.0:80", "https://0.0.0.0:443" },
+            Program.ListenAddresses("http://0.0.0.0:80;https://0.0.0.0:443", out _));
+        CollectionAssert.AreEqual(
+            new[] { "http://*:5000", "http://+:5001/" },
+            Program.ListenAddresses(" http://*:5000 , http://+:5001/ ", out _),
+            "wildcard hosts pass, and a bare trailing slash is not a path");
+
+        Assert.IsNull(Program.ListenAddresses("https://0.0.0.0:443/studio", out var path));
+        StringAssert.Contains(path, "has a path (/studio)");
+        Assert.IsNull(Program.ListenAddresses("0.0.0.0:443", out var scheme));
+        StringAssert.Contains(scheme, "http:// or https://");
+    }
+
     [TestMethod]
     public async Task Plain_http_goes_to_the_configured_origin() {
         // Its own server: the redirect is decided from the configured urls, so the
