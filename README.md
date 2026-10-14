@@ -74,6 +74,13 @@ re-run replaces the previous definition, and the methods appear in completion
 (with their `///` docs) and Go to Definition like any referenced package.
 `#r` lines in the same cell work.
 
+A package you `#r` may name a type the same as one ClrKernel imports by default
+(`DisplayTable`, `SqlServer`, …). The cell's `using` for your package wins, in
+execution, in a cell compiled as a class library and in completion, so code
+written against your package keeps meaning your package. The one clash a `using`
+cannot settle is an identical namespace *and* type name (CS0433), and ClrKernel
+keeps all of its types under `ClrKernel.*`.
+
 ### Importing shared libraries
 
 `#!import` loads C# code from another file into the session — use it to share
