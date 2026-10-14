@@ -19,7 +19,7 @@ import {
 import { LanguageOptions, StatusBadge, languageLabelFor } from './common';
 import type { ApiLanguage } from '../api';
 import type { LspDiagnostic } from '../monaco/lsp';
-import { useCellEditor } from '../monaco/useMonaco';
+import { focusCellEditor, useCellEditor, type RunThen } from '../monaco/useMonaco';
 import { useCanRun, useCanWrite } from '../sessionContext';
 import {
   connectableLanguage,
@@ -66,7 +66,11 @@ interface Props {
   onCut: () => void;
   onCopy: () => void;
   onPaste: (where: 'above' | 'below') => void;
-  onRun: (mode: RunMode) => void;
+  /** `source`, when given, is the editor's text right now — a keyboard run sends
+   *  it so a key pressed with the last keystroke does not run stale text. */
+  onRun: (mode: RunMode, source?: string) => void;
+  /** Adds an empty code cell straight after this one (Alt/⌥+Enter). */
+  onInsertBelow: () => void;
   onClearOutput: () => void;
   onConnect: () => void;
 }
@@ -80,7 +84,7 @@ interface Props {
 export function CellEditor({
   cell, index, count, languages, path, diagnostics, connectionId, connectionType, run, canRun,
   busy, cleared, clipboard, onChange, onLanguage, onMove, onDelete, onCut, onCopy, onPaste, onRun,
-  onClearOutput, onConnect,
+  onInsertBelow, onClearOutput, onConnect,
 }: Props) {
   const isMarkdown = cell.kind === 'markdown';
   const [editing, setEditing] = useState(false);
@@ -92,6 +96,42 @@ export function CellEditor({
   // routes anyway; hiding them is so nobody reaches for something that will fail.
   const canWrite = useCanWrite();
   const mayRun = useCanRun();
+
+  /** Into the next cell that has an editor — a rendered markdown cell has none. */
+  function focusNextEditor(): boolean {
+    const ids = Array.from(document.querySelectorAll<HTMLElement>('[data-cell-id]'))
+      .map((node) => node.dataset.cellId ?? '');
+    return ids.slice(ids.indexOf(cell.id) + 1).some((id) => focusCellEditor(id));
+  }
+
+  /**
+   * The keyboard's run, from inside the editor. Shift+Enter then moves to the next
+   * cell that has an editor — stepping over rendered markdown — which is how Run
+   * All by hand feels in Jupyter. Alt+Enter adds a code cell below and moves into
+   * it; that new cell's editor exists only after the next render, so focus waits
+   * a few frames for it.
+   */
+  // Bound for every code cell and checked on the key, not at binding time: the
+  // editor's commands are made once, and "may run" can still be settling then.
+  const runFromKeyboard = !isMarkdown
+    ? (then: RunThen, source: string) => {
+        if (canRun && mayRun && !busy) {
+          onRun('one', source);
+        }
+        if (then === 'next') {
+          focusNextEditor();
+        } else if (then === 'insert' && canWrite) {
+          onInsertBelow();
+          let tries = 0;
+          const tryFocus = () => {
+            if (!focusNextEditor() && ++tries < 20) {
+              requestAnimationFrame(tryFocus);
+            }
+          };
+          requestAnimationFrame(tryFocus);
+        }
+      }
+    : undefined;
 
   return (
     <div className={`notebook-cell notebook-cell-${cell.kind}${run ? ` cell-${run.status}` : ''}`}>
@@ -107,7 +147,7 @@ export function CellEditor({
                 className="cell-run-button"
                 onClick={() => onRun('one')}
                 disabled={busy}
-                title="Run this cell"
+                title="Run this cell (⌘/Ctrl+Enter; Shift+Enter runs and moves on; Alt+Enter runs and adds a cell)"
               >
                 ▶
               </button>
@@ -184,6 +224,7 @@ export function CellEditor({
               connectionId={connectionId}
               onChange={onChange}
               onBlur={() => setEditing(false)}
+              onRun={runFromKeyboard}
             />
           )}
 
@@ -361,7 +402,7 @@ function OutputMenu({ onClear }: { onClear: () => void }) {
 }
 
 function CellBody({
-  cell, isMarkdown, path, languages, diagnostics, connectionId, onChange, onBlur,
+  cell, isMarkdown, path, languages, diagnostics, connectionId, onChange, onBlur, onRun,
 }: {
   cell: EditorCell;
   isMarkdown: boolean;
@@ -371,6 +412,7 @@ function CellBody({
   connectionId?: string | null;
   onChange: (source: string) => void;
   onBlur: () => void;
+  onRun?: (then: RunThen, source: string) => void;
 }) {
   const language = isMarkdown ? 'markdown' : monacoLanguage(cell.languageId, cell.tag, languages);
   // Markdown cells get no binding at all, so completion never fires on prose.
@@ -384,7 +426,7 @@ function CellBody({
       enabled: hasEditorServices(cell.languageId, languages),
       diagnostics,
       connectionId,
-    });
+    }, 0, onRun);
   return <div className="cell-editor" ref={container} onBlur={onBlur} />;
 }
 

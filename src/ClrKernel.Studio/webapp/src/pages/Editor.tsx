@@ -870,8 +870,16 @@ export function Editor() {
    * here and sent as an ordered list, so the server never learns which button
    * was pressed — one endpoint covers cell, above, below and all.
    */
-  async function run(index: number, mode: RunMode | 'all') {
-    const toRun = cellsToRun(cells ?? [], index, mode);
+  /**
+   * `source` is the cell's text straight from its editor, given by the keyboard:
+   * `cells` is this render's copy, and a key pressed with the last keystroke
+   * reaches here before the render that has it.
+   */
+  async function run(index: number, mode: RunMode | 'all', source?: string) {
+    const current = source == null
+      ? cells ?? []
+      : (cells ?? []).map((c, i) => (i === index ? { ...c, source } : c));
+    const toRun = cellsToRun(current, index, mode);
     if (toRun.length === 0) {
       setNotice('Nothing to run there — those cells are all prose.');
       return;
@@ -1312,7 +1320,7 @@ export function Editor() {
                 onLanguage={(cellId, value) =>
                   edit((current) => current.map(
                     (c) => (c.id === cellId ? setCellLanguage(c, value, languages) : c)))}
-                onRun={(cellId) => run(cells.findIndex((c) => c.id === cellId), 'one')}
+                onRun={(cellId, source) => run(cells.findIndex((c) => c.id === cellId), 'one', source)}
                 onClearOutput={(cellId) => setCleared((current) => new Set(current).add(cellId))}
                 onLayout={setLayout}
                 onDelete={(cellId) => {
@@ -1367,7 +1375,8 @@ export function Editor() {
                   onCut={() => cutCell(index)}
                   onCopy={() => copyCell(index)}
                   onPaste={(where) => pasteCell(where === 'above' ? index : index + 1)}
-                  onRun={(mode) => run(index, mode)}
+                  onRun={(mode, source) => run(index, mode, source)}
+                  onInsertBelow={() => insertAt(index + 1, 'code')}
                   cleared={cleared.has(cell.id)}
                   onClearOutput={() => setCleared((current) => new Set(current).add(cell.id))}
                   onConnect={() => setConnectFor(index)}

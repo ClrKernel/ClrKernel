@@ -411,7 +411,7 @@ def secret_reaches_running_kernel(page, base, _root):
     page.keyboard.type(cell)
 
     def run_and_read():
-        page.locator('button[title="Run this cell"]').first.click()
+        page.locator('button[title^="Run this cell"]').first.click()
         for _ in range(40):
             page.wait_for_timeout(500)
             text = page.locator(".cell-outputs").first.inner_text().replace("\xa0", " ") \
