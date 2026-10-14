@@ -503,6 +503,50 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
         return byName.Values;
     }
 
+    /// <summary>
+    /// <c>using Name = global::Their.Name;</c> for each type a cell's own
+    /// <c>using Their;</c> brings in under a name a session import also has.
+    /// Execution needs none of this: a submission's usings are a scope inside
+    /// the session imports, so its names already win. A library cell or the
+    /// language service writes both as using lines in one file, where the same
+    /// name is ambiguous (CS0104) — and an alias outranks a namespace import at
+    /// the same level, which restores the submission's answer.
+    /// </summary>
+    public static IEnumerable<string> ShadowingAliases(
+        Compilation compilation, IEnumerable<string> sessionImports, IEnumerable<string> cellUsings) {
+        var own = cellUsings.Distinct().Select(n => (Name: n, Namespace: FindNamespace(compilation, n)))
+            .Where(n => n.Namespace != null).ToList();
+        if (own.Count == 0) {
+            return Enumerable.Empty<string>();
+        }
+        // ponytail: generic types are skipped (an alias can't name an open
+        // generic); a clash on one still reports CS0104 in these two places.
+        static IEnumerable<string> Names(INamespaceSymbol ns) => ns.GetTypeMembers()
+            .Where(t => t.Arity == 0 && t.DeclaredAccessibility == Accessibility.Public).Select(t => t.Name);
+        var ours = sessionImports.Except(own.Select(n => n.Name))
+            .Select(n => FindNamespace(compilation, n)).Where(n => n != null)
+            .SelectMany(Names).ToHashSet(StringComparer.Ordinal);
+        // A name two of the cell's own usings share is the cell's ambiguity to
+        // settle; only a name exactly one of them has gets an alias.
+        return own.SelectMany(n => Names(n.Namespace).Select(type => (n.Name, Type: type)))
+            .Where(t => ours.Contains(t.Type))
+            .GroupBy(t => t.Type).Where(g => g.Count() == 1).Select(g => g.Single())
+            .Select(t => $"using {t.Type} = global::{t.Name}.{t.Type};");
+    }
+
+    /// <summary>The namespaces a file's compilation-unit <c>using N;</c> lines name.</summary>
+    public static IEnumerable<string> PlainUsings(CompilationUnitSyntax root) =>
+        root.Usings.Where(u => u.Alias == null && u.StaticKeyword.IsKind(SyntaxKind.None) && u.Name != null)
+            .Select(u => u.Name.ToString());
+
+    private static INamespaceSymbol FindNamespace(Compilation compilation, string dotted) {
+        var ns = compilation.GlobalNamespace;
+        foreach (var part in dotted.Split('.')) {
+            ns = ns?.GetNamespaceMembers().FirstOrDefault(m => m.Name == part);
+        }
+        return ns;
+    }
+
     private static bool IsLoadedType(string fullName) =>
         AppDomain.CurrentDomain.GetAssemblies().Any(a => {
             try {
@@ -524,16 +568,20 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
                 "containing nothing but type declarations (and usings). Put the static class in a cell of its own.");
         }
 
-        // The session's imports, so the cell's types see what cells see. Script
-        // imports may name a TYPE (host-style `using Console;`), which regular
-        // C# spells `using static`.
-        var source = string.Join("\n", _scriptOptions.Imports.Select(i =>
-                (IsLoadedType(i) ? "using static " : "using ") + i + ";"))
-            + "\n" + code;
-        var tree = CSharpSyntaxTree.ParseText(source, parseOptions);
-
         // Same reference surface as execution — the shared dedupe policy.
         var referencePaths = ReferencePaths(_scriptOptions.MetadataReferences).ToList();
+        var references = referencePaths.Select(p => MetadataReference.CreateFromFile(p)).ToList();
+
+        // The session's imports, so the cell's types see what cells see. Script
+        // imports may name a TYPE (host-style `using Console;`), which regular
+        // C# spells `using static`. The cell's own usings win a name clash, as
+        // they would in a submission.
+        var aliases = ShadowingAliases(CSharpCompilation.Create("probe", references: references),
+            _scriptOptions.Imports, PlainUsings(cellRoot));
+        var source = string.Join("\n", _scriptOptions.Imports.Select(i =>
+                (IsLoadedType(i) ? "using static " : "using ") + i + ";").Concat(aliases))
+            + "\n" + code;
+        var tree = CSharpSyntaxTree.ParseText(source, parseOptions);
 
         // Content-hashed assembly name over source AND references: an edited
         // cell (or the same cell against different package versions) gets a NEW
@@ -549,8 +597,7 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
         var dllPath = Path.Combine(directory, name + ".dll");
 
         if (!File.Exists(dllPath)) {
-            var compilation = CSharpCompilation.Create(name, new[] { tree },
-                referencePaths.Select(p => MetadataReference.CreateFromFile(p)),
+            var compilation = CSharpCompilation.Create(name, new[] { tree }, references,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
             using var pe = new MemoryStream();
             using var xml = new MemoryStream();
