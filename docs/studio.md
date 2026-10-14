@@ -755,6 +755,14 @@ definitions, because those have no portable source and an empty list would claim
 the table has none rather than that nobody can tell. The ODBC driver has to be
 installed wherever the server runs; the Docker image ships the PostgreSQL one.
 
+A table's menu writes SQL for the database it is on. **Select Top 1000** is `TOP` on
+SQL Server, `LIMIT` on PostgreSQL and `FETCH FIRST 1000 ROWS ONLY` on Oracle, over the
+real column list; **Script as** CREATE and INSERT are the engine's own syntax; **Copy
+qualified name** is `[db].[schema].[table]` on SQL Server and `"schema"."table"`
+elsewhere. ODBC writes ANSI SQL, and switches to the engine's own limit only where the
+standard one does not run, going by the DBMS name the driver reports: `TOP` for SQL
+Server, `LIMIT` for MySQL, MariaDB and SQLite.
+
 ### Where a saved password goes
 
 The connection editor can only save a password where one can be kept. On a laptop

@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.2.0] - 2026-10-14
+
+**Needs kernel 1.2.x.** No extension code changed; the pair moves together.
+
+- **Your package wins a name clash.** A `#r` package can name a type the same as
+  one ClrKernel imports by default (`DisplayTable`, say). The cell's own `using`
+  already won when the cell ran; now it also wins in a cell compiled as a class
+  library (extension methods), which failed with CS0104, and in completion,
+  which offered nothing for the type.
+
+ClrKernel Studio:
+
+- **Run cells from the keyboard** in the normal notebook view, not only in focus
+  mode: **Ctrl/Cmd+Enter** runs the cell, **Shift+Enter** runs it and moves to the
+  next, **Alt+Enter** runs it and adds a cell below. A keyboard button on the
+  toolbar lists every shortcut.
+- **Select Top 1000 and Copy name speak the connection's own SQL.** They were
+  T-SQL for every database. Now `TOP` on SQL Server, `LIMIT` on PostgreSQL,
+  `FETCH FIRST` on Oracle, with each engine's own quoting. ODBC writes ANSI SQL
+  (`FETCH FIRST 1000 ROWS ONLY`, double quotes) and the engine's own form only
+  where ANSI does not run — SQL Server, MySQL, MariaDB, SQLite. ODBC's Select
+  Top 1000 also had no limit at all; it has one now.
+- **`--urls` with more than one address starts.** The documented
+  `"http://0.0.0.0:80;https://0.0.0.0:443"` crashed at startup (about
+  `UsePathBase`), over and over as a service. An address with a path, or no
+  scheme, is now refused before startup with what to type instead.
+- **The first-run setup page, opened from another machine, says how to get in**
+  for the address you are on — open `/setup` on the server, or create an invite
+  there with `new-admin-invite` — instead of pointing at `localhost:5000`.
+
 ## [1.1.0] - 2026-10-06
 
 **Needs kernel 1.1.x.** No extension code changed; the pair moves together.
