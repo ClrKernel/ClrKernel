@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2026-10-16
+
+**Needs kernel 1.3.x.** No extension code changed; the pair moves together.
+
+- **A package's newer dependencies load.** A library built against a newer
+  version of something ClrKernel ships — Azure.Storage.Files.DataLake 12.24,
+  where the Fabric provider brings 12.21 — failed with `FileNotFoundException`
+  (or `FileLoadException` with the newer dll copied beside it) the first time
+  it touched that dependency. The newer version now loads beside the kernel's
+  own. A library `#r`'d from its build output finds its NuGet dependencies
+  through its `.deps.json` in the NuGet cache, so `bin/Debug` works without
+  publishing.
+
 ## [1.2.0] - 2026-10-14
 
 **Needs kernel 1.2.x.** No extension code changed; the pair moves together.
