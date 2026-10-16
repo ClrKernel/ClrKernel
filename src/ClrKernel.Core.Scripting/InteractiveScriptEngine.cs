@@ -167,6 +167,7 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
         Directory.CreateDirectory(_dependencyScratchDirectory);
         _logger = logger;
         _scriptOptions = CreateScriptOptions();
+        InstallDependencyResolver();
 
         var referencesFile = RefsFilePath;
 
@@ -452,6 +453,108 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
     private readonly Dictionary<MetadataReference, string[]> _cellLibraryImports = new();
     private System.Runtime.Loader.AssemblyLoadContext _cellLoadContext;
 
+    // `#r "path.dll"` lines. Roslyn resolves those itself, so they never reach
+    // _scriptOptions; the dependency resolver needs to know where they came from.
+    private readonly HashSet<string> _directReferences = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A referenced library can depend on a NEWER version of an assembly the
+    /// kernel itself ships: a package built against Azure.Storage.Files.DataLake
+    /// 12.24, say, where the Fabric provider brings 12.21. The default context's
+    /// slot for that name is the kernel's copy and can never satisfy the newer
+    /// request, so the runtime reports it missing. This last-chance hook finds the
+    /// newer copy and loads it into a context of its own: the package gets its
+    /// version, the kernel keeps its own, and a type from one is not the other's.
+    /// Cell libraries (extension-method cells) load into the same context.
+    /// </summary>
+    private void InstallDependencyResolver() {
+        _cellLoadContext = new System.Runtime.Loader.AssemblyLoadContext("clrkernel-cell-libraries");
+        AppDomain.CurrentDomain.AssemblyResolve += (_, args) => {
+            var path = FindDependency(new AssemblyName(args.Name).Name);
+            return path == null ? null : _cellLoadContext.LoadFromAssemblyPath(path);
+        };
+    }
+
+    /// <summary>
+    /// Where a referenced library's dependency lives, other than in the kernel:
+    /// a restored package; the folder of a library referenced by path; or, for a
+    /// library's build output (which holds no NuGet dependencies), the package
+    /// its <c>.deps.json</c> names, in the NuGet cache it was built from. Never a
+    /// framework or kernel-shipped file — those unify with the default context,
+    /// and a second copy would split type identity.
+    /// </summary>
+    private string FindDependency(string simpleName) {
+        var frameworkDir = Path.GetDirectoryName(typeof(object).Assembly.Location) ?? string.Empty;
+        var appBase = AppContext.BaseDirectory ?? string.Empty;
+        bool Usable(string p) => p != null && File.Exists(p)
+            && !p.StartsWith(frameworkDir, StringComparison.OrdinalIgnoreCase)
+            && !p.StartsWith(appBase, StringComparison.OrdinalIgnoreCase);
+
+        var file = simpleName + ".dll";
+        var restored = ReferencePaths(_scriptOptions.MetadataReferences).FirstOrDefault(p =>
+            Path.GetFileName(p).Equals(file, StringComparison.OrdinalIgnoreCase));
+        if (Usable(restored)) {
+            return restored;
+        }
+        var libraries = _scriptOptions.MetadataReferences.OfType<PortableExecutableReference>()
+            .Select(r => r.FilePath).Where(p => !string.IsNullOrEmpty(p))
+            .Concat(_directReferences).Distinct(StringComparer.OrdinalIgnoreCase);
+        foreach (var library in libraries) {
+            var sibling = Path.Combine(Path.GetDirectoryName(library) ?? string.Empty, file);
+            if (Usable(sibling)) {
+                return sibling;
+            }
+            var packaged = FromDepsJson(library, file, NuGetPackagesFolder());
+            if (Usable(packaged)) {
+                return packaged;
+            }
+        }
+        return null;
+    }
+
+    // ponytail: NUGET_PACKAGES or the default; a globalPackagesFolder set in a
+    // NuGet.Config is not read. Add it if a build cache lives somewhere else.
+    private static string NuGetPackagesFolder() =>
+        Environment.GetEnvironmentVariable("NUGET_PACKAGES") is { Length: > 0 } configured
+            ? configured
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+
+    /// <summary>
+    /// The NuGet-cache path of <paramref name="file"/> when the library's
+    /// <c>.deps.json</c> says a package provides it as a runtime asset, or null.
+    /// </summary>
+    public static string FromDepsJson(string library, string file, string packagesFolder) {
+        var depsJson = Path.ChangeExtension(library, ".deps.json");
+        if (!File.Exists(depsJson)) {
+            return null;
+        }
+        try {
+            using var deps = System.Text.Json.JsonDocument.Parse(File.ReadAllText(depsJson));
+            var root = deps.RootElement;
+            if (!root.TryGetProperty("targets", out var targets) || !root.TryGetProperty("libraries", out var packages)) {
+                return null;
+            }
+            foreach (var target in targets.EnumerateObject()) {
+                foreach (var package in target.Value.EnumerateObject()) {
+                    if (!package.Value.TryGetProperty("runtime", out var runtime)
+                        || !packages.TryGetProperty(package.Name, out var info)
+                        || !info.TryGetProperty("type", out var type) || type.GetString() != "package"
+                        || !info.TryGetProperty("path", out var packagePath)) {
+                        continue;
+                    }
+                    foreach (var asset in runtime.EnumerateObject()) {
+                        if (Path.GetFileName(asset.Name).Equals(file, StringComparison.OrdinalIgnoreCase)) {
+                            return Path.Combine(packagesFolder, packagePath.GetString() ?? string.Empty, asset.Name);
+                        }
+                    }
+                }
+            }
+        } catch (System.Text.Json.JsonException) {
+            // A malformed deps.json says nothing usable; the next place is tried.
+        }
+        return null;
+    }
+
     /// <summary>
     /// True for a line that is a script directive (<c>#r</c>, <c>#load</c>,
     /// <c>#i</c>) or a cell magic (<c>#!…</c>) rather than C# code.
@@ -616,30 +719,6 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
             File.Move(staging, dllPath, overwrite: true);
         }
 
-        // Cell libraries load into their own context. A library's dependency (a
-        // #r'd package, say) can be a NEWER version of an assembly the kernel
-        // itself ships — the default context's simple-name slot is then taken by
-        // the kernel's copy (TPA) and can never satisfy the newer request. The
-        // last-chance hook loads such dependencies here from the engine's
-        // reference paths; framework and kernel-shipped assemblies always unify
-        // with the default context (a second copy would split type identity).
-        if (_cellLoadContext == null) {
-            _cellLoadContext = new System.Runtime.Loader.AssemblyLoadContext("clrkernel-cell-libraries");
-            var frameworkDir = Path.GetDirectoryName(typeof(object).Assembly.Location) ?? string.Empty;
-            var appBase = AppContext.BaseDirectory ?? string.Empty;
-            AppDomain.CurrentDomain.AssemblyResolve += (_, args) => {
-                var requested = new AssemblyName(args.Name).Name;
-                var path = ReferencePaths(_scriptOptions.MetadataReferences).FirstOrDefault(p =>
-                    Path.GetFileNameWithoutExtension(p).Equals(requested, StringComparison.OrdinalIgnoreCase));
-                if (path == null
-                    || path.StartsWith(frameworkDir, StringComparison.OrdinalIgnoreCase)
-                    || path.StartsWith(appBase, StringComparison.OrdinalIgnoreCase)) {
-                    return null;
-                }
-                return _cellLoadContext.LoadFromAssemblyPath(path);
-            };
-        }
-
         _cellLoadContext.LoadFromAssemblyPath(dllPath);
         var newReference = MetadataReference.CreateFromFile(dllPath);
 
@@ -782,6 +861,7 @@ public class InteractiveScriptEngine : ICellExecutionContext, ICellVariables {
             }
             var path = Path.IsPathRooted(argument) ? argument : Path.Combine(_currentDirectory, argument);
             if (File.Exists(path)) {
+                _directReferences.Add(Path.GetFullPath(path));
                 ScanForPlugins(path);
             }
         }

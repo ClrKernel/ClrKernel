@@ -81,6 +81,13 @@ written against your package keeps meaning your package. The one clash a `using`
 cannot settle is an identical namespace *and* type name (CS0433), and ClrKernel
 keeps all of its types under `ClrKernel.*`.
 
+The same goes for a package's **dependencies**. A library built against a newer
+version of something ClrKernel ships (Azure.Storage.Files.DataLake, say, which the
+Fabric provider brings) loads that newer version beside the kernel's own rather
+than failing with `FileNotFoundException`. `#r` a library's build output directly
+and its NuGet dependencies are found through its `.deps.json` in the NuGet cache,
+so `bin/Debug` works without publishing.
+
 ### Importing shared libraries
 
 `#!import` loads C# code from another file into the session — use it to share
